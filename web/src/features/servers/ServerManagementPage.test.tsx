@@ -86,7 +86,7 @@ describe("ServerManagementPage", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "激活计划设置" })).not.toBeInTheDocument());
     expect(screen.getByRole("dialog", { name: "服务器详情" })).toBeVisible();
-    expect(scheduleButton).toHaveFocus();
+    await waitFor(() => expect(scheduleButton).toHaveFocus());
   });
 
   it("creates, edits, and deletes a machine through accessible modals", async () => {
