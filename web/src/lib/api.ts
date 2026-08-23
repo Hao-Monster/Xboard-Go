@@ -80,6 +80,34 @@ export interface UserSession {
   is_admin: boolean;
 }
 
+export interface ServerGroup {
+  id: number;
+  name: string;
+  users_count: number;
+  server_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RoutingAction = "block" | "direct" | "dns" | "proxy";
+
+export interface RoutingRule {
+  id: number;
+  remarks: string;
+  match: string[];
+  action: RoutingAction;
+  action_value?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoutingRuleInput {
+  remarks: string;
+  match: string[];
+  action: RoutingAction;
+  action_value: string;
+}
+
 export interface AdminAPI {
   listMachines: () => Promise<Machine[]>;
   createMachine: (input: { name: string; notes: string; is_active: boolean }) => Promise<MachineEnrollment>;
@@ -95,6 +123,14 @@ export interface AdminAPI {
   getActivationSchedule: (nodeID: number) => Promise<ActivationSchedule>;
   saveActivationSchedule: (nodeID: number, input: DailyScheduleInput) => Promise<ActivationSchedule>;
   deleteActivationSchedule: (nodeID: number) => Promise<void>;
+  listServerGroups: () => Promise<ServerGroup[]>;
+  createServerGroup: (name: string) => Promise<ServerGroup>;
+  updateServerGroup: (id: number, name: string) => Promise<ServerGroup>;
+  deleteServerGroup: (id: number) => Promise<void>;
+  listRoutingRules: () => Promise<RoutingRule[]>;
+  createRoutingRule: (input: RoutingRuleInput) => Promise<RoutingRule>;
+  updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
+  deleteRoutingRule: (id: number) => Promise<void>;
 }
 
 interface Envelope<T> {
@@ -198,6 +234,38 @@ export class APIClient implements AdminAPI {
 
   async deleteActivationSchedule(nodeID: number): Promise<void> {
     await this.request<void>(`/api/v1/admin/nodes/${nodeID}/activation-schedule`, { method: "DELETE" });
+  }
+
+  async listServerGroups(): Promise<ServerGroup[]> {
+    return this.request<ServerGroup[]>("/api/v1/admin/server-groups");
+  }
+
+  async createServerGroup(name: string): Promise<ServerGroup> {
+    return this.request<ServerGroup>("/api/v1/admin/server-groups", { method: "POST", body: { name } });
+  }
+
+  async updateServerGroup(id: number, name: string): Promise<ServerGroup> {
+    return this.request<ServerGroup>(`/api/v1/admin/server-groups/${id}`, { method: "PATCH", body: { name } });
+  }
+
+  async deleteServerGroup(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/server-groups/${id}`, { method: "DELETE" });
+  }
+
+  async listRoutingRules(): Promise<RoutingRule[]> {
+    return this.request<RoutingRule[]>("/api/v1/admin/routing-rules");
+  }
+
+  async createRoutingRule(input: RoutingRuleInput): Promise<RoutingRule> {
+    return this.request<RoutingRule>("/api/v1/admin/routing-rules", { method: "POST", body: input });
+  }
+
+  async updateRoutingRule(id: number, input: RoutingRuleInput): Promise<RoutingRule> {
+    return this.request<RoutingRule>(`/api/v1/admin/routing-rules/${id}`, { method: "PATCH", body: input });
+  }
+
+  async deleteRoutingRule(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/routing-rules/${id}`, { method: "DELETE" });
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {

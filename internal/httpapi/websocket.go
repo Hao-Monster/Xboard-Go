@@ -238,35 +238,43 @@ func (h *wsHub) machineSnapshots(ctx context.Context, machineID int64) ([]wsNode
 		if !node.Enabled || !node.RuntimeConfigured {
 			continue
 		}
-		runtime, err := h.store.GetNodeRuntime(ctx, node.ID)
+		snapshot, err := h.nodeSnapshot(ctx, node, now)
 		if err != nil {
 			return nil, err
 		}
-		config, err := nodeConfigObject(runtime, h.pushInterval, h.pullInterval)
-		if err != nil {
-			return nil, err
-		}
-		users, err := h.store.ListNodeRuntimeUsers(ctx, node.ID, now)
-		if err != nil {
-			return nil, err
-		}
-		userIDs := make([]int64, 0, len(users))
-		for _, user := range users {
-			userIDs = append(userIDs, user.ID)
-		}
-		devices, err := h.store.ListUserDevices(ctx, userIDs, now)
-		if err != nil {
-			return nil, err
-		}
-		snapshots = append(snapshots, wsNodeSnapshot{
-			summary:   machineNodeSummary{ID: node.ID, Type: node.Type, Name: node.Name},
-			config:    config,
-			users:     users,
-			devices:   devices,
-			timestamp: now.Unix(),
-		})
+		snapshots = append(snapshots, snapshot)
 	}
 	return snapshots, nil
+}
+
+func (h *wsHub) nodeSnapshot(ctx context.Context, node store.Node, now time.Time) (wsNodeSnapshot, error) {
+	runtime, err := h.store.GetNodeRuntime(ctx, node.ID)
+	if err != nil {
+		return wsNodeSnapshot{}, err
+	}
+	config, err := nodeConfigObject(runtime, h.pushInterval, h.pullInterval)
+	if err != nil {
+		return wsNodeSnapshot{}, err
+	}
+	users, err := h.store.ListNodeRuntimeUsers(ctx, node.ID, now)
+	if err != nil {
+		return wsNodeSnapshot{}, err
+	}
+	userIDs := make([]int64, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
+	devices, err := h.store.ListUserDevices(ctx, userIDs, now)
+	if err != nil {
+		return wsNodeSnapshot{}, err
+	}
+	return wsNodeSnapshot{
+		summary:   machineNodeSummary{ID: node.ID, Type: node.Type, Name: node.Name},
+		config:    config,
+		users:     users,
+		devices:   devices,
+		timestamp: now.Unix(),
+	}, nil
 }
 
 func (h *wsHub) hasMachineNode(machineID, nodeID int64) bool {
@@ -550,7 +558,14 @@ func (h *wsHub) ClearNodeDevices(ctx context.Context, nodeIDs []int64) {
 }
 
 func (h *wsHub) NotifyNodeFull(ctx context.Context, machineID, nodeID int64) {
-	snapshots, err := h.machineSnapshots(ctx, machineID)
+	node, err := h.store.GetNode(ctx, nodeID)
+	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			h.logger.Warn("prepare websocket node full synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
+		}
+		return
+	}
+	snapshot, err := h.nodeSnapshot(ctx, node, h.now())
 	if err != nil {
 		h.logger.Warn("prepare websocket node full synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		return
@@ -561,14 +576,39 @@ func (h *wsHub) NotifyNodeFull(ctx context.Context, machineID, nodeID int64) {
 	if connection == nil || !connection.hasNode(nodeID) {
 		return
 	}
-	for _, snapshot := range snapshots {
-		if snapshot.summary.ID == nodeID {
-			connection.enqueue(configSyncEnvelope(snapshot))
-			connection.enqueue(usersSyncEnvelope(snapshot))
-			connection.enqueue(devicesSyncEnvelope(snapshot))
-			return
+	connection.enqueue(configSyncEnvelope(snapshot))
+	connection.enqueue(usersSyncEnvelope(snapshot))
+	connection.enqueue(devicesSyncEnvelope(snapshot))
+}
+
+func (h *wsHub) NotifyNodeConfig(ctx context.Context, machineID, nodeID int64) {
+	node, err := h.store.GetNode(ctx, nodeID)
+	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		}
+		return
 	}
+	runtime, err := h.store.GetNodeRuntime(ctx, nodeID)
+	if err != nil {
+		h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
+		return
+	}
+	config, err := nodeConfigObject(runtime, h.pushInterval, h.pullInterval)
+	if err != nil {
+		h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
+		return
+	}
+	h.mu.RLock()
+	connection := h.machines[machineID]
+	h.mu.RUnlock()
+	if connection == nil || !connection.hasNode(nodeID) {
+		return
+	}
+	connection.enqueue(configSyncEnvelope(wsNodeSnapshot{
+		summary: machineNodeSummary{ID: node.ID, Type: node.Type, Name: node.Name},
+		config:  config, timestamp: h.now().Unix(),
+	}))
 }
 
 // NotifyDeviceStates publishes authoritative snapshots only to runtime nodes

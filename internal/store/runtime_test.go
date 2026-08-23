@@ -17,6 +17,7 @@ func TestNodeRuntimeUsersPreserveAvailabilityRules(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	ensureTestServerGroups(t, database, now, 7, 8, 9)
 	machine, _, err := database.CreateMachine(ctx, CreateMachineInput{Name: "runtime-users", IsActive: true}, now)
 	if err != nil {
 		t.Fatalf("CreateMachine() error = %v", err)
@@ -97,14 +98,14 @@ func TestSchemaV2MigrationPreservesFirstSliceData(t *testing.T) {
 	nodeID, _ := result.LastInsertId()
 
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v1 to v2) error = %v", err)
+		t.Fatalf("Migrate(v1 to v3) error = %v", err)
 	}
 	node, err := database.GetNode(ctx, nodeID)
 	if err != nil || node.Name != "preserved-node" || node.MachineID == nil || *node.MachineID != machineID || node.Rate != 1 || node.RuntimeConfigured {
 		t.Fatalf("migrated node = %#v, err=%v", node, err)
 	}
 	var version int
-	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("schema version = %d, err=%v", version, err)
 	}
 }
@@ -115,14 +116,14 @@ func TestMigrationRejectsNewerSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.db.Exec(`PRAGMA user_version = 3`); err != nil {
+	if _, err := database.db.Exec(`PRAGMA user_version = 4`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(context.Background()); err == nil {
 		t.Fatal("Migrate() accepted a schema created by a newer application version")
 	}
 	var version int
-	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 4 {
 		t.Fatalf("schema version after rejection = %d, err=%v", version, err)
 	}
 }
@@ -336,6 +337,7 @@ func TestListRuntimeNodeIDsForUsersTargetsEnabledMatchingGroups(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
 	machine, matching := createReportingNode(t, database, now)
+	ensureTestServerGroups(t, database, now, 8)
 	other, err := database.CreateNode(ctx, CreateNodeInput{
 		Name: "other-group-node", Type: "vless", Host: "other-group.example.test", Port: "8443",
 		Show: true, Enabled: true, MachineID: &machine.ID,
@@ -470,6 +472,7 @@ func TestOldDuplicateReceiptSurvivesAnotherLostResponse(t *testing.T) {
 
 func createReportingNode(t testing.TB, database *Store, now time.Time) (Machine, Node) {
 	t.Helper()
+	ensureTestServerGroups(t, database, now, 7)
 	machine, _, err := database.CreateMachine(context.Background(), CreateMachineInput{Name: "report-machine", IsActive: true}, now)
 	if err != nil {
 		t.Fatalf("CreateMachine() error = %v", err)
@@ -493,6 +496,7 @@ func createReportingNode(t testing.TB, database *Store, now time.Time) (Machine,
 
 func createRuntimeUser(t *testing.T, database *Store, now time.Time, name string, groupID, transferEnable, upload, download int64, expiredAt *time.Time, banned bool) RuntimeUser {
 	t.Helper()
+	ensureTestServerGroups(t, database, now, groupID)
 	user, err := database.CreateRuntimeUser(context.Background(), CreateRuntimeUserInput{
 		Email: name + "@example.test", PasswordHash: "test-password-hash", UUID: uuid.NewString(),
 		GroupID: groupID, TransferEnable: transferEnable, TrafficUpload: upload, TrafficDownload: download,
@@ -502,6 +506,17 @@ func createRuntimeUser(t *testing.T, database *Store, now time.Time, name string
 		t.Fatalf("CreateRuntimeUser(%s) error = %v", name, err)
 	}
 	return user
+}
+
+func ensureTestServerGroups(t testing.TB, database *Store, now time.Time, groupIDs ...int64) {
+	t.Helper()
+	for _, groupID := range groupIDs {
+		if _, err := database.db.ExecContext(context.Background(), `
+			INSERT OR IGNORE INTO server_groups (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)
+		`, groupID, fmt.Sprintf("Test group %d", groupID), now.Unix(), now.Unix()); err != nil {
+			t.Fatalf("ensure test server group %d: %v", groupID, err)
+		}
+	}
 }
 
 func assertTrafficTotals(t *testing.T, database *Store, userID, nodeID, userUpload, userDownload, nodeUpload, nodeDownload int64) {

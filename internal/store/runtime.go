@@ -40,6 +40,10 @@ func (s *Store) SaveNodeRuntime(ctx context.Context, nodeID int64, input SaveNod
 	if err != nil {
 		return NodeRuntime{}, err
 	}
+	routes, err := normalizeRouteIDs(input.RouteIDs)
+	if err != nil {
+		return NodeRuntime{}, err
+	}
 	canonical := make([]byte, 0, len(input.Config))
 	canonical = append(canonical, input.Config...)
 	canonical = json.RawMessage(canonical)
@@ -60,6 +64,12 @@ func (s *Store) SaveNodeRuntime(ctx context.Context, nodeID int64, input SaveNod
 	if strings.ToLower(configHeader.Protocol) != nodeType {
 		return NodeRuntime{}, fmt.Errorf("%w: runtime protocol must match node type", ErrInvalidInput)
 	}
+	if err := requireReferencedIDs(ctx, tx, "server_groups", groups, "server groups"); err != nil {
+		return NodeRuntime{}, err
+	}
+	if err := requireReferencedIDs(ctx, tx, "routing_rules", routes, "routing rules"); err != nil {
+		return NodeRuntime{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET rate_micros = ?, runtime_config = ?, updated_at = ? WHERE id = ?`, input.RateMicros, string(canonical), now.Unix(), nodeID); err != nil {
 		return NodeRuntime{}, fmt.Errorf("update node runtime: %w", err)
 	}
@@ -71,21 +81,37 @@ func (s *Store) SaveNodeRuntime(ctx context.Context, nodeID int64, input SaveNod
 			return NodeRuntime{}, fmt.Errorf("insert node group: %w", err)
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM node_route_memberships WHERE node_id = ?`, nodeID); err != nil {
+		return NodeRuntime{}, fmt.Errorf("replace node routes: %w", err)
+	}
+	for _, routeID := range routes {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO node_route_memberships (node_id, route_id) VALUES (?, ?)`, nodeID, routeID); err != nil {
+			return NodeRuntime{}, fmt.Errorf("insert node route: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return NodeRuntime{}, fmt.Errorf("commit node runtime: %w", err)
 	}
-	return NodeRuntime{NodeID: nodeID, RateMicros: input.RateMicros, GroupIDs: groups, Config: canonical, UpdatedAt: now.UTC()}, nil
+	return s.GetNodeRuntime(ctx, nodeID)
 }
 
 func normalizeGroupIDs(values []int64) ([]int64, error) {
+	return normalizeRuntimeIDs(values, "node groups")
+}
+
+func normalizeRouteIDs(values []int64) ([]int64, error) {
+	return normalizeRuntimeIDs(values, "node routes")
+}
+
+func normalizeRuntimeIDs(values []int64, label string) ([]int64, error) {
 	if len(values) > 1_000 {
-		return nil, fmt.Errorf("%w: too many node groups", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: too many %s", ErrInvalidInput, label)
 	}
 	seen := make(map[int64]struct{}, len(values))
 	groups := make([]int64, 0, len(values))
 	for _, value := range values {
 		if value < 1 {
-			return nil, fmt.Errorf("%w: group ids must be positive", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: %s ids must be positive", ErrInvalidInput, label)
 		}
 		if _, exists := seen[value]; exists {
 			continue
@@ -95,6 +121,28 @@ func normalizeGroupIDs(values []int64) ([]int64, error) {
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i] < groups[j] })
 	return groups, nil
+}
+
+func requireReferencedIDs(ctx context.Context, tx *sql.Tx, table string, ids []int64, label string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if table != "server_groups" && table != "routing_rules" {
+		return errors.New("unsupported reference table")
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	arguments := make([]any, len(ids))
+	for index, id := range ids {
+		arguments[index] = id
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE id IN (`+placeholders+`)`, arguments...).Scan(&count); err != nil {
+		return fmt.Errorf("validate %s: %w", label, err)
+	}
+	if count != len(ids) {
+		return fmt.Errorf("%w: one or more %s do not exist", ErrInvalidInput, label)
+	}
+	return nil
 }
 
 func (s *Store) GetNodeRuntime(ctx context.Context, nodeID int64) (NodeRuntime, error) {
@@ -117,16 +165,43 @@ func (s *Store) GetNodeRuntime(ctx context.Context, nodeID int64) (NodeRuntime, 
 	if err != nil {
 		return NodeRuntime{}, fmt.Errorf("list node groups: %w", err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var groupID int64
-		if err := rows.Scan(&groupID); err != nil {
-			return NodeRuntime{}, fmt.Errorf("scan node group: %w", err)
+	if err := func() error {
+		defer rows.Close()
+		for rows.Next() {
+			var groupID int64
+			if err := rows.Scan(&groupID); err != nil {
+				return fmt.Errorf("scan node group: %w", err)
+			}
+			runtime.GroupIDs = append(runtime.GroupIDs, groupID)
 		}
-		runtime.GroupIDs = append(runtime.GroupIDs, groupID)
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("list node groups: %w", err)
+		}
+		return nil
+	}(); err != nil {
+		return NodeRuntime{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return NodeRuntime{}, fmt.Errorf("list node groups: %w", err)
+	routeRows, err := s.db.QueryContext(ctx, `
+		SELECT r.id, r.remarks, r.match_json, r.action, r.action_value, r.created_at, r.updated_at
+		FROM node_route_memberships nr
+		JOIN routing_rules r ON r.id = nr.route_id
+		WHERE nr.node_id = ?
+		ORDER BY nr.route_id
+	`, nodeID)
+	if err != nil {
+		return NodeRuntime{}, fmt.Errorf("list node routes: %w", err)
+	}
+	defer routeRows.Close()
+	for routeRows.Next() {
+		rule, err := scanRoutingRule(routeRows)
+		if err != nil {
+			return NodeRuntime{}, err
+		}
+		runtime.RouteIDs = append(runtime.RouteIDs, rule.ID)
+		runtime.Routes = append(runtime.Routes, rule)
+	}
+	if err := routeRows.Err(); err != nil {
+		return NodeRuntime{}, fmt.Errorf("list node routes: %w", err)
 	}
 	runtime.Config = json.RawMessage(config.String)
 	runtime.UpdatedAt = time.Unix(updatedAt, 0).UTC()
@@ -145,6 +220,13 @@ func (s *Store) CreateRuntimeUser(ctx context.Context, input CreateRuntimeUserIn
 		expiredAt = input.ExpiredAt.Unix()
 	}
 	defer s.lockWrite()()
+	var groupExists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM server_groups WHERE id = ?)`, input.GroupID).Scan(&groupExists); err != nil {
+		return RuntimeUser{}, fmt.Errorf("validate runtime user group: %w", err)
+	}
+	if !groupExists {
+		return RuntimeUser{}, fmt.Errorf("%w: runtime user group does not exist", ErrInvalidInput)
+	}
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, uuid, group_id, transfer_enable, traffic_u, traffic_d,

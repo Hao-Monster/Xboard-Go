@@ -302,6 +302,7 @@ func TestDeletingMachineUnlinksNodesWithoutDeletingThem(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	ensureTestServerGroups(t, store, now, 7)
 	machine, enrollment, err := store.CreateMachine(ctx, CreateMachineInput{Name: "delete-edge", IsActive: true}, now)
 	if err != nil {
 		t.Fatalf("CreateMachine() error = %v", err)

@@ -204,6 +204,81 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}
 }
 
+func TestRoutingRuleUpdatePushesCompatibleWebSocketConfig(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	rule, err := database.CreateRoutingRule(ctx, store.SaveRoutingRuleInput{
+		Remarks: "initial route", Match: []string{"example.com"}, Action: "direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "route-push-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "route-push-node", Type: "vless", Host: "route-push.example.test", Port: "443", Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7}, RouteIDs: []int64{rule.ID},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "route-push-user@example.test", PasswordHash: "hash", UUID: "89797085-3186-4434-980e-642583be8722", GroupID: 7, TransferEnable: 1,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
+
+	admin := loginAdmin(t, api)
+	response := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/routing-rules/%d", rule.ID), `{
+		"remarks":"updated route","match":["*.example.net"],"action":"proxy","action_value":"warp-out"
+	}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("update route status = %d; body=%s", response.Code, response.Body)
+	}
+	event := readWSEvent(t, connection)
+	if event.Event != "sync.config" {
+		t.Fatalf("route update event = %q, want sync.config", event.Event)
+	}
+	var data struct {
+		NodeID int64 `json:"node_id"`
+		Config struct {
+			Routes []struct {
+				ID          int64    `json:"id"`
+				Match       []string `json:"match"`
+				Action      string   `json:"action"`
+				ActionValue string   `json:"action_value"`
+			} `json:"routes"`
+		} `json:"config"`
+	}
+	decodeWSData(t, event.Data, &data)
+	if data.NodeID != node.ID || len(data.Config.Routes) != 1 || data.Config.Routes[0].ID != rule.ID || data.Config.Routes[0].Action != "proxy" || data.Config.Routes[0].ActionValue != "warp-out" {
+		t.Fatalf("pushed route config = %#v", data)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	if _, _, err := connection.ReadMessage(); err == nil {
+		t.Fatal("routing-only update also pushed an unrelated users or devices snapshot")
+	}
+}
+
 func TestMachineWebSocketRejectsInvalidCredentialAndOrigin(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()
@@ -459,6 +534,11 @@ func newWebSocketTestAPI(t *testing.T) (http.Handler, *store.Store, context.Canc
 	t.Cleanup(func() { _ = database.Close() })
 	if err := database.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	for index := 1; index <= 9; index++ {
+		if _, err := database.CreateServerGroup(context.Background(), fmt.Sprintf("Test group %d", index), fixedNow()); err != nil {
+			t.Fatalf("CreateServerGroup(%d) error = %v", index, err)
+		}
 	}
 	hasher := security.NewPasswordHasher(security.PasswordParams{
 		MemoryKiB: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
