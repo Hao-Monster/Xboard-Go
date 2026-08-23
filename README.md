@@ -5,3 +5,5 @@ Xboard-Go is a clean-room reimplementation of the Xboard control plane with a Go
 The project focuses on preserving established business behavior while improving measurable performance, security, reliability, and long-term maintainability.
 
 The repository is under active construction and is not intended for production use yet.
+
+Licensed under the [Apache License 2.0](LICENSE).
