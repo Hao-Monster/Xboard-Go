@@ -232,6 +232,155 @@ func TestMachineAgentEnrollmentNodesAndStatus(t *testing.T) {
 	}
 }
 
+func TestXboardNodeV2MachineContract(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "contract-edge", IsActive: true}, now)
+	if err != nil {
+		t.Fatalf("CreateMachine() error = %v", err)
+	}
+	if len(enrollment.Code) != 48 {
+		t.Fatalf("enrollment code length = %d, want 48", len(enrollment.Code))
+	}
+	enabledNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "enabled", Type: "vless", Host: "enabled.example.test", Port: "443", Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateNode(enabled) error = %v", err)
+	}
+	disabledNodeRecord, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "disabled", Type: "vless", Host: "disabled.example.test", Port: "8443", Show: true, Enabled: false, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateNode(disabled) error = %v", err)
+	}
+
+	enrollBody := fmt.Sprintf(`{"machine_id":%d,"enrollment_code":%q}`, machine.ID, enrollment.Code)
+	enrollRequest := httptest.NewRequest(http.MethodPost, "/api/v2/server/machine/enroll", strings.NewReader(enrollBody))
+	enrollRequest.Header.Set("Content-Type", "application/json")
+	enrollResponse := httptest.NewRecorder()
+	api.ServeHTTP(enrollResponse, enrollRequest)
+	if enrollResponse.Code != http.StatusOK {
+		t.Fatalf("v2 enrollment status = %d; body=%s", enrollResponse.Code, enrollResponse.Body)
+	}
+	var enrolled struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, enrollResponse, &enrolled)
+	if enrolled.Data.Token == "" {
+		t.Fatal("v2 enrollment returned an empty credential")
+	}
+
+	// v1.13 included the credential in the JSON body as well as the Bearer
+	// header. The hardened node omits the body copy; the panel accepts both
+	// shapes during staged deployment and authenticates the header.
+	bodyOnlyAuth := httptest.NewRequest(http.MethodPost, "/api/v2/server/handshake", strings.NewReader(
+		fmt.Sprintf(`{"machine_id":%d,"token":%q}`, machine.ID, enrolled.Data.Token),
+	))
+	bodyOnlyAuth.Header.Set("Content-Type", "application/json")
+	bodyOnlyResponse := httptest.NewRecorder()
+	api.ServeHTTP(bodyOnlyResponse, bodyOnlyAuth)
+	if bodyOnlyResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("body-only machine credential status = %d, want %d", bodyOnlyResponse.Code, http.StatusUnauthorized)
+	}
+	if bodyOnlyResponse.Header().Get("WWW-Authenticate") != "Bearer" {
+		t.Fatalf("body-only machine credential challenge = %q, want Bearer", bodyOnlyResponse.Header().Get("WWW-Authenticate"))
+	}
+
+	handshakeBody := fmt.Sprintf(`{"machine_id":%d,"token":"ignored-legacy-body-value"}`, machine.ID)
+	handshake := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", enrolled.Data.Token, handshakeBody)
+	if handshake.Code != http.StatusOK {
+		t.Fatalf("v2 handshake status = %d; body=%s", handshake.Code, handshake.Body)
+	}
+	var handshakePayload struct {
+		WebSocket struct {
+			Enabled bool `json:"enabled"`
+		} `json:"websocket"`
+		Settings struct {
+			PushInterval int `json:"push_interval"`
+			PullInterval int `json:"pull_interval"`
+		} `json:"settings"`
+	}
+	decodeResponse(t, handshake, &handshakePayload)
+	if handshakePayload.WebSocket.Enabled || handshakePayload.Settings.PushInterval != 60 || handshakePayload.Settings.PullInterval != 60 {
+		t.Fatalf("unexpected handshake payload: %#v", handshakePayload)
+	}
+
+	nodesBody := fmt.Sprintf(`{"machine_id":%d}`, machine.ID)
+	nodesResponse := agentRequest(api, http.MethodPost, "/api/v2/server/machine/nodes", enrolled.Data.Token, nodesBody)
+	if nodesResponse.Code != http.StatusOK {
+		t.Fatalf("v2 machine nodes status = %d; body=%s", nodesResponse.Code, nodesResponse.Body)
+	}
+	var nodesPayload struct {
+		Nodes []struct {
+			ID int64 `json:"id"`
+		} `json:"nodes"`
+		BaseConfig struct {
+			PushInterval int `json:"push_interval"`
+			PullInterval int `json:"pull_interval"`
+		} `json:"base_config"`
+	}
+	decodeResponse(t, nodesResponse, &nodesPayload)
+	if len(nodesPayload.Nodes) != 1 || nodesPayload.Nodes[0].ID != enabledNode.ID || nodesPayload.BaseConfig.PullInterval != 60 {
+		t.Fatalf("unexpected machine nodes payload: %#v", nodesPayload)
+	}
+
+	statusBody := fmt.Sprintf(`{"machine_id":%d,"cpu":73.5,"mem":{"total":1000,"used":700},"swap":{"total":100,"used":10},"disk":{"total":2000,"used":500},"net":{"in_speed":1024,"out_speed":2048}}`, machine.ID)
+	statusResponse := agentRequest(api, http.MethodPost, "/api/v2/server/machine/status", enrolled.Data.Token, statusBody)
+	if statusResponse.Code != http.StatusOK {
+		t.Fatalf("v2 machine status = %d; body=%s", statusResponse.Code, statusResponse.Body)
+	}
+	updated, err := database.GetMachine(ctx, machine.ID)
+	if err != nil || !bytes.Contains(updated.LoadStatus, []byte(`"cpu":73.5`)) {
+		t.Fatalf("machine status was not persisted: machine=%#v err=%v", updated, err)
+	}
+
+	otherMachine, _, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "other-edge", IsActive: true}, now)
+	if err != nil {
+		t.Fatalf("CreateMachine(other) error = %v", err)
+	}
+	otherNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "other", Type: "vless", Host: "other.example.test", Port: "443", Show: true, Enabled: true, MachineID: &otherMachine.ID,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateNode(other) error = %v", err)
+	}
+	crossNodeBody := fmt.Sprintf(`{"machine_id":%d,"node_id":%d}`, machine.ID, otherNode.ID)
+	crossNode := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", enrolled.Data.Token, crossNodeBody)
+	if crossNode.Code != http.StatusForbidden {
+		t.Fatalf("cross-machine node handshake status = %d, want %d; body=%s", crossNode.Code, http.StatusForbidden, crossNode.Body)
+	}
+	disabledNodeBody := fmt.Sprintf(`{"machine_id":%d,"node_id":%d}`, machine.ID, disabledNodeRecord.ID)
+	disabledNode := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", enrolled.Data.Token, disabledNodeBody)
+	if disabledNode.Code != http.StatusForbidden {
+		t.Fatalf("disabled node handshake status = %d, want %d; body=%s", disabledNode.Code, http.StatusForbidden, disabledNode.Body)
+	}
+}
+
+func TestMachineAuthenticationFailuresAreRateLimited(t *testing.T) {
+	api, database := newTestAPI(t)
+	machine, _, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
+		Name: "rate-limited-machine", IsActive: true,
+	}, fixedNow())
+	if err != nil {
+		t.Fatalf("CreateMachine() error = %v", err)
+	}
+	body := fmt.Sprintf(`{"machine_id":%d}`, machine.ID)
+	for attempt := 0; attempt < 60; attempt++ {
+		response := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", "invalid-machine-credential", body)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d, want %d", attempt+1, response.Code, http.StatusUnauthorized)
+		}
+	}
+	limited := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", "invalid-machine-credential", body)
+	if limited.Code != http.StatusTooManyRequests || limited.Header().Get("Retry-After") != "60" {
+		t.Fatalf("rate-limited response status=%d retry-after=%q", limited.Code, limited.Header().Get("Retry-After"))
+	}
+}
+
 type testClient struct {
 	cookies []*http.Cookie
 	csrf    string

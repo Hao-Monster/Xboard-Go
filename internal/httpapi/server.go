@@ -36,17 +36,18 @@ type Dependencies struct {
 }
 
 type server struct {
-	store          *store.Store
-	passwordHasher security.PasswordHasher
-	dummyHash      string
-	now            func() time.Time
-	panelURL       string
-	nodeRelease    string
-	cookieSecure   bool
-	allowedOrigins map[string]struct{}
-	logger         *slog.Logger
-	loginAttempts  *attemptLimiter
-	enrollAttempts *attemptLimiter
+	store               *store.Store
+	passwordHasher      security.PasswordHasher
+	dummyHash           string
+	now                 func() time.Time
+	panelURL            string
+	nodeRelease         string
+	cookieSecure        bool
+	allowedOrigins      map[string]struct{}
+	logger              *slog.Logger
+	loginAttempts       *attemptLimiter
+	enrollAttempts      *attemptLimiter
+	machineAuthFailures *attemptLimiter
 }
 
 type contextKey int
@@ -83,17 +84,18 @@ func New(dependencies Dependencies) http.Handler {
 	}
 
 	api := &server{
-		store:          dependencies.Store,
-		passwordHasher: dependencies.PasswordHasher,
-		dummyHash:      dummyHash,
-		now:            dependencies.Now,
-		panelURL:       strings.TrimRight(dependencies.PanelURL, "/"),
-		nodeRelease:    dependencies.NodeRelease,
-		cookieSecure:   dependencies.CookieSecure,
-		allowedOrigins: allowedOrigins,
-		logger:         dependencies.Logger,
-		loginAttempts:  newAttemptLimiter(5, 15*time.Minute),
-		enrollAttempts: newAttemptLimiter(20, 15*time.Minute),
+		store:               dependencies.Store,
+		passwordHasher:      dependencies.PasswordHasher,
+		dummyHash:           dummyHash,
+		now:                 dependencies.Now,
+		panelURL:            strings.TrimRight(dependencies.PanelURL, "/"),
+		nodeRelease:         dependencies.NodeRelease,
+		cookieSecure:        dependencies.CookieSecure,
+		allowedOrigins:      allowedOrigins,
+		logger:              dependencies.Logger,
+		loginAttempts:       newAttemptLimiter(5, 15*time.Minute),
+		enrollAttempts:      newAttemptLimiter(20, 15*time.Minute),
+		machineAuthFailures: newAttemptLimiter(60, time.Minute),
 	}
 
 	root := http.NewServeMux()
@@ -104,6 +106,10 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("POST /api/v1/machines/enroll", api.exchangeEnrollment)
 	root.HandleFunc("GET /api/v1/machines/{machineID}/nodes", api.agentNodes)
 	root.HandleFunc("POST /api/v1/machines/{machineID}/status", api.agentStatus)
+	root.HandleFunc("POST /api/v2/server/machine/enroll", api.exchangeEnrollment)
+	root.HandleFunc("POST /api/v2/server/machine/nodes", api.xboardNodeMachineNodes)
+	root.HandleFunc("POST /api/v2/server/machine/status", api.xboardNodeMachineStatus)
+	root.HandleFunc("POST /api/v2/server/handshake", api.xboardNodeHandshake)
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
