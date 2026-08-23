@@ -31,7 +31,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         XBOARD_ADDRESS: "127.0.0.1:8080",
-        XBOARD_DATABASE_DSN: "file:./tmp/e2e.db",
+        XBOARD_DATABASE_DSN: "file:xboard-e2e?mode=memory&cache=shared",
         XBOARD_PANEL_URL: "http://127.0.0.1:4173",
         XBOARD_ALLOWED_ORIGINS: "http://127.0.0.1:4173",
         XBOARD_COOKIE_SECURE: "false",

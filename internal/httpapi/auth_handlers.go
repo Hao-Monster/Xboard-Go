@@ -85,9 +85,90 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	s.clearAuthCookies(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) listAccountSessions(w http.ResponseWriter, r *http.Request) {
+	session, _ := sessionFromContext(r.Context())
+	sessions, err := s.store.ListActiveSessions(r.Context(), session.UserID, session.SessionID, s.now())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, sessions)
+}
+
+func (s *server) revokeAccountSession(w http.ResponseWriter, r *http.Request) {
+	sessionID, ok := pathID(w, r, "sessionID")
+	if !ok {
+		return
+	}
+	session, _ := sessionFromContext(r.Context())
+	if err := s.store.RevokeUserSession(r.Context(), session.UserID, sessionID, s.now()); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if sessionID == session.SessionID {
+		s.clearAuthCookies(w)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	fields := make(map[string]string)
+	if input.OldPassword == "" {
+		fields["old_password"] = "请输入当前密码"
+	} else if len(input.OldPassword) > 1024 {
+		fields["old_password"] = "当前密码过长"
+	}
+	if len(input.NewPassword) < 12 {
+		fields["new_password"] = "新密码至少需要 12 个字符"
+	} else if len(input.NewPassword) > 1024 {
+		fields["new_password"] = "新密码不得超过 1024 个字符"
+	}
+	if len(fields) > 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查密码输入", fields)
+		return
+	}
+
+	session, _ := sessionFromContext(r.Context())
+	user, err := s.store.FindUserByID(r.Context(), session.UserID)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !s.passwordHasher.Verify(input.OldPassword, user.PasswordHash) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "current_password_invalid", "当前密码不正确", map[string]string{"old_password": "当前密码不正确"})
+		return
+	}
+	newHash, err := s.passwordHasher.Hash(input.NewPassword)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return
+	}
+	if err := s.store.ChangePassword(r.Context(), user.ID, user.PasswordHash, newHash, s.now()); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeAPIError(w, http.StatusConflict, "credentials_changed", "账号凭据已变化，请重新登录", nil)
+			return
+		}
+		handleStoreError(w, err)
+		return
+	}
+	s.clearAuthCookies(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) clearAuthCookies(w http.ResponseWriter) {
 	http.SetCookie(w, s.expiredCookie(SessionCookieName, true))
 	http.SetCookie(w, s.expiredCookie(CSRFCookieName, false))
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) exchangeEnrollment(w http.ResponseWriter, r *http.Request) {

@@ -23,6 +23,19 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .nav-link:hover { color: #e8ebf2; background: #242a35; }
 .nav-link[aria-current="page"] { color: #cbd6ff; background: #27304a; }
 .account { display: flex; align-items: center; gap: 16px; color: #aab1c1; font-size: .875rem; }
+.account-security-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 20px; margin-top: 26px; align-items: start; }
+.security-card { display: grid; gap: 20px; padding: 22px; border: 1px solid #2d3340; border-radius: 16px; background: rgb(18 21 29 / 90%); box-shadow: 0 14px 35px rgb(0 0 0 / 20%); }
+.security-card h2 { margin: 0 0 5px; }
+.count-badge { min-width: 28px; padding: 4px 9px; border-radius: 999px; color: #b8c4ff; background: #252c48; text-align: center; font-size: .75rem; }
+.session-list { display: grid; gap: 12px; }
+.session-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 16px; border: 1px solid #303746; border-radius: 13px; background: #151922; }
+.session-summary { min-width: 0; display: grid; gap: 11px; }
+.session-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.status-badge.current { border-radius: 999px; padding: 4px 8px; color: #8be3b2; background: #153829; font-size: .7rem; font-weight: 700; }
+.session-times { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 0; }
+.session-times div { display: grid; gap: 2px; }
+.session-times dt { color: #7f899c; font-size: .7rem; }
+.session-times dd { margin: 0; color: #bec6d4; font-size: .78rem; }
 .page-shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0 96px; }
 .page-header, .card-heading, .section-heading, .drawer-header, .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 h1, h2, h3, p { margin-top: 0; }
@@ -141,6 +154,9 @@ textarea { min-height: 100px; resize: vertical; }
   .admin-nav { order: 3; width: 100%; overflow-x: auto; }
   .nav-link { flex: 1 0 auto; }
   .account > span { display: none; }
+  .account-security-grid { grid-template-columns: 1fr; }
+  .session-row { align-items: stretch; flex-direction: column; }
+  .session-row > .button { width: 100%; }
   .page-shell { width: min(100% - 24px, 1180px); padding-top: 32px; }
   .page-header { align-items: stretch; flex-direction: column; }
   .overview-grid { grid-template-columns: repeat(2, 1fr); }

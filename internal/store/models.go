@@ -35,6 +35,14 @@ type SessionUser struct {
 	LastUsedAt *time.Time
 }
 
+type AccountSession struct {
+	ID         int64      `json:"id"`
+	IsCurrent  bool       `json:"is_current"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+}
+
 type Machine struct {
 	ID           int64           `json:"id"`
 	Name         string          `json:"name"`

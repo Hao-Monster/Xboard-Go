@@ -50,6 +50,22 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error)
 	return user, nil
 }
 
+func (s *Store) FindUserByID(ctx context.Context, userID int64) (User, error) {
+	var user User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, email, password_hash, is_admin, banned
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("find user by ID: %w", err)
+	}
+	return user, nil
+}
+
 func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash, csrfHash string, expiresAt, now time.Time) error {
 	defer s.lockWrite()()
 	_, err := s.db.ExecContext(ctx, `
@@ -108,6 +124,98 @@ func (s *Store) RevokeSession(ctx context.Context, sessionID int64, now time.Tim
 	_, err := s.db.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`, now.Unix(), sessionID)
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListActiveSessions(ctx context.Context, userID, currentSessionID int64, now time.Time) ([]AccountSession, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, created_at, last_used_at, expires_at
+		FROM admin_sessions
+		WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+		ORDER BY created_at DESC, id DESC
+	`, userID, now.Unix())
+	if err != nil {
+		return nil, fmt.Errorf("list active sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]AccountSession, 0)
+	for rows.Next() {
+		var session AccountSession
+		var createdAt, expiresAt int64
+		var lastUsedAt sql.NullInt64
+		if err := rows.Scan(&session.ID, &createdAt, &lastUsedAt, &expiresAt); err != nil {
+			return nil, fmt.Errorf("scan active session: %w", err)
+		}
+		session.IsCurrent = session.ID == currentSessionID
+		session.CreatedAt = time.Unix(createdAt, 0).UTC()
+		session.ExpiresAt = time.Unix(expiresAt, 0).UTC()
+		if lastUsedAt.Valid {
+			value := time.Unix(lastUsedAt.Int64, 0).UTC()
+			session.LastUsedAt = &value
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active sessions: %w", err)
+	}
+	return sessions, nil
+}
+
+func (s *Store) RevokeUserSession(ctx context.Context, userID, sessionID int64, now time.Time) error {
+	defer s.lockWrite()()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE admin_sessions
+		SET revoked_at = ?
+		WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ?
+	`, now.Unix(), sessionID, userID, now.Unix())
+	if err != nil {
+		return fmt.Errorf("revoke user session: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count revoked user sessions: %w", err)
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) ChangePassword(ctx context.Context, userID int64, expectedHash, newHash string, now time.Time) error {
+	if userID < 1 || expectedHash == "" || newHash == "" {
+		return fmt.Errorf("%w: user and password hashes are required", ErrInvalidInput)
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin password change: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE users SET password_hash = ?, updated_at = ?
+		WHERE id = ? AND password_hash = ?
+	`, newHash, now.Unix(), userID, expectedHash)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count updated passwords: %w", err)
+	}
+	if changed == 0 {
+		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE admin_sessions SET revoked_at = ?
+		WHERE user_id = ? AND revoked_at IS NULL
+	`, now.Unix(), userID); err != nil {
+		return fmt.Errorf("revoke sessions after password change: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit password change: %w", err)
 	}
 	return nil
 }
