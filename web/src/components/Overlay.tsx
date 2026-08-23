@@ -56,7 +56,14 @@ function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boolean, onC
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = window.requestAnimationFrame(() => focusableElements(ref.current)[0]?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      const container = ref.current;
+      // A fast keyboard or pointer user may reach the dialog before this frame.
+      // Do not steal that focus and redirect their following keystrokes.
+      if (container !== null && !container.contains(document.activeElement)) {
+        focusableElements(container)[0]?.focus();
+      }
+    });
     return () => {
       window.cancelAnimationFrame(frame);
       // The parent drawer may still be inert during this cleanup. Restore on the

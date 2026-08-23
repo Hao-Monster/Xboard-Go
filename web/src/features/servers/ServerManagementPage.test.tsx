@@ -111,7 +111,7 @@ describe("ServerManagementPage", () => {
     await user.type(within(createDialog).getByLabelText("服务器名称"), "edge-new");
     await user.type(within(createDialog).getByLabelText("备注"), "new edge");
     await user.click(within(createDialog).getByRole("button", { name: "创建服务器" }));
-    expect(api.createMachine).toHaveBeenCalledWith({ name: "edge-new", notes: "new edge", is_active: true });
+    await waitFor(() => expect(api.createMachine).toHaveBeenCalledWith({ name: "edge-new", notes: "new edge", is_active: true }));
     expect(await screen.findByRole("dialog", { name: "服务器接入命令" })).toHaveTextContent("--enrollment-code");
     await user.click(screen.getByRole("button", { name: "关闭服务器接入命令" }));
 
@@ -123,7 +123,7 @@ describe("ServerManagementPage", () => {
     await user.type(nameInput, "edge-sg-renamed");
     await user.click(within(editDialog).getByLabelText("允许机器接入"));
     await user.click(within(editDialog).getByRole("button", { name: "保存修改" }));
-    expect(api.updateMachine).toHaveBeenCalledWith(7, { name: "edge-sg-renamed", notes: "Singapore edge", is_active: false });
+    await waitFor(() => expect(api.updateMachine).toHaveBeenCalledWith(7, { name: "edge-sg-renamed", notes: "Singapore edge", is_active: false }));
     expect(await screen.findByRole("heading", { name: "edge-sg-renamed" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "删除服务器" }));
@@ -142,7 +142,7 @@ describe("ServerManagementPage", () => {
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
     const enabled = await screen.findByRole("checkbox", { name: "启用节点：SG VLESS" });
     await user.click(enabled);
-    expect(api.setNodeEnabled).toHaveBeenCalledWith(7, 41, false);
+    await waitFor(() => expect(api.setNodeEnabled).toHaveBeenCalledWith(7, 41, false));
     expect(screen.getByRole("button", { name: "定时设置：SG VLESS" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "解除关联" }));
