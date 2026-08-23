@@ -247,6 +247,14 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     setNodeEnabled: vi.fn().mockResolvedValue(undefined),
     getActivationSchedule: vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 })),
     saveActivationSchedule,
-    deleteActivationSchedule: vi.fn()
+    deleteActivationSchedule: vi.fn(),
+    listServerGroups: vi.fn().mockResolvedValue([]),
+    createServerGroup: vi.fn(),
+    updateServerGroup: vi.fn(),
+    deleteServerGroup: vi.fn(),
+    listRoutingRules: vi.fn().mockResolvedValue([]),
+    createRoutingRule: vi.fn(),
+    updateRoutingRule: vi.fn(),
+    deleteRoutingRule: vi.fn()
   };
 }
