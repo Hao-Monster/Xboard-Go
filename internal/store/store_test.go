@@ -314,7 +314,25 @@ func TestDeletingMachineUnlinksNodesWithoutDeletingThem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNode() error = %v", err)
 	}
-	if err := store.DeleteMachine(ctx, machine.ID); err != nil {
+	if _, err := store.SaveNodeRuntime(ctx, node.ID, SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.CreateRuntimeUser(ctx, CreateRuntimeUserInput{
+		Email: "machine-delete-user@example.test", PasswordHash: "test-password-hash",
+		UUID: "b48f942f-5d32-41e3-a0ba-a854b16cc7dd", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID, NodeID: node.ID, Alive: map[int64][]string{user.ID: {"192.0.2.90"}}, Now: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteMachine(ctx, machine.ID, now.Add(time.Minute)); err != nil {
 		t.Fatalf("DeleteMachine() error = %v", err)
 	}
 	preserved, err := store.GetNode(ctx, node.ID)
@@ -323,6 +341,14 @@ func TestDeletingMachineUnlinksNodesWithoutDeletingThem(t *testing.T) {
 	}
 	if _, err := store.AuthenticateMachine(ctx, machine.ID, credential.Token, now.Add(2*time.Minute)); !errors.Is(err, ErrInvalidCredential) {
 		t.Fatalf("deleted machine credential error = %v, want ErrInvalidCredential", err)
+	}
+	devices, err := store.ListUserDevices(ctx, []int64{user.ID}, now.Add(time.Minute))
+	if err != nil || len(devices[user.ID]) != 0 {
+		t.Fatalf("deleted machine devices = %#v, err=%v", devices, err)
+	}
+	var onlineCount int
+	if err := store.db.QueryRow(`SELECT online_count FROM users WHERE id = ?`, user.ID).Scan(&onlineCount); err != nil || onlineCount != 0 {
+		t.Fatalf("deleted machine online_count = %d, err=%v", onlineCount, err)
 	}
 }
 

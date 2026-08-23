@@ -67,8 +67,8 @@ func (s *server) agentNodes(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
-			"push_interval": 60,
-			"pull_interval": 60,
+			"push_interval": s.nodePushInterval,
+			"pull_interval": s.nodePullInterval,
 		},
 	})
 }
@@ -97,6 +97,9 @@ func (s *server) xboardNodeMachineNodes(w http.ResponseWriter, r *http.Request) 
 	if !s.authenticateMachine(w, r, input.MachineID) {
 		return
 	}
+	if !s.allowServerRequest(w, r, s.machineRequests, input.MachineID) {
+		return
+	}
 	nodes, err := s.activeMachineNodes(r.Context(), input.MachineID)
 	if err != nil {
 		handleStoreError(w, err)
@@ -105,8 +108,8 @@ func (s *server) xboardNodeMachineNodes(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
-			"push_interval": 60,
-			"pull_interval": 60,
+			"push_interval": s.nodePushInterval,
+			"pull_interval": s.nodePullInterval,
 		},
 	})
 }
@@ -123,6 +126,9 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 	if !s.authenticateMachine(w, r, input.MachineID) {
 		return
 	}
+	if !s.allowServerRequest(w, r, s.handshakeRequests, input.MachineID) {
+		return
+	}
 	if input.NodeID > 0 {
 		node, err := s.store.GetNode(r.Context(), input.NodeID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -134,13 +140,28 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	websocket := map[string]any{"enabled": false}
+	if s.webSocketEnabled {
+		websocket = map[string]any{"enabled": true, "ws_url": s.requestWebSocketURL(r)}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"websocket": map[string]bool{"enabled": false},
+		"websocket": websocket,
 		"settings": map[string]int{
-			"push_interval": 60,
-			"pull_interval": 60,
+			"push_interval": s.nodePushInterval,
+			"pull_interval": s.nodePullInterval,
 		},
 	})
+}
+
+func (s *server) requestWebSocketURL(r *http.Request) string {
+	if s.webSocketURL != "" {
+		return s.webSocketURL
+	}
+	scheme := "ws"
+	if r.TLS != nil {
+		scheme = "wss"
+	}
+	return scheme + "://" + r.Host + "/ws"
 }
 
 func (s *server) xboardNodeMachineStatus(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +186,9 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 		return
 	}
 	if !s.authenticateMachine(w, r, machineID) {
+		return
+	}
+	if !s.allowServerRequest(w, r, s.machineRequests, machineID) {
 		return
 	}
 
@@ -232,7 +256,7 @@ func (s *server) activeMachineNodes(ctx context.Context, machineID int64) ([]mac
 	}
 	summaries := make([]machineNodeSummary, 0, len(nodes))
 	for _, node := range nodes {
-		if node.Enabled {
+		if node.Enabled && node.RuntimeConfigured {
 			summaries = append(summaries, machineNodeSummary{ID: node.ID, Type: node.Type, Name: node.Name})
 		}
 	}

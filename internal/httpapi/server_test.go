@@ -72,7 +72,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	if !strings.Contains(payload.Data.InstallCommand, "--enrollment-code") || strings.Contains(payload.Data.InstallCommand, "--token") {
 		t.Fatalf("unsafe or incomplete install command: %q", payload.Data.InstallCommand)
 	}
-	if !strings.Contains(payload.Data.InstallCommand, "v1.14.2") || strings.Contains(payload.Data.InstallCommand, "latest") {
+	if !strings.Contains(payload.Data.InstallCommand, "v1.14.3") || strings.Contains(payload.Data.InstallCommand, "latest") {
 		t.Fatalf("install command must pin the published node release: %q", payload.Data.InstallCommand)
 	}
 }
@@ -174,6 +174,12 @@ func TestMachineAgentEnrollmentNodesAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNode() error = %v", err)
 	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000,
+		Config:     []byte(`{"protocol":"hysteria","listen_ip":"0.0.0.0","server_port":8443}`),
+	}, now); err != nil {
+		t.Fatalf("SaveNodeRuntime() error = %v", err)
+	}
 	if _, err := database.CreateNode(ctx, store.CreateNodeInput{
 		Name: "Disabled agent node", Type: "vless", Host: "disabled.example.test", Port: "443", Show: true, Enabled: false, MachineID: &machine.ID,
 	}, now); err != nil {
@@ -251,6 +257,12 @@ func TestXboardNodeV2MachineContract(t *testing.T) {
 	}, now)
 	if err != nil {
 		t.Fatalf("CreateNode(enabled) error = %v", err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, enabledNode.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000,
+		Config:     []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatalf("SaveNodeRuntime(enabled) error = %v", err)
 	}
 	disabledNodeRecord, err := database.CreateNode(ctx, store.CreateNodeInput{
 		Name: "disabled", Type: "vless", Host: "disabled.example.test", Port: "8443", Show: true, Enabled: false, MachineID: &machine.ID,
@@ -384,6 +396,31 @@ func TestMachineAuthenticationFailuresAreRateLimited(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedMachineHandshakeRequestsAreRateLimited(t *testing.T) {
+	api, database := newTestAPI(t)
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
+		Name: "handshake-rate-limited-machine", IsActive: true,
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"machine_id":%d}`, machine.ID)
+	for attempt := 1; attempt <= 20; attempt++ {
+		response := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", credential.Token, body)
+		if response.Code != http.StatusOK {
+			t.Fatalf("attempt %d status = %d, want %d; body=%s", attempt, response.Code, http.StatusOK, response.Body)
+		}
+	}
+	limited := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", credential.Token, body)
+	if limited.Code != http.StatusTooManyRequests || limited.Header().Get("Retry-After") != "60" {
+		t.Fatalf("rate-limited status=%d retry-after=%q body=%s", limited.Code, limited.Header().Get("Retry-After"), limited.Body)
+	}
+}
+
 type testClient struct {
 	cookies []*http.Cookie
 	csrf    string
@@ -460,7 +497,7 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 		PasswordHasher: hasher,
 		Now:            fixedNow,
 		PanelURL:       "https://panel.example.test",
-		NodeRelease:    "v1.14.2",
+		NodeRelease:    "v1.14.3",
 		CookieSecure:   false,
 	})
 	return handler, database

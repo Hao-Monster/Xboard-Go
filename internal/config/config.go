@@ -23,6 +23,10 @@ type Config struct {
 	BootstrapAdminEmail    string
 	BootstrapAdminPassword string
 	SchedulerInterval      time.Duration
+	WebSocketEnabled       bool
+	WebSocketURL           string
+	NodePushInterval       int
+	NodePullInterval       int
 }
 
 func Load() (Config, error) {
@@ -35,16 +39,32 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	webSocketEnabled, err := parseBoolEnv("XBOARD_WEBSOCKET_ENABLED", true)
+	if err != nil {
+		return Config{}, err
+	}
+	nodePushInterval, err := parseIntEnv("XBOARD_NODE_PUSH_INTERVAL", 60)
+	if err != nil {
+		return Config{}, err
+	}
+	nodePullInterval, err := parseIntEnv("XBOARD_NODE_PULL_INTERVAL", 60)
+	if err != nil {
+		return Config{}, err
+	}
 
 	config := Config{
 		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:            envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db"),
 		PanelURL:               panelURL,
 		CookieSecure:           cookieSecure,
-		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.2"),
+		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
 		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword: os.Getenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD"),
 		SchedulerInterval:      interval,
+		WebSocketEnabled:       webSocketEnabled,
+		WebSocketURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
+		NodePushInterval:       nodePushInterval,
+		NodePullInterval:       nodePullInterval,
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -65,8 +85,11 @@ func Load() (Config, error) {
 	if config.SchedulerInterval < 100*time.Millisecond || config.SchedulerInterval > time.Minute {
 		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
 	}
+	if config.NodePushInterval < 5 || config.NodePushInterval > 3_600 || config.NodePullInterval < 5 || config.NodePullInterval > 3_600 {
+		return Config{}, errors.New("node push and pull intervals must be between 5 and 3600 seconds")
+	}
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
-		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.2")
+		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.3")
 	}
 	parsedPanelURL, err := url.Parse(config.PanelURL)
 	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {
@@ -74,6 +97,12 @@ func Load() (Config, error) {
 	}
 	if parsedPanelURL.Scheme == "https" && !config.CookieSecure {
 		return Config{}, errors.New("XBOARD_COOKIE_SECURE cannot be false when XBOARD_PANEL_URL uses https")
+	}
+	if config.WebSocketURL != "" {
+		parsedWebSocketURL, err := url.Parse(config.WebSocketURL)
+		if err != nil || parsedWebSocketURL.Host == "" || (parsedWebSocketURL.Scheme != "ws" && parsedWebSocketURL.Scheme != "wss") {
+			return Config{}, errors.New("XBOARD_WEBSOCKET_URL must be an absolute ws or wss URL")
+		}
 	}
 	return config, nil
 }
@@ -105,6 +134,18 @@ func parseDurationEnv(name string, fallback time.Duration) (time.Duration, error
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be a duration: %w", name, err)
+	}
+	return parsed, nil
+}
+
+func parseIntEnv(name string, fallback int) (int, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
 	}
 	return parsed, nil
 }
