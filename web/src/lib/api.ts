@@ -80,6 +80,20 @@ export interface UserSession {
   is_admin: boolean;
 }
 
+export interface AccountSession {
+  id: number;
+  is_current: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string;
+}
+
+export interface AccountSecurityAPI {
+  listAccountSessions: () => Promise<AccountSession[]>;
+  revokeAccountSession: (id: number) => Promise<void>;
+  changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+}
+
 export interface ServerGroup {
   id: number;
   name: string;
@@ -172,6 +186,21 @@ export class APIClient implements AdminAPI {
 
   async logout(): Promise<void> {
     await this.request<void>("/api/v1/auth/logout", { method: "POST", body: {} });
+  }
+
+  async listAccountSessions(): Promise<AccountSession[]> {
+    return this.request<AccountSession[]>("/api/v1/auth/sessions");
+  }
+
+  async revokeAccountSession(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/auth/sessions/${id}`, { method: "DELETE" });
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    await this.request<void>("/api/v1/auth/password", {
+      method: "PUT",
+      body: { old_password: oldPassword, new_password: newPassword }
+    });
   }
 
   async listMachines(): Promise<Machine[]> {

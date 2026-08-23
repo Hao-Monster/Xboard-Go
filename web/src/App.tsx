@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import { AccountSecurityPage } from "./features/account/AccountSecurityPage";
 import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
@@ -10,7 +11,7 @@ const api = new APIClient();
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<"servers" | "groups" | "routes">("servers");
+  const [page, setPage] = useState<"servers" | "groups" | "routes" | "account">("servers");
 
   useEffect(() => {
     void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
@@ -33,6 +34,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
           <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => setPage("routes")}>路由规则</button>
+          <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => setPage("account")}>账号安全</button>
         </div>
         <div className="account">
           <span>{session.email}</span>
@@ -42,6 +44,7 @@ export function App() {
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "groups" && <ServerGroupsPage api={api} />}
       {page === "routes" && <RoutingRulesPage api={api} />}
+      {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
     </div>
   );
 }
