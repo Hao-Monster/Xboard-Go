@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -72,6 +72,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v2: %w", err)
 		}
 		version = 2
+	}
+	if version < 3 {
+		if _, err := tx.ExecContext(ctx, schemaV3); err != nil {
+			return fmt.Errorf("apply schema v3: %w", err)
+		}
+		version = 3
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -287,4 +293,73 @@ CREATE TABLE IF NOT EXISTS node_runtime_state (
     metrics_json TEXT,
     updated_at INTEGER NOT NULL
 );
+`
+
+const schemaV3 = `
+CREATE TABLE server_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 255),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+INSERT OR IGNORE INTO server_groups (id, name, created_at, updated_at)
+SELECT group_id, 'Imported group ' || group_id, unixepoch(), unixepoch()
+FROM (
+    SELECT group_id FROM users WHERE group_id IS NOT NULL AND group_id > 0
+    UNION
+    SELECT group_id FROM node_group_memberships WHERE group_id > 0
+);
+
+ALTER TABLE node_group_memberships RENAME TO node_group_memberships_v2;
+CREATE TABLE node_group_memberships (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES server_groups(id) ON DELETE RESTRICT,
+    PRIMARY KEY (node_id, group_id)
+);
+INSERT INTO node_group_memberships (node_id, group_id)
+SELECT node_id, group_id FROM node_group_memberships_v2;
+DROP TABLE node_group_memberships_v2;
+CREATE INDEX idx_node_groups_group ON node_group_memberships(group_id, node_id);
+
+CREATE TRIGGER users_group_insert_guard
+BEFORE INSERT ON users
+WHEN NEW.group_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM server_groups WHERE id = NEW.group_id)
+BEGIN
+    SELECT RAISE(ABORT, 'user group does not exist');
+END;
+
+CREATE TRIGGER users_group_update_guard
+BEFORE UPDATE OF group_id ON users
+WHEN NEW.group_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM server_groups WHERE id = NEW.group_id)
+BEGIN
+    SELECT RAISE(ABORT, 'user group does not exist');
+END;
+
+CREATE TRIGGER server_groups_user_delete_guard
+BEFORE DELETE ON server_groups
+WHEN EXISTS (SELECT 1 FROM users WHERE group_id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'server group is referenced by users');
+END;
+
+CREATE TABLE routing_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    remarks TEXT NOT NULL CHECK (length(remarks) BETWEEN 1 AND 255),
+    match_json TEXT NOT NULL CHECK (json_valid(match_json) AND json_type(match_json) = 'array' AND json_array_length(match_json) BETWEEN 1 AND 1000),
+    action TEXT NOT NULL CHECK (action IN ('block', 'direct', 'dns', 'proxy')),
+    action_value TEXT NOT NULL DEFAULT '' CHECK (
+        length(action_value) <= 255 AND
+        ((action IN ('block', 'direct') AND action_value = '') OR (action IN ('dns', 'proxy') AND length(action_value) > 0))
+    ),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE node_route_memberships (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    route_id INTEGER NOT NULL REFERENCES routing_rules(id) ON DELETE RESTRICT,
+    PRIMARY KEY (node_id, route_id)
+);
+CREATE INDEX idx_node_routes_route ON node_route_memberships(route_id, node_id);
 `

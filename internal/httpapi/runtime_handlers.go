@@ -57,6 +57,7 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Rate     float64         `json:"rate"`
 		GroupIDs []int64         `json:"group_ids"`
+		RouteIDs []int64         `json:"route_ids"`
 		Config   json.RawMessage `json:"config"`
 	}
 	if !decodeJSON(w, r, &input) {
@@ -70,6 +71,7 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 	runtime, err := s.store.SaveNodeRuntime(r.Context(), nodeID, store.SaveNodeRuntimeInput{
 		RateMicros: rateMicros,
 		GroupIDs:   input.GroupIDs,
+		RouteIDs:   input.RouteIDs,
 		Config:     input.Config,
 	}, s.now())
 	if err != nil {
@@ -89,6 +91,7 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 		"node_id":            runtime.NodeID,
 		"rate":               float64(runtime.RateMicros) / runtimeRateScale,
 		"group_ids":          runtime.GroupIDs,
+		"route_ids":          runtime.RouteIDs,
 		"runtime_configured": true,
 		"updated_at":         runtime.UpdatedAt,
 	})
@@ -123,6 +126,23 @@ func nodeConfigObject(runtime store.NodeRuntime, pushInterval, pullInterval int)
 		return nil, errors.New("invalid runtime config")
 	}
 	payload["base_config"] = map[string]int{"push_interval": pushInterval, "pull_interval": pullInterval}
+	if len(runtime.Routes) == 0 {
+		delete(payload, "routes")
+	} else {
+		routes := make([]map[string]any, 0, len(runtime.Routes))
+		for _, rule := range runtime.Routes {
+			route := map[string]any{
+				"id":     rule.ID,
+				"match":  rule.Match,
+				"action": rule.Action,
+			}
+			if rule.ActionValue != "" {
+				route["action_value"] = rule.ActionValue
+			}
+			routes = append(routes, route)
+		}
+		payload["routes"] = routes
+	}
 	return payload, nil
 }
 

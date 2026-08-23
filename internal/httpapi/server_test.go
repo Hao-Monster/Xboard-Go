@@ -481,6 +481,11 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 	if err := database.Migrate(context.Background()); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
+	for index := 1; index <= 9; index++ {
+		if _, err := database.CreateServerGroup(context.Background(), fmt.Sprintf("Test group %d", index), fixedNow()); err != nil {
+			t.Fatalf("CreateServerGroup(%d) error = %v", index, err)
+		}
+	}
 	hasher := security.NewPasswordHasher(security.PasswordParams{
 		MemoryKiB: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
 	})

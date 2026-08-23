@@ -93,6 +93,8 @@ type NodeRuntime struct {
 	NodeID     int64
 	RateMicros int64
 	GroupIDs   []int64
+	RouteIDs   []int64
+	Routes     []RoutingRule
 	Config     json.RawMessage
 	UpdatedAt  time.Time
 }
@@ -100,7 +102,39 @@ type NodeRuntime struct {
 type SaveNodeRuntimeInput struct {
 	RateMicros int64
 	GroupIDs   []int64
+	RouteIDs   []int64
 	Config     json.RawMessage
+}
+
+type ServerGroup struct {
+	ID           int64     `json:"id"`
+	Name         string    `json:"name"`
+	UsersCount   int64     `json:"users_count"`
+	ServersCount int64     `json:"server_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type RoutingRule struct {
+	ID          int64     `json:"id"`
+	Remarks     string    `json:"remarks"`
+	Match       []string  `json:"match"`
+	Action      string    `json:"action"`
+	ActionValue string    `json:"action_value,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type SaveRoutingRuleInput struct {
+	Remarks     string
+	Match       []string
+	Action      string
+	ActionValue string
+}
+
+type NodeRuntimeTarget struct {
+	NodeID    int64
+	MachineID int64
 }
 
 type RuntimeUser struct {
