@@ -41,7 +41,7 @@ func Load() (Config, error) {
 		DatabaseDSN:            envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db"),
 		PanelURL:               panelURL,
 		CookieSecure:           cookieSecure,
-		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.0"),
+		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.2"),
 		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword: os.Getenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD"),
 		SchedulerInterval:      interval,
@@ -66,7 +66,7 @@ func Load() (Config, error) {
 		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
 	}
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
-		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.0")
+		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.2")
 	}
 	parsedPanelURL, err := url.Parse(config.PanelURL)
 	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {

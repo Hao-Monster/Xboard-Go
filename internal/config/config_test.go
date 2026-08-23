@@ -71,8 +71,8 @@ func TestLoadRequiresImmutableNodeRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if settings.NodeRelease != "v1.14.0" {
-		t.Fatalf("default NodeRelease = %q, want v1.14.0", settings.NodeRelease)
+	if settings.NodeRelease != "v1.14.2" {
+		t.Fatalf("default NodeRelease = %q, want v1.14.2", settings.NodeRelease)
 	}
 
 	for _, invalid := range []string{"latest", "v1.14", "../../v1.14.0"} {
