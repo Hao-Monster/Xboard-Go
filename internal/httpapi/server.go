@@ -65,7 +65,7 @@ func New(dependencies Dependencies) http.Handler {
 		dependencies.PanelURL = "http://127.0.0.1:8080"
 	}
 	if dependencies.NodeRelease == "" {
-		dependencies.NodeRelease = "v1.13"
+		dependencies.NodeRelease = "v1.14.0"
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()

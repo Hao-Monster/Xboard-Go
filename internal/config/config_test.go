@@ -59,3 +59,31 @@ func TestLoadDefaultsToSecureCookiesForHTTPSPanel(t *testing.T) {
 		t.Fatal("Load() accepted insecure cookies for an HTTPS panel")
 	}
 }
+
+func TestLoadRequiresImmutableNodeRelease(t *testing.T) {
+	t.Setenv("XBOARD_PANEL_URL", "http://127.0.0.1:5173")
+	t.Setenv("XBOARD_COOKIE_SECURE", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_NODE_RELEASE", "")
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if settings.NodeRelease != "v1.14.0" {
+		t.Fatalf("default NodeRelease = %q, want v1.14.0", settings.NodeRelease)
+	}
+
+	for _, invalid := range []string{"latest", "v1.14", "../../v1.14.0"} {
+		t.Setenv("XBOARD_NODE_RELEASE", invalid)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted mutable or invalid node release %q", invalid)
+		}
+	}
+
+	t.Setenv("XBOARD_NODE_RELEASE", "v1.14.0")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() rejected immutable node release: %v", err)
+	}
+}

@@ -72,6 +72,9 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	if !strings.Contains(payload.Data.InstallCommand, "--enrollment-code") || strings.Contains(payload.Data.InstallCommand, "--token") {
 		t.Fatalf("unsafe or incomplete install command: %q", payload.Data.InstallCommand)
 	}
+	if !strings.Contains(payload.Data.InstallCommand, "v1.14.0") || strings.Contains(payload.Data.InstallCommand, "latest") {
+		t.Fatalf("install command must pin the published node release: %q", payload.Data.InstallCommand)
+	}
 }
 
 func TestLoginRateLimitBlocksRepeatedFailures(t *testing.T) {
@@ -457,7 +460,7 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 		PasswordHasher: hasher,
 		Now:            fixedNow,
 		PanelURL:       "https://panel.example.test",
-		NodeRelease:    "v1.13",
+		NodeRelease:    "v1.14.0",
 		CookieSecure:   false,
 	})
 	return handler, database
