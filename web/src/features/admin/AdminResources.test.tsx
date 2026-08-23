@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -44,7 +44,6 @@ describe("ServerGroupsPage", () => {
     const name = within(dialog).getByLabelText("权限组名称");
     await user.clear(name);
     await user.type(name, "Premium renamed");
-    dialog = screen.getByRole("dialog", { name: "编辑权限组" });
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.updateServerGroup).toHaveBeenCalledWith(7, "Premium renamed"));
     expect(await screen.findByText("Premium renamed")).toBeVisible();
@@ -88,13 +87,9 @@ describe("RoutingRulesPage", () => {
     await user.click(screen.getByRole("button", { name: "新增路由规则" }));
     let dialog = screen.getByRole("dialog", { name: "新增路由规则" });
     await user.type(within(dialog).getByLabelText("备注"), "Proxy overseas");
-    dialog = screen.getByRole("dialog", { name: "新增路由规则" });
     await user.type(within(dialog).getByLabelText("匹配规则"), "*.example.com{enter}geoip:us");
-    dialog = screen.getByRole("dialog", { name: "新增路由规则" });
     await user.selectOptions(within(dialog).getByLabelText("动作"), "proxy");
-    dialog = screen.getByRole("dialog", { name: "新增路由规则" });
     await user.type(within(dialog).getByLabelText("代理出站标记"), "warp-out");
-    dialog = screen.getByRole("dialog", { name: "新增路由规则" });
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.createRoutingRule).toHaveBeenCalledWith({
       remarks: "Proxy overseas", match: ["*.example.com", "geoip:us"], action: "proxy", action_value: "warp-out"
@@ -109,7 +104,6 @@ describe("RoutingRulesPage", () => {
     await user.click(screen.getByRole("button", { name: "编辑路由规则：Proxy overseas" }));
     dialog = screen.getByRole("dialog", { name: "编辑路由规则" });
     await user.selectOptions(within(dialog).getByLabelText("动作"), "direct");
-    dialog = screen.getByRole("dialog", { name: "编辑路由规则" });
     expect(within(dialog).queryByLabelText("代理出站标记")).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.updateRoutingRule).toHaveBeenCalledWith(12, {
@@ -120,5 +114,33 @@ describe("RoutingRulesPage", () => {
     dialog = screen.getByRole("dialog", { name: "删除路由规则" });
     await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(api.deleteRoutingRule).toHaveBeenCalledWith(12));
+  });
+
+  it("does not steal focus after a user reaches a modal field before autofocus", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const api = {
+      listRoutingRules: vi.fn().mockResolvedValue([rule]),
+      createRoutingRule: vi.fn(), updateRoutingRule: vi.fn(), deleteRoutingRule: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<RoutingRulesPage api={api} />);
+
+    expect(await screen.findByText("Domestic direct")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "新增路由规则" }));
+    const dialog = screen.getByRole("dialog", { name: "新增路由规则" });
+    const remarks = within(dialog).getByLabelText("备注");
+    remarks.focus();
+    act(() => {
+      frames.splice(0).forEach((frame) => frame(0));
+    });
+
+    expect(remarks).toHaveFocus();
+    await user.type(remarks, "Proxy overseas");
+    expect(dialog).toBeVisible();
+    expect(remarks).toHaveValue("Proxy overseas");
   });
 });

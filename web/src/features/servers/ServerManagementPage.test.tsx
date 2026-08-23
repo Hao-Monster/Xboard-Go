@@ -107,11 +107,9 @@ describe("ServerManagementPage", () => {
 
     await screen.findByRole("button", { name: "服务器详情" });
     await user.click(screen.getByRole("button", { name: "新增服务器" }));
-    let createDialog = screen.getByRole("dialog", { name: "新增服务器" });
+    const createDialog = screen.getByRole("dialog", { name: "新增服务器" });
     await user.type(within(createDialog).getByLabelText("服务器名称"), "edge-new");
-    createDialog = screen.getByRole("dialog", { name: "新增服务器" });
     await user.type(within(createDialog).getByLabelText("备注"), "new edge");
-    createDialog = screen.getByRole("dialog", { name: "新增服务器" });
     await user.click(within(createDialog).getByRole("button", { name: "创建服务器" }));
     await waitFor(() => expect(api.createMachine).toHaveBeenCalledWith({ name: "edge-new", notes: "new edge", is_active: true }));
     expect(await screen.findByRole("dialog", { name: "服务器接入命令" })).toHaveTextContent("--enrollment-code");
@@ -119,13 +117,11 @@ describe("ServerManagementPage", () => {
 
     await user.click(screen.getByRole("button", { name: "服务器详情" }));
     await user.click(await screen.findByRole("button", { name: "编辑信息" }));
-    let editDialog = screen.getByRole("dialog", { name: "编辑服务器" });
+    const editDialog = screen.getByRole("dialog", { name: "编辑服务器" });
     const nameInput = within(editDialog).getByLabelText("服务器名称");
     await user.clear(nameInput);
     await user.type(nameInput, "edge-sg-renamed");
-    editDialog = screen.getByRole("dialog", { name: "编辑服务器" });
     await user.click(within(editDialog).getByLabelText("允许机器接入"));
-    editDialog = screen.getByRole("dialog", { name: "编辑服务器" });
     await user.click(within(editDialog).getByRole("button", { name: "保存修改" }));
     await waitFor(() => expect(api.updateMachine).toHaveBeenCalledWith(7, { name: "edge-sg-renamed", notes: "Singapore edge", is_active: false }));
     expect(await screen.findByRole("heading", { name: "edge-sg-renamed" })).toBeVisible();
