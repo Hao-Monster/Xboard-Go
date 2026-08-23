@@ -17,14 +17,20 @@ Thumbs.db
 # Go build and test outputs
 /bin/
 /coverage/
+**/coverage/
 *.out
 *.test
 
 # Frontend dependencies and build outputs
-/node_modules/
-/dist/
+**/node_modules/
+**/dist/
+**/playwright-report/
+**/test-results/
 
 # Local runtime data
 /tmp/
 /data/
 *.log
+*.db
+*.db-shm
+*.db-wal
