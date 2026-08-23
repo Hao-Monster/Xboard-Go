@@ -1,0 +1,30 @@
+# Local requirements, test records, and development notes
+/docs-dev/
+/docs-requirements/
+/docs-test/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Go build and test outputs
+/bin/
+/coverage/
+*.out
+*.test
+
+# Frontend dependencies and build outputs
+/node_modules/
+/dist/
+
+# Local runtime data
+/tmp/
+/data/
+*.log
