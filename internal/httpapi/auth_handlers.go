@@ -119,6 +119,9 @@ func (s *server) exchangeEnrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.enrollAttempts.reset(attemptKey)
+	if s.hub != nil {
+		s.hub.DisconnectMachine(input.MachineID, "machine credential changed")
+	}
 	writeSuccess(w, http.StatusOK, map[string]string{"token": credential.Token, "token_type": "Bearer"})
 }
 

@@ -67,13 +67,18 @@ func main() {
 	go worker.Run(ctx)
 
 	handler := httpapi.New(httpapi.Dependencies{
-		Store:          database,
-		PasswordHasher: passwordHasher,
-		PanelURL:       settings.PanelURL,
-		NodeRelease:    settings.NodeRelease,
-		CookieSecure:   settings.CookieSecure,
-		AllowedOrigins: settings.AllowedOrigins,
-		Logger:         logger,
+		Store:            database,
+		PasswordHasher:   passwordHasher,
+		PanelURL:         settings.PanelURL,
+		NodeRelease:      settings.NodeRelease,
+		CookieSecure:     settings.CookieSecure,
+		AllowedOrigins:   settings.AllowedOrigins,
+		Logger:           logger,
+		Context:          ctx,
+		WebSocketEnabled: settings.WebSocketEnabled,
+		WebSocketURL:     settings.WebSocketURL,
+		NodePushInterval: settings.NodePushInterval,
+		NodePullInterval: settings.NodePullInterval,
 	})
 	server := &http.Server{
 		Addr:              settings.Address,

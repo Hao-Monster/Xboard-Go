@@ -76,6 +76,9 @@ func (s *server) updateMachine(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if s.hub != nil && !machine.IsActive {
+		s.hub.DisconnectMachine(machineID, "machine disabled")
+	}
 	writeSuccess(w, http.StatusOK, machine)
 }
 
@@ -84,9 +87,24 @@ func (s *server) deleteMachine(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.DeleteMachine(r.Context(), machineID); err != nil {
+	if s.hub != nil {
+		nodes, err := s.store.ListMachineNodes(r.Context(), machineID)
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		nodeIDs := make([]int64, 0, len(nodes))
+		for _, node := range nodes {
+			nodeIDs = append(nodeIDs, node.ID)
+		}
+		s.hub.ClearNodeDevices(r.Context(), nodeIDs)
+	}
+	if err := s.store.DeleteMachine(r.Context(), machineID, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	if s.hub != nil {
+		s.hub.DisconnectMachine(machineID, "machine deleted")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -199,6 +217,9 @@ func (s *server) assignNode(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if s.hub != nil {
+		s.hub.NotifyMachineNodes(r.Context(), machineID)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -210,6 +231,10 @@ func (s *server) unassignNode(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.UnassignNode(r.Context(), machineID, nodeID, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	if s.hub != nil {
+		s.hub.ClearNodeDevices(r.Context(), []int64{nodeID})
+		s.hub.NotifyMachineNodes(r.Context(), machineID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -232,6 +257,12 @@ func (s *server) setNodeEnabled(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.SetNodeEnabled(r.Context(), machineID, nodeID, *input.Enabled, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	if s.hub != nil {
+		if !*input.Enabled {
+			s.hub.ClearNodeDevices(r.Context(), []int64{nodeID})
+		}
+		s.hub.NotifyMachineNodes(r.Context(), machineID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

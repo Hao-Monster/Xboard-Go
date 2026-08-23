@@ -311,15 +311,59 @@ func (s *Store) UpdateMachine(ctx context.Context, machineID int64, input Update
 	return s.GetMachine(ctx, machineID)
 }
 
-func (s *Store) DeleteMachine(ctx context.Context, machineID int64) error {
+func (s *Store) DeleteMachine(ctx context.Context, machineID int64, now time.Time) error {
 	defer s.lockWrite()()
-	result, err := s.db.ExecContext(ctx, `DELETE FROM server_machines WHERE id = ?`, machineID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete machine: %w", err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT DISTINCT d.user_id
+		FROM node_device_ips d JOIN nodes n ON n.id = d.node_id
+		WHERE n.machine_id = ?
+	`, machineID)
+	if err != nil {
+		return fmt.Errorf("list machine device users: %w", err)
+	}
+	var userIDs []int64
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan machine device user: %w", err)
+		}
+		userIDs = append(userIDs, userID)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close machine device users: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM node_device_ips WHERE node_id IN (SELECT id FROM nodes WHERE machine_id = ?)`, machineID); err != nil {
+		return fmt.Errorf("clear machine devices: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_online WHERE node_id IN (SELECT id FROM nodes WHERE machine_id = ?)`, machineID); err != nil {
+		return fmt.Errorf("clear machine online state: %w", err)
+	}
+	for _, userID := range userIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE users SET online_count = (
+				SELECT COUNT(DISTINCT ip) FROM node_device_ips WHERE user_id = ? AND expires_at > ?
+			) WHERE id = ?
+		`, userID, now.Unix(), userID); err != nil {
+			return fmt.Errorf("reconcile deleted machine devices: %w", err)
+		}
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM server_machines WHERE id = ?`, machineID)
 	if err != nil {
 		return fmt.Errorf("delete machine: %w", err)
 	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
 		return ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete machine: %w", err)
 	}
 	return nil
 }

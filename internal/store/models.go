@@ -7,12 +7,13 @@ import (
 )
 
 var (
-	ErrNotFound          = errors.New("not found")
-	ErrConflict          = errors.New("conflict")
-	ErrInvalidInput      = errors.New("invalid input")
-	ErrInvalidEnrollment = errors.New("invalid or expired enrollment")
-	ErrInvalidCredential = errors.New("invalid machine credential")
-	ErrNodeNotLinked     = errors.New("node is not linked to a machine")
+	ErrNotFound             = errors.New("not found")
+	ErrConflict             = errors.New("conflict")
+	ErrInvalidInput         = errors.New("invalid input")
+	ErrInvalidEnrollment    = errors.New("invalid or expired enrollment")
+	ErrInvalidCredential    = errors.New("invalid machine credential")
+	ErrNodeNotLinked        = errors.New("node is not linked to a machine")
+	ErrRuntimeNotConfigured = errors.New("node runtime is not configured")
 )
 
 type User struct {
@@ -69,17 +70,88 @@ type MachineCredential struct {
 }
 
 type Node struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`
-	Host      string    `json:"host"`
-	Port      string    `json:"port"`
-	Show      bool      `json:"show"`
-	Enabled   bool      `json:"enabled"`
-	Sort      int       `json:"sort"`
-	MachineID *int64    `json:"machine_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                int64      `json:"id"`
+	Name              string     `json:"name"`
+	Type              string     `json:"type"`
+	Host              string     `json:"host"`
+	Port              string     `json:"port"`
+	Show              bool       `json:"show"`
+	Enabled           bool       `json:"enabled"`
+	Sort              int        `json:"sort"`
+	Rate              float64    `json:"rate"`
+	TrafficUpload     int64      `json:"traffic_upload"`
+	TrafficDownload   int64      `json:"traffic_download"`
+	RuntimeConfigured bool       `json:"runtime_configured"`
+	LastCheckAt       *time.Time `json:"last_check_at"`
+	LastPushAt        *time.Time `json:"last_push_at"`
+	MachineID         *int64     `json:"machine_id"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+type NodeRuntime struct {
+	NodeID     int64
+	RateMicros int64
+	GroupIDs   []int64
+	Config     json.RawMessage
+	UpdatedAt  time.Time
+}
+
+type SaveNodeRuntimeInput struct {
+	RateMicros int64
+	GroupIDs   []int64
+	Config     json.RawMessage
+}
+
+type RuntimeUser struct {
+	ID          int64  `json:"id"`
+	UUID        string `json:"uuid"`
+	SpeedLimit  int    `json:"speed_limit"`
+	DeviceLimit int    `json:"device_limit"`
+}
+
+type CreateRuntimeUserInput struct {
+	Email           string
+	PasswordHash    string
+	UUID            string
+	GroupID         int64
+	TransferEnable  int64
+	TrafficUpload   int64
+	TrafficDownload int64
+	ExpiredAt       *time.Time
+	SpeedLimit      int
+	DeviceLimit     int
+	Banned          bool
+}
+
+type TrafficUsage struct {
+	Upload   int64
+	Download int64
+}
+
+type NodeReportInput struct {
+	MachineID         int64
+	NodeID            int64
+	ReportID          string
+	Traffic           map[int64]TrafficUsage
+	Alive             map[int64][]string
+	ReplaceAllDevices bool
+	Online            map[int64]int64
+	Status            json.RawMessage
+	Metrics           json.RawMessage
+	Now               time.Time
+}
+
+type NodeReportResult struct {
+	DuplicateTraffic bool
+	DeviceUserIDs    []int64
+}
+
+type NodeRuntimeState struct {
+	NodeID    int64
+	Status    json.RawMessage
+	Metrics   json.RawMessage
+	UpdatedAt time.Time
 }
 
 type CreateNodeInput struct {

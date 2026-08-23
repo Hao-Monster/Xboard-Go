@@ -177,15 +177,19 @@ func (s *Store) ListLoadHistory(ctx context.Context, machineID int64, since time
 	return history, rows.Err()
 }
 
-const nodeSelect = `SELECT id, name, type, host, port, show, enabled, sort, machine_id, created_at, updated_at FROM nodes`
+const nodeSelect = `SELECT id, name, type, host, port, show, enabled, sort, rate_micros, traffic_u, traffic_d,
+	runtime_config IS NOT NULL, last_check_at, last_push_at, machine_id, created_at, updated_at FROM nodes`
 
 func scanNode(row rowScanner) (Node, error) {
 	var node Node
 	var machineID sql.NullInt64
+	var lastCheckAt, lastPushAt sql.NullInt64
+	var rateMicros int64
 	var createdAt, updatedAt int64
 	err := row.Scan(
 		&node.ID, &node.Name, &node.Type, &node.Host, &node.Port, &node.Show, &node.Enabled,
-		&node.Sort, &machineID, &createdAt, &updatedAt,
+		&node.Sort, &rateMicros, &node.TrafficUpload, &node.TrafficDownload, &node.RuntimeConfigured,
+		&lastCheckAt, &lastPushAt, &machineID, &createdAt, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Node{}, ErrNotFound
@@ -195,6 +199,15 @@ func scanNode(row rowScanner) (Node, error) {
 	}
 	if machineID.Valid {
 		node.MachineID = &machineID.Int64
+	}
+	node.Rate = float64(rateMicros) / 1_000_000
+	if lastCheckAt.Valid {
+		value := time.Unix(lastCheckAt.Int64, 0).UTC()
+		node.LastCheckAt = &value
+	}
+	if lastPushAt.Valid {
+		value := time.Unix(lastPushAt.Int64, 0).UTC()
+		node.LastPushAt = &value
 	}
 	node.CreatedAt = time.Unix(createdAt, 0).UTC()
 	node.UpdatedAt = time.Unix(updatedAt, 0).UTC()

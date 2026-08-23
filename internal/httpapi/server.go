@@ -25,14 +25,19 @@ const (
 )
 
 type Dependencies struct {
-	Store          *store.Store
-	PasswordHasher security.PasswordHasher
-	Now            func() time.Time
-	PanelURL       string
-	NodeRelease    string
-	CookieSecure   bool
-	AllowedOrigins []string
-	Logger         *slog.Logger
+	Context          context.Context
+	Store            *store.Store
+	PasswordHasher   security.PasswordHasher
+	Now              func() time.Time
+	PanelURL         string
+	NodeRelease      string
+	CookieSecure     bool
+	AllowedOrigins   []string
+	Logger           *slog.Logger
+	WebSocketEnabled bool
+	WebSocketURL     string
+	NodePushInterval int
+	NodePullInterval int
 }
 
 type server struct {
@@ -48,6 +53,15 @@ type server struct {
 	loginAttempts       *attemptLimiter
 	enrollAttempts      *attemptLimiter
 	machineAuthFailures *attemptLimiter
+	handshakeRequests   *requestLimitGroup
+	pullRequests        *requestLimitGroup
+	reportRequests      *requestLimitGroup
+	machineRequests     *requestLimitGroup
+	hub                 *wsHub
+	webSocketEnabled    bool
+	webSocketURL        string
+	nodePushInterval    int
+	nodePullInterval    int
 }
 
 type contextKey int
@@ -61,11 +75,20 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.Now == nil {
 		dependencies.Now = time.Now
 	}
+	if dependencies.Context == nil {
+		dependencies.Context = context.Background()
+	}
 	if dependencies.PanelURL == "" {
 		dependencies.PanelURL = "http://127.0.0.1:8080"
 	}
 	if dependencies.NodeRelease == "" {
-		dependencies.NodeRelease = "v1.14.2"
+		dependencies.NodeRelease = "v1.14.3"
+	}
+	if dependencies.NodePushInterval == 0 {
+		dependencies.NodePushInterval = 60
+	}
+	if dependencies.NodePullInterval == 0 {
+		dependencies.NodePullInterval = 60
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
@@ -96,10 +119,23 @@ func New(dependencies Dependencies) http.Handler {
 		loginAttempts:       newAttemptLimiter(5, 15*time.Minute),
 		enrollAttempts:      newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures: newAttemptLimiter(60, time.Minute),
+		handshakeRequests:   newRequestLimitGroup(60, 20),
+		pullRequests:        newRequestLimitGroup(2_400, 600),
+		reportRequests:      newRequestLimitGroup(1_200, 240),
+		machineRequests:     newRequestLimitGroup(1_200, 240),
+		webSocketEnabled:    dependencies.WebSocketEnabled,
+		webSocketURL:        strings.TrimRight(dependencies.WebSocketURL, "/"),
+		nodePushInterval:    dependencies.NodePushInterval,
+		nodePullInterval:    dependencies.NodePullInterval,
+	}
+	if dependencies.WebSocketEnabled {
+		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
+		go api.hub.runUntil(dependencies.Context)
 	}
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", api.health)
+	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
 	root.Handle("GET /api/v1/auth/session", api.requireSession(http.HandlerFunc(api.session)))
 	root.Handle("POST /api/v1/auth/logout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.logout))))
@@ -110,6 +146,9 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("POST /api/v2/server/machine/nodes", api.xboardNodeMachineNodes)
 	root.HandleFunc("POST /api/v2/server/machine/status", api.xboardNodeMachineStatus)
 	root.HandleFunc("POST /api/v2/server/handshake", api.xboardNodeHandshake)
+	root.HandleFunc("GET /api/v2/server/config", api.xboardNodeConfig)
+	root.HandleFunc("GET /api/v2/server/user", api.xboardNodeUsers)
+	root.HandleFunc("POST /api/v2/server/report", api.xboardNodeReport)
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -125,12 +164,22 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/machines/{machineID}/history", api.listHistory)
 	admin.HandleFunc("GET /api/v1/admin/nodes/unassigned", api.listUnassignedNodes)
 	admin.HandleFunc("POST /api/v1/admin/nodes", api.createNode)
+	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}/runtime", api.saveNodeRuntime)
 	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}/activation-schedule", api.getActivationSchedule)
 	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}/activation-schedule", api.saveActivationSchedule)
 	admin.HandleFunc("DELETE /api/v1/admin/nodes/{nodeID}/activation-schedule", api.deleteActivationSchedule)
 	root.Handle("/api/v1/admin/", api.requireSession(api.requireAdmin(api.requireCSRF(admin))))
 
 	return api.securityHeaders(api.recoverPanic(root))
+}
+
+func (s *server) allowServerRequest(w http.ResponseWriter, r *http.Request, limiter *requestLimitGroup, machineID int64) bool {
+	if limiter.allow(r, machineID, s.now()) {
+		return true
+	}
+	w.Header().Set("Retry-After", "60")
+	writeAPIError(w, http.StatusTooManyRequests, "server_rate_limited", "节点请求过于频繁，请稍后重试", nil)
+	return false
 }
 
 func (s *server) health(w http.ResponseWriter, _ *http.Request) {
@@ -230,11 +279,22 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
+			return false
+		}
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求格式无效", nil)
 		return false
 	}
 	if err := decoder.Decode(&struct{}{}); errors.Is(err, io.EOF) {
 		return true
+	} else {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
+			return false
+		}
 	}
 	writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求只能包含一个 JSON 对象", nil)
 	return false
@@ -255,6 +315,8 @@ func handleStoreError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusNotFound, "not_found", "资源不存在", nil)
 	case errors.Is(err, store.ErrNodeNotLinked):
 		writeAPIError(w, http.StatusConflict, "node_not_linked", "节点尚未关联服务器", nil)
+	case errors.Is(err, store.ErrRuntimeNotConfigured):
+		writeAPIError(w, http.StatusConflict, "runtime_not_configured", "节点运行时配置尚未建立", nil)
 	case errors.Is(err, store.ErrConflict):
 		writeAPIError(w, http.StatusConflict, "conflict", "资源状态冲突", nil)
 	case errors.Is(err, store.ErrInvalidInput):

@@ -54,10 +54,26 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
-		return fmt.Errorf("apply schema v1: %w", err)
+	var version int
+	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `PRAGMA user_version = 1`); err != nil {
+	if version > 2 {
+		return fmt.Errorf("unsupported schema version %d", version)
+	}
+	if version < 1 {
+		if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
+			return fmt.Errorf("apply schema v1: %w", err)
+		}
+		version = 1
+	}
+	if version < 2 {
+		if _, err := tx.ExecContext(ctx, schemaV2); err != nil {
+			return fmt.Errorf("apply schema v2: %w", err)
+		}
+		version = 2
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -173,4 +189,102 @@ CREATE TABLE IF NOT EXISTS server_activation_schedules (
     )
 );
 CREATE INDEX IF NOT EXISTS idx_activation_schedules_due ON server_activation_schedules(next_transition_at);
+`
+
+const schemaV2 = `
+ALTER TABLE users ADD COLUMN uuid TEXT;
+ALTER TABLE users ADD COLUMN group_id INTEGER;
+ALTER TABLE users ADD COLUMN transfer_enable INTEGER NOT NULL DEFAULT 0 CHECK (transfer_enable >= 0);
+ALTER TABLE users ADD COLUMN traffic_u INTEGER NOT NULL DEFAULT 0 CHECK (traffic_u >= 0);
+ALTER TABLE users ADD COLUMN traffic_d INTEGER NOT NULL DEFAULT 0 CHECK (traffic_d >= 0);
+ALTER TABLE users ADD COLUMN expired_at INTEGER;
+ALTER TABLE users ADD COLUMN speed_limit INTEGER NOT NULL DEFAULT 0 CHECK (speed_limit >= 0);
+ALTER TABLE users ADD COLUMN device_limit INTEGER NOT NULL DEFAULT 0 CHECK (device_limit >= 0);
+ALTER TABLE users ADD COLUMN online_count INTEGER NOT NULL DEFAULT 0 CHECK (online_count >= 0);
+ALTER TABLE users ADD COLUMN last_online_at INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_runtime_uuid ON users(uuid) WHERE uuid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_runtime_group ON users(group_id, banned, expired_at);
+
+ALTER TABLE nodes ADD COLUMN rate_micros INTEGER NOT NULL DEFAULT 1000000 CHECK (rate_micros BETWEEN 1 AND 1000000000);
+ALTER TABLE nodes ADD COLUMN runtime_config TEXT;
+ALTER TABLE nodes ADD COLUMN traffic_u INTEGER NOT NULL DEFAULT 0 CHECK (traffic_u >= 0);
+ALTER TABLE nodes ADD COLUMN traffic_d INTEGER NOT NULL DEFAULT 0 CHECK (traffic_d >= 0);
+ALTER TABLE nodes ADD COLUMN last_check_at INTEGER;
+ALTER TABLE nodes ADD COLUMN last_push_at INTEGER;
+
+CREATE TABLE IF NOT EXISTS node_group_memberships (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL CHECK (group_id > 0),
+    PRIMARY KEY (node_id, group_id)
+);
+CREATE INDEX IF NOT EXISTS idx_node_groups_group ON node_group_memberships(group_id, node_id);
+
+CREATE TABLE IF NOT EXISTS node_report_receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    report_id TEXT NOT NULL,
+    traffic_hash BLOB NOT NULL CHECK (length(traffic_hash) = 32),
+    created_at INTEGER NOT NULL,
+    UNIQUE (node_id, report_id)
+);
+CREATE INDEX IF NOT EXISTS idx_node_report_receipts_created ON node_report_receipts(created_at);
+
+CREATE TABLE IF NOT EXISTS node_report_traffic_stage (
+    report_key TEXT NOT NULL,
+    user_id INTEGER NOT NULL CHECK (user_id > 0),
+    upload INTEGER NOT NULL CHECK (upload >= 0),
+    download INTEGER NOT NULL CHECK (download >= 0),
+    weighted_upload INTEGER NOT NULL CHECK (weighted_upload >= 0),
+    weighted_download INTEGER NOT NULL CHECK (weighted_download >= 0),
+    PRIMARY KEY (report_key, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_traffic_stats (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rate_micros INTEGER NOT NULL,
+    record_at INTEGER NOT NULL,
+    record_type TEXT NOT NULL DEFAULT 'd' CHECK (record_type IN ('d', 'm')),
+    upload INTEGER NOT NULL CHECK (upload >= 0),
+    download INTEGER NOT NULL CHECK (download >= 0),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, rate_micros, record_at, record_type)
+);
+
+CREATE TABLE IF NOT EXISTS node_traffic_stats (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    record_at INTEGER NOT NULL,
+    record_type TEXT NOT NULL DEFAULT 'd' CHECK (record_type IN ('d', 'm')),
+    upload INTEGER NOT NULL CHECK (upload >= 0),
+    download INTEGER NOT NULL CHECK (download >= 0),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (node_id, record_at, record_type)
+);
+
+CREATE TABLE IF NOT EXISTS node_device_ips (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (node_id, user_id, ip)
+);
+CREATE INDEX IF NOT EXISTS idx_node_device_ips_user_expiry ON node_device_ips(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_node_device_ips_expiry ON node_device_ips(expires_at, user_id);
+
+CREATE TABLE IF NOT EXISTS node_user_online (
+    node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    connections INTEGER NOT NULL CHECK (connections >= 0),
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (node_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_node_user_online_expiry ON node_user_online(expires_at);
+
+CREATE TABLE IF NOT EXISTS node_runtime_state (
+    node_id INTEGER PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+    status_json TEXT,
+    metrics_json TEXT,
+    updated_at INTEGER NOT NULL
+);
 `
