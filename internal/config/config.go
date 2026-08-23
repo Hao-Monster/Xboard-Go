@@ -1,0 +1,104 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type Config struct {
+	Address                string
+	DatabaseDSN            string
+	PanelURL               string
+	AllowedOrigins         []string
+	CookieSecure           bool
+	NodeRelease            string
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
+	SchedulerInterval      time.Duration
+}
+
+func Load() (Config, error) {
+	panelURL := envOrDefault("XBOARD_PANEL_URL", "http://127.0.0.1:5173")
+	cookieSecure, err := parseBoolEnv("XBOARD_COOKIE_SECURE", strings.HasPrefix(strings.ToLower(panelURL), "https://"))
+	if err != nil {
+		return Config{}, err
+	}
+	interval, err := parseDurationEnv("XBOARD_SCHEDULER_INTERVAL", time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+
+	config := Config{
+		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
+		DatabaseDSN:            envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db"),
+		PanelURL:               panelURL,
+		CookieSecure:           cookieSecure,
+		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.13"),
+		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
+		BootstrapAdminPassword: os.Getenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD"),
+		SchedulerInterval:      interval,
+	}
+	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
+		for _, origin := range strings.Split(origins, ",") {
+			if value := strings.TrimRight(strings.TrimSpace(origin), "/"); value != "" {
+				config.AllowedOrigins = append(config.AllowedOrigins, value)
+			}
+		}
+	}
+
+	hasEmail := config.BootstrapAdminEmail != ""
+	hasPassword := config.BootstrapAdminPassword != ""
+	if hasEmail != hasPassword {
+		return Config{}, errors.New("XBOARD_BOOTSTRAP_ADMIN_EMAIL and XBOARD_BOOTSTRAP_ADMIN_PASSWORD must be set together")
+	}
+	if hasPassword && len(config.BootstrapAdminPassword) < 12 {
+		return Config{}, errors.New("bootstrap administrator password must contain at least 12 characters")
+	}
+	if config.SchedulerInterval < 100*time.Millisecond || config.SchedulerInterval > time.Minute {
+		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
+	}
+	parsedPanelURL, err := url.Parse(config.PanelURL)
+	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {
+		return Config{}, errors.New("XBOARD_PANEL_URL must be an absolute http or https URL")
+	}
+	if parsedPanelURL.Scheme == "https" && !config.CookieSecure {
+		return Config{}, errors.New("XBOARD_COOKIE_SECURE cannot be false when XBOARD_PANEL_URL uses https")
+	}
+	return config, nil
+}
+
+func envOrDefault(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func parseBoolEnv(name string, fallback bool) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %w", name, err)
+	}
+	return parsed, nil
+}
+
+func parseDurationEnv(name string, fallback time.Duration) (time.Duration, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a duration: %w", name, err)
+	}
+	return parsed, nil
+}

@@ -1,0 +1,73 @@
+import { useEffect, useState, type FormEvent } from "react";
+
+import { ServerManagementPage } from "./features/servers/ServerManagementPage";
+import { APIClient, type UserSession } from "./lib/api";
+
+const api = new APIClient();
+
+export function App() {
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="app-loading">正在加载 Xboard-Go…</div>;
+  }
+  if (session === null) {
+    return <LoginPage onLogin={setSession} />;
+  }
+  if (!session.is_admin) {
+    return <div className="app-loading">当前账号没有管理员权限。</div>;
+  }
+  return (
+    <div className="app-frame">
+      <nav className="topbar" aria-label="管理端导航">
+        <div className="brand"><span className="brand-mark">X</span><span>Xboard-Go</span></div>
+        <div className="account">
+          <span>{session.email}</span>
+          <button className="button ghost compact" onClick={() => void api.logout().catch(() => undefined).then(() => setSession(null))}>退出</button>
+        </div>
+      </nav>
+      <ServerManagementPage api={api} />
+    </div>
+  );
+}
+
+function LoginPage({ onLogin }: { onLogin: (session: UserSession) => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      onLogin(await api.login(email, password));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "登录失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="brand large"><span className="brand-mark">X</span><span>Xboard-Go</span></div>
+        <h1>管理员登录</h1>
+        <p className="muted">使用管理员账号进入服务器管理。</p>
+        <form className="form-stack" onSubmit={(event) => void submit(event)}>
+          <label>邮箱<input type="email" autoComplete="username" value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>密码<input type="password" autoComplete="current-password" value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
+          {error !== "" && <div className="alert error" role="alert">{error}</div>}
+          <button className="button primary full" type="submit" disabled={submitting}>{submitting ? "正在登录…" : "登录"}</button>
+        </form>
+      </section>
+    </main>
+  );
+}
