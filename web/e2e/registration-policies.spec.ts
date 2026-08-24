@@ -47,7 +47,7 @@ test("public registration enforces legacy email policies and successful-IP quota
     });
     current = await saveSiteSettings(page, { ...current, register_limit_by_ip_enable: true });
     expect(current.register_limit_by_ip_enable).toBe(true);
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
 
     await openRegistration(page);
     await expect(page.getByText("允许邮箱后缀：allowed.test、gmail.com", { exact: true })).toBeVisible();
@@ -62,13 +62,13 @@ test("public registration enforces legacy email policies and successful-IP quota
     response = await submitRegistration(page, `first.last+${unique}@allowed.test`, password);
     expect(response.status()).toBe(200);
     await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
 
     await openRegistration(page);
     response = await submitRegistration(page, `second-${unique}@allowed.test`, password);
     expect(response.status()).toBe(200);
     await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
 
     await openRegistration(page);
     response = await submitRegistration(page, `third-${unique}@allowed.test`, password);
@@ -103,6 +103,11 @@ async function openRegistration(page: Page) {
   await expect(page.getByRole("heading", { name: /注册 / })).toBeVisible();
 }
 
+async function logoutAndWait(page: Page) {
+  await page.getByRole("button", { name: "退出" }).click();
+  await expect(page.getByRole("heading", { name: /登录 / })).toBeVisible();
+}
+
 async function loginAdministrator(page: Page) {
   await page.goto("/");
   await page.getByLabel("邮箱").fill(adminEmail);
@@ -113,7 +118,7 @@ async function loginAdministrator(page: Page) {
 
 async function ensureAdministrator(page: Page) {
   if (await page.getByRole("button", { name: "退出" }).count() > 0) {
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
   }
   await loginAdministrator(page);
 }
