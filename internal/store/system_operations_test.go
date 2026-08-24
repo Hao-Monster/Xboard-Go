@@ -159,11 +159,17 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `DROP INDEX idx_ticket_mail_outbox_failed`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN app_description`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN tos_url`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 11`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v11 to v12) error = %v", err)
+		t.Fatalf("Migrate(v11 to current) error = %v", err)
 	}
 	var version, auditCount, indexCount int
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
@@ -175,7 +181,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ticket_mail_outbox_failed'`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 12 || auditCount != 1 || indexCount != 1 {
+	if version != 13 || auditCount != 1 || indexCount != 1 {
 		t.Fatalf("migration result: version=%d audits=%d failed_index=%d", version, auditCount, indexCount)
 	}
 }

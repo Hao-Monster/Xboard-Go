@@ -317,6 +317,41 @@ export interface TicketSettingsInput {
   smtp_from_address: string;
 }
 
+export interface SiteSettings {
+  revision: number;
+  app_name: string;
+  app_description: string;
+  app_url: string;
+  tos_url: string;
+  updated_at: string;
+}
+
+export interface SiteSettingsInput {
+  revision: number;
+  app_name: string;
+  app_description: string;
+  app_url: string;
+  tos_url: string;
+}
+
+export interface GuestConfig {
+  app_name: string;
+  app_description: string | null;
+  app_url: string | null;
+  tos_url: string | null;
+  logo: string | null;
+  is_email_verify: number;
+  is_invite_force: number;
+  email_whitelist_suffix: number | string[];
+  is_captcha: number;
+  captcha_type: string;
+  recaptcha_site_key: string | null;
+  recaptcha_v3_site_key: string | null;
+  recaptcha_v3_score_threshold: number;
+  turnstile_site_key: string | null;
+  is_recaptcha: number;
+}
+
 export interface WorkerStatus {
   healthy: boolean;
   last_run_at: string | null;
@@ -447,6 +482,8 @@ export interface AdminAPI {
   closeAdminTicket: (id: number) => Promise<Ticket>;
   getTicketSettings: () => Promise<TicketSettings>;
   updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
+  getSiteSettings: () => Promise<SiteSettings>;
+  updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
@@ -497,6 +534,10 @@ export class APIError extends Error {
 }
 
 export class APIClient implements AdminAPI {
+  async guestConfig(): Promise<GuestConfig> {
+    return this.request<GuestConfig>("/api/v1/guest/comm/config");
+  }
+
   async session(): Promise<UserSession> {
     return this.request<UserSession>("/api/v1/auth/session");
   }
@@ -696,6 +737,14 @@ export class APIClient implements AdminAPI {
 
   async updateTicketSettings(input: TicketSettingsInput): Promise<TicketSettings> {
     return this.request<TicketSettings>("/api/v1/admin/ticket-settings", { method: "PUT", body: input });
+  }
+
+  async getSiteSettings(): Promise<SiteSettings> {
+    return this.request<SiteSettings>("/api/v1/admin/site-settings");
+  }
+
+  async updateSiteSettings(input: SiteSettingsInput): Promise<SiteSettings> {
+    return this.request<SiteSettings>("/api/v1/admin/site-settings", { method: "PUT", body: input });
   }
 
   async getSystemStatus(): Promise<SystemStatus> {

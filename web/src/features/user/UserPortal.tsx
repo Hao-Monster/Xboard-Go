@@ -20,9 +20,10 @@ interface UserPortalAPI {
   logout: () => Promise<void>;
 }
 
-export function UserPortal({ api, session, onSignedOut }: {
+export function UserPortal({ api, session, siteName, onSignedOut }: {
   api: UserPortalAPI;
   session: UserSession;
+  siteName: string;
   onSignedOut: () => void;
 }) {
   const [page, setPage] = useState<"notices" | "knowledge" | "tickets" | "clients">("notices");
@@ -40,7 +41,7 @@ export function UserPortal({ api, session, onSignedOut }: {
 
   return <div className="app-frame">
     <nav className="topbar" aria-label="用户导航">
-      <div className="brand"><span className="brand-mark">X</span><span>Xboard-Go</span></div>
+      <div className="brand"><span className="brand-mark">X</span><span>{siteName}</span></div>
       <div className="admin-nav">
         <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
         <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>

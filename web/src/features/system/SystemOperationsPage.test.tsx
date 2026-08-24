@@ -6,7 +6,7 @@ import type { AdminAuditPage, SystemStatus, TicketMailFailurePage } from "../../
 import { SystemOperationsPage } from "./SystemOperationsPage";
 
 const status: SystemStatus = {
-  started_at: "2026-08-24T10:00:00Z", uptime_seconds: 3661, schema_version: 12,
+  started_at: "2026-08-24T10:00:00Z", uptime_seconds: 3661, schema_version: 13,
   scheduler: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
   mail_worker: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
   mail_queue: { pending: 2, claimed: 1, sent: 12, failed: 1, oldest_pending_at: "2026-08-24T11:00:00Z" }
@@ -39,7 +39,7 @@ describe("SystemOperationsPage", () => {
     render(<SystemOperationsPage api={api} />);
 
     expect(await screen.findByRole("heading", { name: "系统状态" })).toBeVisible();
-    expect(await screen.findByText("Schema v12", { exact: true })).toBeVisible();
+    expect(await screen.findByText("Schema v13", { exact: true })).toBeVisible();
     expect(screen.getByText("待处理 2", { exact: true })).toBeVisible();
     expect(screen.getByText("Unable to connect", { exact: true })).toBeVisible();
     expect(screen.queryByText("private reply body", { exact: true })).not.toBeInTheDocument();

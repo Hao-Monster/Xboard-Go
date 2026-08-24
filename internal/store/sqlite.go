@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 12 {
+	if version > 13 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -138,6 +138,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v12: %w", err)
 		}
 		version = 12
+	}
+	if version < 13 {
+		if _, err := tx.ExecContext(ctx, schemaV13); err != nil {
+			return fmt.Errorf("apply schema v13: %w", err)
+		}
+		version = 13
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -655,4 +661,9 @@ CREATE INDEX idx_admin_audit_logs_method ON admin_audit_logs(method, id DESC);
 const schemaV12 = `
 CREATE INDEX idx_ticket_mail_outbox_failed ON ticket_mail_outbox(failed_at DESC, id DESC)
     WHERE failed_at IS NOT NULL;
+`
+
+const schemaV13 = `
+ALTER TABLE app_settings ADD COLUMN app_description TEXT NOT NULL DEFAULT '' CHECK (length(app_description) <= 500);
+ALTER TABLE app_settings ADD COLUMN tos_url TEXT NOT NULL DEFAULT '' CHECK (length(tos_url) <= 2048);
 `
