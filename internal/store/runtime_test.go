@@ -98,14 +98,14 @@ func TestSchemaV2MigrationPreservesFirstSliceData(t *testing.T) {
 	nodeID, _ := result.LastInsertId()
 
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v1 to v4) error = %v", err)
+		t.Fatalf("Migrate(v1 to current) error = %v", err)
 	}
 	node, err := database.GetNode(ctx, nodeID)
 	if err != nil || node.Name != "preserved-node" || node.MachineID == nil || *node.MachineID != machineID || node.Rate != 1 || node.RuntimeConfigured {
 		t.Fatalf("migrated node = %#v, err=%v", node, err)
 	}
 	var version int
-	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
 		t.Fatalf("schema version = %d, err=%v", version, err)
 	}
 }
@@ -116,14 +116,14 @@ func TestMigrationRejectsNewerSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.db.Exec(`PRAGMA user_version = 7`); err != nil {
+	if _, err := database.db.Exec(`PRAGMA user_version = 8`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(context.Background()); err == nil {
 		t.Fatal("Migrate() accepted a schema created by a newer application version")
 	}
 	var version int
-	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 8 {
 		t.Fatalf("schema version after rejection = %d, err=%v", version, err)
 	}
 }
@@ -550,8 +550,8 @@ func BenchmarkApplyNodeReport(b *testing.B) {
 				b.Fatal(err)
 			}
 			statement, err := tx.PrepareContext(ctx, `
-				INSERT INTO users (email, password_hash, banned, uuid, group_id, transfer_enable, created_at, updated_at)
-				VALUES (?, 'benchmark-password-hash', 0, ?, 7, 9223372036854775807, ?, ?)
+				INSERT INTO users (email, password_hash, banned, uuid, group_id, transfer_enable, subscription_token, created_at, updated_at)
+				VALUES (?, 'benchmark-password-hash', 0, ?, 7, 9223372036854775807, ?, ?, ?)
 			`)
 			if err != nil {
 				b.Fatal(err)
@@ -560,7 +560,7 @@ func BenchmarkApplyNodeReport(b *testing.B) {
 			for index := 1; index <= users; index++ {
 				result, err := statement.ExecContext(ctx,
 					fmt.Sprintf("benchmark-%d@example.test", index),
-					fmt.Sprintf("%08x-0000-4000-8000-%012x", index, index), now.Unix(), now.Unix())
+					fmt.Sprintf("%08x-0000-4000-8000-%012x", index, index), testSubscriptionToken(b), now.Unix(), now.Unix())
 				if err != nil {
 					b.Fatal(err)
 				}

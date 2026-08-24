@@ -23,11 +23,15 @@ func (s *Store) BootstrapAdmin(ctx context.Context, email, passwordHash string, 
 	if count > 0 {
 		return false, nil
 	}
+	subscriptionToken, err := newSubscriptionToken()
+	if err != nil {
+		return false, err
+	}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, is_admin, banned, created_at, updated_at)
-		VALUES (?, ?, 1, 0, ?, ?)
-	`, email, passwordHash, now.Unix(), now.Unix())
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO users (email, password_hash, is_admin, banned, subscription_token, created_at, updated_at)
+		VALUES (?, ?, 1, 0, ?, ?, ?)
+	`, email, passwordHash, subscriptionToken, now.Unix(), now.Unix())
 	if err != nil {
 		return false, fmt.Errorf("bootstrap admin: %w", err)
 	}

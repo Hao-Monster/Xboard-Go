@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 6 {
+	if version > 7 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -97,11 +97,63 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 		version = 6
 	}
+	if version < 7 {
+		if _, err := tx.ExecContext(ctx, schemaV7); err != nil {
+			return fmt.Errorf("apply schema v7: %w", err)
+		}
+		if err := backfillSubscriptionTokens(ctx, tx); err != nil {
+			return fmt.Errorf("backfill schema v7 subscription tokens: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, schemaV7Constraints); err != nil {
+			return fmt.Errorf("apply schema v7 constraints: %w", err)
+		}
+		version = 7
+	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migration: %w", err)
+	}
+	return nil
+}
+
+func backfillSubscriptionTokens(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE subscription_token IS NULL ORDER BY id`)
+	if err != nil {
+		return fmt.Errorf("list users missing subscription tokens: %w", err)
+	}
+	userIDs := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan user missing subscription token: %w", err)
+		}
+		userIDs = append(userIDs, userID)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close subscription token migration rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate users missing subscription tokens: %w", err)
+	}
+	for _, userID := range userIDs {
+		token, err := newSubscriptionToken()
+		if err != nil {
+			return err
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE users SET subscription_token = ? WHERE id = ? AND subscription_token IS NULL`, token, userID)
+		if err != nil {
+			return fmt.Errorf("set subscription token for user %d: %w", userID, err)
+		}
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("read subscription token update for user %d: %w", userID, err)
+		}
+		if updated != 1 {
+			return fmt.Errorf("set subscription token for user %d: unexpected updated rows %d", userID, updated)
+		}
 	}
 	return nil
 }
@@ -427,4 +479,44 @@ CREATE TABLE client_catalog_links (
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (client_id, platform, action)
 );
+`
+
+const schemaV7 = `
+ALTER TABLE users ADD COLUMN subscription_token TEXT;
+
+CREATE TABLE knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    language TEXT NOT NULL CHECK (language IN ('en-US', 'ja-JP', 'ko-KR', 'vi-VN', 'zh-CN', 'zh-TW', 'ru-RU')),
+    category TEXT NOT NULL CHECK (length(category) BETWEEN 1 AND 255),
+    title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 255),
+    body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1048576),
+    sort_position INTEGER NOT NULL DEFAULT 0 CHECK (sort_position >= 0),
+    visible INTEGER NOT NULL DEFAULT 0 CHECK (visible IN (0, 1)),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_knowledge_admin_sort ON knowledge(sort_position, id DESC);
+CREATE INDEX idx_knowledge_user_language_sort ON knowledge(visible, language, sort_position, id DESC);
+CREATE INDEX idx_knowledge_public_sort ON knowledge(visible, sort_position, id DESC);
+`
+
+const schemaV7Constraints = `
+CREATE UNIQUE INDEX idx_users_subscription_token ON users(subscription_token);
+
+CREATE TRIGGER users_subscription_token_insert_guard
+BEFORE INSERT ON users
+WHEN NEW.subscription_token IS NULL OR (
+    length(NEW.subscription_token) <> 32 OR NEW.subscription_token GLOB '*[^0-9a-f]*'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'invalid subscription token');
+END;
+
+CREATE TRIGGER users_subscription_token_update_guard
+BEFORE UPDATE OF subscription_token ON users
+WHEN NEW.subscription_token IS NULL OR length(NEW.subscription_token) <> 32 OR NEW.subscription_token GLOB '*[^0-9a-f]*'
+BEGIN
+    SELECT RAISE(ABORT, 'invalid subscription token');
+END;
 `

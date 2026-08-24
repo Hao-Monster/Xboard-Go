@@ -33,6 +33,8 @@ func TestHandlerServesFrontendAndDelegatesBackend(t *testing.T) {
 		{path: "/api/v1/auth/session", wantBody: `"status":"success"`},
 		{path: "/client-download/karing/android", wantBody: `"status":"success"`},
 		{path: "/client-link/karing/android/qr", wantBody: `"status":"success"`},
+		{path: "/guide/1/article", wantBody: `"status":"success"`},
+		{path: "/guide/1/content", wantBody: `"status":"success"`},
 		{path: "/healthz", wantBody: `"status":"success"`},
 	} {
 		recorder := httptest.NewRecorder()

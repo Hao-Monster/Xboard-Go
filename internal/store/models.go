@@ -27,6 +27,32 @@ type User struct {
 	AccountKind  string
 }
 
+type Knowledge struct {
+	ID           int64     `json:"id"`
+	Language     string    `json:"language"`
+	Category     string    `json:"category"`
+	Title        string    `json:"title"`
+	Body         string    `json:"body"`
+	SortPosition int       `json:"sort"`
+	Visible      bool      `json:"show"`
+	Revision     int64     `json:"revision"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type SaveKnowledgeInput struct {
+	Language string
+	Category string
+	Title    string
+	Body     string
+	Visible  bool
+}
+
+type KnowledgeViewer struct {
+	SubscriptionToken string
+	SubscriptionValid bool
+}
+
 const (
 	AccountKindHuman                = "human"
 	AccountKindInternalSubscription = "internal_subscription"

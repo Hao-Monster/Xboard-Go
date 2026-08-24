@@ -75,6 +75,31 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(userNoticePayload.data.length).toBeLessThanOrEqual(5);
   expect(userNoticePayload.data.every((item) => isVisibleLegacyNotice(item))).toBe(true);
 
+  const knowledgeResponse = page.waitForResponse((response) => response.url().includes("/knowledge/fetch"));
+  await page.locator('a[href="#/config/knowledge"]').click();
+  const fetchedKnowledge = await knowledgeResponse;
+  expect(fetchedKnowledge.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "知识库管理" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /添加知识/ })).toBeVisible();
+  for (const column of ["ID", "状态", "标题", "分类", "操作"]) {
+    await expect(page.getByText(column, { exact: true }).first()).toBeVisible();
+  }
+  await page.getByRole("button", { name: /添加知识/ }).click();
+  const knowledgeDialog = page.getByRole("dialog", { name: "添加知识" });
+  await expect(knowledgeDialog.getByLabel("标题", { exact: true })).toBeVisible();
+  await expect(knowledgeDialog.getByLabel("分类", { exact: true })).toBeVisible();
+  for (const field of ["语言", "显示", "内容"]) await expect(knowledgeDialog.getByText(field, { exact: true }).first()).toBeVisible();
+  await expect(knowledgeDialog.getByRole("combobox").first()).toBeVisible();
+  await expect(knowledgeDialog.getByRole("switch")).toBeVisible();
+  await expect(knowledgeDialog.getByRole("textbox", { name: "知识文章正文" })).toBeVisible();
+  await knowledgeDialog.getByRole("button", { name: "取消" }).click();
+  const userKnowledge = await page.request.get(new URL("/api/v1/user/knowledge/fetch?language=zh-CN", legacyURL).toString(), {
+    headers: { authorization }
+  });
+  expect(userKnowledge.status()).toBe(200);
+  const userKnowledgePayload = await userKnowledge.json() as { data?: unknown };
+  expect(typeof userKnowledgePayload.data).toBe("object");
+
   const clientCatalogResponse = page.waitForResponse((response) => response.url().includes("/client-catalog") && !response.url().includes("/save"));
   await page.locator(".xboard-client-catalog-nav").click();
   const fetchedCatalog = await clientCatalogResponse;
@@ -88,6 +113,93 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(userCatalog.status()).toBe(200);
   const clientPayload = await userCatalog.json() as { data?: unknown };
   expectLegacyClientCatalog(clientPayload.data);
+  expect(errors).toEqual([]);
+});
+
+test("legacy knowledge runtime preserves visibility, placeholders, access markers, and public sharing", async ({ page }) => {
+  const errors = watchErrors(page);
+  await loginLegacy(page);
+  const knowledgeResponse = page.waitForResponse((response) => response.url().includes("/knowledge/fetch"));
+  await page.locator('a[href="#/config/knowledge"]').click();
+  const authorization = (await knowledgeResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const unique = Date.now();
+  const title = `Parity guide ${unique}`;
+  const privateText = `PARITY-PRIVATE-${unique}`;
+  const category = `Parity ${unique}`;
+  let knowledgeID: number | null = null;
+  try {
+    const saved = await page.request.post(legacyAdminAPI("/knowledge/save"), {
+      headers: { authorization },
+      data: {
+        title, category, language: "zh-CN", show: true,
+        body: `# {{siteName}}\n\n{{subscribeUrl}}\n\n<!--access start-->${privateText}<!--access end-->`
+      }
+    });
+    expect(saved.status()).toBe(200);
+
+    const adminList = await page.request.get(legacyAdminAPI("/knowledge/fetch"), { headers: { authorization } });
+    expect(adminList.status()).toBe(200);
+    const adminItems = readProperty(await adminList.json() as unknown, "data");
+    expect(Array.isArray(adminItems)).toBe(true);
+    if (!Array.isArray(adminItems)) throw new Error("legacy administrator knowledge list is not an array");
+    const adminEntries: unknown[] = adminItems;
+    const created = adminEntries.find((item: unknown) => readStringProperty(item, "title") === title);
+    const rawID = readProperty(created, "id");
+    knowledgeID = typeof rawID === "number" ? rawID : Number(rawID);
+    expect(Number.isSafeInteger(knowledgeID) && knowledgeID > 0).toBe(true);
+
+    const userList = await page.request.get(new URL(`/api/v1/user/knowledge/fetch?language=zh-CN&keyword=${encodeURIComponent(title)}`, legacyURL).toString(), { headers: { authorization } });
+    expect(userList.status()).toBe(200);
+    const grouped = readProperty(await userList.json() as unknown, "data");
+    const categoryItems = readProperty(grouped, category);
+    expect(Array.isArray(categoryItems)).toBe(true);
+    if (!Array.isArray(categoryItems)) throw new Error("legacy user knowledge response is not grouped by category");
+    const userEntries: unknown[] = categoryItems;
+    const userArticle = userEntries.find((item: unknown) => readStringProperty(item, "title") === title);
+    const userBody = readStringProperty(userArticle, "body");
+    expect(userBody).not.toBeNull();
+    expect(userBody).not.toContain("{{siteName}}");
+    expect(userBody).not.toContain("{{subscribeUrl}}");
+    const hasPrivateContent = userBody?.includes(privateText) === true;
+    const hasNoAccessMessage = userBody?.includes('class="v2board-no-access"') === true;
+    if (hasPrivateContent === hasNoAccessMessage) {
+      const safeBody = (userBody ?? "").replace(/https?:\/\/[^\s<>"']+/gi, "[URL]").replace(/[0-9a-f]{32,}/gi, "[REDACTED]");
+      throw new Error(`legacy knowledge access outcome is ambiguous: ${JSON.stringify(safeBody)}`);
+    }
+
+    const detail = await page.request.get(legacyAdminAPI(`/knowledge/fetch?id=${knowledgeID}`), { headers: { authorization } });
+    const detailData = readProperty(await detail.json() as unknown, "data");
+    const shareURL = readStringProperty(detailData, "share_url");
+    expect(shareURL).not.toBeNull();
+    if (!shareURL) throw new Error("legacy knowledge share URL is missing");
+    const localShare = new URL(new URL(shareURL).pathname, legacyURL).toString();
+    const publicPage = await page.request.get(localShare);
+    expect(publicPage.status()).toBe(200);
+    const publicHTML = await publicPage.text();
+    expect(publicHTML).toContain(title);
+    const publicArticleBody = publicHTML.match(/data-article-body>([\s\S]*?)<\/div>/i)?.[1] ?? "";
+    expect(publicArticleBody).toContain("/#/login");
+    expect(publicArticleBody).not.toContain("{{subscribeUrl}}");
+    expect(publicHTML).not.toContain("/api/v1/client/subscribe?token=");
+
+    const toggled = await page.request.post(legacyAdminAPI("/knowledge/show"), {
+      headers: { authorization }, data: { id: knowledgeID }
+    });
+    expect(toggled.status()).toBe(200);
+    const hiddenList = await page.request.get(new URL(`/api/v1/user/knowledge/fetch?language=zh-CN&keyword=${encodeURIComponent(title)}`, legacyURL).toString(), { headers: { authorization } });
+    const hiddenGrouped = readProperty(await hiddenList.json() as unknown, "data");
+    expect(readProperty(hiddenGrouped, category)).toBeUndefined();
+  } finally {
+    if (knowledgeID !== null && Number.isSafeInteger(knowledgeID)) {
+      const removed = await page.request.post(legacyAdminAPI("/knowledge/drop"), {
+        headers: { authorization }, data: { id: knowledgeID }
+      });
+      expect(removed.status()).toBe(200);
+    }
+  }
   expect(errors).toEqual([]);
 });
 
@@ -108,6 +220,7 @@ test("implemented Go administrator concepts map to the legacy navigation", async
       ["权限组管理", "权限组"],
       ["路由管理", "路由规则"],
       ["公告管理", "公告管理"],
+      ["知识库管理", "知识库管理"],
       ["客户端管理", "客户端管理"]
     ] as const) {
       const legacyEntry = legacyLabel === "客户端管理"
@@ -168,6 +281,11 @@ function requiredEnv(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for legacy parity tests`);
   return value;
+}
+
+function legacyAdminAPI(path: string) {
+  const securePath = new URL(legacyURL).pathname.replace(/\/$/, "");
+  return new URL(`/api/v2${securePath}${path}`, legacyURL).toString();
 }
 
 function isVisibleLegacyNotice(value: unknown): boolean {

@@ -267,6 +267,14 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     setNoticeVisibility: vi.fn(),
     reorderNotices: vi.fn(),
     deleteNotice: vi.fn(),
+    listKnowledgeAdmin: vi.fn().mockResolvedValue([]),
+    getKnowledgeAdmin: vi.fn(),
+    listKnowledgeCategories: vi.fn().mockResolvedValue([]),
+    createKnowledge: vi.fn(),
+    updateKnowledge: vi.fn(),
+    setKnowledgeVisibility: vi.fn(),
+    reorderKnowledge: vi.fn(),
+    deleteKnowledge: vi.fn(),
     listClientCatalogAdmin: vi.fn(),
     saveClientCatalog: vi.fn()
   };

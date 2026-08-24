@@ -52,9 +52,9 @@ func TestRevokeUserSessionEnforcesOwnership(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := database.db.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, is_admin, banned, created_at, updated_at)
-		VALUES ('other@example.test', 'other-hash', 0, 0, ?, ?)
-	`, now.Unix(), now.Unix())
+		INSERT INTO users (email, password_hash, is_admin, banned, subscription_token, created_at, updated_at)
+		VALUES ('other@example.test', 'other-hash', 0, 0, ?, ?, ?)
+	`, testSubscriptionToken(t), now.Unix(), now.Unix())
 	if err != nil {
 		t.Fatalf("insert other user: %v", err)
 	}

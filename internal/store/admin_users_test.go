@@ -26,9 +26,9 @@ func TestAdminUserDirectoryUsesStableCursorAndHidesInternalAccounts(t *testing.T
 		}
 	}
 	if _, err := database.db.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, account_kind, uuid, group_id, transfer_enable, created_at, updated_at)
-		VALUES ('internal@example.test', 'opaque-hash', 'internal_subscription', '6c7f599b-b133-4986-8f3a-709122ce0cc1', 7, 1000, ?, ?)
-	`, now.Unix(), now.Unix()); err != nil {
+		INSERT INTO users (email, password_hash, account_kind, uuid, group_id, transfer_enable, subscription_token, created_at, updated_at)
+		VALUES ('internal@example.test', 'opaque-hash', 'internal_subscription', '6c7f599b-b133-4986-8f3a-709122ce0cc1', 7, 1000, ?, ?, ?)
+	`, testSubscriptionToken(t), now.Unix(), now.Unix()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -347,15 +347,15 @@ func BenchmarkListAdminUsers100K(b *testing.B) {
 		b.Fatal(err)
 	}
 	statement, err := tx.PrepareContext(ctx, `
-		INSERT INTO users (email, password_hash, account_kind, banned, group_id, transfer_enable, uuid, created_at, updated_at)
-		VALUES (?, 'hash', 'human', ?, ?, 1000, ?, ?, ?)
+		INSERT INTO users (email, password_hash, account_kind, banned, group_id, transfer_enable, uuid, subscription_token, created_at, updated_at)
+		VALUES (?, 'hash', 'human', ?, ?, 1000, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		b.Fatal(err)
 	}
 	for index := 0; index < 100_000; index++ {
 		_, err := statement.ExecContext(ctx, fmt.Sprintf("bench-%06d@example.test", index), index%2, 7+index%3,
-			fmt.Sprintf("00000000-0000-4000-8000-%012d", index), now, now)
+			fmt.Sprintf("00000000-0000-4000-8000-%012d", index), testSubscriptionToken(b), now, now)
 		if err != nil {
 			b.Fatal(err)
 		}
