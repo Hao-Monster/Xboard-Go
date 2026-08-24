@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { AccountSecurityPage } from "./features/account/AccountSecurityPage";
 import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
-import { APIClient, type GuestConfig, type SiteSettings, type UserSession } from "./lib/api";
+import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
 import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagementPage";
@@ -28,21 +28,41 @@ export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [guestConfig, setGuestConfig] = useState<GuestConfig>(defaultGuestConfig);
   const [loading, setLoading] = useState(true);
+  const [bootstrapAuthError, setBootstrapAuthError] = useState("");
+  const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<"system" | "settings" | "servers" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const authenticationSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
+    const loginLink = loginLinkFromHash();
+    const sequence = ++authenticationSequence.current;
     void api.guestConfig().then((config) => {
       if (active) setGuestConfig(config);
     }).catch(() => undefined);
-    void api.session().then((nextSession) => {
-      if (active) setSession(nextSession);
-    }).catch(() => {
-      if (active) setSession(null);
+    const authentication = loginLink === null
+      ? api.session().then((nextSession) => ({ ...nextSession, redirect: "dashboard" as LoginLinkRedirect }))
+      : api.exchangeLoginLink(loginLink.token);
+    void authentication.then((nextSession) => {
+      if (!active || sequence !== authenticationSequence.current) return;
+      setSession({ id: nextSession.id, email: nextSession.email, is_admin: nextSession.is_admin });
+      if (loginLink !== null) {
+        setUserLanding(nextSession.redirect);
+        window.history.replaceState(null, "", nextSession.is_admin ? "#/" : loginLinkLandingHash(nextSession.redirect));
+        setAuthLocation(window.location.hash);
+      }
+    }).catch((cause: unknown) => {
+      if (!active || sequence !== authenticationSequence.current) return;
+      setSession(null);
+      if (loginLink !== null) {
+        window.history.replaceState(null, "", "#/login");
+        setAuthLocation(window.location.hash);
+        setBootstrapAuthError(cause instanceof Error ? cause.message : "登录链接无效或已过期");
+      }
     }).finally(() => {
-      if (active) setLoading(false);
+      if (active && sequence === authenticationSequence.current) setLoading(false);
     });
     return () => { active = false; };
   }, []);
@@ -62,17 +82,46 @@ export function App() {
   }, [authMode, guestConfig, session]);
 
   useEffect(() => {
-    const followHash = () => setAuthLocation(window.location.hash);
+    let active = true;
+    const followHash = () => {
+      const nextHash = window.location.hash;
+      setAuthLocation(nextHash);
+      const loginLink = loginLinkFromHash(nextHash);
+      if (loginLink === null) return;
+      const sequence = ++authenticationSequence.current;
+      setLoading(true);
+      setBootstrapAuthError("");
+      void api.exchangeLoginLink(loginLink.token).then((nextSession) => {
+        if (!active || sequence !== authenticationSequence.current) return;
+        setSession({ id: nextSession.id, email: nextSession.email, is_admin: nextSession.is_admin });
+        setUserLanding(nextSession.redirect);
+        window.history.replaceState(null, "", nextSession.is_admin ? "#/" : loginLinkLandingHash(nextSession.redirect));
+        setAuthLocation(window.location.hash);
+      }).catch((cause: unknown) => {
+        if (!active || sequence !== authenticationSequence.current) return;
+        setSession(null);
+        window.history.replaceState(null, "", "#/login");
+        setAuthLocation(window.location.hash);
+        setBootstrapAuthError(cause instanceof Error ? cause.message : "登录链接无效或已过期");
+      }).finally(() => {
+        if (active && sequence === authenticationSequence.current) setLoading(false);
+      });
+    };
     window.addEventListener("hashchange", followHash);
-    return () => window.removeEventListener("hashchange", followHash);
+    return () => {
+      active = false;
+      window.removeEventListener("hashchange", followHash);
+    };
   }, []);
 
   const switchAuthMode = (mode: AuthMode) => {
+    setBootstrapAuthError("");
     window.history.replaceState(null, "", mode === "register" ? "#/register" : mode === "recover" ? "#/forgetpassword" : "#/login");
     setAuthLocation(window.location.hash);
   };
 
   const authenticated = (nextSession: UserSession) => {
+    setBootstrapAuthError("");
     setSession(nextSession);
     window.history.replaceState(null, "", "#/");
     setAuthLocation(window.location.hash);
@@ -92,10 +141,10 @@ export function App() {
     return <div className="app-loading">正在加载 {guestConfig.app_name}…</div>;
   }
   if (session === null) {
-    return <AuthPage config={guestConfig} mode={authMode} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
+    return <AuthPage config={guestConfig} mode={authMode} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
   }
   if (!session.is_admin) {
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
     <div className="app-frame">
@@ -134,9 +183,10 @@ export function App() {
   );
 }
 
-function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
+function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }: {
   config: GuestConfig;
   mode: AuthMode;
+  initialError: string;
   onAuthenticated: (session: UserSession) => void;
   onModeChange: (mode: AuthMode) => void;
 }) {
@@ -153,6 +203,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
   const [message, setMessage] = useState("");
   const [resetComplete, setResetComplete] = useState(false);
   const [error, setError] = useState("");
+  const visibleError = initialError !== "" ? initialError : error;
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -238,7 +289,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
           {mode === "register" && <label>邀请码<input aria-label="邀请码" placeholder={config.is_invite_force === 1 ? "邀请码,（必填）" : "邀请码,（选填）"} autoComplete="off" maxLength={20} value={effectiveInvitationCode} required={config.is_invite_force === 1} disabled={linkedInvitationCode !== null} onChange={(event) => setInvitationCode(event.target.value)} /></label>}
           <label>密码<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
           {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
-          {error !== "" && <div className="alert error" role="alert">{error}</div>}
+          {visibleError !== "" && <div className="alert error" role="alert">{visibleError}</div>}
           {message !== "" && <div className="alert success" role="status">{message}</div>}
           <button className="button primary full" type="submit" disabled={submitting || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
         </form>
@@ -271,4 +322,27 @@ function invitationCodeFromHash(): string | null {
   if (queryIndex < 0) return null;
   const code = new URLSearchParams(window.location.hash.slice(queryIndex + 1)).get("code");
   return code === null || code === "" ? null : code;
+}
+
+function loginLinkFromHash(hash = window.location.hash): { token: string } | null {
+  if (!hash.startsWith("#/login?")) return null;
+  const token = new URLSearchParams(hash.slice(hash.indexOf("?") + 1)).get("verify");
+  return token === null || token === "" ? null : { token };
+}
+
+function loginLinkLandingHash(redirect: LoginLinkRedirect): string {
+  return redirect === "dashboard" ? "#/" : `#/${redirect}`;
+}
+
+function loginLandingFromHash(hash = window.location.hash): LoginLinkRedirect {
+  const route = hash.slice(2).split("?", 1)[0];
+  switch (route) {
+    case "invite":
+    case "knowledge":
+    case "ticket":
+    case "subscribe":
+      return route;
+    default:
+      return "dashboard";
+  }
 }

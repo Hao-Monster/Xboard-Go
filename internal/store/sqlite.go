@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 19
+const currentSchemaVersion = 20
 
 type Store struct {
 	db      *sql.DB
@@ -182,6 +182,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v19: %w", err)
 		}
 		version = 19
+	}
+	if version < 20 {
+		if _, err := tx.ExecContext(ctx, schemaV20); err != nil {
+			return fmt.Errorf("apply schema v20: %w", err)
+		}
+		version = 20
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -831,4 +837,57 @@ CREATE TABLE invitation_codes (
 );
 CREATE INDEX idx_invitation_codes_owner_active ON invitation_codes(user_id, created_at DESC, id DESC)
     WHERE consumed_at IS NULL;
+`
+
+const schemaV20 = `
+ALTER TABLE app_settings ADD COLUMN login_with_mail_link_enable INTEGER NOT NULL DEFAULT 0
+    CHECK (login_with_mail_link_enable IN (0, 1));
+
+CREATE TABLE login_link_tokens (
+    token_digest BLOB PRIMARY KEY CHECK (length(token_digest) = 32),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL CHECK (purpose IN ('quick', 'email')),
+    redirect_path TEXT NOT NULL DEFAULT 'dashboard'
+        CHECK (redirect_path IN ('dashboard', 'invite', 'knowledge', 'ticket', 'subscribe')),
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_login_link_tokens_expiry ON login_link_tokens(expires_at, token_digest);
+CREATE INDEX idx_login_link_tokens_user_purpose_created
+    ON login_link_tokens(user_id, purpose, created_at DESC, token_digest);
+
+CREATE TABLE mail_login_request_limits (
+    email_digest BLOB PRIMARY KEY CHECK (length(email_digest) = 32),
+    resend_after INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_mail_login_request_limits_expiry ON mail_login_request_limits(resend_after, email_digest);
+
+CREATE TABLE login_link_mail_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_digest BLOB NOT NULL UNIQUE CHECK (length(token_digest) = 32),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient TEXT NOT NULL CHECK (length(recipient) BETWEEN 3 AND 320),
+    token_cipher BLOB CHECK (token_cipher IS NULL OR length(token_cipher) BETWEEN 32 AND 512),
+    redirect_path TEXT NOT NULL
+        CHECK (redirect_path IN ('dashboard', 'invite', 'knowledge', 'ticket', 'subscribe')),
+    app_name TEXT NOT NULL CHECK (length(app_name) BETWEEN 1 AND 100),
+    app_url TEXT NOT NULL DEFAULT '' CHECK (length(app_url) <= 2048),
+    available_at INTEGER NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    claim_token TEXT,
+    claimed_at INTEGER,
+    sent_at INTEGER,
+    failed_at INTEGER,
+    cancelled_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK (claim_token IS NULL OR length(claim_token) BETWEEN 1 AND 128),
+    CHECK (last_error IS NULL OR length(last_error) <= 4096)
+);
+CREATE INDEX idx_login_link_mail_due ON login_link_mail_outbox(available_at, id)
+    WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
+CREATE INDEX idx_login_link_mail_failed ON login_link_mail_outbox(failed_at DESC, id DESC)
+    WHERE failed_at IS NOT NULL AND cancelled_at IS NULL;
 `

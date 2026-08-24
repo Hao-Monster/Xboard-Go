@@ -20,6 +20,7 @@ interface SiteSettings {
   invite_force: boolean;
   invite_gen_limit: number;
   invite_never_expire: boolean;
+  login_with_mail_link_enable: boolean;
 }
 
 test("invitation registration matches forced, single-use, reusable, and referral behavior", async ({ page, request }, testInfo) => {
@@ -194,7 +195,8 @@ async function saveSiteSettings(page: Page, settings: SiteSettings): Promise<Sit
     register_limit_by_ip_enable: settings.register_limit_by_ip_enable,
     register_limit_count: settings.register_limit_count, register_limit_expire: settings.register_limit_expire,
     invite_force: settings.invite_force, invite_gen_limit: settings.invite_gen_limit,
-    invite_never_expire: settings.invite_never_expire
+    invite_never_expire: settings.invite_never_expire,
+    login_with_mail_link_enable: settings.login_with_mail_link_enable
   }));
 }
 

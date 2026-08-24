@@ -228,6 +228,55 @@ func TestSystemQueueStatsAndFailedMailPaginationExcludeMessageBodies(t *testing.
 	if strings.Contains(fmt.Sprint(page.Items), "593817") {
 		t.Fatal("failed mail diagnostics exposed the registration email code")
 	}
+
+	latestSite, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailLoginSettings := siteSettingsInput(latestSite)
+	mailLoginSettings.MailLoginEnabled = true
+	if _, err := database.UpdateSiteSettings(ctx, admin.ID, latestSite.Revision, mailLoginSettings, now.Add(13*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	loginProtector, _ := security.NewLoginLinkProtector(make([]byte, 32))
+	loginToken, _ := loginProtector.NewToken()
+	loginEmailDigest, _ := loginProtector.EmailDigest(user.Email)
+	loginTokenDigest, _ := loginProtector.TokenDigest(security.LoginLinkPurposeEmail, loginToken)
+	loginTokenCipher, _ := loginProtector.EncryptToken(user.ID, loginToken)
+	if queued, err := database.RequestMailLoginLink(ctx, MailLoginLinkRequestInput{
+		Email: user.Email, ExpectedUserID: user.ID, EmailDigest: loginEmailDigest, TokenDigest: loginTokenDigest, TokenCipher: loginTokenCipher,
+		Redirect: "dashboard", LinkBaseURL: "https://panel.example.test",
+	}, now.Add(13*time.Minute)); err != nil || !queued {
+		t.Fatalf("RequestMailLoginLink() = (%v, %v)", queued, err)
+	}
+	for attempt, claimAt := range []time.Time{now.Add(13 * time.Minute), now.Add(13*time.Minute + 20*time.Second), now.Add(14 * time.Minute)} {
+		token := fmt.Sprintf("login-link-failure-%d", attempt)
+		loginJob, claimed, err := database.ClaimLoginLinkMail(ctx, token, claimAt, time.Minute)
+		if err != nil || !claimed {
+			t.Fatalf("login link mail claim %d = (%#v, %v, %v)", attempt+1, loginJob, claimed, err)
+		}
+		retryDelay := 10 * time.Second
+		if attempt == 1 {
+			retryDelay = 30 * time.Second
+		} else if attempt >= 2 {
+			retryDelay = 0
+		}
+		if err := database.FailLoginLinkMail(ctx, loginJob.ID, token, "login link delivery refused", claimAt.Add(retryDelay), claimAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err = database.GetSystemQueueStats(ctx)
+	if err != nil || stats.Failed != 4 || stats.Pending != 0 {
+		t.Fatalf("four-kind queue stats = %#v err=%v", stats, err)
+	}
+	page, err = database.ListTicketMailFailures(ctx, 1, 20)
+	if err != nil || page.Total != 4 || len(page.Items) != 4 || page.Items[0].Kind != "login_link" ||
+		page.Items[0].TicketSubject != "邮件登录链接" || page.Items[0].Recipient != user.Email {
+		t.Fatalf("four-kind failed mail page = %#v err=%v", page, err)
+	}
+	if strings.Contains(fmt.Sprint(page.Items), loginToken) {
+		t.Fatal("failed mail diagnostics exposed the login token")
+	}
 }
 
 func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *testing.T) {
@@ -281,6 +330,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 		t.Fatal(err)
 	}
 	for _, table := range []string{
+		"login_link_mail_outbox", "login_link_tokens", "mail_login_request_limits",
 		"registration_email_mail_outbox", "registration_email_challenges",
 		"password_reset_mail_outbox", "password_reset_challenges",
 	} {
@@ -290,6 +340,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	}
 	for _, column := range []string{
 		"invite_force", "invite_gen_limit", "invite_never_expire",
+		"login_with_mail_link_enable",
 		"email_verify",
 		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
 		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",

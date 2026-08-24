@@ -80,6 +80,12 @@ export interface UserSession {
   is_admin: boolean;
 }
 
+export type LoginLinkRedirect = "dashboard" | "invite" | "knowledge" | "ticket" | "subscribe";
+
+export interface LoginLinkExchange extends UserSession {
+  redirect: LoginLinkRedirect;
+}
+
 export interface AccountSession {
   id: number;
   is_current: boolean;
@@ -335,6 +341,7 @@ export interface SiteSettings {
   invite_force: boolean;
   invite_gen_limit: number;
   invite_never_expire: boolean;
+  login_with_mail_link_enable: boolean;
   updated_at: string;
 }
 
@@ -356,6 +363,7 @@ export interface SiteSettingsInput {
   invite_force: boolean;
   invite_gen_limit: number;
   invite_never_expire: boolean;
+  login_with_mail_link_enable: boolean;
 }
 
 export interface GuestConfig {
@@ -430,7 +438,7 @@ export interface AdminAuditPage {
 
 export interface TicketMailFailure {
   id: number;
-  kind: "ticket" | "password_reset" | "registration_email_verification";
+  kind: "ticket" | "password_reset" | "registration_email_verification" | "login_link";
   recipient: string;
   ticket_subject: string;
   attempt_count: number;
@@ -580,6 +588,10 @@ export class APIClient implements AdminAPI {
 
   async login(email: string, password: string): Promise<UserSession> {
     return this.request<UserSession>("/api/v1/auth/login", { method: "POST", body: { email, password } });
+  }
+
+  async exchangeLoginLink(token: string): Promise<LoginLinkExchange> {
+    return this.request<LoginLinkExchange>("/api/v1/auth/login-link/exchange", { method: "POST", body: { token } });
   }
 
   async register(email: string, password: string, passwordConfirmation: string, emailCode = "", invitationCode = ""): Promise<UserSession> {

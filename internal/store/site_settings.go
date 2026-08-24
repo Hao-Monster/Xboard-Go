@@ -26,7 +26,7 @@ func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, updated_at
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -49,28 +49,31 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, fmt.Errorf("begin site settings update: %w", err)
 	}
 	defer tx.Rollback()
-	var currentEmailVerificationEnabled, smtpEnabled bool
-	if err := tx.QueryRowContext(ctx, `SELECT email_verify, smtp_enabled FROM app_settings WHERE id = 1`).Scan(
-		&currentEmailVerificationEnabled, &smtpEnabled,
+	var currentEmailVerificationEnabled, currentMailLoginEnabled, smtpEnabled bool
+	if err := tx.QueryRowContext(ctx, `SELECT email_verify, login_with_mail_link_enable, smtp_enabled FROM app_settings WHERE id = 1`).Scan(
+		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled,
 	); err != nil {
 		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
 	}
 	if normalized.EmailVerificationEnabled && !smtpEnabled {
 		return SiteSettings{}, ErrRegistrationEmailVerificationNeedsMail
 	}
+	if normalized.MailLoginEnabled && !smtpEnabled {
+		return SiteSettings{}, ErrMailLoginNeedsMail
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
 		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
-		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?,
+		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?, login_with_mail_link_enable = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
 	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, normalized.StopRegister,
 		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
-		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire,
+		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire, normalized.MailLoginEnabled,
 		administratorID, now.Unix(), revision)
 	if err != nil {
 		return SiteSettings{}, fmt.Errorf("update site settings: %w", err)
@@ -100,11 +103,28 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 			return SiteSettings{}, fmt.Errorf("clear disabled registration verification challenges: %w", err)
 		}
 	}
+	if currentMailLoginEnabled && !normalized.MailLoginEnabled {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE login_link_mail_outbox
+			SET cancelled_at = COALESCE(cancelled_at, ?), token_cipher = NULL,
+			    claim_token = NULL, claimed_at = NULL,
+			    last_error = 'cancelled because mail login was disabled', updated_at = ?
+			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL
+		`, now.Unix(), now.Unix()); err != nil {
+			return SiteSettings{}, fmt.Errorf("cancel disabled mail login links: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM login_link_tokens WHERE purpose = 'email'`); err != nil {
+			return SiteSettings{}, fmt.Errorf("revoke disabled mail login links: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM mail_login_request_limits`); err != nil {
+			return SiteSettings{}, fmt.Errorf("clear disabled mail login cooldowns: %w", err)
+		}
+	}
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, updated_at
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -193,6 +213,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
 		&settings.InvitationForceEnabled, &settings.InvitationCodeLimit, &settings.InvitationNeverExpire,
+		&settings.MailLoginEnabled,
 		&updatedAt,
 	); err != nil {
 		return SiteSettings{}, err

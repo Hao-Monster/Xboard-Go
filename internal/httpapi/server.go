@@ -46,6 +46,7 @@ type Dependencies struct {
 	PasswordResetProtector     *security.PasswordResetProtector
 	RegistrationEmailProtector *security.RegistrationEmailProtector
 	InvitationProtector        *security.InvitationProtector
+	LoginLinkProtector         *security.LoginLinkProtector
 	SMTPAllowInsecure          bool
 	RuntimeTracker             *operations.Tracker
 }
@@ -71,6 +72,7 @@ type server struct {
 	passwordResetConfirmations *requestLimiter
 	registrationEmailRequests  *requestLimiter
 	invitationViewRequests     *requestLimiter
+	mailLoginRequests          *requestLimiter
 	passwordHashSlots          chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
@@ -89,6 +91,7 @@ type server struct {
 	passwordResetProtector     *security.PasswordResetProtector
 	registrationEmailProtector *security.RegistrationEmailProtector
 	invitationProtector        *security.InvitationProtector
+	loginLinkProtector         *security.LoginLinkProtector
 	smtpAllowInsecure          bool
 	runtimeTracker             *operations.Tracker
 }
@@ -154,6 +157,7 @@ func New(dependencies Dependencies) http.Handler {
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute),
 		registrationEmailRequests:  newRequestLimiter(10, 15*time.Minute),
 		invitationViewRequests:     newRequestLimiter(60, 15*time.Minute),
+		mailLoginRequests:          newRequestLimiter(10, 15*time.Minute),
 		passwordHashSlots:          make(chan struct{}, 2),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
@@ -173,6 +177,7 @@ func New(dependencies Dependencies) http.Handler {
 		passwordResetProtector:     dependencies.PasswordResetProtector,
 		registrationEmailProtector: dependencies.RegistrationEmailProtector,
 		invitationProtector:        dependencies.InvitationProtector,
+		loginLinkProtector:         dependencies.LoginLinkProtector,
 		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
 		runtimeTracker:             dependencies.RuntimeTracker,
 	}
@@ -186,6 +191,13 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
+	root.Handle("POST /api/v1/auth/mail-link/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestMailLoginLink)))
+	root.Handle("POST /api/v1/auth/login-link/exchange", api.requireTrustedOrigin(http.HandlerFunc(api.exchangeLoginLink)))
+	root.Handle("POST /api/v1/auth/quick-link", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
+	root.Handle("POST /api/v1/passport/auth/loginWithMailLink", api.requireTrustedOrigin(http.HandlerFunc(api.requestMailLoginLink)))
+	root.Handle("POST /api/v1/passport/auth/getQuickLoginUrl", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
+	root.Handle("POST /api/v1/user/getQuickLoginUrl", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
+	root.HandleFunc("GET /api/v1/passport/auth/token2Login", api.legacyTokenToLogin)
 	root.Handle("POST /api/v1/auth/register", api.requireTrustedOrigin(http.HandlerFunc(api.register)))
 	root.Handle("POST /api/v1/auth/registration-email/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestRegistrationEmailVerification)))
 	root.Handle("POST /api/v1/auth/password-reset/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestPasswordReset)))

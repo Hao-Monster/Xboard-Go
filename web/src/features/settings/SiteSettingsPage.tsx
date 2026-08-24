@@ -109,6 +109,11 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
           <label className="switch-label"><input type="checkbox" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
           <p className="small muted">生成上限为 0 时禁止创建新邀请码；“永不过期”开启后，同一码可关联多个新用户。</p>
         </fieldset>
+        <fieldset className="settings-fieldset">
+          <legend>登录安全策略</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.login_with_mail_link_enable} onChange={(event) => updateDraft("login_with_mail_link_enable", event.target.checked)} />邮件链接登录</label>
+          <p className="small muted">启用后，已有用户可通过 5 分钟有效、仅能使用一次的邮件链接登录；请先在邮件设置中启用 SMTP。</p>
+        </fieldset>
         {saved && <div className="alert success" role="status">站点设置已保存</div>}
         <div className="form-actions">
           {error !== "" && draft !== null && <button className="button secondary" type="button" disabled={saving} onClick={() => void load()}>刷新最新设置</button>}
@@ -136,7 +141,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     register_limit_expire: settings.register_limit_expire,
     invite_force: settings.invite_force,
     invite_gen_limit: settings.invite_gen_limit,
-    invite_never_expire: settings.invite_never_expire
+    invite_never_expire: settings.invite_never_expire,
+    login_with_mail_link_enable: settings.login_with_mail_link_enable
   };
 }
 

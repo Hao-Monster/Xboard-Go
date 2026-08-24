@@ -74,6 +74,71 @@ func TestInitializeInvitationProtectorFailsClosedForStoredCodes(t *testing.T) {
 	}
 }
 
+func TestInitializeLoginLinkProtectorFailsClosedForQueuedMail(t *testing.T) {
+	ctx := t.Context()
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "login-links.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)
+	owner, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "login-link-main@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketSettings, err := database.GetTicketSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateTicketSettings(ctx, owner.ID, ticketSettings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Xboard-Go", SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025,
+		SMTPEncryption: "none", SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	siteSettings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateSiteSettings(ctx, owner.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
+		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x52}, 32)
+	protector, err := security.NewLoginLinkProtector(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := protector.NewToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	emailDigest, _ := protector.EmailDigest(owner.Email)
+	tokenDigest, _ := protector.TokenDigest(security.LoginLinkPurposeEmail, token)
+	ciphertext, _ := protector.EncryptToken(owner.ID, token)
+	if queued, err := database.RequestMailLoginLink(ctx, store.MailLoginLinkRequestInput{
+		Email: owner.Email, ExpectedUserID: owner.ID, EmailDigest: emailDigest, TokenDigest: tokenDigest, TokenCipher: ciphertext,
+		Redirect: "dashboard", LinkBaseURL: "https://panel.example.test",
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestMailLoginLink() queued=%v err=%v", queued, err)
+	}
+	if _, err := initializeLoginLinkProtector(ctx, database, nil); err == nil {
+		t.Fatal("initializeLoginLinkProtector() accepted a missing key")
+	}
+	if _, err := initializeLoginLinkProtector(ctx, database, bytes.Repeat([]byte{0x24}, 32)); err == nil {
+		t.Fatal("initializeLoginLinkProtector() accepted the wrong key")
+	}
+	if initialized, err := initializeLoginLinkProtector(ctx, database, key); err != nil || initialized == nil {
+		t.Fatalf("initializeLoginLinkProtector() rejected the matching key: protector=%v err=%v", initialized, err)
+	}
+}
+
 func TestInitializeSettingsCipherFailsClosedForStoredCredentials(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "settings.db"))

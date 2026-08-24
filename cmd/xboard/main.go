@@ -80,6 +80,11 @@ func main() {
 		logger.Error("initialize invitation encryption", "error", err)
 		os.Exit(1)
 	}
+	loginLinkProtector, err := initializeLoginLinkProtector(ctx, database, settings.SettingsEncryptionKey)
+	if err != nil {
+		logger.Error("initialize login link encryption", "error", err)
+		os.Exit(1)
+	}
 	for index := range settings.SettingsEncryptionKey {
 		settings.SettingsEncryptionKey[index] = 0
 	}
@@ -104,7 +109,7 @@ func main() {
 	runtimeTracker := operations.NewTracker(time.Now())
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger, runtimeTracker)
 	go worker.Run(ctx)
-	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
+	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, loginLinkProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
@@ -124,6 +129,7 @@ func main() {
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,
 		InvitationProtector:        invitationProtector,
+		LoginLinkProtector:         loginLinkProtector,
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
 		RuntimeTracker:             runtimeTracker,
 	})
@@ -188,6 +194,38 @@ func initializeInvitationProtector(ctx context.Context, database *store.Store, k
 	}
 	if err != nil {
 		return nil, errors.New("settings encryption key cannot decrypt the stored invitation code")
+	}
+	return protector, nil
+}
+
+func initializeLoginLinkProtector(ctx context.Context, database *store.Store, key []byte) (*security.LoginLinkProtector, error) {
+	required, err := database.LoginLinkProtectionRequired(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != 32 {
+		if required {
+			return nil, errors.New("settings encryption key is required for login links")
+		}
+		return nil, nil
+	}
+	protector, err := security.NewLoginLinkProtector(key)
+	if err != nil {
+		return nil, err
+	}
+	ownerID, ciphertext, exists, err := database.LoginLinkProtectionProbe(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return protector, nil
+	}
+	plaintext, err := protector.DecryptToken(ownerID, ciphertext)
+	for index := range plaintext {
+		plaintext[index] = 0
+	}
+	if err != nil {
+		return nil, errors.New("settings encryption key cannot decrypt the queued login link")
 	}
 	return protector, nil
 }
