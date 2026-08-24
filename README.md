@@ -11,3 +11,21 @@ The administration interface uses accessible React portals with explicit overlay
 The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+## Local container
+
+The local Compose profile builds one non-root, read-only image containing the
+Go API and the immutable frontend build. Store a temporary password in the
+Git-ignored `.local/bootstrap-password.txt`; Compose mounts it as a file-backed
+secret rather than exposing it in the application container environment.
+
+```bash
+mkdir -p .local
+printf '%s' 'replace-with-a-local-password' > .local/bootstrap-password.txt
+chmod 600 .local/bootstrap-password.txt
+docker compose -f compose.local.yaml up --build --wait
+```
+
+Open `http://127.0.0.1:7080`. Runtime data is stored in the
+`xboard-go-data` named volume. This profile is for isolated development and
+compatibility testing; it is not a production deployment definition.

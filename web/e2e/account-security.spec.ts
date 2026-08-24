@@ -1,6 +1,8 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-const originalPassword = "e2e-admin-password-123";
+import { adminEmail, adminPassword } from "./support";
+
+const originalPassword = adminPassword;
 const replacementPassword = "e2e-replacement-password-456";
 
 test("administrator revokes other sessions and changes the password", async ({ browser }) => {
@@ -43,7 +45,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     passwordMayNeedRestore = true;
     await first.getByRole("button", { name: "修改密码" }).click();
     await expect(first.getByRole("heading", { name: "管理员登录" })).toBeVisible();
-    await first.getByLabel("邮箱").fill("admin@e2e.test");
+    await first.getByLabel("邮箱").fill(adminEmail);
     await first.getByLabel("密码").fill(originalPassword);
     await first.getByRole("button", { name: "登录" }).click();
     await expect(first.getByRole("alert")).toContainText("邮箱或密码错误");
@@ -71,7 +73,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
 
 async function login(page: Page, password: string) {
   await page.goto("/");
-  await page.getByLabel("邮箱").fill("admin@e2e.test");
+  await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("button", { name: "账号安全", exact: true })).toBeVisible();
@@ -82,7 +84,7 @@ async function restoreOriginalPassword(browser: Browser) {
   const page = await context.newPage();
   try {
     await page.goto("/");
-    await page.getByLabel("邮箱").fill("admin@e2e.test");
+    await page.getByLabel("邮箱").fill(adminEmail);
     await page.getByLabel("密码").fill(replacementPassword);
     await page.getByRole("button", { name: "登录" }).click();
     const accountButton = page.getByRole("button", { name: "账号安全", exact: true });

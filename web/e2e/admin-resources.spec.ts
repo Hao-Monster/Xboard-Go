@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { adminEmail, adminPassword } from "./support";
+
 test("administrator manages permission groups and routing rules", async ({ page }) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
@@ -9,8 +11,8 @@ test("administrator manages permission groups and routing rules", async ({ page 
   });
 
   await page.goto("/");
-  await page.getByLabel("邮箱").fill("admin@e2e.test");
-  await page.getByLabel("密码").fill("e2e-admin-password-123");
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
 
   const unique = `${Date.now()}`;

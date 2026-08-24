@@ -1,0 +1,16 @@
+.git
+.github
+docs-dev
+docs-requirements
+docs-test
+data
+tmp
+coverage
+web/node_modules
+web/dist
+web/playwright-report
+web/test-results
+*.db
+*.db-shm
+*.db-wal
+*.log

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,9 +19,16 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/webui"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		if err := runHealthcheck(); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	settings, err := config.Load()
 	if err != nil {
@@ -66,7 +74,7 @@ func main() {
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger)
 	go worker.Run(ctx)
 
-	handler := httpapi.New(httpapi.Dependencies{
+	var handler http.Handler = httpapi.New(httpapi.Dependencies{
 		Store:            database,
 		PasswordHasher:   passwordHasher,
 		PanelURL:         settings.PanelURL,
@@ -80,6 +88,13 @@ func main() {
 		NodePushInterval: settings.NodePushInterval,
 		NodePullInterval: settings.NodePullInterval,
 	})
+	if settings.WebRoot != "" {
+		handler, err = webui.New(settings.WebRoot, handler)
+		if err != nil {
+			logger.Error("load web frontend", "error", err)
+			os.Exit(1)
+		}
+	}
 	server := &http.Server{
 		Addr:              settings.Address,
 		Handler:           handler,
@@ -104,6 +119,23 @@ func main() {
 		logger.Error("serve HTTP", "error", err)
 		os.Exit(1)
 	}
+}
+
+func runHealthcheck() error {
+	address := strings.TrimSpace(os.Getenv("XBOARD_HEALTH_URL"))
+	if address == "" {
+		address = "http://127.0.0.1:8080/healthz"
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	response, err := client.Get(address)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("health endpoint returned %s", response.Status)
+	}
+	return nil
 }
 
 func prepareSQLiteDirectory(dsn string) error {

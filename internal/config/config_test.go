@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -32,17 +34,52 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	t.Setenv("XBOARD_NODE_PULL_INTERVAL", "30")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_WEB_ROOT", filepath.Join(t.TempDir(), "web"))
 
 	settings, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if settings.Address != "127.0.0.1:9090" || settings.DatabaseDSN != "file:test.db" || !settings.CookieSecure || settings.SchedulerInterval != 2*time.Second ||
-		!settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 {
+		!settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" {
 		t.Fatalf("unexpected settings: %#v", settings)
 	}
 	if len(settings.AllowedOrigins) != 2 || settings.AllowedOrigins[1] != "https://admin.example.test" {
 		t.Fatalf("allowed origins = %#v", settings.AllowedOrigins)
+	}
+}
+
+func TestLoadReadsBootstrapPasswordFromFile(t *testing.T) {
+	secretPath := filepath.Join(t.TempDir(), "bootstrap-password")
+	if err := os.WriteFile(secretPath, []byte("strong-password-from-file-123\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "admin@example.test")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", secretPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if settings.BootstrapAdminPassword != "strong-password-from-file-123" {
+		t.Fatal("Load() did not read the bootstrap secret file")
+	}
+
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "strong-direct-password")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted both direct and file-backed bootstrap passwords")
+	}
+}
+
+func TestLoadRejectsRelativeWebRoot(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_WEB_ROOT", "web/dist")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative web root")
 	}
 }
 
