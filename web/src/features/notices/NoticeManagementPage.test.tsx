@@ -68,7 +68,9 @@ describe("NoticeManagementPage", () => {
     await waitFor(() => expect(api.reorderNotices).toHaveBeenCalled());
 
     const search = screen.getByRole("searchbox", { name: "搜索公告标题" });
-    await user.type(search, "Draft");
+    await user.click(search);
+    await user.paste("Draft");
+    expect(search).toHaveValue("Draft");
     await waitFor(() => expect(screen.queryByText("Service update revised")).not.toBeInTheDocument());
     await user.clear(search);
 
