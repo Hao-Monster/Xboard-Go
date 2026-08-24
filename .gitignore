@@ -28,6 +28,7 @@ Thumbs.db
 **/test-results/
 
 # Local runtime data
+/.local/
 /tmp/
 /data/
 *.log

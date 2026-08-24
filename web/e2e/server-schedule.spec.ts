@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { adminEmail, adminPassword } from "./support";
+
 test("first-open schedule trigger and nested modal remain fully interactive", async ({ page }) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
@@ -9,8 +11,8 @@ test("first-open schedule trigger and nested modal remain fully interactive", as
   });
 
   await page.goto("/");
-  await page.getByLabel("邮箱").fill("admin@e2e.test");
-  await page.getByLabel("密码").fill("e2e-admin-password-123");
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
 

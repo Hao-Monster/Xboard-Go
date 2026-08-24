@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ type Config struct {
 	WebSocketURL           string
 	NodePushInterval       int
 	NodePullInterval       int
+	WebRoot                string
 }
 
 func Load() (Config, error) {
@@ -52,6 +54,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	bootstrapPassword, err := readSecretEnv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD")
+	if err != nil {
+		return Config{}, err
+	}
+
 	config := Config{
 		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:            envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db"),
@@ -59,12 +66,13 @@ func Load() (Config, error) {
 		CookieSecure:           cookieSecure,
 		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
 		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
-		BootstrapAdminPassword: os.Getenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD"),
+		BootstrapAdminPassword: bootstrapPassword,
 		SchedulerInterval:      interval,
 		WebSocketEnabled:       webSocketEnabled,
 		WebSocketURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
 		NodePushInterval:       nodePushInterval,
 		NodePullInterval:       nodePullInterval,
+		WebRoot:                strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -81,6 +89,9 @@ func Load() (Config, error) {
 	}
 	if hasPassword && len(config.BootstrapAdminPassword) < 12 {
 		return Config{}, errors.New("bootstrap administrator password must contain at least 12 characters")
+	}
+	if config.WebRoot != "" && !filepath.IsAbs(config.WebRoot) {
+		return Config{}, errors.New("XBOARD_WEB_ROOT must be an absolute path")
 	}
 	if config.SchedulerInterval < 100*time.Millisecond || config.SchedulerInterval > time.Minute {
 		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
@@ -105,6 +116,29 @@ func Load() (Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func readSecretEnv(name string) (string, error) {
+	direct := os.Getenv(name)
+	fileName := strings.TrimSpace(os.Getenv(name + "_FILE"))
+	if direct != "" && fileName != "" {
+		return "", fmt.Errorf("%s and %s_FILE cannot both be set", name, name)
+	}
+	if fileName == "" {
+		return direct, nil
+	}
+	info, err := os.Stat(fileName)
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", name, err)
+	}
+	if !info.Mode().IsRegular() || info.Size() > 4<<10 {
+		return "", fmt.Errorf("%s_FILE must reference a regular file no larger than 4096 bytes", name)
+	}
+	value, err := os.ReadFile(fileName)
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", name, err)
+	}
+	return strings.TrimRight(string(value), "\r\n"), nil
 }
 
 func envOrDefault(name, fallback string) string {

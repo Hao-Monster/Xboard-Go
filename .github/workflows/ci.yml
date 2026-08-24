@@ -69,3 +69,40 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+
+  packaged-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Start packaged application
+        env:
+          XBOARD_GO_REVISION: ${{ github.sha }}
+        run: |
+          mkdir -p .local
+          password="$(openssl rand -hex 24)"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf 'XBOARD_PACKAGED_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
+          docker compose -f compose.local.yaml up --build --wait
+      - name: Run browser tests against the packaged application
+        env:
+          XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
+          XBOARD_E2E_EXTERNAL_SERVER: "true"
+          XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
+          XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
+        run: pnpm --dir web test:e2e
+      - name: Capture container logs on failure
+        if: failure()
+        run: docker compose -f compose.local.yaml logs --no-color
+      - name: Stop packaged application
+        if: always()
+        run: docker compose -f compose.local.yaml down --volumes
