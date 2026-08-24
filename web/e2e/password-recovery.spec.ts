@@ -86,6 +86,38 @@ test("visitor completes the legacy password recovery flow through Mailpit", asyn
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
 
+    const privacy = await page.evaluate(async ({ knownEmail, unknownEmail }) => {
+      const post = async (path: string, body: unknown) => {
+        const response = await fetch(path, {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        });
+        const payload = await response.json() as { status?: string; error?: { code?: string } };
+        return { status: response.status, retryAfter: response.headers.get("Retry-After"), payload };
+      };
+      const knownRequest = await post("/api/v1/auth/password-reset/request", { email: knownEmail });
+      const unknownRequest = await post("/api/v1/auth/password-reset/request", { email: unknownEmail });
+      const confirmations: Record<string, Array<Awaited<ReturnType<typeof post>>>> = {};
+      for (const address of [knownEmail, unknownEmail]) {
+        confirmations[address] = [];
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          confirmations[address].push(await post("/api/v1/auth/password-reset/confirm", {
+            email: address, email_code: "000000", password: "privacy-check-password-123"
+          }));
+        }
+      }
+      return { knownRequest, unknownRequest, confirmations };
+    }, { knownEmail: email, unknownEmail: `unknown-${unique}@example.test` });
+    expect(privacy.knownRequest).toEqual(privacy.unknownRequest);
+    for (const results of Object.values(privacy.confirmations)) {
+      expect(results.map((result) => [result.status, result.payload.error?.code ?? null])).toEqual([
+        [400, "password_reset_invalid"], [400, "password_reset_invalid"],
+        [400, "password_reset_invalid"], [429, "password_reset_locked"]
+      ]);
+      const retryAfter = Number(results[3].retryAfter);
+      expect(retryAfter).toBeGreaterThanOrEqual(299);
+      expect(retryAfter).toBeLessThanOrEqual(300);
+    }
+
     expect(pageErrors).toEqual([]);
     expect(serverErrors).toEqual([]);
   } finally {
