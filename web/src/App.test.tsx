@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +11,98 @@ afterEach(() => {
 });
 
 describe("App public identity bootstrap", () => {
+	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
+		const token = "11111111111111111111111111111111";
+		let sessionRequested = false;
+		let resolveSession!: (response: Response) => void;
+		const pendingSession = new Promise<Response>((resolve) => {
+			resolveSession = resolve;
+		});
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Race Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) {
+				sessionRequested = true;
+				return pendingSession;
+			}
+			if (path.endsWith("/api/v1/auth/login-link/exchange")) return Promise.resolve(jsonResponse(200, {
+				status: "success", data: { id: 72, email: "race@example.test", is_admin: false, redirect: "dashboard" }
+			}));
+			if (path.endsWith("/api/v1/notices?page=1")) return Promise.resolve(jsonResponse(200, {
+				status: "success", data: { items: [], total: 0, page: 1, page_size: 5 }
+			}));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App />);
+		await waitFor(() => expect(sessionRequested).toBe(true));
+		window.history.replaceState(null, "", `#/login?verify=${token}&redirect=dashboard`);
+		fireEvent(window, new HashChangeEvent("hashchange"));
+		expect(await screen.findByText("race@example.test", { exact: true }, { timeout: 3_000 })).toBeVisible();
+
+		await act(async () => {
+			resolveSession(jsonResponse(401, { status: "fail", error: { code: "unauthenticated", message: "请先登录" } }));
+			await pendingSession;
+		});
+		expect(screen.getByText("race@example.test", { exact: true })).toBeVisible();
+	});
+
+	it("exchanges a one-time login link before session bootstrap and honors its user landing page", async () => {
+		const token = "01234567".repeat(4);
+		const requests: Array<{ path: string; method: string; body: unknown }> = [];
+		window.history.replaceState(null, "", `#/login?verify=${token}&redirect=invite`);
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Link Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/login-link/exchange")) {
+				requests.push({ path, method: init?.method ?? "GET", body: JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown });
+				return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 71, email: "linked@example.test", is_admin: false, redirect: "invite" } }));
+			}
+			if (path.endsWith("/api/v1/invitations")) return Promise.resolve(jsonResponse(200, { status: "success", data: { codes: [], invited_count: 0 } }));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App />);
+
+		expect(await screen.findByText("linked@example.test", { exact: true })).toBeVisible();
+		expect(screen.getByRole("button", { name: "我的邀请" })).toHaveAttribute("aria-current", "page");
+		expect(window.location.hash).toBe("#/invite");
+		expect(requests).toEqual([{ path: "/api/v1/auth/login-link/exchange", method: "POST", body: { token } }]);
+	});
+
+	it("scrubs an invalid login token and reports the exchange failure", async () => {
+		const token = "fedcba98".repeat(4);
+		window.history.replaceState(null, "", `#/login?verify=${token}&redirect=dashboard`);
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Link Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/login-link/exchange")) return Promise.resolve(jsonResponse(400, {
+				status: "fail", error: { code: "login_link_invalid", message: "登录链接无效或已过期" }
+			}));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App />);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("登录链接无效或已过期");
+		expect(window.location.hash).toBe("#/login");
+	});
+
   it("renders configured branding and a safe TOS link before login", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;

@@ -28,6 +28,10 @@ var (
 	ErrInvitationCodeInvalid                  = errors.New("invitation code is invalid")
 	ErrInvitationCodeLimit                    = errors.New("invitation code generation limit reached")
 	ErrInvitationCodeCollision                = fmt.Errorf("%w: invitation code collision", ErrConflict)
+	ErrLoginLinkInvalid                       = errors.New("login link is invalid")
+	ErrMailLoginLimited                       = errors.New("mail login request is limited")
+	ErrMailLoginDisabled                      = errors.New("mail login is disabled")
+	ErrMailLoginNeedsMail                     = errors.New("mail login requires mail")
 	ErrOpenTicketExists                       = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
 	ErrTicketClosed                           = fmt.Errorf("%w: ticket is closed", ErrConflict)
 	ErrTicketReplyPending                     = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
@@ -164,6 +168,7 @@ type SiteSettings struct {
 	InvitationForceEnabled     bool      `json:"invite_force"`
 	InvitationCodeLimit        int       `json:"invite_gen_limit"`
 	InvitationNeverExpire      bool      `json:"invite_never_expire"`
+	MailLoginEnabled           bool      `json:"login_with_mail_link_enable"`
 	UpdatedAt                  time.Time `json:"updated_at"`
 }
 
@@ -184,6 +189,7 @@ type SaveSiteSettingsInput struct {
 	InvitationForceEnabled     bool
 	InvitationCodeLimit        int
 	InvitationNeverExpire      bool
+	MailLoginEnabled           bool
 }
 
 type CreateInvitationCodeInput struct {
@@ -273,6 +279,54 @@ type RegistrationEmailVerificationMailJob struct {
 	SMTPEncryption     string
 	SMTPFromAddress    string
 }
+
+type LoginLinkExchangeInput struct {
+	TokenDigest          []byte
+	AlternateTokenDigest []byte
+	SessionTokenHash     string
+	CSRFHash             string
+	SessionExpiresAt     time.Time
+}
+
+type LoginLinkExchange struct {
+	User     User
+	Redirect string
+}
+
+type MailLoginLinkRequestInput struct {
+	Email          string
+	ExpectedUserID int64
+	EmailDigest    []byte
+	TokenDigest    []byte
+	TokenCipher    []byte
+	Redirect       string
+	LinkBaseURL    string
+}
+
+type LoginLinkMailJob struct {
+	ID                 int64
+	Attempt            int
+	UserID             int64
+	TokenDigest        []byte
+	Recipient          string
+	TokenCipher        []byte
+	Redirect           string
+	AppName            string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
+}
+
+type MailLoginLimitError struct {
+	RetryAfterSeconds int64
+}
+
+func (e *MailLoginLimitError) Error() string { return ErrMailLoginLimited.Error() }
+func (e *MailLoginLimitError) Unwrap() error { return ErrMailLoginLimited }
 
 type RegistrationEmailVerificationLimitError struct {
 	RetryAfterSeconds int64

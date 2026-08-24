@@ -24,8 +24,11 @@ const failures: TicketMailFailurePage = {
   items: [{
     id: 4, kind: "ticket", recipient: "user@example.test", ticket_subject: "Unable to connect", attempt_count: 3,
     last_error: "connection refused", created_at: "2026-08-24T10:00:00Z", failed_at: "2026-08-24T10:07:00Z"
+  }, {
+    id: -5, kind: "login_link", recipient: "linked@example.test", ticket_subject: "邮件登录链接", attempt_count: 3,
+    last_error: "mail unavailable", created_at: "2026-08-24T10:01:00Z", failed_at: "2026-08-24T10:08:00Z"
   }],
-  total: 21, page: 1, page_size: 20
+  total: 22, page: 1, page_size: 20
 };
 
 describe("SystemOperationsPage", () => {
@@ -42,6 +45,7 @@ describe("SystemOperationsPage", () => {
     expect(await screen.findByText("Schema v18", { exact: true })).toBeVisible();
     expect(screen.getByText("待处理 2", { exact: true })).toBeVisible();
     expect(screen.getByText("Unable to connect", { exact: true })).toBeVisible();
+		expect(screen.getByText("登录链接", { exact: true })).toBeVisible();
     expect(screen.queryByText("private reply body", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("/api/v1/admin/ticket-settings", { exact: true })).toBeVisible();
 

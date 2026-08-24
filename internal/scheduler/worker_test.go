@@ -236,3 +236,56 @@ func TestWorkerPrunesExpiredRegistrationEmailChallengesAndEncryptedMail(t *testi
 		t.Fatalf("expired registration email remained claimable: claimed=%v err=%v", claimed, err)
 	}
 }
+
+func TestWorkerPrunesExpiredLoginLinksAndEncryptedMail(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-login-link-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 7, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-login-link@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketSettings, _ := database.GetTicketSettings(ctx)
+	if _, err := database.UpdateTicketSettings(ctx, user.ID, ticketSettings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Worker Login", SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025,
+		SMTPEncryption: "none", SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	siteSettings, _ := database.GetSiteSettings(ctx)
+	if _, err := database.UpdateSiteSettings(ctx, user.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
+		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protector, _ := security.NewLoginLinkProtector(make([]byte, 32))
+	token, _ := protector.NewToken()
+	emailDigest, _ := protector.EmailDigest(user.Email)
+	tokenDigest, _ := protector.TokenDigest(security.LoginLinkPurposeEmail, token)
+	tokenCipher, _ := protector.EncryptToken(user.ID, token)
+	if queued, err := database.RequestMailLoginLink(ctx, store.MailLoginLinkRequestInput{
+		Email: user.Email, ExpectedUserID: user.ID, EmailDigest: emailDigest, TokenDigest: tokenDigest, TokenCipher: tokenCipher,
+		Redirect: "dashboard", LinkBaseURL: "https://panel.example.test",
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestMailLoginLink() = (%v, %v)", queued, err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now.Add(5 * time.Minute) }
+	worker.applyDue(ctx)
+	if removed, err := database.PruneExpiredLoginLinks(ctx, now.Add(5*time.Minute), 100); err != nil || removed != 0 {
+		t.Fatalf("worker left expired login link state: removed=%d err=%v", removed, err)
+	}
+	if _, claimed, err := database.ClaimLoginLinkMail(ctx, "expired-login-link-check", now.Add(5*time.Minute), time.Minute); err != nil || claimed {
+		t.Fatalf("expired login link mail remained claimable: claimed=%v err=%v", claimed, err)
+	}
+}

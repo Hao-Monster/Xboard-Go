@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestSchemaV19MigrationPreservesV18DataAndAddsInvitationDefaults(t *testing.T) {
+func TestSchemaV20MigrationPreservesV18DataAndAddsSecureLoginLinkDefaults(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "schema-v18.db")
 	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
 	if err != nil {
@@ -36,7 +36,7 @@ func TestSchemaV19MigrationPreservesV18DataAndAddsInvitationDefaults(t *testing.
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v18 to v19) error = %v", err)
+		t.Fatalf("Migrate(v18 to current) error = %v", err)
 	}
 	settings, err := database.GetSiteSettings(ctx)
 	if err != nil {
@@ -54,8 +54,8 @@ func TestSchemaV19MigrationPreservesV18DataAndAddsInvitationDefaults(t *testing.
 			t.Fatal(err)
 		}
 	}
-	if version != 19 || preservedUsers != 1 || tables != 1 || codes != 0 || relationships != 0 ||
-		settings.InvitationForceEnabled || settings.InvitationCodeLimit != 5 || settings.InvitationNeverExpire {
+	if version != currentSchemaVersion || preservedUsers != 1 || tables != 1 || codes != 0 || relationships != 0 ||
+		settings.InvitationForceEnabled || settings.InvitationCodeLimit != 5 || settings.InvitationNeverExpire || settings.MailLoginEnabled {
 		t.Fatalf("migration version=%d users=%d tables=%d codes=%d relationships=%d settings=%#v", version, preservedUsers, tables, codes, relationships, settings)
 	}
 }

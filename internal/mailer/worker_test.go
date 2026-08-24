@@ -61,7 +61,7 @@ func TestWorkerDecryptsAndDeliversPasswordResetCodeBeforeTicketMail(t *testing.T
 	}
 
 	sender := &recordingSender{failure: errors.New("temporary reset SMTP failure")}
-	worker := NewWorker(database, nil, protector, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := NewWorker(database, nil, protector, nil, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worked, err := worker.RunOnce(ctx, now)
 	if !worked || err == nil {
 		t.Fatalf("first RunOnce() = (%v, %v), want retryable failure", worked, err)
@@ -128,7 +128,7 @@ func TestWorkerDecryptsAndDeliversRegistrationEmailCode(t *testing.T) {
 	}
 
 	sender := &recordingSender{}
-	worker := NewWorker(database, nil, nil, protector, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := NewWorker(database, nil, nil, protector, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worked, err := worker.RunOnce(ctx, now)
 	if !worked || err != nil {
 		t.Fatalf("RunOnce() = (%v, %v)", worked, err)
@@ -139,6 +139,74 @@ func TestWorkerDecryptsAndDeliversRegistrationEmailCode(t *testing.T) {
 	}
 	if _, claimed, err := database.ClaimRegistrationEmailVerificationMail(ctx, "after-send", now.Add(time.Second), time.Minute); err != nil || claimed {
 		t.Fatalf("completed registration mail remained claimable: claimed=%v err=%v", claimed, err)
+	}
+}
+
+func TestWorkerDecryptsAndDeliversOneTimeLoginLink(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "login-link-worker.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "login-link-worker@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketSettings, _ := database.GetTicketSettings(ctx)
+	if _, err := database.UpdateTicketSettings(ctx, user.ID, ticketSettings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Login Board", SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025,
+		SMTPEncryption: EncryptionNone, SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	siteSettings, _ := database.GetSiteSettings(ctx)
+	if _, err := database.UpdateSiteSettings(ctx, user.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
+		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protector, err := security.NewLoginLinkProtector(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := protector.NewToken()
+	emailDigest, _ := protector.EmailDigest(user.Email)
+	tokenDigest, _ := protector.TokenDigest(security.LoginLinkPurposeEmail, token)
+	tokenCipher, _ := protector.EncryptToken(user.ID, token)
+	if queued, err := database.RequestMailLoginLink(ctx, store.MailLoginLinkRequestInput{
+		Email: user.Email, ExpectedUserID: user.ID, EmailDigest: emailDigest, TokenDigest: tokenDigest, TokenCipher: tokenCipher,
+		Redirect: "invite", LinkBaseURL: "https://panel.example.test",
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestMailLoginLink() = (%v, %v)", queued, err)
+	}
+
+	sender := &recordingSender{failure: errors.New("temporary login link SMTP failure")}
+	worker := NewWorker(database, nil, nil, nil, protector, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worked, err := worker.RunOnce(ctx, now)
+	if !worked || err == nil {
+		t.Fatalf("first RunOnce() = (%v, %v), want retryable failure", worked, err)
+	}
+	sender.failure = nil
+	worked, err = worker.RunOnce(ctx, now.Add(20*time.Second))
+	if !worked || err != nil {
+		t.Fatalf("second RunOnce() = (%v, %v)", worked, err)
+	}
+	expectedURL := "https://panel.example.test/#/login?verify=" + token + "&redirect=invite"
+	message := sender.messages[len(sender.messages)-1]
+	if len(sender.messages) != 2 || message.To != user.Email || message.Subject != "登录到Login Board" ||
+		!strings.Contains(message.Text, expectedURL) || !strings.Contains(message.Text, "5 分钟") ||
+		!strings.Contains(message.Text, "只能使用一次") {
+		t.Fatalf("login link message = %#v", sender.messages)
+	}
+	if _, claimed, err := database.ClaimLoginLinkMail(ctx, "after-send", now.Add(21*time.Second), time.Minute); err != nil || claimed {
+		t.Fatalf("completed login link mail remained claimable: claimed=%v err=%v", claimed, err)
 	}
 }
 
@@ -196,7 +264,7 @@ func TestWorkerDecryptsRetriesAndCompletesTicketNotification(t *testing.T) {
 	}
 
 	sender := &recordingSender{failure: errors.New("temporary SMTP failure")}
-	worker := NewWorker(database, cipherBox, nil, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := NewWorker(database, cipherBox, nil, nil, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worked, err := worker.RunOnce(ctx, now.Add(2*time.Minute))
 	if !worked || err == nil {
 		t.Fatalf("first RunOnce() = (%v, %v), want attempted failure", worked, err)

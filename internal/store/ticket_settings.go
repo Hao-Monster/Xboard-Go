@@ -70,12 +70,15 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 	}
 	defer tx.Rollback()
 	if !normalized.SMTPEnabled {
-		var emailVerificationEnabled bool
-		if err := tx.QueryRowContext(ctx, `SELECT email_verify FROM app_settings WHERE id = 1`).Scan(&emailVerificationEnabled); err != nil {
+		var emailVerificationEnabled, mailLoginEnabled bool
+		if err := tx.QueryRowContext(ctx, `SELECT email_verify, login_with_mail_link_enable FROM app_settings WHERE id = 1`).Scan(&emailVerificationEnabled, &mailLoginEnabled); err != nil {
 			return TicketSettings{}, fmt.Errorf("read registration email verification setting: %w", err)
 		}
 		if emailVerificationEnabled {
 			return TicketSettings{}, ErrRegistrationEmailVerificationNeedsMail
+		}
+		if mailLoginEnabled {
+			return TicketSettings{}, ErrMailLoginNeedsMail
 		}
 	}
 	result, err := tx.ExecContext(ctx, `

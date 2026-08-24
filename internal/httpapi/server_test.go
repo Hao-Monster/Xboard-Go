@@ -536,6 +536,10 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 	if err != nil {
 		t.Fatalf("NewRegistrationEmailProtector() error = %v", err)
 	}
+	loginLinkProtector, err := security.NewLoginLinkProtector(make([]byte, 32))
+	if err != nil {
+		t.Fatalf("NewLoginLinkProtector() error = %v", err)
+	}
 	var invitationProtector *security.InvitationProtector
 	if protectInvitations {
 		invitationProtector, err = security.NewInvitationProtector(make([]byte, 32))
@@ -558,6 +562,7 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,
 		InvitationProtector:        invitationProtector,
+		LoginLinkProtector:         loginLinkProtector,
 		RuntimeTracker:             runtimeTracker,
 	})
 	return handler, database

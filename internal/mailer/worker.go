@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,13 +28,14 @@ type Worker struct {
 	cipher                *appsettings.Cipher
 	resetProtector        *security.PasswordResetProtector
 	registrationProtector *security.RegistrationEmailProtector
+	loginLinkProtector    *security.LoginLinkProtector
 	sender                Sender
 	interval              time.Duration
 	logger                *slog.Logger
 	tracker               *operations.Tracker
 }
 
-func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtector *security.PasswordResetProtector, registrationProtector *security.RegistrationEmailProtector, sender Sender, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
+func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtector *security.PasswordResetProtector, registrationProtector *security.RegistrationEmailProtector, loginLinkProtector *security.LoginLinkProtector, sender Sender, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
 	if interval <= 0 {
 		interval = defaultPollPeriod
 	}
@@ -46,7 +48,8 @@ func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtec
 	}
 	return &Worker{
 		store: database, cipher: cipherBox, resetProtector: resetProtector,
-		registrationProtector: registrationProtector, sender: sender, interval: interval, logger: logger, tracker: tracker,
+		registrationProtector: registrationProtector, loginLinkProtector: loginLinkProtector,
+		sender: sender, interval: interval, logger: logger, tracker: tracker,
 	}
 }
 
@@ -107,6 +110,13 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 	if registrationClaimed {
 		return true, worker.deliverRegistrationEmailVerification(ctx, registrationJob, claimToken, now)
 	}
+	loginLinkJob, loginLinkClaimed, err := worker.store.ClaimLoginLinkMail(ctx, claimToken, now, mailClaimLease)
+	if err != nil {
+		return false, err
+	}
+	if loginLinkClaimed {
+		return true, worker.deliverLoginLink(ctx, loginLinkJob, claimToken, now)
+	}
 	job, claimed, err := worker.store.ClaimTicketMail(ctx, claimToken, now, mailClaimLease)
 	if err != nil || !claimed {
 		return false, err
@@ -145,6 +155,53 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 		return true, fmt.Errorf("complete ticket email job: %w", err)
 	}
 	return true, nil
+}
+
+func (worker *Worker) deliverLoginLink(ctx context.Context, job store.LoginLinkMailJob, claimToken string, now time.Time) error {
+	if worker.loginLinkProtector == nil {
+		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("login link encryption key is unavailable"))
+	}
+	token, err := worker.loginLinkProtector.DecryptToken(job.UserID, job.TokenCipher)
+	if err != nil {
+		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("decrypt login link token"))
+	}
+	defer func() {
+		for index := range token {
+			token[index] = 0
+		}
+	}()
+	configuration := SMTPConfig{
+		Host: job.SMTPHost, Port: job.SMTPPort, Username: job.SMTPUsername,
+		Encryption: job.SMTPEncryption, FromAddress: job.SMTPFromAddress,
+	}
+	if len(job.SMTPPasswordCipher) > 0 {
+		if worker.cipher == nil {
+			return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("settings encryption key is unavailable"))
+		}
+		plaintext, decryptErr := worker.cipher.Decrypt(job.SMTPPasswordCipher)
+		if decryptErr != nil {
+			return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("decrypt SMTP credential"))
+		}
+		configuration.Password = string(plaintext)
+		for index := range plaintext {
+			plaintext[index] = 0
+		}
+	}
+	loginURL := strings.TrimRight(strings.TrimSpace(job.AppURL), "/") + "/#/login?verify=" +
+		url.QueryEscape(string(token)) + "&redirect=" + url.QueryEscape(job.Redirect)
+	message := Message{
+		To: job.Recipient, Subject: fmt.Sprintf("登录到%s", strings.TrimSpace(job.AppName)),
+		Text: "点击以下链接登录：\r\n" + loginURL + "\r\n链接 5 分钟内有效且只能使用一次。如非本人操作，请忽略此邮件。",
+	}
+	if err := worker.sender.Send(ctx, configuration, message); err != nil {
+		configuration.Password = ""
+		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, err)
+	}
+	configuration.Password = ""
+	if err := worker.store.CompleteLoginLinkMail(ctx, job.ID, claimToken, now); err != nil {
+		return fmt.Errorf("complete login link email job: %w", err)
+	}
+	return nil
 }
 
 func (worker *Worker) deliverRegistrationEmailVerification(ctx context.Context, job store.RegistrationEmailVerificationMailJob, claimToken string, now time.Time) error {
@@ -257,6 +314,13 @@ func (worker *Worker) recordRegistrationEmailFailure(ctx context.Context, job st
 		return fmt.Errorf("record registration verification email failure after %v: %w", deliveryError, err)
 	}
 	return fmt.Errorf("registration verification email attempt %d failed: %w", job.Attempt, deliveryError)
+}
+
+func (worker *Worker) recordLoginLinkFailure(ctx context.Context, job store.LoginLinkMailJob, claimToken string, now time.Time, deliveryError error) error {
+	if err := worker.store.FailLoginLinkMail(ctx, job.ID, claimToken, deliveryError.Error(), now.Add(passwordResetMailRetryDelay(job.Attempt)), now); err != nil {
+		return fmt.Errorf("record login link email failure after %v: %w", deliveryError, err)
+	}
+	return fmt.Errorf("login link email attempt %d failed: %w", job.Attempt, deliveryError)
 }
 
 func passwordResetMailRetryDelay(attempt int) time.Duration {

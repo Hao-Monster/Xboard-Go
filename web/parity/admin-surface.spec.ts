@@ -710,6 +710,134 @@ test("legacy password recovery preserves fields, cooldown, lockout, one-time cod
   }
 });
 
+test("legacy quick and mail links issue short-lived one-time login tokens", async ({ page }) => {
+  test.setTimeout(90_000);
+  const originalSettingOutput = legacyTinker('$row=App\\Models\\Setting::where("name","login_with_mail_link_enable")->first(); dump(base64_encode(json_encode(["exists"=>(bool)$row,"value"=>$row?->value])));');
+  const encodedSetting = originalSettingOutput.match(/"([A-Za-z0-9+/=]+)"/)?.[1];
+  if (!encodedSetting) throw new Error("legacy mail-link setting snapshot is missing");
+  const originalSetting = JSON.parse(Buffer.from(encodedSetting, "base64").toString("utf8")) as { exists: boolean; value: unknown };
+  const unknownEmail = `unknown-mail-link-${Date.now()}@legacy.local`;
+  const originalTempKeys = new Set(legacyRedisKeys("*TEMP_TOKEN_*"));
+  const issuedKeys: string[] = [];
+
+  const login = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+    data: { email: legacyEmail, password: legacyPassword }
+  });
+  expect(login.status()).toBe(200);
+  const authorization = readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data");
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy passwordless-login source session is missing");
+
+  try {
+    const unauthorized = await page.request.post(new URL("/api/v1/passport/auth/getQuickLoginUrl", legacyURL).toString(), {
+      data: { redirect: "invite" }
+    });
+    expect(unauthorized.status()).toBe(401);
+
+    const quick = await page.request.post(new URL("/api/v1/passport/auth/getQuickLoginUrl", legacyURL).toString(), {
+      data: { auth_data: authorization, redirect: "invite" }
+    });
+    expect(quick.status()).toBe(200);
+    const quickURL = readStringProperty(await quick.json() as unknown, "data");
+    expect(quickURL).toBeTruthy();
+    if (!quickURL) throw new Error("legacy quick-login URL is missing");
+    const quickParams = hashSearchParams(quickURL);
+    const quickToken = quickParams.get("verify");
+    expect(quickToken).toMatch(/^[a-f0-9]{32}$/);
+    expect(quickParams.get("redirect")).toBe("invite");
+    if (!quickToken) throw new Error("legacy quick-login token is missing");
+    const quickKey = legacyRedisKeys(`*TEMP_TOKEN_${quickToken}`);
+    expect(quickKey).toHaveLength(1);
+    issuedKeys.push(...quickKey);
+    expect(legacyRedisTTL(quickKey[0])).toBeGreaterThan(0);
+    expect(legacyRedisTTL(quickKey[0])).toBeLessThanOrEqual(60);
+
+    const quickLoginResponse = page.waitForResponse((response) => response.url().includes(`/passport/auth/token2Login?verify=${quickToken}`));
+    await page.goto(quickURL, { waitUntil: "domcontentloaded" });
+    expect((await quickLoginResponse).status()).toBe(200);
+    await expect(page).toHaveURL(/#\/invite$/);
+    await expect(page.getByText("邀请码管理", { exact: true })).toBeVisible();
+    expect(legacyRedisKeys(`*TEMP_TOKEN_${quickToken}`)).toEqual([]);
+
+    const reused = await page.request.get(new URL(`/api/v1/passport/auth/token2Login?verify=${quickToken}&redirect=invite`, legacyURL).toString());
+    expect(reused.status()).toBe(400);
+
+    const redirected = await page.request.post(new URL("/api/v1/user/getQuickLoginUrl", legacyURL).toString(), {
+      headers: { authorization }, data: { redirect: "knowledge" }
+    });
+    expect(redirected.status()).toBe(200);
+    const redirectURL = readStringProperty(await redirected.json() as unknown, "data");
+    if (!redirectURL) throw new Error("legacy authenticated quick-login URL is missing");
+    const redirectToken = hashSearchParams(redirectURL).get("verify");
+    expect(redirectToken).toMatch(/^[a-f0-9]{32}$/);
+    if (!redirectToken) throw new Error("legacy redirect token is missing");
+    const redirectKeys = legacyRedisKeys(`*TEMP_TOKEN_${redirectToken}`);
+    issuedKeys.push(...redirectKeys);
+    const tokenRedirect = await page.request.get(new URL(`/api/v1/passport/auth/token2Login?token=${redirectToken}&redirect=knowledge`, legacyURL).toString(), {
+      maxRedirects: 0
+    });
+    expect(tokenRedirect.status()).toBe(302);
+    const location = tokenRedirect.headers().location;
+    expect(location).toContain(`/#/login?verify=${redirectToken}&redirect=knowledge`);
+    expect(legacyRedisKeys(`*TEMP_TOKEN_${redirectToken}`)).toHaveLength(1);
+
+    legacyTinker('admin_setting(["login_with_mail_link_enable"=>1]);');
+    clearLegacyMailLinkCooldown(legacyEmail);
+    clearLegacyMailLinkCooldown(unknownEmail);
+    const beforeMailKeys = new Set(legacyRedisKeys("*TEMP_TOKEN_*"));
+    const mailLink = await page.request.post(new URL("/api/v1/passport/auth/loginWithMailLink", legacyURL).toString(), {
+      data: { email: legacyEmail, redirect: "dashboard" }
+    });
+    expect(mailLink.status()).toBe(200);
+    expect(readProperty(await mailLink.json() as unknown, "data")).toBe(true);
+    const mailKeys = legacyRedisKeys("*TEMP_TOKEN_*").filter((key) => !beforeMailKeys.has(key));
+    expect(mailKeys).toHaveLength(1);
+    issuedKeys.push(...mailKeys);
+    expect(legacyRedisTTL(mailKeys[0])).toBeGreaterThan(0);
+    expect(legacyRedisTTL(mailKeys[0])).toBeLessThanOrEqual(300);
+
+    const repeatedMailLink = await page.request.post(new URL("/api/v1/passport/auth/loginWithMailLink", legacyURL).toString(), {
+      data: { email: legacyEmail }
+    });
+    expect(repeatedMailLink.status()).toBe(429);
+    expect(readStringProperty(await repeatedMailLink.json() as unknown, "message")).toBe("发送频繁，请稍后再试");
+
+    const beforeUnknownKeys = legacyRedisKeys("*TEMP_TOKEN_*");
+    const unknown = await page.request.post(new URL("/api/v1/passport/auth/loginWithMailLink", legacyURL).toString(), {
+      data: { email: unknownEmail }
+    });
+    expect(unknown.status()).toBe(200);
+    expect(readProperty(await unknown.json() as unknown, "data")).toBe(true);
+    expect(legacyRedisKeys("*TEMP_TOKEN_*")).toEqual(beforeUnknownKeys);
+
+    const mailToken = mailKeys[0].slice(mailKeys[0].lastIndexOf("TEMP_TOKEN_") + "TEMP_TOKEN_".length);
+    expect(mailToken).toMatch(/^[a-f0-9]{32}$/);
+    const exchanged = await page.request.get(new URL(`/api/v1/passport/auth/token2Login?verify=${mailToken}&redirect=dashboard`, legacyURL).toString());
+    expect(exchanged.status()).toBe(200);
+    expect(readStringProperty(readProperty(await exchanged.json() as unknown, "data"), "auth_data")).toBeTruthy();
+    expect(legacyRedisKeys(`*TEMP_TOKEN_${mailToken}`)).toEqual([]);
+
+    legacyTinker('admin_setting(["login_with_mail_link_enable"=>0]);');
+    const disabled = await page.request.post(new URL("/api/v1/passport/auth/loginWithMailLink", legacyURL).toString(), {
+      data: { email: legacyEmail }
+    });
+    expect(disabled.status()).toBe(404);
+  } finally {
+    clearLegacyMailLinkCooldown(legacyEmail);
+    clearLegacyMailLinkCooldown(unknownEmail);
+    for (const key of issuedKeys) legacyRedisDelete(key);
+    for (const key of legacyRedisKeys("*TEMP_TOKEN_*")) {
+      if (!originalTempKeys.has(key)) legacyRedisDelete(key);
+    }
+    if (originalSetting.exists) {
+      const encodedValue = Buffer.from(JSON.stringify(originalSetting.value), "utf8").toString("base64");
+      legacyTinker(`admin_setting(["login_with_mail_link_enable"=>json_decode(base64_decode("${encodedValue}"),true)]);`);
+    } else {
+      legacyTinker('app(App\\Support\\Setting::class)->remove("login_with_mail_link_enable");');
+    }
+  }
+});
+
 test("legacy site identity settings persist and feed the public guest contract", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
@@ -1264,6 +1392,36 @@ function legacyRedisKeys(pattern: string): string[] {
     "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "--scan", "--pattern", pattern
   ], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
   return output.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+}
+
+function legacyRedisTTL(key: string): number {
+  return Number(execFileSync("docker", [
+    "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "TTL", key
+  ], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }).trim());
+}
+
+function legacyRedisDelete(key: string): void {
+  execFileSync("docker", [
+    "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "DEL", key
+  ], { stdio: "ignore" });
+}
+
+function clearLegacyMailLinkCooldown(email: string): void {
+  for (const key of legacyRedisKeys(`*LAST_SEND_LOGIN_WITH_MAIL_LINK_TIMESTAMP_${email}`)) legacyRedisDelete(key);
+}
+
+function legacyTinker(statement: string): string {
+  return execFileSync(
+    "docker",
+    ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${statement}`],
+    { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }
+  ).trim();
+}
+
+function hashSearchParams(address: string): URLSearchParams {
+  const hash = new URL(address).hash;
+  const queryIndex = hash.indexOf("?");
+  return new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : "");
 }
 
 function isVisibleLegacyNotice(value: unknown): boolean {

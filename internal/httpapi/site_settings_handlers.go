@@ -73,6 +73,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationForceEnabled     *bool     `json:"invite_force"`
 		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
+		MailLoginEnabled           *bool     `json:"login_with_mail_link_enable"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -93,6 +94,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationForceEnabled:     current.InvitationForceEnabled,
 		InvitationCodeLimit:        current.InvitationCodeLimit,
 		InvitationNeverExpire:      current.InvitationNeverExpire,
+		MailLoginEnabled:           current.MailLoginEnabled,
 	}
 	if input.StopRegister != nil {
 		next.StopRegister = *input.StopRegister
@@ -127,12 +129,19 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	if input.InvitationNeverExpire != nil {
 		next.InvitationNeverExpire = *input.InvitationNeverExpire
 	}
+	if input.MailLoginEnabled != nil {
+		next.MailLoginEnabled = *input.MailLoginEnabled
+	}
 	if next.EmailVerificationEnabled && s.registrationEmailProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置注册验证码加密密钥", nil)
 		return
 	}
 	if next.InvitationForceEnabled && s.invitationProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置邀请码加密密钥", nil)
+		return
+	}
+	if next.MailLoginEnabled && s.loginLinkProtector == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置登录链接加密密钥", nil)
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
@@ -143,6 +152,10 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, store.ErrRegistrationEmailVerificationNeedsMail) {
 		writeAPIError(w, http.StatusConflict, "registration_email_requires_smtp", "启用注册邮箱验证前必须先启用 SMTP 邮件服务", nil)
+		return
+	}
+	if errors.Is(err, store.ErrMailLoginNeedsMail) {
+		writeAPIError(w, http.StatusConflict, "mail_login_requires_smtp", "启用邮件链接登录前必须先启用 SMTP 邮件服务", nil)
 		return
 	}
 	if err != nil {

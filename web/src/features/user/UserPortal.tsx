@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, NoticePage, Ticket, TicketInput, TicketPage, UserSession } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Ticket, TicketInput, TicketPage, UserSession } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -24,14 +24,15 @@ interface UserPortalAPI {
   logout: () => Promise<void>;
 }
 
-export function UserPortal({ api, session, siteName, siteLogo, onSignedOut }: {
+export function UserPortal({ api, session, siteName, siteLogo, initialPage = "dashboard", onSignedOut }: {
   api: UserPortalAPI;
   session: UserSession;
   siteName: string;
   siteLogo: string | null;
+  initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
-  const [page, setPage] = useState<"notices" | "knowledge" | "tickets" | "clients" | "invitations">("notices");
+  const [page, setPage] = useState<"notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
   const [logoutError, setLogoutError] = useState("");
 
   const logout = async () => {
@@ -63,4 +64,14 @@ export function UserPortal({ api, session, siteName, siteLogo, onSignedOut }: {
     {page === "clients" && <ClientCatalogPage api={api} />}
     {page === "invitations" && <InvitationPage api={api} />}
   </div>;
+}
+
+function portalPage(redirect: LoginLinkRedirect): "notices" | "knowledge" | "tickets" | "clients" | "invitations" {
+  switch (redirect) {
+    case "invite": return "invitations";
+    case "knowledge": return "knowledge";
+    case "ticket": return "tickets";
+    case "subscribe": return "clients";
+    default: return "notices";
+  }
 }
