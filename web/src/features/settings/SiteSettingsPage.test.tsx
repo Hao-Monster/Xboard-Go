@@ -13,6 +13,7 @@ const initial: SiteSettings = {
   tos_url: "https://old.example.test/terms",
   logo: "https://old.example.test/logo.png",
   stop_register: false,
+  email_verify: false,
   email_whitelist_enable: false,
   email_whitelist_suffix: ["gmail.com", "qq.com"],
   email_gmail_limit_enable: false,
@@ -28,6 +29,7 @@ describe("SiteSettingsPage", () => {
       ...initial, revision: 5, app_name: "Example Board", app_description: "Fast control plane",
       app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/",
       logo: "https://images.example.test/brand.svg", stop_register: true,
+      email_verify: true,
       email_whitelist_enable: true, email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true, register_limit_by_ip_enable: true,
       register_limit_count: 2, register_limit_expire: 30
@@ -47,6 +49,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("用户条款(TOS)URL")).toHaveValue("https://old.example.test/terms");
     expect(screen.getByLabelText("LOGO")).toHaveValue("https://old.example.test/logo.png");
     expect(screen.getByRole("checkbox", { name: "停止新用户注册" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "邮箱验证" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "邮箱后缀白名单" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "禁止使用Gmail多别名" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "IP注册限制" })).not.toBeChecked();
@@ -64,6 +67,7 @@ describe("SiteSettingsPage", () => {
     await user.clear(screen.getByLabelText("LOGO"));
     await user.type(screen.getByLabelText("LOGO"), updated.logo);
     await user.click(screen.getByRole("checkbox", { name: "停止新用户注册" }));
+    await user.click(screen.getByRole("checkbox", { name: "邮箱验证" }));
     await user.click(screen.getByRole("checkbox", { name: "邮箱后缀白名单" }));
     fireEvent.change(screen.getByLabelText("邮箱后缀"), { target: { value: "allowed.test\ngmail.com" } });
     await user.click(screen.getByRole("checkbox", { name: "禁止使用Gmail多别名" }));
@@ -82,6 +86,7 @@ describe("SiteSettingsPage", () => {
       tos_url: updated.tos_url,
       logo: updated.logo,
       stop_register: true,
+      email_verify: true,
       email_whitelist_enable: true,
       email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true,

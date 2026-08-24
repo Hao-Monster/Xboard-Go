@@ -43,6 +43,11 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	}
 	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
+	requiresSMTP := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"email_verify":true
+	}`)
+	expectAPIError(t, requiresSMTP, http.StatusConflict, "registration_email_requires_smtp")
 
 	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",

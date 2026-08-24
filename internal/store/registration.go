@@ -13,9 +13,11 @@ import (
 )
 
 type RegisterUserInput struct {
-	Email        string
-	PasswordHash string
-	SourceIP     string
+	Email           string
+	PasswordHash    string
+	SourceIP        string
+	EmailDigest     []byte
+	EmailCodeDigest []byte
 }
 
 type RegistrationSessionInput struct {
@@ -34,6 +36,7 @@ func (e *RegistrationIPLimitError) Unwrap() error { return ErrRegistrationIPLimi
 
 type registrationPolicy struct {
 	stopRegister               bool
+	emailVerificationEnabled   bool
 	emailWhitelistEnabled      bool
 	emailWhitelistSuffixes     []string
 	gmailAliasLimitEnabled     bool
@@ -120,6 +123,11 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 	if policy.stopRegister {
 		return User{}, ErrRegistrationClosed
 	}
+	if policy.emailVerificationEnabled {
+		if err := validateRegistrationEmailChallengeTx(ctx, tx, input.EmailDigest, input.EmailCodeDigest, now); err != nil {
+			return User{}, err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
@@ -168,6 +176,11 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 			return User{}, fmt.Errorf("record registration IP limit: %w", err)
 		}
 	}
+	if policy.emailVerificationEnabled {
+		if err := consumeRegistrationEmailChallengeTx(ctx, tx, input.EmailDigest, now); err != nil {
+			return User{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return User{}, fmt.Errorf("commit registration: %w", err)
 	}
@@ -182,11 +195,11 @@ func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (r
 	var policy registrationPolicy
 	var suffixStorage string
 	err := query.QueryRowContext(ctx, `
-		SELECT stop_register, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
+		SELECT stop_register, email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire
 		FROM app_settings WHERE id = 1
 	`).Scan(
-		&policy.stopRegister, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
+		&policy.stopRegister, &policy.emailVerificationEnabled, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
 		&policy.registrationIPLimitEnabled, &policy.registrationIPLimitCount, &policy.registrationIPLimitMinutes,
 	)
 	if err != nil {
@@ -198,7 +211,8 @@ func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (r
 
 func registrationPolicyFromSettings(settings SiteSettings) registrationPolicy {
 	return registrationPolicy{
-		stopRegister: settings.StopRegister, emailWhitelistEnabled: settings.EmailWhitelistEnabled,
+		stopRegister: settings.StopRegister, emailVerificationEnabled: settings.EmailVerificationEnabled,
+		emailWhitelistEnabled:  settings.EmailWhitelistEnabled,
 		emailWhitelistSuffixes: settings.EmailWhitelistSuffixes, gmailAliasLimitEnabled: settings.GmailAliasLimitEnabled,
 		registrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		registrationIPLimitCount:   settings.RegistrationIPLimitCount,

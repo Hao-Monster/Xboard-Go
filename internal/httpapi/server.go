@@ -28,24 +28,25 @@ const (
 )
 
 type Dependencies struct {
-	Context                context.Context
-	Store                  *store.Store
-	PasswordHasher         security.PasswordHasher
-	Now                    func() time.Time
-	PanelURL               string
-	NodeRelease            string
-	CookieSecure           bool
-	AllowedOrigins         []string
-	Logger                 *slog.Logger
-	WebSocketEnabled       bool
-	WebSocketURL           string
-	NodePushInterval       int
-	NodePullInterval       int
-	CatalogHTTPClient      clientcatalog.HTTPDoer
-	SettingsCipher         *appsettings.Cipher
-	PasswordResetProtector *security.PasswordResetProtector
-	SMTPAllowInsecure      bool
-	RuntimeTracker         *operations.Tracker
+	Context                    context.Context
+	Store                      *store.Store
+	PasswordHasher             security.PasswordHasher
+	Now                        func() time.Time
+	PanelURL                   string
+	NodeRelease                string
+	CookieSecure               bool
+	AllowedOrigins             []string
+	Logger                     *slog.Logger
+	WebSocketEnabled           bool
+	WebSocketURL               string
+	NodePushInterval           int
+	NodePullInterval           int
+	CatalogHTTPClient          clientcatalog.HTTPDoer
+	SettingsCipher             *appsettings.Cipher
+	PasswordResetProtector     *security.PasswordResetProtector
+	RegistrationEmailProtector *security.RegistrationEmailProtector
+	SMTPAllowInsecure          bool
+	RuntimeTracker             *operations.Tracker
 }
 
 type passwordService interface {
@@ -67,6 +68,7 @@ type server struct {
 	registrationRequests       *requestLimiter
 	passwordResetRequests      *requestLimiter
 	passwordResetConfirmations *requestLimiter
+	registrationEmailRequests  *requestLimiter
 	passwordHashSlots          chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
@@ -83,6 +85,7 @@ type server struct {
 	clientCatalog              *clientcatalog.Service
 	settingsCipher             *appsettings.Cipher
 	passwordResetProtector     *security.PasswordResetProtector
+	registrationEmailProtector *security.RegistrationEmailProtector
 	smtpAllowInsecure          bool
 	runtimeTracker             *operations.Tracker
 }
@@ -146,6 +149,7 @@ func New(dependencies Dependencies) http.Handler {
 		registrationRequests:       newRequestLimiter(20, 15*time.Minute),
 		passwordResetRequests:      newRequestLimiter(10, 15*time.Minute),
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute),
+		registrationEmailRequests:  newRequestLimiter(10, 15*time.Minute),
 		passwordHashSlots:          make(chan struct{}, 2),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
@@ -161,10 +165,11 @@ func New(dependencies Dependencies) http.Handler {
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
 		}),
-		settingsCipher:         dependencies.SettingsCipher,
-		passwordResetProtector: dependencies.PasswordResetProtector,
-		smtpAllowInsecure:      dependencies.SMTPAllowInsecure,
-		runtimeTracker:         dependencies.RuntimeTracker,
+		settingsCipher:             dependencies.SettingsCipher,
+		passwordResetProtector:     dependencies.PasswordResetProtector,
+		registrationEmailProtector: dependencies.RegistrationEmailProtector,
+		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
+		runtimeTracker:             dependencies.RuntimeTracker,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -177,6 +182,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
 	root.Handle("POST /api/v1/auth/register", api.requireTrustedOrigin(http.HandlerFunc(api.register)))
+	root.Handle("POST /api/v1/auth/registration-email/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestRegistrationEmailVerification)))
 	root.Handle("POST /api/v1/auth/password-reset/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestPasswordReset)))
 	root.Handle("POST /api/v1/auth/password-reset/confirm", api.requireTrustedOrigin(http.HandlerFunc(api.confirmPasswordReset)))
 	root.Handle("GET /api/v1/auth/session", api.requireSession(http.HandlerFunc(api.session)))

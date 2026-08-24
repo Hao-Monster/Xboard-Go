@@ -13,7 +13,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 )
 
-func TestSchemaV17MigrationPreservesV16UsersSessionsAndSettings(t *testing.T) {
+func TestSchemaMigrationPreservesV16UsersSessionsAndSettings(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "schema-v16.db")
 	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
 	if err != nil {
@@ -86,7 +86,7 @@ func TestSchemaV17MigrationPreservesV16UsersSessionsAndSettings(t *testing.T) {
 	}
 	defer rows.Close()
 	foreignKeyViolation := rows.Next()
-	if version != 17 || users != 1 || sessions != 1 || challengeTables != 1 || outboxTables != 1 || challengeRows != 0 || outboxRows != 0 ||
+	if version != currentSchemaVersion || users != 1 || sessions != 1 || challengeTables != 1 || outboxTables != 1 || challengeRows != 0 || outboxRows != 0 ||
 		updatedSettings.AppName != "Preserved V16" || integrity != "ok" || foreignKeyViolation {
 		t.Fatalf("v16 to v17 migration: version=%d users=%d sessions=%d tables=(%d,%d) rows=(%d,%d) settings=%#v integrity=%q foreign_keys=%t",
 			version, users, sessions, challengeTables, outboxTables, challengeRows, outboxRows, updatedSettings, integrity, foreignKeyViolation)

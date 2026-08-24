@@ -325,6 +325,7 @@ export interface SiteSettings {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_verify: boolean;
   email_whitelist_enable: boolean;
   email_whitelist_suffix: string[];
   email_gmail_limit_enable: boolean;
@@ -342,6 +343,7 @@ export interface SiteSettingsInput {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_verify: boolean;
   email_whitelist_enable: boolean;
   email_whitelist_suffix: string[];
   email_gmail_limit_enable: boolean;
@@ -411,7 +413,7 @@ export interface AdminAuditPage {
 
 export interface TicketMailFailure {
   id: number;
-  kind: "ticket" | "password_reset";
+  kind: "ticket" | "password_reset" | "registration_email_verification";
   recipient: string;
   ticket_subject: string;
   attempt_count: number;
@@ -563,10 +565,16 @@ export class APIClient implements AdminAPI {
     return this.request<UserSession>("/api/v1/auth/login", { method: "POST", body: { email, password } });
   }
 
-  async register(email: string, password: string, passwordConfirmation: string): Promise<UserSession> {
+  async register(email: string, password: string, passwordConfirmation: string, emailCode = ""): Promise<UserSession> {
+    const body: Record<string, string> = { email, password, password_confirmation: passwordConfirmation };
+    if (emailCode !== "") body.email_code = emailCode;
     return this.request<UserSession>("/api/v1/auth/register", {
-      method: "POST", body: { email, password, password_confirmation: passwordConfirmation }
+      method: "POST", body
     });
+  }
+
+  async requestRegistrationEmailVerification(email: string): Promise<void> {
+    await this.request<boolean>("/api/v1/auth/registration-email/request", { method: "POST", body: { email } });
   }
 
   async requestPasswordReset(email: string): Promise<void> {

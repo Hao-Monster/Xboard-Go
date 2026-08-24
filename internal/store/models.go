@@ -8,26 +8,31 @@ import (
 )
 
 var (
-	ErrNotFound              = errors.New("not found")
-	ErrConflict              = errors.New("conflict")
-	ErrEmailInUse            = fmt.Errorf("%w: email already in use", ErrConflict)
-	ErrRegistrationClosed    = errors.New("registration is closed")
-	ErrEmailDomainNotAllowed = errors.New("email domain is not allowed")
-	ErrGmailAliasNotAllowed  = errors.New("Gmail alias is not allowed")
-	ErrRegistrationIPLimited = errors.New("registration IP limit reached")
-	ErrPasswordResetInvalid  = errors.New("password reset code is invalid")
-	ErrPasswordResetLocked   = errors.New("password reset confirmation is locked")
-	ErrPasswordResetLimited  = errors.New("password reset request is limited")
-	ErrMailUnavailable       = errors.New("mail service is unavailable")
-	ErrOpenTicketExists      = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
-	ErrTicketClosed          = fmt.Errorf("%w: ticket is closed", ErrConflict)
-	ErrTicketReplyPending    = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
-	ErrTicketMessageLimit    = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
-	ErrInvalidInput          = errors.New("invalid input")
-	ErrInvalidEnrollment     = errors.New("invalid or expired enrollment")
-	ErrInvalidCredential     = errors.New("invalid machine credential")
-	ErrNodeNotLinked         = errors.New("node is not linked to a machine")
-	ErrRuntimeNotConfigured  = errors.New("node runtime is not configured")
+	ErrNotFound                               = errors.New("not found")
+	ErrConflict                               = errors.New("conflict")
+	ErrEmailInUse                             = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrRegistrationClosed                     = errors.New("registration is closed")
+	ErrEmailDomainNotAllowed                  = errors.New("email domain is not allowed")
+	ErrGmailAliasNotAllowed                   = errors.New("Gmail alias is not allowed")
+	ErrRegistrationIPLimited                  = errors.New("registration IP limit reached")
+	ErrPasswordResetInvalid                   = errors.New("password reset code is invalid")
+	ErrPasswordResetLocked                    = errors.New("password reset confirmation is locked")
+	ErrPasswordResetLimited                   = errors.New("password reset request is limited")
+	ErrMailUnavailable                        = errors.New("mail service is unavailable")
+	ErrRegistrationEmailVerificationInvalid   = errors.New("registration email code is invalid")
+	ErrRegistrationEmailVerificationLocked    = errors.New("registration email verification is locked")
+	ErrRegistrationEmailVerificationLimited   = errors.New("registration email verification request is limited")
+	ErrRegistrationEmailVerificationDisabled  = errors.New("registration email verification is disabled")
+	ErrRegistrationEmailVerificationNeedsMail = errors.New("registration email verification requires mail")
+	ErrOpenTicketExists                       = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
+	ErrTicketClosed                           = fmt.Errorf("%w: ticket is closed", ErrConflict)
+	ErrTicketReplyPending                     = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
+	ErrTicketMessageLimit                     = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
+	ErrInvalidInput                           = errors.New("invalid input")
+	ErrInvalidEnrollment                      = errors.New("invalid or expired enrollment")
+	ErrInvalidCredential                      = errors.New("invalid machine credential")
+	ErrNodeNotLinked                          = errors.New("node is not linked to a machine")
+	ErrRuntimeNotConfigured                   = errors.New("node runtime is not configured")
 )
 
 type User struct {
@@ -145,6 +150,7 @@ type SiteSettings struct {
 	TOSURL                     string    `json:"tos_url"`
 	Logo                       string    `json:"logo"`
 	StopRegister               bool      `json:"stop_register"`
+	EmailVerificationEnabled   bool      `json:"email_verify"`
 	EmailWhitelistEnabled      bool      `json:"email_whitelist_enable"`
 	EmailWhitelistSuffixes     []string  `json:"email_whitelist_suffix"`
 	GmailAliasLimitEnabled     bool      `json:"email_gmail_limit_enable"`
@@ -161,6 +167,7 @@ type SaveSiteSettingsInput struct {
 	TOSURL                     string
 	Logo                       string
 	StopRegister               bool
+	EmailVerificationEnabled   bool
 	EmailWhitelistEnabled      bool
 	EmailWhitelistSuffixes     []string
 	GmailAliasLimitEnabled     bool
@@ -211,6 +218,52 @@ type PasswordResetMailJob struct {
 	SMTPPasswordCipher []byte
 	SMTPEncryption     string
 	SMTPFromAddress    string
+}
+
+type RegistrationEmailVerificationRequestInput struct {
+	Email       string
+	SourceIP    string
+	EmailDigest []byte
+	CodeDigest  []byte
+	CodeCipher  []byte
+}
+
+type RegistrationEmailVerificationMailJob struct {
+	ID                 int64
+	Attempt            int
+	EmailDigest        []byte
+	Recipient          string
+	CodeCipher         []byte
+	AppName            string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
+}
+
+type RegistrationEmailVerificationLimitError struct {
+	RetryAfterSeconds int64
+}
+
+func (e *RegistrationEmailVerificationLimitError) Error() string {
+	return ErrRegistrationEmailVerificationLimited.Error()
+}
+func (e *RegistrationEmailVerificationLimitError) Unwrap() error {
+	return ErrRegistrationEmailVerificationLimited
+}
+
+type RegistrationEmailVerificationLockedError struct {
+	RetryAfterSeconds int64
+}
+
+func (e *RegistrationEmailVerificationLockedError) Error() string {
+	return ErrRegistrationEmailVerificationLocked.Error()
+}
+func (e *RegistrationEmailVerificationLockedError) Unwrap() error {
+	return ErrRegistrationEmailVerificationLocked
 }
 
 type PasswordResetLimitError struct {

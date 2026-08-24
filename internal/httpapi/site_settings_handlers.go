@@ -37,6 +37,7 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	writeSuccess(w, http.StatusOK, guestConfigResponse{
 		TOSURL: nullablePublicString(settings.TOSURL), CaptchaType: "recaptcha",
+		IsEmailVerify:             boolToInt(settings.EmailVerificationEnabled),
 		RecaptchaV3ScoreThreshold: 0.5, AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
 		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
@@ -61,6 +62,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		TOSURL                     string    `json:"tos_url"`
 		Logo                       string    `json:"logo"`
 		StopRegister               *bool     `json:"stop_register"`
+		EmailVerificationEnabled   *bool     `json:"email_verify"`
 		EmailWhitelistEnabled      *bool     `json:"email_whitelist_enable"`
 		EmailWhitelistSuffixes     *[]string `json:"email_whitelist_suffix"`
 		GmailAliasLimitEnabled     *bool     `json:"email_gmail_limit_enable"`
@@ -78,7 +80,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	next := store.SaveSiteSettingsInput{
 		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
-		StopRegister: current.StopRegister, EmailWhitelistEnabled: current.EmailWhitelistEnabled,
+		StopRegister: current.StopRegister, EmailVerificationEnabled: current.EmailVerificationEnabled,
+		EmailWhitelistEnabled:  current.EmailWhitelistEnabled,
 		EmailWhitelistSuffixes: current.EmailWhitelistSuffixes, GmailAliasLimitEnabled: current.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: current.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   current.RegistrationIPLimitCount,
@@ -86,6 +89,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.StopRegister != nil {
 		next.StopRegister = *input.StopRegister
+	}
+	if input.EmailVerificationEnabled != nil {
+		next.EmailVerificationEnabled = *input.EmailVerificationEnabled
 	}
 	if input.EmailWhitelistEnabled != nil {
 		next.EmailWhitelistEnabled = *input.EmailWhitelistEnabled
@@ -105,10 +111,18 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	if input.RegistrationIPLimitMinutes != nil {
 		next.RegistrationIPLimitMinutes = *input.RegistrationIPLimitMinutes
 	}
+	if next.EmailVerificationEnabled && s.registrationEmailProtector == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置注册验证码加密密钥", nil)
+		return
+	}
 	session, _ := sessionFromContext(r.Context())
 	updated, err := s.store.UpdateSiteSettings(r.Context(), session.UserID, input.Revision, next, s.now())
 	if errors.Is(err, store.ErrConflict) {
 		writeAPIError(w, http.StatusConflict, "settings_conflict", "设置已被其他管理员修改，请刷新后重试", nil)
+		return
+	}
+	if errors.Is(err, store.ErrRegistrationEmailVerificationNeedsMail) {
+		writeAPIError(w, http.StatusConflict, "registration_email_requires_smtp", "启用注册邮箱验证前必须先启用 SMTP 邮件服务", nil)
 		return
 	}
 	if err != nil {
@@ -116,6 +130,13 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, updated)
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func nullablePublicString(value string) *string {
