@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 20
+const currentSchemaVersion = 21
 
 type Store struct {
 	db      *sql.DB
@@ -188,6 +188,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v20: %w", err)
 		}
 		version = 20
+	}
+	if version < 21 {
+		if _, err := tx.ExecContext(ctx, schemaV21); err != nil {
+			return fmt.Errorf("apply schema v21: %w", err)
+		}
+		version = 21
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -890,4 +896,25 @@ CREATE INDEX idx_login_link_mail_due ON login_link_mail_outbox(available_at, id)
     WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
 CREATE INDEX idx_login_link_mail_failed ON login_link_mail_outbox(failed_at DESC, id DESC)
     WHERE failed_at IS NOT NULL AND cancelled_at IS NULL;
+`
+
+const schemaV21 = `
+CREATE TABLE access_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE CHECK (length(token_hash) = 64),
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+    expires_at INTEGER,
+    last_used_at INTEGER,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK (expires_at IS NULL OR expires_at > created_at),
+    CHECK (last_used_at IS NULL OR last_used_at >= created_at),
+    CHECK (revoked_at IS NULL OR revoked_at >= created_at)
+);
+CREATE INDEX idx_access_tokens_user_active ON access_tokens(user_id, created_at DESC, id DESC)
+    WHERE revoked_at IS NULL;
+CREATE INDEX idx_access_tokens_expiry ON access_tokens(expires_at, id)
+    WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 `

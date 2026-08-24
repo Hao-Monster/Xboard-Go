@@ -43,13 +43,19 @@ var (
 	ErrRuntimeNotConfigured                   = errors.New("node runtime is not configured")
 )
 
+const (
+	CredentialKindCookieSession = "cookie_session"
+	CredentialKindAccessToken   = "access_token"
+)
+
 type User struct {
-	ID           int64
-	Email        string
-	PasswordHash string
-	IsAdmin      bool
-	Banned       bool
-	AccountKind  string
+	ID                int64
+	Email             string
+	PasswordHash      string
+	IsAdmin           bool
+	Banned            bool
+	AccountKind       string
+	SubscriptionToken string
 }
 
 type TicketStatus int
@@ -286,6 +292,8 @@ type LoginLinkExchangeInput struct {
 	SessionTokenHash     string
 	CSRFHash             string
 	SessionExpiresAt     time.Time
+	AccessTokenHash      string
+	AccessTokenName      string
 }
 
 type LoginLinkExchange struct {
@@ -516,14 +524,15 @@ type AdminUserMutation struct {
 }
 
 type SessionUser struct {
-	UserID     int64
-	Email      string
-	IsAdmin    bool
-	Banned     bool
-	CSRFHash   string
-	ExpiresAt  time.Time
-	SessionID  int64
-	LastUsedAt *time.Time
+	UserID         int64
+	Email          string
+	IsAdmin        bool
+	Banned         bool
+	CSRFHash       string
+	ExpiresAt      time.Time
+	SessionID      int64
+	LastUsedAt     *time.Time
+	CredentialKind string
 }
 
 type AccountSession struct {
@@ -532,6 +541,24 @@ type AccountSession struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
 	ExpiresAt  time.Time  `json:"expires_at"`
+}
+
+type CreateAccessTokenInput struct {
+	UserID    int64
+	TokenHash string
+	Name      string
+	ExpiresAt *time.Time
+}
+
+type AccountAccessToken struct {
+	ID         int64      `json:"id"`
+	UserID     int64      `json:"-"`
+	Name       string     `json:"name"`
+	IsCurrent  bool       `json:"is_current"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  *time.Time `json:"expires_at"`
 }
 
 type Machine struct {

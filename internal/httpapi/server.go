@@ -191,14 +191,16 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
+	root.HandleFunc("POST /api/v1/passport/auth/login", api.legacyLogin)
 	root.Handle("POST /api/v1/auth/mail-link/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestMailLoginLink)))
 	root.Handle("POST /api/v1/auth/login-link/exchange", api.requireTrustedOrigin(http.HandlerFunc(api.exchangeLoginLink)))
 	root.Handle("POST /api/v1/auth/quick-link", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
 	root.Handle("POST /api/v1/passport/auth/loginWithMailLink", api.requireTrustedOrigin(http.HandlerFunc(api.requestMailLoginLink)))
-	root.Handle("POST /api/v1/passport/auth/getQuickLoginUrl", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
+	root.HandleFunc("POST /api/v1/passport/auth/getQuickLoginUrl", api.legacyPassportQuickLoginLink)
 	root.Handle("POST /api/v1/user/getQuickLoginUrl", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createQuickLoginLink))))
 	root.HandleFunc("GET /api/v1/passport/auth/token2Login", api.legacyTokenToLogin)
 	root.Handle("POST /api/v1/auth/register", api.requireTrustedOrigin(http.HandlerFunc(api.register)))
+	root.HandleFunc("POST /api/v1/passport/auth/register", api.legacyRegister)
 	root.Handle("POST /api/v1/auth/registration-email/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestRegistrationEmailVerification)))
 	root.Handle("POST /api/v1/auth/password-reset/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestPasswordReset)))
 	root.Handle("POST /api/v1/auth/password-reset/confirm", api.requireTrustedOrigin(http.HandlerFunc(api.confirmPasswordReset)))
@@ -206,7 +208,14 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v1/auth/logout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.logout))))
 	root.Handle("GET /api/v1/auth/sessions", api.requireSession(http.HandlerFunc(api.listAccountSessions)))
 	root.Handle("DELETE /api/v1/auth/sessions/{sessionID}", api.requireSession(api.requireCSRF(http.HandlerFunc(api.revokeAccountSession))))
+	root.Handle("GET /api/v1/auth/access-tokens", api.requireSession(http.HandlerFunc(api.listAccessTokens)))
+	root.Handle("POST /api/v1/auth/access-tokens", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createAccessToken))))
+	root.Handle("DELETE /api/v1/auth/access-tokens", api.requireSession(api.requireCSRF(http.HandlerFunc(api.revokeAllAccessTokens))))
+	root.Handle("DELETE /api/v1/auth/access-tokens/{tokenID}", api.requireSession(api.requireCSRF(http.HandlerFunc(api.revokeAccessToken))))
 	root.Handle("PUT /api/v1/auth/password", api.requireSession(api.requireCSRF(http.HandlerFunc(api.changePassword))))
+	root.Handle("GET /api/v1/user/getActiveSession", api.requireLegacyBearer(http.HandlerFunc(api.legacyListAccessTokens)))
+	root.Handle("POST /api/v1/user/removeActiveSession", api.requireLegacyBearer(http.HandlerFunc(api.legacyRemoveAccessToken)))
+	root.Handle("POST /api/v1/user/logout", api.requireLegacyBearer(http.HandlerFunc(api.legacyLogout)))
 	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
 	root.Handle("POST /api/v1/invitations", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createInvitation))))
 	root.Handle("POST /api/v1/invitations/view", api.requireTrustedOrigin(http.HandlerFunc(api.recordInvitationView)))
@@ -373,6 +382,16 @@ func (s *server) health(w http.ResponseWriter, _ *http.Request) {
 
 func (s *server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			session, err := s.authenticateBearer(r)
+			if err != nil {
+				writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "登录凭证无效或已撤销", nil)
+				return
+			}
+			ctx := context.WithValue(r.Context(), sessionContextKey, session)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		cookie, err := r.Cookie(SessionCookieName)
 		if err != nil || cookie.Value == "" {
 			writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "请先登录", nil)
@@ -386,6 +405,34 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), sessionContextKey, session)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (s *server) requireLegacyBearer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, err := s.authenticateBearer(r)
+		if err != nil {
+			writeAPIError(w, http.StatusForbidden, "unauthenticated", "登录凭证无效或已撤销", nil)
+			return
+		}
+		ctx := context.WithValue(r.Context(), sessionContextKey, session)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *server) authenticateBearer(r *http.Request) (store.SessionUser, error) {
+	return s.authenticateBearerValue(r.Context(), r.Header.Get("Authorization"))
+}
+
+func (s *server) authenticateBearerValue(ctx context.Context, authorization string) (store.SessionUser, error) {
+	header := strings.TrimSpace(authorization)
+	if len(header) < 8 || len(header) > 256 {
+		return store.SessionUser{}, store.ErrNotFound
+	}
+	scheme, plaintext, found := strings.Cut(header, " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") || len(plaintext) != 48 || strings.ContainsAny(plaintext, " \t\r\n") {
+		return store.SessionUser{}, store.ErrNotFound
+	}
+	return s.store.AuthenticateAccessToken(ctx, security.DigestToken(plaintext), s.now())
 }
 
 func (s *server) requireAdmin(next http.Handler) http.Handler {
@@ -402,6 +449,10 @@ func (s *server) requireAdmin(next http.Handler) http.Handler {
 func (s *server) requireCSRF(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if session, ok := sessionFromContext(r.Context()); ok && session.CredentialKind == store.CredentialKindAccessToken {
 			next.ServeHTTP(w, r)
 			return
 		}

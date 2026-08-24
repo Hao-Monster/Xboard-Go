@@ -98,6 +98,40 @@ func TestQuickLoginLinkNormalizesUnsafeRedirectAndSupportsLegacyRoutes(t *testin
 	if verified.Code != http.StatusOK || verified.Header().Get("Referrer-Policy") != "no-referrer" {
 		t.Fatalf("legacy verify status=%d referrer=%q body=%s", verified.Code, verified.Header().Get("Referrer-Policy"), verified.Body)
 	}
+	var verifiedPayload struct {
+		Data struct {
+			Authorization string `json:"auth_data"`
+			Token         string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, verified, &verifiedPayload)
+	if !strings.HasPrefix(verifiedPayload.Data.Authorization, "Bearer ") || verifiedPayload.Data.Token == "" {
+		t.Fatalf("legacy verify payload=%#v", verifiedPayload.Data)
+	}
+	if response := bearerRequest(api, http.MethodGet, "/api/v1/auth/session", verifiedPayload.Data.Authorization, ""); response.Code != http.StatusOK {
+		t.Fatalf("legacy exchanged bearer status=%d body=%s", response.Code, response.Body)
+	}
+}
+
+func TestLegacyPassportQuickLinkAuthenticatesBodyBearerWithoutCookieCSRF(t *testing.T) {
+	api, _ := newTestAPI(t)
+	credential := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123")
+	created := bearerRequest(api, http.MethodPost, "/api/v1/passport/auth/getQuickLoginUrl", "",
+		`{"auth_data":"`+credential.Authorization+`","redirect":"invite"}`)
+	if created.Code != http.StatusOK {
+		t.Fatalf("legacy passport quick link status=%d body=%s", created.Code, created.Body)
+	}
+	var payload struct {
+		Data string `json:"data"`
+	}
+	decodeResponse(t, created, &payload)
+	_, redirect := loginLinkURLValues(t, payload.Data)
+	if redirect != "invite" {
+		t.Fatalf("legacy passport redirect=%q", redirect)
+	}
+	denied := bearerRequest(api, http.MethodPost, "/api/v1/passport/auth/getQuickLoginUrl", "",
+		`{"auth_data":"Bearer invalid","redirect":"invite"}`)
+	expectAPIError(t, denied, http.StatusUnauthorized, "unauthenticated")
 }
 
 func TestMailLoginLinkDoesNotEnumerateAccountsAndHonorsPersistentCooldown(t *testing.T) {

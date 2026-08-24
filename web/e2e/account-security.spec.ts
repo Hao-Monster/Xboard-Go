@@ -5,6 +5,46 @@ import { adminEmail, adminPassword } from "./support";
 const originalPassword = adminPassword;
 const replacementPassword = "e2e-replacement-password-456";
 
+test("administrator creates, uses, and revokes a long-lived credential without browser persistence", async ({ page }) => {
+  const pageErrors: string[] = [];
+  const serverErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
+  });
+
+  await login(page, originalPassword);
+  await page.getByRole("button", { name: "账号安全", exact: true }).click();
+  const credentialSection = page.getByRole("region", { name: "长期访问凭证" });
+  while (await credentialSection.getByRole("button", { name: "撤销凭证", exact: true }).count() > 0) {
+    await credentialSection.getByRole("button", { name: "撤销凭证", exact: true }).first().click();
+  }
+  await credentialSection.getByLabel("凭证名称").fill("Playwright isolated client");
+  await credentialSection.getByLabel("有效期").selectOption("permanent");
+  await credentialSection.getByRole("button", { name: "创建凭证" }).click();
+  const oneTime = credentialSection.getByRole("status");
+  await expect(oneTime).toContainText("请立即保存");
+  const authorization = (await oneTime.locator("code").textContent())?.trim() ?? "";
+  expect(authorization).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+  expect(await page.evaluate((secret) => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key !== null && localStorage.getItem(key)?.includes(secret) === true) return false;
+    }
+    return true;
+  }, authorization)).toBe(true);
+  expect((await page.request.get("/api/v1/auth/session", { headers: { Authorization: authorization } })).status()).toBe(200);
+
+  await oneTime.getByRole("button", { name: "关闭" }).click();
+  await expect(oneTime).toBeHidden();
+  const row = credentialSection.locator("[data-testid^='access-token-']", { hasText: "Playwright isolated client" });
+  await row.getByRole("button", { name: "撤销凭证" }).click();
+  await expect(row).toBeHidden();
+  expect((await page.request.get("/api/v1/auth/session", { headers: { Authorization: authorization } })).status()).toBe(401);
+  expect(pageErrors).toEqual([]);
+  expect(serverErrors).toEqual([]);
+});
+
 test("administrator revokes other sessions and changes the password", async ({ browser }) => {
   const firstContext = await browser.newContext();
   const secondContext = await browser.newContext();

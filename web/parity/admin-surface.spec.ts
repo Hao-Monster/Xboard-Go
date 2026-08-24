@@ -710,6 +710,176 @@ test("legacy password recovery preserves fields, cooldown, lockout, one-time cod
   }
 });
 
+test("legacy bearer credentials are permanent and support complete session revocation", async ({ page }) => {
+  const unique = Date.now();
+  const emailPrefix = `auth-session-${unique}`;
+  const email = `${emailPrefix}@legacy.local`;
+  const originalPassword = `auth-session-password-${unique}`;
+  const changedPassword = `${originalPassword}-changed`;
+  const loginURL = new URL("/api/v1/passport/auth/login", legacyURL).toString();
+  const infoURL = new URL("/api/v1/user/info", legacyURL).toString();
+  const activeSessionsURL = new URL("/api/v1/user/getActiveSession", legacyURL).toString();
+  const removeSessionURL = new URL("/api/v1/user/removeActiveSession", legacyURL).toString();
+  const logoutURL = new URL("/api/v1/user/logout", legacyURL).toString();
+
+  const administratorLogin = await page.request.post(loginURL, {
+    data: { email: legacyEmail, password: legacyPassword }
+  });
+  expect(administratorLogin.status()).toBe(200);
+  const administratorAuthorization = readStringProperty(
+    readProperty(await administratorLogin.json() as unknown, "data"),
+    "auth_data"
+  );
+  if (!administratorAuthorization) throw new Error("legacy administrator bearer credential is missing");
+
+  try {
+    const generated = await page.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization: administratorAuthorization },
+      data: { email_prefix: emailPrefix, email_suffix: "legacy.local", password: originalPassword }
+    });
+    expect(generated.status()).toBe(200);
+
+    const firstLogin = await page.request.post(loginURL, { data: { email, password: originalPassword } });
+    const secondLogin = await page.request.post(loginURL, { data: { email, password: originalPassword } });
+    expect(firstLogin.status()).toBe(200);
+    expect(secondLogin.status()).toBe(200);
+    const firstData = readObjectProperty(await firstLogin.json() as unknown, "data");
+    const secondData = readObjectProperty(await secondLogin.json() as unknown, "data");
+    expect(Object.keys(firstData).sort()).toEqual(["auth_data", "is_admin", "is_distributor", "token"]);
+    expect(readProperty(firstData, "is_admin")).toBe(false);
+    expect(readProperty(firstData, "is_distributor")).toBe(false);
+    const firstAuthorization = readStringProperty(firstData, "auth_data");
+    const secondAuthorization = readStringProperty(secondData, "auth_data");
+    expect(firstAuthorization).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+    expect(secondAuthorization).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+    if (!firstAuthorization || !secondAuthorization) throw new Error("legacy bearer credentials are missing");
+
+    const changed = await page.request.post(new URL("/api/v1/user/changePassword", legacyURL).toString(), {
+      headers: { authorization: firstAuthorization },
+      data: { old_password: originalPassword, new_password: changedPassword }
+    });
+    expect(changed.status()).toBe(200);
+    expect(readProperty(await changed.json() as unknown, "data")).toBe(true);
+    expect((await page.request.get(infoURL, { headers: { authorization: firstAuthorization } })).status()).toBe(403);
+    expect((await page.request.get(infoURL, { headers: { authorization: secondAuthorization } })).status()).toBe(403);
+
+    const currentLogin = await page.request.post(loginURL, { data: { email, password: changedPassword } });
+    expect(currentLogin.status()).toBe(200);
+    const currentAuthorization = readStringProperty(readProperty(await currentLogin.json() as unknown, "data"), "auth_data");
+    if (!currentAuthorization) throw new Error("legacy current bearer credential is missing");
+    const beforeSecond = await page.request.get(activeSessionsURL, { headers: { authorization: currentAuthorization } });
+    expect(beforeSecond.status()).toBe(200);
+    const beforeSecondSessions = readProperty(await beforeSecond.json() as unknown, "data");
+    expect(Array.isArray(beforeSecondSessions)).toBe(true);
+    if (!Array.isArray(beforeSecondSessions)) throw new Error("legacy active sessions are not an array");
+    const beforeIDs = new Set(beforeSecondSessions.map((session: unknown) => Number(readProperty(session, "id"))));
+
+    const removableLogin = await page.request.post(loginURL, { data: { email, password: changedPassword } });
+    expect(removableLogin.status()).toBe(200);
+    const removableAuthorization = readStringProperty(readProperty(await removableLogin.json() as unknown, "data"), "auth_data");
+    if (!removableAuthorization) throw new Error("legacy removable bearer credential is missing");
+    const afterSecond = await page.request.get(activeSessionsURL, { headers: { authorization: currentAuthorization } });
+    expect(afterSecond.status()).toBe(200);
+    const afterSecondSessions = readProperty(await afterSecond.json() as unknown, "data");
+    expect(Array.isArray(afterSecondSessions)).toBe(true);
+    if (!Array.isArray(afterSecondSessions)) throw new Error("legacy active sessions are not an array");
+    const afterSecondItems: unknown[] = afterSecondSessions;
+    const added: unknown[] = afterSecondItems.filter((session: unknown) => !beforeIDs.has(Number(readProperty(session, "id"))));
+    expect(added).toHaveLength(1);
+    const removableSession: unknown = added[0];
+    const removableSessionID = Number(readProperty(removableSession, "id"));
+    expect(Number.isSafeInteger(removableSessionID) && removableSessionID > 0).toBe(true);
+    expect(Object.keys(readObjectProperty({ session: removableSession }, "session")).sort()).toEqual([
+      "abilities", "created_at", "expires_at", "id", "last_used_at", "name", "tokenable_id", "tokenable_type", "updated_at"
+    ]);
+    expect(readProperty(removableSession, "expires_at")).toBeNull();
+    expect(readStringProperty(removableSession, "name")).toMatch(/^[A-Za-z0-9]{20}$/);
+    expect(readProperty(removableSession, "abilities")).toEqual(["*"]);
+
+    const removed = await page.request.post(removeSessionURL, {
+      headers: { authorization: currentAuthorization }, data: { session_id: removableSessionID }
+    });
+    expect(removed.status()).toBe(200);
+    expect(readProperty(await removed.json() as unknown, "data")).toBe(true);
+    expect((await page.request.get(infoURL, { headers: { authorization: removableAuthorization } })).status()).toBe(403);
+
+    const loggedOut = await page.request.post(logoutURL, { headers: { authorization: currentAuthorization } });
+    expect(loggedOut.status()).toBe(200);
+    expect(readProperty(await loggedOut.json() as unknown, "data")).toBe(true);
+    expect((await page.request.get(infoURL, { headers: { authorization: currentAuthorization } })).status()).toBe(403);
+    expect((await page.request.post(logoutURL)).status()).toBe(403);
+  } finally {
+    legacyTinker(`App\\Models\\User::where("email","${email}")->delete();`);
+    await page.request.post(logoutURL, { headers: { authorization: administratorAuthorization } });
+  }
+});
+
+test("Go compatibility bearer lifecycle preserves the observed Xboard contract", async ({ page }) => {
+  const loginURL = new URL("/api/v1/passport/auth/login", goURL).toString();
+  const activeSessionsURL = new URL("/api/v1/user/getActiveSession", goURL).toString();
+  const removeSessionURL = new URL("/api/v1/user/removeActiveSession", goURL).toString();
+  const logoutURL = new URL("/api/v1/user/logout", goURL).toString();
+  let currentAuthorization = "";
+  let removableAuthorization = "";
+
+  try {
+    const currentLogin = await page.request.post(loginURL, { data: { email: goEmail, password: goPassword } });
+    expect(currentLogin.status()).toBe(200);
+    const currentData = readObjectProperty(await currentLogin.json() as unknown, "data");
+    expect(Object.keys(currentData).sort()).toEqual(["auth_data", "is_admin", "is_distributor", "token"]);
+    currentAuthorization = readStringProperty(currentData, "auth_data") ?? "";
+    expect(currentAuthorization).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+    expect(readProperty(currentData, "is_admin")).toBe(true);
+    expect(readProperty(currentData, "is_distributor")).toBe(false);
+
+    const beforeSecond = await page.request.get(activeSessionsURL, { headers: { authorization: currentAuthorization } });
+    expect(beforeSecond.status()).toBe(200);
+    const beforeSessions = readProperty(await beforeSecond.json() as unknown, "data");
+    expect(Array.isArray(beforeSessions)).toBe(true);
+    if (!Array.isArray(beforeSessions)) throw new Error("Go compatibility sessions are not an array");
+    const beforeIDs = new Set(beforeSessions.map((session: unknown) => Number(readProperty(session, "id"))));
+
+    const removableLogin = await page.request.post(loginURL, { data: { email: goEmail, password: goPassword } });
+    expect(removableLogin.status()).toBe(200);
+    removableAuthorization = readStringProperty(readProperty(await removableLogin.json() as unknown, "data"), "auth_data") ?? "";
+    expect(removableAuthorization).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+
+    const afterSecond = await page.request.get(activeSessionsURL, { headers: { authorization: currentAuthorization } });
+    expect(afterSecond.status()).toBe(200);
+    const afterSessions = readProperty(await afterSecond.json() as unknown, "data");
+    expect(Array.isArray(afterSessions)).toBe(true);
+    if (!Array.isArray(afterSessions)) throw new Error("Go compatibility sessions are not an array");
+    const afterItems: unknown[] = afterSessions;
+    const added: unknown[] = afterItems.filter((session: unknown) => !beforeIDs.has(Number(readProperty(session, "id"))));
+    expect(added).toHaveLength(1);
+    const removable: unknown = added[0];
+    const removableID = Number(readProperty(removable, "id"));
+    expect(Object.keys(readObjectProperty({ session: removable }, "session")).sort()).toEqual([
+      "abilities", "created_at", "expires_at", "id", "last_used_at", "name", "tokenable_id", "tokenable_type", "updated_at"
+    ]);
+    expect(readProperty(removable, "expires_at")).toBeNull();
+    expect(readStringProperty(removable, "name")).toMatch(/^[a-f0-9]{20}$/);
+    expect(readProperty(removable, "abilities")).toEqual(["*"]);
+
+    const removed = await page.request.post(removeSessionURL, {
+      headers: { authorization: currentAuthorization }, data: { session_id: removableID }
+    });
+    expect(removed.status()).toBe(200);
+    expect(readProperty(await removed.json() as unknown, "data")).toBe(true);
+    expect((await page.request.get(new URL("/api/v1/auth/session", goURL).toString(), { headers: { authorization: removableAuthorization } })).status()).toBe(401);
+    removableAuthorization = "";
+
+    const loggedOut = await page.request.post(logoutURL, { headers: { authorization: currentAuthorization } });
+    expect(loggedOut.status()).toBe(200);
+    expect(readProperty(await loggedOut.json() as unknown, "data")).toBe(true);
+    expect((await page.request.get(new URL("/api/v1/auth/session", goURL).toString(), { headers: { authorization: currentAuthorization } })).status()).toBe(401);
+    currentAuthorization = "";
+  } finally {
+    if (removableAuthorization !== "") await page.request.post(logoutURL, { headers: { authorization: removableAuthorization } });
+    if (currentAuthorization !== "") await page.request.post(logoutURL, { headers: { authorization: currentAuthorization } });
+  }
+});
+
 test("legacy quick and mail links issue short-lived one-time login tokens", async ({ page }) => {
   test.setTimeout(90_000);
   const originalSettingOutput = legacyTinker('$row=App\\Models\\Setting::where("name","login_with_mail_link_enable")->first(); dump(base64_encode(json_encode(["exists"=>(bool)$row,"value"=>$row?->value])));');

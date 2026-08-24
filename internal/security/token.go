@@ -36,3 +36,14 @@ func DigestToken(plaintext string) string {
 	sum := sha256.Sum256([]byte(plaintext))
 	return hex.EncodeToString(sum[:])
 }
+
+func NewRandomHex(byteLength int) (string, error) {
+	if byteLength < 8 || byteLength > 64 {
+		return "", errors.New("random label length must be between 8 and 64 bytes")
+	}
+	random := make([]byte, byteLength)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(random), nil
+}
