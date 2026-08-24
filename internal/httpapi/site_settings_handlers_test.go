@@ -25,6 +25,9 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		initialGuest.IsEmailVerify != 0 || initialGuest.IsCaptcha != 0 || initialGuest.CaptchaType != "recaptcha" || initialGuest.IsRecaptcha != 0 {
 		t.Fatalf("initial guest config = %#v", initialGuest)
 	}
+	if string(initialGuest.EmailWhitelistSuffix) != "0" {
+		t.Fatalf("disabled public email whitelist = %s, want 0", initialGuest.EmailWhitelistSuffix)
+	}
 	if strings.Contains(publicInitial.Body.String(), "revision") || strings.Contains(publicInitial.Body.String(), "smtp") || strings.Contains(publicInitial.Body.String(), "stop_register") {
 		t.Fatalf("public config disclosed internal settings: %s", publicInitial.Body)
 	}
@@ -44,7 +47,10 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
-		"logo":"https://images.example.test/brand.svg","stop_register":true
+		"logo":"https://images.example.test/brand.svg","stop_register":true,
+		"email_whitelist_enable":true,"email_whitelist_suffix":[" Allowed.Test ","allowed.test","GMAIL.COM"],
+		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":true,
+		"register_limit_count":2,"register_limit_expire":30
 	}`)
 	if updatedResponse.Code != http.StatusOK {
 		t.Fatalf("update admin settings status=%d body=%s", updatedResponse.Code, updatedResponse.Body)
@@ -52,7 +58,10 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updated := decodeSiteSettingsEnvelope(t, updatedResponse)
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "Fast and safe control plane" ||
 		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
-		updated.Logo != "https://images.example.test/brand.svg" || !updated.StopRegister {
+		updated.Logo != "https://images.example.test/brand.svg" || !updated.StopRegister || !updated.EmailWhitelistEnabled ||
+		len(updated.EmailWhitelistSuffixes) != 2 || updated.EmailWhitelistSuffixes[0] != "allowed.test" || updated.EmailWhitelistSuffixes[1] != "gmail.com" ||
+		!updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled || updated.RegistrationIPLimitCount != 2 ||
+		updated.RegistrationIPLimitMinutes != 30 {
 		t.Fatalf("updated admin settings = %#v", updated)
 	}
 
@@ -63,6 +72,15 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		stringValue(guest.Logo) != updated.Logo {
 		t.Fatalf("public config did not observe update: %#v", guest)
 	}
+	var publicSuffixes []string
+	if err := json.Unmarshal(guest.EmailWhitelistSuffix, &publicSuffixes); err != nil || len(publicSuffixes) != 2 || publicSuffixes[0] != "allowed.test" || publicSuffixes[1] != "gmail.com" {
+		t.Fatalf("public whitelist suffixes = %q, decoded=%#v err=%v", guest.EmailWhitelistSuffix, publicSuffixes, err)
+	}
+	for _, internalKey := range []string{"email_whitelist_enable", "email_gmail_limit_enable", "register_limit_by_ip_enable", "register_limit_count", "register_limit_expire"} {
+		if strings.Contains(publicUpdated.Body.String(), internalKey) {
+			t.Fatalf("public config disclosed internal policy %q: %s", internalKey, publicUpdated.Body)
+		}
+	}
 	preservedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":2,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
@@ -72,8 +90,10 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		t.Fatalf("legacy-shape settings update status=%d body=%s", preservedResponse.Code, preservedResponse.Body)
 	}
 	preserved := decodeSiteSettingsEnvelope(t, preservedResponse)
-	if preserved.Revision != 3 || !preserved.StopRegister {
-		t.Fatalf("legacy-shape settings update reopened registration: %#v", preserved)
+	if preserved.Revision != 3 || !preserved.StopRegister || !preserved.EmailWhitelistEnabled ||
+		len(preserved.EmailWhitelistSuffixes) != 2 || !preserved.GmailAliasLimitEnabled || !preserved.RegistrationIPLimitEnabled ||
+		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 {
+		t.Fatalf("legacy-shape settings update lost registration policy fields: %#v", preserved)
 	}
 
 	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
@@ -85,6 +105,16 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		"logo":"https://user@example.test/logo.png"
 	}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
+	invalidWhitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
+		"email_whitelist_enable":true,"email_whitelist_suffix":["*.example.test"]
+	}`)
+	expectAPIError(t, invalidWhitelist, http.StatusUnprocessableEntity, "validation_failed")
+	invalidIPLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
+		"register_limit_count":0
+	}`)
+	expectAPIError(t, invalidIPLimit, http.StatusUnprocessableEntity, "validation_failed")
 	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","smtp_password":"secret"
 	}`)
@@ -97,27 +127,28 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	expectAPIError(t, csrfRejected, http.StatusForbidden, "csrf_failed")
 
 	current, err := database.GetSiteSettings(t.Context())
-	if err != nil || current.Revision != 3 || current.AppName != updated.AppName || !current.StopRegister {
+	if err != nil || current.Revision != 3 || current.AppName != updated.AppName || !current.StopRegister ||
+		!current.EmailWhitelistEnabled || !current.GmailAliasLimitEnabled || !current.RegistrationIPLimitEnabled {
 		t.Fatalf("rejected updates changed persistent state: settings=%#v err=%v", current, err)
 	}
 }
 
 type guestConfigContract struct {
-	AppName              string  `json:"app_name"`
-	AppDescription       *string `json:"app_description"`
-	AppURL               *string `json:"app_url"`
-	TOSURL               *string `json:"tos_url"`
-	Logo                 *string `json:"logo"`
-	IsEmailVerify        int     `json:"is_email_verify"`
-	IsInviteForce        int     `json:"is_invite_force"`
-	EmailWhitelistSuffix int     `json:"email_whitelist_suffix"`
-	IsCaptcha            int     `json:"is_captcha"`
-	CaptchaType          string  `json:"captcha_type"`
-	RecaptchaSiteKey     *string `json:"recaptcha_site_key"`
-	RecaptchaV3SiteKey   *string `json:"recaptcha_v3_site_key"`
-	RecaptchaV3Threshold float64 `json:"recaptcha_v3_score_threshold"`
-	TurnstileSiteKey     *string `json:"turnstile_site_key"`
-	IsRecaptcha          int     `json:"is_recaptcha"`
+	AppName              string          `json:"app_name"`
+	AppDescription       *string         `json:"app_description"`
+	AppURL               *string         `json:"app_url"`
+	TOSURL               *string         `json:"tos_url"`
+	Logo                 *string         `json:"logo"`
+	IsEmailVerify        int             `json:"is_email_verify"`
+	IsInviteForce        int             `json:"is_invite_force"`
+	EmailWhitelistSuffix json.RawMessage `json:"email_whitelist_suffix"`
+	IsCaptcha            int             `json:"is_captcha"`
+	CaptchaType          string          `json:"captcha_type"`
+	RecaptchaSiteKey     *string         `json:"recaptcha_site_key"`
+	RecaptchaV3SiteKey   *string         `json:"recaptcha_v3_site_key"`
+	RecaptchaV3Threshold float64         `json:"recaptcha_v3_score_threshold"`
+	TurnstileSiteKey     *string         `json:"turnstile_site_key"`
+	IsRecaptcha          int             `json:"is_recaptcha"`
 }
 
 func decodeSiteSettingsEnvelope(t *testing.T, response *httptest.ResponseRecorder) store.SiteSettings {

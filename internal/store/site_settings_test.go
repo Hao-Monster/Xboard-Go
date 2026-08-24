@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -29,13 +30,19 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		AppName: "  Example Board  ", AppDescription: "  First line\nSecond line  ",
 		AppURL: "https://panel.example.test/", TOSURL: "https://panel.example.test/terms/",
 		Logo: " https://images.example.test/brand.svg?version=1#logo ", StopRegister: true,
+		EmailWhitelistEnabled: true, EmailWhitelistSuffixes: []string{" Allowed.Test ", "allowed.test", "GMAIL.COM"},
+		GmailAliasLimitEnabled: true, RegistrationIPLimitEnabled: true,
+		RegistrationIPLimitCount: 2, RegistrationIPLimitMinutes: 30,
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "First line\nSecond line" ||
 		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
-		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" || !updated.StopRegister {
+		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" || !updated.StopRegister ||
+		!updated.EmailWhitelistEnabled || !updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled ||
+		updated.RegistrationIPLimitCount != 2 || updated.RegistrationIPLimitMinutes != 30 ||
+		!slices.Equal(updated.EmailWhitelistSuffixes, []string{"allowed.test", "gmail.com"}) {
 		t.Fatalf("normalized site settings = %#v", updated)
 	}
 
@@ -64,7 +71,9 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if afterTicketUpdate.Revision != ticketSettings.Revision || afterTicketUpdate.AppDescription != updated.AppDescription ||
-		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo || !afterTicketUpdate.StopRegister {
+		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo || !afterTicketUpdate.StopRegister ||
+		!afterTicketUpdate.EmailWhitelistEnabled || !afterTicketUpdate.GmailAliasLimitEnabled ||
+		!afterTicketUpdate.RegistrationIPLimitEnabled || afterTicketUpdate.RegistrationIPLimitCount != 2 {
 		t.Fatalf("ticket settings update lost site-only fields: %#v", afterTicketUpdate)
 	}
 }
@@ -78,6 +87,7 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 	valid := SaveSiteSettingsInput{
 		AppName: "Example", AppDescription: "Description", AppURL: "https://panel.example.test",
 		TOSURL: "https://panel.example.test/terms", Logo: "https://images.example.test/logo.png",
+		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
 	}
 	for name, mutate := range map[string]func(*SaveSiteSettingsInput){
 		"empty name":          func(input *SaveSiteSettingsInput) { input.AppName = " " },
@@ -96,6 +106,22 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 		"long logo URL": func(input *SaveSiteSettingsInput) {
 			input.Logo = "https://images.example.test/" + strings.Repeat("a", 2_048)
 		},
+		"empty enabled whitelist": func(input *SaveSiteSettingsInput) {
+			input.EmailWhitelistEnabled = true
+			input.EmailWhitelistSuffixes = nil
+		},
+		"wildcard whitelist":     func(input *SaveSiteSettingsInput) { input.EmailWhitelistSuffixes = []string{"*.example.test"} },
+		"single-label whitelist": func(input *SaveSiteSettingsInput) { input.EmailWhitelistSuffixes = []string{"localhost"} },
+		"too many whitelist items": func(input *SaveSiteSettingsInput) {
+			input.EmailWhitelistSuffixes = make([]string, 101)
+			for index := range input.EmailWhitelistSuffixes {
+				input.EmailWhitelistSuffixes[index] = fmt.Sprintf("d%d.example.test", index)
+			}
+		},
+		"zero IP count":   func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 0 },
+		"large IP count":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 101 },
+		"zero IP window":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 0 },
+		"large IP window": func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 10_081 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := valid
@@ -139,9 +165,10 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 
 func TestSiteURLNormalizationPreservesLegacyURLSemantics(t *testing.T) {
 	normalized, err := normalizeSiteSettings(SaveSiteSettingsInput{
-		AppName: "Query Board",
-		AppURL:  " https://panel.example.test/root/?next=/ ",
-		TOSURL:  "https://panel.example.test/terms/#section/",
+		AppName:                "Query Board",
+		AppURL:                 " https://panel.example.test/root/?next=/ ",
+		TOSURL:                 "https://panel.example.test/terms/#section/",
+		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +212,7 @@ func TestSchemaV14MigrationPreservesV13SiteSettings(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 15 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
+	if version != 16 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
 		settings.AppURL != "https://v13.example.test/" || settings.TOSURL != "https://v13.example.test/terms/" || settings.Logo != "" {
 		t.Fatalf("v13 to v14 migration result: version=%d settings=%#v", version, settings)
 	}
@@ -229,13 +256,66 @@ func TestSchemaV15MigrationPreservesV14SettingsAndDefaultsRegistrationOpen(t *te
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 15 || settings.Revision != 17 || settings.AppName != "V14 Board" || settings.AppDescription != "Preserved" ||
+	if version != 16 || settings.Revision != 17 || settings.AppName != "V14 Board" || settings.AppDescription != "Preserved" ||
 		settings.AppURL != "https://v14.example.test/" || settings.TOSURL != "https://v14.example.test/terms/" ||
 		settings.Logo != "https://v14.example.test/logo.svg" || settings.StopRegister {
 		t.Fatalf("v14 to v15 migration result: version=%d settings=%#v", version, settings)
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET stop_register = 2 WHERE id = 1`); err == nil {
 		t.Fatal("database accepted an invalid stop_register value")
+	}
+}
+
+func TestSchemaV16MigrationPreservesV15SettingsAndDefaultsRegistrationPolicies(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "schema-v15.db")
+	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	for step, schema := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV7Constraints,
+		schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15,
+	} {
+		if _, err := database.db.ExecContext(ctx, schema); err != nil {
+			t.Fatalf("apply pre-v16 schema step %d: %v", step+1, err)
+		}
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE app_settings SET app_name = 'V15 Board', logo = 'https://v15.example.test/logo.svg', stop_register = 1, revision = 23;
+		PRAGMA user_version = 15;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(v15 to v16) error = %v", err)
+	}
+	settings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version, counterTable int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='registration_ip_limits'`).Scan(&counterTable); err != nil {
+		t.Fatal(err)
+	}
+	if version != 16 || settings.Revision != 23 || settings.AppName != "V15 Board" || settings.Logo != "https://v15.example.test/logo.svg" ||
+		!settings.StopRegister || settings.EmailWhitelistEnabled || settings.GmailAliasLimitEnabled || settings.RegistrationIPLimitEnabled ||
+		settings.RegistrationIPLimitCount != 3 || settings.RegistrationIPLimitMinutes != 60 || counterTable != 1 ||
+		!slices.Equal(settings.EmailWhitelistSuffixes, strings.Split(defaultEmailWhitelistStorage, ",")) {
+		t.Fatalf("v15 to v16 migration result: version=%d settings=%#v counter_table=%d", version, settings, counterTable)
+	}
+	for _, statement := range []string{
+		`UPDATE app_settings SET email_whitelist_enable = 2 WHERE id = 1`,
+		`UPDATE app_settings SET register_limit_count = 0 WHERE id = 1`,
+		`UPDATE app_settings SET register_limit_expire = 10081 WHERE id = 1`,
+	} {
+		if _, err := database.db.ExecContext(ctx, statement); err == nil {
+			t.Fatalf("database accepted invalid v16 statement %q", statement)
+		}
 	}
 }
 
@@ -278,7 +358,7 @@ func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_audit_logs`).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 15 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
+	if version != 16 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
 		settings.AppURL != "https://preserved.example.test" || settings.AppDescription != "" || settings.TOSURL != "" || settings.Logo != "" || auditCount != 1 {
 		t.Fatalf("migration result: version=%d settings=%#v audits=%d", version, settings, auditCount)
 	}
@@ -310,6 +390,7 @@ func BenchmarkSiteSettingsUpdate(b *testing.B) {
 	input := SaveSiteSettingsInput{
 		AppName: "Benchmark Board", AppDescription: "Benchmark description",
 		AppURL: "https://benchmark.example.test", TOSURL: "https://benchmark.example.test/terms",
+		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
 	}
 	b.ReportAllocs()
 	b.ResetTimer()

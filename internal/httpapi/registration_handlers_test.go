@@ -70,6 +70,127 @@ func TestBasicRegistrationContractAndStopPolicy(t *testing.T) {
 	}
 }
 
+func TestRegistrationEmailAndSuccessfulIPPolicies(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	whitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"stop_register":false,"email_whitelist_enable":true,"email_whitelist_suffix":["allowed.test"],
+		"email_gmail_limit_enable":false,"register_limit_by_ip_enable":false,"register_limit_count":2,"register_limit_expire":1
+	}`)
+	if whitelist.Code != http.StatusOK {
+		t.Fatalf("save whitelist status=%d body=%s", whitelist.Code, whitelist.Body)
+	}
+	allowed := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"UPPER@ALLOWED.TEST","password":"password-123","password_confirmation":"password-123"
+	}`)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("normalized allowlisted registration status=%d body=%s", allowed.Code, allowed.Body)
+	}
+	blocked := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"blocked@example.test","password":"password-123","password_confirmation":"password-123"
+	}`)
+	expectAPIError(t, blocked, http.StatusBadRequest, "email_domain_not_allowed")
+
+	gmail := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"stop_register":false,"email_whitelist_enable":false,"email_whitelist_suffix":["allowed.test"],
+		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":false,"register_limit_count":2,"register_limit_expire":1
+	}`)
+	if gmail.Code != http.StatusOK {
+		t.Fatalf("save Gmail policy status=%d body=%s", gmail.Code, gmail.Body)
+	}
+	gmailAlias := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"first.last+tag@gmail.com","password":"password-123","password_confirmation":"password-123"
+	}`)
+	expectAPIError(t, gmailAlias, http.StatusBadRequest, "gmail_alias_not_allowed")
+	nonGmailDot := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"first.last+tag@example.test","password":"password-123","password_confirmation":"password-123"
+	}`)
+	if nonGmailDot.Code != http.StatusOK {
+		t.Fatalf("non-Gmail dot/plus registration status=%d body=%s", nonGmailDot.Code, nonGmailDot.Body)
+	}
+
+	ipPolicy := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":3,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"stop_register":false,"email_whitelist_enable":false,"email_whitelist_suffix":["allowed.test"],
+		"email_gmail_limit_enable":false,"register_limit_by_ip_enable":true,"register_limit_count":2,"register_limit_expire":1
+	}`)
+	if ipPolicy.Code != http.StatusOK {
+		t.Fatalf("save IP policy status=%d body=%s", ipPolicy.Code, ipPolicy.Body)
+	}
+	duplicate := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"first.last+tag@example.test","password":"password-123","password_confirmation":"password-123"
+	}`)
+	expectAPIError(t, duplicate, http.StatusBadRequest, "email_exists")
+	for _, email := range []string{"first-ip@example.test", "second-ip@example.test"} {
+		response := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+			"email":"`+email+`","password":"password-123","password_confirmation":"password-123"
+		}`)
+		if response.Code != http.StatusOK {
+			t.Fatalf("IP quota registration %s status=%d body=%s", email, response.Code, response.Body)
+		}
+	}
+	limited := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{
+		"email":"third-ip@example.test","password":"password-123","password_confirmation":"password-123"
+	}`)
+	expectAPIError(t, limited, http.StatusTooManyRequests, "registration_ip_limited")
+	if limited.Header().Get("Retry-After") != "60" {
+		t.Fatalf("IP policy Retry-After=%q, want 60", limited.Header().Get("Retry-After"))
+	}
+}
+
+func TestRegistrationPolicyRejectionSkipsPasswordHash(t *testing.T) {
+	_, database := newTestAPI(t)
+	administrator, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetSiteSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateSiteSettings(t.Context(), administrator.ID, settings.Revision, store.SaveSiteSettingsInput{
+		AppName: settings.AppName, AppDescription: settings.AppDescription, AppURL: settings.AppURL,
+		TOSURL: settings.TOSURL, Logo: settings.Logo, StopRegister: false,
+		EmailWhitelistSuffixes:     settings.EmailWhitelistSuffixes,
+		RegistrationIPLimitEnabled: true, RegistrationIPLimitCount: 2, RegistrationIPLimitMinutes: 60,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	for _, email := range []string{"precheck-first@example.test", "precheck-second@example.test"} {
+		if _, err := database.RegisterUser(t.Context(), store.RegisterUserInput{
+			Email: email, PasswordHash: "hash", SourceIP: "192.0.2.1",
+		}, fixedNow()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hasher := &countingRegistrationHasher{}
+	api := &server{
+		store: database, passwordHasher: hasher, now: fixedNow,
+		registrationRequests: newRequestLimiter(20, 15*time.Minute), registrationHashSlots: make(chan struct{}, 2),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
+		"email":"precheck-third@example.test","password":"password-123","password_confirmation":"password-123"
+	}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	api.register(response, request)
+	expectAPIError(t, response, http.StatusTooManyRequests, "registration_ip_limited")
+	if hasher.calls != 0 {
+		t.Fatalf("IP policy rejection executed %d password hashes", hasher.calls)
+	}
+}
+
+type countingRegistrationHasher struct{ calls int }
+
+func (h *countingRegistrationHasher) Hash(string) (string, error) {
+	h.calls++
+	return "hash", nil
+}
+
+func (*countingRegistrationHasher) Verify(string, string) bool { return false }
+
 func TestRegistrationRejectsUntrustedOriginAndExcessiveRequests(t *testing.T) {
 	api, _ := newTestAPI(t)
 	originRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
@@ -95,6 +216,20 @@ func TestRegistrationRejectsUntrustedOriginAndExcessiveRequests(t *testing.T) {
 	expectAPIError(t, limited, http.StatusTooManyRequests, "registration_rate_limited")
 	if limited.Header().Get("Retry-After") != "900" {
 		t.Fatalf("Retry-After=%q, want 900", limited.Header().Get("Retry-After"))
+	}
+}
+
+func TestRequestIPCanonicalizesPeerAndIgnoresUntrustedForwardingHeaders(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = "[2001:0db8:0000:0000:0000:0000:0000:0001]:4321"
+	request.Header.Set("X-Forwarded-For", "198.51.100.25")
+	request.Header.Set("X-Real-IP", "198.51.100.26")
+	if got := requestIP(request); got != "2001:db8::1" {
+		t.Fatalf("requestIP() = %q, want canonical peer IP", got)
+	}
+	request.RemoteAddr = "192.0.2.60"
+	if got := requestIP(request); got != "192.0.2.60" {
+		t.Fatalf("requestIP() without port = %q", got)
 	}
 }
 
@@ -152,6 +287,11 @@ func TestRegistrationRechecksClosureAfterPasswordHash(t *testing.T) {
 	if _, err := database.UpdateSiteSettings(t.Context(), administrator.ID, settings.Revision, store.SaveSiteSettingsInput{
 		AppName: settings.AppName, AppDescription: settings.AppDescription, AppURL: settings.AppURL,
 		TOSURL: settings.TOSURL, Logo: settings.Logo, StopRegister: true,
+		EmailWhitelistEnabled: settings.EmailWhitelistEnabled, EmailWhitelistSuffixes: settings.EmailWhitelistSuffixes,
+		GmailAliasLimitEnabled:     settings.GmailAliasLimitEnabled,
+		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
+		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
 	}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}

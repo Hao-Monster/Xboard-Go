@@ -95,3 +95,44 @@ func TestWorkerAutomaticallyClosesTicketsAnsweredMoreThanOneDayAgo(t *testing.T)
 		t.Fatalf("ticket status = %d, want closed", updated.Status)
 	}
 }
+
+func TestWorkerPrunesExpiredRegistrationIPState(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-registration-ip-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "registration-ip-worker-admin@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateSiteSettings(ctx, administrator.ID, settings.Revision, store.SaveSiteSettingsInput{
+		AppName: settings.AppName, AppDescription: settings.AppDescription, AppURL: settings.AppURL,
+		TOSURL: settings.TOSURL, Logo: settings.Logo, StopRegister: settings.StopRegister,
+		EmailWhitelistSuffixes:     settings.EmailWhitelistSuffixes,
+		RegistrationIPLimitEnabled: true, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 1,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.RegisterUser(ctx, store.RegisterUserInput{
+		Email: "registration-ip-worker@example.test", PasswordHash: "hash", SourceIP: "192.0.2.50",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now.Add(time.Minute) }
+	worker.applyDue(ctx)
+	if removed, err := database.PruneExpiredRegistrationIPLimits(ctx, now.Add(time.Minute), 100); err != nil || removed != 0 {
+		t.Fatalf("worker left expired registration IP state: removed=%d err=%v", removed, err)
+	}
+}

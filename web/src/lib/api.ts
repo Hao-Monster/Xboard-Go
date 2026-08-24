@@ -325,6 +325,12 @@ export interface SiteSettings {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_whitelist_enable: boolean;
+  email_whitelist_suffix: string[];
+  email_gmail_limit_enable: boolean;
+  register_limit_by_ip_enable: boolean;
+  register_limit_count: number;
+  register_limit_expire: number;
   updated_at: string;
 }
 
@@ -336,6 +342,12 @@ export interface SiteSettingsInput {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_whitelist_enable: boolean;
+  email_whitelist_suffix: string[];
+  email_gmail_limit_enable: boolean;
+  register_limit_by_ip_enable: boolean;
+  register_limit_count: number;
+  register_limit_expire: number;
 }
 
 export interface GuestConfig {

@@ -171,6 +171,17 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN stop_register`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `DROP TABLE registration_ip_limits`); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{
+		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
+		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",
+	} {
+		if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN `+column); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 11`); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +198,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ticket_mail_outbox_failed'`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 15 || auditCount != 1 || indexCount != 1 {
+	if version != 16 || auditCount != 1 || indexCount != 1 {
 		t.Fatalf("migration result: version=%d audits=%d failed_index=%d", version, auditCount, indexCount)
 	}
 }

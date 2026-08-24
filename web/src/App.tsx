@@ -79,7 +79,8 @@ export function App() {
   const identityChanged = (settings: SiteSettings) => {
     setGuestConfig((current) => ({
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
-      app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null
+      app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
+      email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0
     }));
   };
 
@@ -170,6 +171,8 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
         <p className="muted">{config.app_description ?? (mode === "register" ? "创建账号进入用户面板。" : "使用账号进入控制面板。")}</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>
           <label>邮箱<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
+          {mode === "register" && Array.isArray(config.email_whitelist_suffix) && config.email_whitelist_suffix.length > 0 &&
+            <p className="small muted registration-domain-hint">允许邮箱后缀：{config.email_whitelist_suffix.join("、")}</p>}
           <label>密码<input type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} minLength={mode === "register" ? 8 : undefined} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
           {mode === "register" && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {error !== "" && <div className="alert error" role="alert">{error}</div>}

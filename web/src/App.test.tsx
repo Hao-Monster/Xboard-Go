@@ -76,7 +76,7 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/guest/comm/config")) {
         return Promise.resolve(jsonResponse(200, { status: "success", data: {
           app_name: "Registration Board", app_description: null, app_url: null, tos_url: null, logo: null,
-          is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+          is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: ["example.test"], is_captcha: 0,
           captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
           recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
         } }));
@@ -89,6 +89,9 @@ describe("App public identity bootstrap", () => {
         requests.push({ path, body: JSON.parse(body) as unknown });
         return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 42, email: "new@example.test", is_admin: false } }));
       }
+      if (path.endsWith("/api/v1/notices?page=1")) {
+        return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
+      }
       return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
     }));
     const user = userEvent.setup();
@@ -96,6 +99,7 @@ describe("App public identity bootstrap", () => {
 
     await user.click(await screen.findByRole("button", { name: "注册账号" }));
     expect(screen.getByRole("heading", { name: "注册 Registration Board" })).toBeVisible();
+    expect(screen.getByText("允许邮箱后缀：example.test", { exact: true })).toBeVisible();
     await user.type(screen.getByLabelText("邮箱"), "NEW@EXAMPLE.TEST");
     await user.type(screen.getByLabelText("密码", { exact: true }), "password-123");
     await user.type(screen.getByLabelText("再次输入密码"), "password-123");

@@ -15,6 +15,7 @@ type Worker struct {
 	now             func() time.Time
 	logger          *slog.Logger
 	lastTicketSweep time.Time
+	lastIPSweep     time.Time
 	tracker         *operations.Tracker
 }
 
@@ -52,6 +53,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 		defer func() { w.tracker.MarkSchedulerRun(w.now()) }()
 	}
 	w.closeStaleTickets(ctx, now)
+	w.pruneRegistrationIPLimits(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -68,6 +70,23 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) pruneRegistrationIPLimits(ctx context.Context, now time.Time) {
+	if !w.lastIPSweep.IsZero() && now.Sub(w.lastIPSweep) < time.Minute {
+		return
+	}
+	w.lastIPSweep = now
+	removed, err := w.store.PruneExpiredRegistrationIPLimits(ctx, now, 1_000)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("prune expired registration IP limits", "error", err)
+		}
+		return
+	}
+	if removed > 0 {
+		w.logger.Info("expired registration IP limits pruned", "count", removed)
 	}
 }
 
