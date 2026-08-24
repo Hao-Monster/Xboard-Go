@@ -69,7 +69,7 @@ describe("NoticeManagementPage", () => {
 
     const search = screen.getByRole("searchbox", { name: "搜索公告标题" });
     await user.type(search, "Draft");
-    expect(screen.queryByText("Service update revised")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Service update revised")).not.toBeInTheDocument());
     await user.clear(search);
 
     await user.click(screen.getByRole("button", { name: "删除公告：Service update revised" }));
