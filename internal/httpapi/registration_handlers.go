@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -24,6 +25,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		EmailCode            string `json:"email_code"`
 		Password             string `json:"password"`
 		PasswordConfirmation string `json:"password_confirmation"`
+		InvitationCode       string `json:"invite_code"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -56,6 +58,13 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if settings.StopRegister {
 		writeAPIError(w, http.StatusBadRequest, "registration_closed", "本站已关闭注册", nil)
+		return
+	}
+	var invitationCodeDigest []byte
+	if settings.InvitationForceEnabled && input.InvitationCode == "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invitation_code_required", "必须使用邀请码才可以注册", map[string]string{
+			"invite_code": "必须使用邀请码才可以注册",
+		})
 		return
 	}
 	var emailDigest, emailCodeDigest []byte
@@ -92,6 +101,37 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	if input.InvitationCode != "" {
+		if !security.ValidInvitationCode(input.InvitationCode) {
+			if settings.InvitationForceEnabled {
+				writeAPIError(w, http.StatusBadRequest, "invitation_code_invalid", "邀请码无效", nil)
+				return
+			}
+		} else {
+			if s.invitationProtector == nil {
+				if settings.InvitationForceEnabled {
+					writeAPIError(w, http.StatusServiceUnavailable, "invitation_unavailable", "邀请码服务暂不可用", nil)
+					return
+				}
+			} else {
+				invitationCodeDigest, err = s.invitationProtector.CodeDigest(input.InvitationCode)
+				if err != nil {
+					writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+					return
+				}
+				if settings.InvitationForceEnabled {
+					if err := s.store.CheckInvitationCode(r.Context(), invitationCodeDigest); err != nil {
+						if errors.Is(err, store.ErrInvitationCodeInvalid) {
+							writeAPIError(w, http.StatusBadRequest, "invitation_code_invalid", "邀请码无效", nil)
+							return
+						}
+						handleStoreError(w, err)
+						return
+					}
+				}
+			}
+		}
+	}
 	releaseHashSlot, ok := s.beginPasswordHash()
 	if !ok {
 		w.Header().Set("Retry-After", "1")
@@ -112,7 +152,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	user, err := s.store.RegisterUserWithSession(r.Context(), store.RegisterUserInput{
 		Email: input.Email, PasswordHash: passwordHash, SourceIP: sourceIP,
-		EmailDigest: emailDigest, EmailCodeDigest: emailCodeDigest,
+		EmailDigest: emailDigest, EmailCodeDigest: emailCodeDigest, InvitationCodeDigest: invitationCodeDigest,
 	}, store.RegistrationSessionInput{
 		TokenHash: credentials.token.Digest, CSRFHash: credentials.csrf.Digest, ExpiresAt: credentials.expiresAt,
 	}, now)
@@ -122,6 +162,14 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, store.ErrEmailInUse):
 		writeAPIError(w, http.StatusBadRequest, "email_exists", "邮箱已在系统中存在", map[string]string{"email": "邮箱已在系统中存在"})
+		return
+	case errors.Is(err, store.ErrInvitationCodeRequired):
+		writeAPIError(w, http.StatusUnprocessableEntity, "invitation_code_required", "必须使用邀请码才可以注册", map[string]string{
+			"invite_code": "必须使用邀请码才可以注册",
+		})
+		return
+	case errors.Is(err, store.ErrInvitationCodeInvalid):
+		writeAPIError(w, http.StatusBadRequest, "invitation_code_invalid", "邀请码无效", nil)
 		return
 	case errors.Is(err, store.ErrEmailDomainNotAllowed), errors.Is(err, store.ErrGmailAliasNotAllowed), errors.Is(err, store.ErrRegistrationIPLimited):
 		s.writeRegistrationPolicyError(w, err)

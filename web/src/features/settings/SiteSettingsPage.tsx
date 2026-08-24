@@ -102,6 +102,12 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
             <label>限制时长（分钟）<input type="number" required min={1} max={10080} value={draft.register_limit_expire} onChange={(event) => updateDraft("register_limit_expire", Number(event.target.value))} /></label>
           </div>}
           <p className="small muted">只统计成功注册；达到次数后，在滑动窗口结束前拒绝同一来源 IP 的新注册。</p>
+          <label className="switch-label"><input type="checkbox" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
+          <div className="registration-policy-grid">
+            <label>邀请码生成上限<input type="number" required min={0} max={100} value={draft.invite_gen_limit} onChange={(event) => updateDraft("invite_gen_limit", Number(event.target.value))} /></label>
+          </div>
+          <label className="switch-label"><input type="checkbox" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
+          <p className="small muted">生成上限为 0 时禁止创建新邀请码；“永不过期”开启后，同一码可关联多个新用户。</p>
         </fieldset>
         {saved && <div className="alert success" role="status">站点设置已保存</div>}
         <div className="form-actions">
@@ -127,7 +133,10 @@ function toDraft(settings: SiteSettings): SiteDraft {
     email_gmail_limit_enable: settings.email_gmail_limit_enable,
     register_limit_by_ip_enable: settings.register_limit_by_ip_enable,
     register_limit_count: settings.register_limit_count,
-    register_limit_expire: settings.register_limit_expire
+    register_limit_expire: settings.register_limit_expire,
+    invite_force: settings.invite_force,
+    invite_gen_limit: settings.invite_gen_limit,
+    invite_never_expire: settings.invite_never_expire
   };
 }
 

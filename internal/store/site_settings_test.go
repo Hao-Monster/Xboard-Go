@@ -25,6 +25,9 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || initial.AppDescription != "" || initial.AppURL != "" || initial.TOSURL != "" || initial.Logo != "" {
 		t.Fatalf("initial site settings = %#v", initial)
 	}
+	if initial.InvitationForceEnabled || initial.InvitationCodeLimit != 5 || initial.InvitationNeverExpire {
+		t.Fatalf("initial invitation settings = %#v", initial)
+	}
 
 	updated, err := database.UpdateSiteSettings(ctx, administrator.ID, initial.Revision, SaveSiteSettingsInput{
 		AppName: "  Example Board  ", AppDescription: "  First line\nSecond line  ",
@@ -33,6 +36,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		EmailWhitelistEnabled: true, EmailWhitelistSuffixes: []string{" Allowed.Test ", "allowed.test", "GMAIL.COM"},
 		GmailAliasLimitEnabled: true, RegistrationIPLimitEnabled: true,
 		RegistrationIPLimitCount: 2, RegistrationIPLimitMinutes: 30,
+		InvitationForceEnabled: true, InvitationCodeLimit: 7, InvitationNeverExpire: true,
 	}, now)
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +46,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" || !updated.StopRegister ||
 		!updated.EmailWhitelistEnabled || !updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled ||
 		updated.RegistrationIPLimitCount != 2 || updated.RegistrationIPLimitMinutes != 30 ||
+		!updated.InvitationForceEnabled || updated.InvitationCodeLimit != 7 || !updated.InvitationNeverExpire ||
 		!slices.Equal(updated.EmailWhitelistSuffixes, []string{"allowed.test", "gmail.com"}) {
 		t.Fatalf("normalized site settings = %#v", updated)
 	}
@@ -73,7 +78,8 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	if afterTicketUpdate.Revision != ticketSettings.Revision || afterTicketUpdate.AppDescription != updated.AppDescription ||
 		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo || !afterTicketUpdate.StopRegister ||
 		!afterTicketUpdate.EmailWhitelistEnabled || !afterTicketUpdate.GmailAliasLimitEnabled ||
-		!afterTicketUpdate.RegistrationIPLimitEnabled || afterTicketUpdate.RegistrationIPLimitCount != 2 {
+		!afterTicketUpdate.RegistrationIPLimitEnabled || afterTicketUpdate.RegistrationIPLimitCount != 2 ||
+		!afterTicketUpdate.InvitationForceEnabled || afterTicketUpdate.InvitationCodeLimit != 7 || !afterTicketUpdate.InvitationNeverExpire {
 		t.Fatalf("ticket settings update lost site-only fields: %#v", afterTicketUpdate)
 	}
 }
@@ -88,6 +94,7 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 		AppName: "Example", AppDescription: "Description", AppURL: "https://panel.example.test",
 		TOSURL: "https://panel.example.test/terms", Logo: "https://images.example.test/logo.png",
 		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
+		InvitationCodeLimit: 5,
 	}
 	for name, mutate := range map[string]func(*SaveSiteSettingsInput){
 		"empty name":          func(input *SaveSiteSettingsInput) { input.AppName = " " },
@@ -122,6 +129,8 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 		"large IP count":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 101 },
 		"zero IP window":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 0 },
 		"large IP window": func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 10_081 },
+		"negative invitation limit": func(input *SaveSiteSettingsInput) { input.InvitationCodeLimit = -1 },
+		"large invitation limit":    func(input *SaveSiteSettingsInput) { input.InvitationCodeLimit = 101 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := valid

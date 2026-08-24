@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -15,6 +16,26 @@ func BenchmarkRegistrationEmailPolicy(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		if err := CheckRegistrationEmailPolicy(settings, "BENCHMARK@OUTLOOK.COM"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkInvitationCodeLookup(b *testing.B) {
+	database, ownerID := newSiteSettingsBenchmarkStore(b)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	digest := bytes.Repeat([]byte{0x4d}, invitationDigestBytes)
+	if _, err := database.CreateInvitationCode(ctx, ownerID, CreateInvitationCodeInput{
+		CodeDigest: digest,
+		CodeCipher: bytes.Repeat([]byte{0x5d}, 40),
+	}, now); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if err := database.CheckInvitationCode(ctx, digest); err != nil {
 			b.Fatal(err)
 		}
 	}

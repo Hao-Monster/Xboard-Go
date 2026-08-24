@@ -41,6 +41,7 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		RecaptchaV3ScoreThreshold: 0.5, AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
 		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
+		IsInviteForce: boolToInt(settings.InvitationForceEnabled),
 	})
 }
 
@@ -69,6 +70,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationIPLimitEnabled *bool     `json:"register_limit_by_ip_enable"`
 		RegistrationIPLimitCount   *int      `json:"register_limit_count"`
 		RegistrationIPLimitMinutes *int      `json:"register_limit_expire"`
+		InvitationForceEnabled     *bool     `json:"invite_force"`
+		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
+		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -86,6 +90,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationIPLimitEnabled: current.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   current.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: current.RegistrationIPLimitMinutes,
+		InvitationForceEnabled:     current.InvitationForceEnabled,
+		InvitationCodeLimit:        current.InvitationCodeLimit,
+		InvitationNeverExpire:      current.InvitationNeverExpire,
 	}
 	if input.StopRegister != nil {
 		next.StopRegister = *input.StopRegister
@@ -111,8 +118,21 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	if input.RegistrationIPLimitMinutes != nil {
 		next.RegistrationIPLimitMinutes = *input.RegistrationIPLimitMinutes
 	}
+	if input.InvitationForceEnabled != nil {
+		next.InvitationForceEnabled = *input.InvitationForceEnabled
+	}
+	if input.InvitationCodeLimit != nil {
+		next.InvitationCodeLimit = *input.InvitationCodeLimit
+	}
+	if input.InvitationNeverExpire != nil {
+		next.InvitationNeverExpire = *input.InvitationNeverExpire
+	}
 	if next.EmailVerificationEnabled && s.registrationEmailProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置注册验证码加密密钥", nil)
+		return
+	}
+	if next.InvitationForceEnabled && s.invitationProtector == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置邀请码加密密钥", nil)
 		return
 	}
 	session, _ := sessionFromContext(r.Context())

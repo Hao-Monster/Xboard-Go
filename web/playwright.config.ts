@@ -39,7 +39,8 @@ export default defineConfig({
         XBOARD_ALLOWED_ORIGINS: "http://127.0.0.1:4173",
         XBOARD_COOKIE_SECURE: "false",
         XBOARD_BOOTSTRAP_ADMIN_EMAIL: "admin@e2e.test",
-        XBOARD_BOOTSTRAP_ADMIN_PASSWORD: "e2e-admin-password-123"
+        XBOARD_BOOTSTRAP_ADMIN_PASSWORD: "e2e-admin-password-123",
+        XBOARD_SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       }
     },
     {

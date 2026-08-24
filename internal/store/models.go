@@ -24,6 +24,10 @@ var (
 	ErrRegistrationEmailVerificationLimited   = errors.New("registration email verification request is limited")
 	ErrRegistrationEmailVerificationDisabled  = errors.New("registration email verification is disabled")
 	ErrRegistrationEmailVerificationNeedsMail = errors.New("registration email verification requires mail")
+	ErrInvitationCodeRequired                 = errors.New("invitation code is required")
+	ErrInvitationCodeInvalid                  = errors.New("invitation code is invalid")
+	ErrInvitationCodeLimit                    = errors.New("invitation code generation limit reached")
+	ErrInvitationCodeCollision                = fmt.Errorf("%w: invitation code collision", ErrConflict)
 	ErrOpenTicketExists                       = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
 	ErrTicketClosed                           = fmt.Errorf("%w: ticket is closed", ErrConflict)
 	ErrTicketReplyPending                     = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
@@ -157,6 +161,9 @@ type SiteSettings struct {
 	RegistrationIPLimitEnabled bool      `json:"register_limit_by_ip_enable"`
 	RegistrationIPLimitCount   int       `json:"register_limit_count"`
 	RegistrationIPLimitMinutes int       `json:"register_limit_expire"`
+	InvitationForceEnabled     bool      `json:"invite_force"`
+	InvitationCodeLimit        int       `json:"invite_gen_limit"`
+	InvitationNeverExpire      bool      `json:"invite_never_expire"`
 	UpdatedAt                  time.Time `json:"updated_at"`
 }
 
@@ -174,6 +181,29 @@ type SaveSiteSettingsInput struct {
 	RegistrationIPLimitEnabled bool
 	RegistrationIPLimitCount   int
 	RegistrationIPLimitMinutes int
+	InvitationForceEnabled     bool
+	InvitationCodeLimit        int
+	InvitationNeverExpire      bool
+}
+
+type CreateInvitationCodeInput struct {
+	CodeDigest []byte
+	CodeCipher []byte
+}
+
+type InvitationCode struct {
+	ID         int64     `json:"id"`
+	OwnerID    int64     `json:"-"`
+	CodeDigest []byte    `json:"-"`
+	CodeCipher []byte    `json:"-"`
+	PV         int64     `json:"pv"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type InvitationSummary struct {
+	Codes        []InvitationCode
+	InvitedCount int64
 }
 
 type TicketMailJob struct {

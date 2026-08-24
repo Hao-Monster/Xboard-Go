@@ -10,7 +10,7 @@ import (
 
 func TestUserContentMatchesLegacySubscriptionAndPlaceholderRules(t *testing.T) {
 	const body = "# {{siteName}}\n\n{{subscribeUrl}}\n\n{{urlEncodeSubscribeUrl}}\n\n{{safeBase64SubscribeUrl}}\n\n<!--access start-->private one<!--access end-->\n\n<!--access start-->private two<!--access end-->"
-	const subscriptionURL = "https://panel.example.test/api/v1/client/subscribe?token=0123456789abcdef0123456789abcdef"
+	const subscriptionURL = "https://panel.example.test/api/v1/client/subscribe?token=0123456789abcdef0123456789abcdef" // gitleaks:allow -- deterministic fake test fixture
 
 	active := UserContent(body, "Xboard-Go", subscriptionURL, true)
 	if !strings.Contains(active, "private one") || !strings.Contains(active, subscriptionURL) {

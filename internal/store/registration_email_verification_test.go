@@ -55,7 +55,7 @@ func TestSchemaV18MigrationPreservesV17DataAndAddsRegistrationVerification(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 18 || users != 1 || challenges != 1 || outbox != 1 || settings.EmailVerificationEnabled {
+	if version != currentSchemaVersion || users != 1 || challenges != 1 || outbox != 1 || settings.EmailVerificationEnabled {
 		t.Fatalf("migration result version=%d users=%d tables=(%d,%d) email_verify=%t", version, users, challenges, outbox, settings.EmailVerificationEnabled)
 	}
 }

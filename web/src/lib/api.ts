@@ -332,6 +332,9 @@ export interface SiteSettings {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  invite_force: boolean;
+  invite_gen_limit: number;
+  invite_never_expire: boolean;
   updated_at: string;
 }
 
@@ -350,6 +353,9 @@ export interface SiteSettingsInput {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  invite_force: boolean;
+  invite_gen_limit: number;
+  invite_never_expire: boolean;
 }
 
 export interface GuestConfig {
@@ -368,6 +374,17 @@ export interface GuestConfig {
   recaptcha_v3_score_threshold: number;
   turnstile_site_key: string | null;
   is_recaptcha: number;
+}
+
+export interface InvitationCode {
+  code: string;
+  pv: number;
+  created_at: string;
+}
+
+export interface InvitationSummary {
+  codes: InvitationCode[];
+  invited_count: number;
 }
 
 export interface WorkerStatus {
@@ -565,9 +582,10 @@ export class APIClient implements AdminAPI {
     return this.request<UserSession>("/api/v1/auth/login", { method: "POST", body: { email, password } });
   }
 
-  async register(email: string, password: string, passwordConfirmation: string, emailCode = ""): Promise<UserSession> {
+  async register(email: string, password: string, passwordConfirmation: string, emailCode = "", invitationCode = ""): Promise<UserSession> {
     const body: Record<string, string> = { email, password, password_confirmation: passwordConfirmation };
     if (emailCode !== "") body.email_code = emailCode;
+    if (invitationCode !== "") body.invite_code = invitationCode;
     return this.request<UserSession>("/api/v1/auth/register", {
       method: "POST", body
     });
@@ -604,6 +622,18 @@ export class APIClient implements AdminAPI {
       method: "PUT",
       body: { old_password: oldPassword, new_password: newPassword }
     });
+  }
+
+  async getInvitations(): Promise<InvitationSummary> {
+    return this.request<InvitationSummary>("/api/v1/invitations");
+  }
+
+  async createInvitation(): Promise<InvitationCode> {
+    return this.request<InvitationCode>("/api/v1/invitations", { method: "POST", body: {} });
+  }
+
+  async recordInvitationView(invitationCode: string): Promise<void> {
+    await this.request<boolean>("/api/v1/invitations/view", { method: "POST", body: { invite_code: invitationCode } });
   }
 
   async listMachines(): Promise<Machine[]> {

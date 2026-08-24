@@ -28,7 +28,8 @@ export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [guestConfig, setGuestConfig] = useState<GuestConfig>(defaultGuestConfig);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromHash());
+  const [authLocation, setAuthLocation] = useState(() => window.location.hash);
+  const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<"system" | "settings" | "servers" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
 
   useEffect(() => {
@@ -61,20 +62,20 @@ export function App() {
   }, [authMode, guestConfig, session]);
 
   useEffect(() => {
-    const followHash = () => setAuthMode(authModeFromHash());
+    const followHash = () => setAuthLocation(window.location.hash);
     window.addEventListener("hashchange", followHash);
     return () => window.removeEventListener("hashchange", followHash);
   }, []);
 
   const switchAuthMode = (mode: AuthMode) => {
-    setAuthMode(mode);
     window.history.replaceState(null, "", mode === "register" ? "#/register" : mode === "recover" ? "#/forgetpassword" : "#/login");
+    setAuthLocation(window.location.hash);
   };
 
   const authenticated = (nextSession: UserSession) => {
     setSession(nextSession);
-    setAuthMode("login");
     window.history.replaceState(null, "", "#/");
+    setAuthLocation(window.location.hash);
   };
 
   const identityChanged = (settings: SiteSettings) => {
@@ -82,6 +83,7 @@ export function App() {
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
       app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
       is_email_verify: settings.email_verify ? 1 : 0,
+      is_invite_force: settings.invite_force ? 1 : 0,
       email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0
     }));
   };
@@ -142,6 +144,9 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [emailCode, setEmailCode] = useState("");
+  const linkedInvitationCode = mode === "register" ? invitationCodeFromHash() : null;
+  const [invitationCode, setInvitationCode] = useState("");
+  const effectiveInvitationCode = linkedInvitationCode ?? invitationCode;
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -204,7 +209,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
         }
       }
       if (mode === "register") {
-        onAuthenticated(await api.register(email, password, confirmation, emailCode));
+        onAuthenticated(await api.register(email, password, confirmation, emailCode, effectiveInvitationCode));
       } else if (mode === "recover") {
         await api.resetPassword(email, emailCode, password);
         setMessage("重置密码成功,正在返回登录");
@@ -230,6 +235,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
           {mode === "register" && Array.isArray(config.email_whitelist_suffix) && config.email_whitelist_suffix.length > 0 &&
             <p className="small muted registration-domain-hint">允许邮箱后缀：{config.email_whitelist_suffix.join("、")}</p>}
           {(mode === "recover" || (mode === "register" && config.is_email_verify === 1)) && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendEmailCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : "发送"}</button></div>}
+          {mode === "register" && <label>邀请码<input aria-label="邀请码" placeholder={config.is_invite_force === 1 ? "邀请码,（必填）" : "邀请码,（选填）"} autoComplete="off" maxLength={20} value={effectiveInvitationCode} required={config.is_invite_force === 1} disabled={linkedInvitationCode !== null} onChange={(event) => setInvitationCode(event.target.value)} /></label>}
           <label>密码<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
           {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
@@ -237,12 +243,13 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
           <button className="button primary full" type="submit" disabled={submitting || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
         </form>
         {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
-          setError(""); setMessage(""); setEmailCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");
+          setError(""); setMessage(""); setEmailCode(""); setInvitationCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");
         }}>忘记密码</button>}
         <button className="button ghost full auth-mode-switch" type="button" disabled={submitting || sendingCode} onClick={() => {
           setError("");
           setMessage("");
           setEmailCode("");
+          setInvitationCode("");
           setCooldown(0);
           setResetComplete(false);
           onModeChange(mode === "login" ? "register" : "login");
@@ -253,8 +260,15 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
   );
 }
 
-function authModeFromHash(): AuthMode {
-  if (window.location.hash.startsWith("#/register")) return "register";
-  if (window.location.hash.startsWith("#/forgetpassword")) return "recover";
+function authModeFromHash(hash = window.location.hash): AuthMode {
+  if (hash.startsWith("#/register")) return "register";
+  if (hash.startsWith("#/forgetpassword")) return "recover";
   return "login";
+}
+
+function invitationCodeFromHash(): string | null {
+  const queryIndex = window.location.hash.indexOf("?");
+  if (queryIndex < 0) return null;
+  const code = new URLSearchParams(window.location.hash.slice(queryIndex + 1)).get("code");
+  return code === null || code === "" ? null : code;
 }

@@ -20,6 +20,9 @@ const initial: SiteSettings = {
   register_limit_by_ip_enable: false,
   register_limit_count: 3,
   register_limit_expire: 60,
+  invite_force: false,
+  invite_gen_limit: 5,
+  invite_never_expire: false,
   updated_at: "2026-08-24T12:00:00Z"
 };
 
@@ -32,7 +35,8 @@ describe("SiteSettingsPage", () => {
       email_verify: true,
       email_whitelist_enable: true, email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true, register_limit_by_ip_enable: true,
-      register_limit_count: 2, register_limit_expire: 30
+      register_limit_count: 2, register_limit_expire: 30,
+      invite_force: true, invite_gen_limit: 7, invite_never_expire: true
     };
     const api = {
       getSiteSettings: vi.fn().mockResolvedValue(initial),
@@ -55,6 +59,9 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByRole("checkbox", { name: "IP注册限制" })).not.toBeChecked();
     expect(screen.queryByLabelText("邮箱后缀")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("注册次数")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "强制邀请码" })).not.toBeChecked();
+    expect(screen.getByLabelText("邀请码生成上限")).toHaveValue(5);
+    expect(screen.getByRole("checkbox", { name: "邀请码永不过期" })).not.toBeChecked();
 
     await user.clear(screen.getByLabelText("站点名称"));
     await user.type(screen.getByLabelText("站点名称"), updated.app_name);
@@ -76,6 +83,10 @@ describe("SiteSettingsPage", () => {
     await user.type(screen.getByLabelText("注册次数"), "2");
     await user.clear(screen.getByLabelText("限制时长（分钟）"));
     await user.type(screen.getByLabelText("限制时长（分钟）"), "30");
+    await user.click(screen.getByRole("checkbox", { name: "强制邀请码" }));
+    await user.clear(screen.getByLabelText("邀请码生成上限"));
+    await user.type(screen.getByLabelText("邀请码生成上限"), "7");
+    await user.click(screen.getByRole("checkbox", { name: "邀请码永不过期" }));
     await user.click(screen.getByRole("button", { name: "保存站点设置" }));
 
     await waitFor(() => expect(api.updateSiteSettings).toHaveBeenCalledWith({
@@ -92,7 +103,10 @@ describe("SiteSettingsPage", () => {
       email_gmail_limit_enable: true,
       register_limit_by_ip_enable: true,
       register_limit_count: 2,
-      register_limit_expire: 30
+      register_limit_expire: 30,
+      invite_force: true,
+      invite_gen_limit: 7,
+      invite_never_expire: true
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("站点设置已保存");
     expect(screen.getByLabelText("站点网址")).toHaveValue(updated.app_url);

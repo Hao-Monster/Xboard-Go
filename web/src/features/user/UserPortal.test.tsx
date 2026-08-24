@@ -17,6 +17,7 @@ describe("UserPortal", () => {
       getKnowledge: vi.fn(),
       listTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
+      getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined)
     };
     const onSignedOut = vi.fn();
@@ -36,6 +37,9 @@ describe("UserPortal", () => {
     await user.click(screen.getByRole("button", { name: "我的工单" }));
     expect(await screen.findByRole("heading", { name: "我的工单" })).toBeVisible();
     expect(api.listTickets).toHaveBeenCalledWith(1, 20);
+    await user.click(screen.getByRole("button", { name: "我的邀请" }));
+    expect(await screen.findByRole("heading", { name: "我的邀请" })).toBeVisible();
+    expect(api.getInvitations).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("button", { name: "退出" }));
     await waitFor(() => expect(onSignedOut).toHaveBeenCalledTimes(1));
@@ -50,6 +54,7 @@ describe("UserPortal", () => {
       getKnowledge: vi.fn(),
       listTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
+      getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
       logout: vi.fn().mockRejectedValue(new Error("会话注销失败"))
     };
     const onSignedOut = vi.fn();
