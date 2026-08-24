@@ -255,6 +255,11 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     listRoutingRules: vi.fn().mockResolvedValue([]),
     createRoutingRule: vi.fn(),
     updateRoutingRule: vi.fn(),
-    deleteRoutingRule: vi.fn()
+    deleteRoutingRule: vi.fn(),
+    listAdminUsers: vi.fn().mockResolvedValue({ items: [] }),
+    getAdminUser: vi.fn(),
+    createAdminUser: vi.fn(),
+    updateAdminUser: vi.fn(),
+    resetAdminUserPassword: vi.fn()
   };
 }

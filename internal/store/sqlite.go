@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 3 {
+	if version > 4 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -78,6 +78,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v3: %w", err)
 		}
 		version = 3
+	}
+	if version < 4 {
+		if _, err := tx.ExecContext(ctx, schemaV4); err != nil {
+			return fmt.Errorf("apply schema v4: %w", err)
+		}
+		version = 4
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -362,4 +368,15 @@ CREATE TABLE node_route_memberships (
     PRIMARY KEY (node_id, route_id)
 );
 CREATE INDEX idx_node_routes_route ON node_route_memberships(route_id, node_id);
+`
+
+const schemaV4 = `
+ALTER TABLE users ADD COLUMN account_kind TEXT NOT NULL DEFAULT 'human'
+    CHECK (account_kind IN ('human', 'internal_subscription'));
+ALTER TABLE users ADD COLUMN admin_revision INTEGER NOT NULL DEFAULT 1 CHECK (admin_revision > 0);
+
+CREATE INDEX idx_users_directory_kind_id ON users(account_kind, id DESC);
+CREATE INDEX idx_users_directory_banned_id ON users(account_kind, banned, id DESC);
+CREATE INDEX idx_users_directory_group_id ON users(account_kind, group_id, id DESC);
+CREATE INDEX idx_users_directory_email_id ON users(account_kind, email COLLATE NOCASE, id DESC);
 `

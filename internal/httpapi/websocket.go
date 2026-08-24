@@ -479,6 +479,12 @@ func usersSyncEnvelope(snapshot wsNodeSnapshot) wsEnvelope {
 	}}
 }
 
+func userDeltaEnvelope(nodeID int64, action string, users []store.RuntimeUser, timestamp int64) wsEnvelope {
+	return wsEnvelope{Event: "sync.user.delta", Data: map[string]any{
+		"node_id": nodeID, "action": action, "users": users, "timestamp": timestamp,
+	}}
+}
+
 func devicesSyncEnvelope(snapshot wsNodeSnapshot) wsEnvelope {
 	return wsEnvelope{Event: "sync.devices", Data: map[string]any{
 		"node_id": snapshot.summary.ID, "users": snapshot.devices, "timestamp": snapshot.timestamp,
@@ -618,14 +624,21 @@ func (h *wsHub) NotifyDeviceStates(ctx context.Context, userIDs []int64) {
 	if len(userIDs) == 0 {
 		return
 	}
-	h.deviceSyncMu.Lock()
-	defer h.deviceSyncMu.Unlock()
-
 	targetNodeIDs, err := h.store.ListRuntimeNodeIDsForUsers(ctx, userIDs)
 	if err != nil {
 		h.logger.Warn("resolve websocket device synchronization targets", "error", err)
 		return
 	}
+	h.notifyDeviceStatesToNodeIDs(ctx, targetNodeIDs)
+}
+
+func (h *wsHub) notifyDeviceStatesToNodeIDs(ctx context.Context, targetNodeIDs []int64) {
+	if len(targetNodeIDs) == 0 {
+		return
+	}
+	h.deviceSyncMu.Lock()
+	defer h.deviceSyncMu.Unlock()
+
 	targets := make(map[int64]struct{}, len(targetNodeIDs))
 	for _, nodeID := range targetNodeIDs {
 		targets[nodeID] = struct{}{}
@@ -674,5 +687,52 @@ func (h *wsHub) NotifyDeviceStates(ctx context.Context, userIDs []int64) {
 			}
 			current.enqueue(devicesSyncEnvelope(snapshot))
 		}
+	}
+}
+
+// NotifyUserMutation publishes an O(changed users) delta to every runtime node
+// in the old or new group. A full snapshot remains the reconnect baseline.
+func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUUID string, oldGroupID, newGroupID *int64, devicesCleared bool) {
+	groupIDs := make([]int64, 0, 2)
+	if oldGroupID != nil {
+		groupIDs = append(groupIDs, *oldGroupID)
+	}
+	if newGroupID != nil && (oldGroupID == nil || *newGroupID != *oldGroupID) {
+		groupIDs = append(groupIDs, *newGroupID)
+	}
+	if len(groupIDs) == 0 {
+		return
+	}
+	targets, err := h.store.ListRuntimeNodeTargetsForGroups(ctx, groupIDs)
+	if err != nil {
+		h.logger.Warn("resolve websocket user delta targets", "user_id", userID, "error", err)
+		return
+	}
+	now := h.now()
+	for _, target := range targets {
+		h.mu.RLock()
+		connection := h.machines[target.MachineID]
+		h.mu.RUnlock()
+		if connection == nil || !connection.hasNode(target.NodeID) {
+			continue
+		}
+		user, err := h.store.GetNodeRuntimeUser(ctx, target.NodeID, userID, now)
+		action := "add"
+		users := []store.RuntimeUser{user}
+		if errors.Is(err, store.ErrNotFound) {
+			action = "remove"
+			users = []store.RuntimeUser{{ID: userID, UUID: previousUUID}}
+		} else if err != nil {
+			h.logger.Warn("prepare websocket user delta", "machine_id", target.MachineID, "node_id", target.NodeID, "user_id", userID, "error", err)
+			continue
+		}
+		connection.enqueue(userDeltaEnvelope(target.NodeID, action, users, now.Unix()))
+	}
+	if devicesCleared {
+		nodeIDs := make([]int64, 0, len(targets))
+		for _, target := range targets {
+			nodeIDs = append(nodeIDs, target.NodeID)
+		}
+		h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
 	}
 }

@@ -86,7 +86,7 @@ func (s *Store) ListServerGroups(ctx context.Context) ([]ServerGroup, error) {
 const serverGroupSelect = `
 	SELECT g.id, g.name, COALESCE(uc.users_count, 0), COALESCE(nc.servers_count, 0), g.created_at, g.updated_at
 	FROM server_groups g
-	LEFT JOIN (SELECT group_id, COUNT(*) users_count FROM users WHERE group_id IS NOT NULL GROUP BY group_id) uc ON uc.group_id = g.id
+	LEFT JOIN (SELECT group_id, COUNT(*) users_count FROM users WHERE account_kind = 'human' AND group_id IS NOT NULL GROUP BY group_id) uc ON uc.group_id = g.id
 	LEFT JOIN (SELECT group_id, COUNT(*) servers_count FROM node_group_memberships GROUP BY group_id) nc ON nc.group_id = g.id`
 
 func scanServerGroup(row rowScanner) (ServerGroup, error) {

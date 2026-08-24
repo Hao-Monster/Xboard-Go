@@ -211,8 +211,12 @@ func (s *Store) GetNodeRuntime(ctx context.Context, nodeID int64) (NodeRuntime, 
 func (s *Store) CreateRuntimeUser(ctx context.Context, input CreateRuntimeUserInput, now time.Time) (RuntimeUser, error) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	input.UUID = strings.ToLower(strings.TrimSpace(input.UUID))
+	if input.AccountKind == "" {
+		input.AccountKind = AccountKindHuman
+	}
 	if input.Email == "" || input.PasswordHash == "" || input.GroupID < 1 || input.TransferEnable < 0 || input.TrafficUpload < 0 || input.TrafficDownload < 0 ||
-		input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 || uuid.Validate(input.UUID) != nil {
+		input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 || uuid.Validate(input.UUID) != nil ||
+		(input.AccountKind != AccountKindHuman && input.AccountKind != AccountKindInternalSubscription) {
 		return RuntimeUser{}, fmt.Errorf("%w: invalid runtime user", ErrInvalidInput)
 	}
 	var expiredAt any
@@ -229,10 +233,10 @@ func (s *Store) CreateRuntimeUser(ctx context.Context, input CreateRuntimeUserIn
 	}
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO users (
-			email, password_hash, is_admin, banned, uuid, group_id, transfer_enable, traffic_u, traffic_d,
+			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable, traffic_u, traffic_d,
 			expired_at, speed_limit, device_limit, created_at, updated_at
-		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, input.Email, input.PasswordHash, input.Banned, input.UUID, input.GroupID, input.TransferEnable,
+		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, input.Email, input.PasswordHash, input.Banned, input.AccountKind, input.UUID, input.GroupID, input.TransferEnable,
 		input.TrafficUpload, input.TrafficDownload, expiredAt, input.SpeedLimit, input.DeviceLimit, now.Unix(), now.Unix())
 	if err != nil {
 		return RuntimeUser{}, fmt.Errorf("create runtime user: %w", err)
@@ -269,6 +273,69 @@ func (s *Store) ListNodeRuntimeUsers(ctx context.Context, nodeID int64, now time
 		users = append(users, user)
 	}
 	return users, rows.Err()
+}
+
+func (s *Store) GetNodeRuntimeUser(ctx context.Context, nodeID, userID int64, now time.Time) (RuntimeUser, error) {
+	var user RuntimeUser
+	err := s.db.QueryRowContext(ctx, `
+		SELECT u.id, u.uuid, u.speed_limit, u.device_limit
+		FROM users u
+		JOIN node_group_memberships ng ON ng.group_id = u.group_id
+		JOIN nodes n ON n.id = ng.node_id
+		WHERE ng.node_id = ? AND u.id = ? AND n.enabled = 1 AND n.runtime_config IS NOT NULL
+		  AND u.uuid IS NOT NULL AND u.banned = 0
+		  AND u.traffic_u + u.traffic_d < u.transfer_enable
+		  AND (u.expired_at IS NULL OR u.expired_at >= ?)
+	`, nodeID, userID, now.Unix()).Scan(&user.ID, &user.UUID, &user.SpeedLimit, &user.DeviceLimit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RuntimeUser{}, ErrNotFound
+	}
+	if err != nil {
+		return RuntimeUser{}, fmt.Errorf("get node runtime user: %w", err)
+	}
+	return user, nil
+}
+
+func (s *Store) ListRuntimeNodeTargetsForGroups(ctx context.Context, groupIDs []int64) ([]NodeRuntimeTarget, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	unique := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID < 1 {
+			return nil, fmt.Errorf("%w: invalid group id", ErrInvalidInput)
+		}
+		unique[groupID] = struct{}{}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(unique)), ",")
+	args := make([]any, 0, len(unique))
+	for groupID := range unique {
+		args = append(args, groupID)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT n.id, n.machine_id
+		FROM node_group_memberships ng
+		JOIN nodes n ON n.id = ng.node_id
+		WHERE ng.group_id IN (`+placeholders+`)
+		  AND n.machine_id IS NOT NULL AND n.enabled = 1 AND n.runtime_config IS NOT NULL
+		ORDER BY n.id
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list runtime node targets for groups: %w", err)
+	}
+	defer rows.Close()
+	targets := make([]NodeRuntimeTarget, 0)
+	for rows.Next() {
+		var target NodeRuntimeTarget
+		if err := rows.Scan(&target.NodeID, &target.MachineID); err != nil {
+			return nil, fmt.Errorf("scan runtime node target: %w", err)
+		}
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate runtime node targets: %w", err)
+	}
+	return targets, nil
 }
 
 func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (NodeReportResult, error) {

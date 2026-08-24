@@ -37,7 +37,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		passwordHash = user.PasswordHash
 	}
 	passwordValid := s.passwordHasher.Verify(input.Password, passwordHash)
-	if err != nil || !passwordValid || user.Banned {
+	if err != nil || !passwordValid || user.Banned || user.AccountKind != store.AccountKindHuman {
 		s.loginAttempts.failed(attemptKey, s.now())
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
 		return

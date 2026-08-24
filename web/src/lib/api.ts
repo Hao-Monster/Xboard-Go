@@ -122,6 +122,53 @@ export interface RoutingRuleInput {
   action_value: string;
 }
 
+export interface AdminUser {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  banned: boolean;
+  group_id: number | null;
+  transfer_enable: number;
+  traffic_upload: number;
+  traffic_download: number;
+  expired_at: string | null;
+  speed_limit: number;
+  device_limit: number;
+  online_count: number;
+  last_online_at: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminUserPage {
+  items: AdminUser[];
+  next_cursor?: string;
+}
+
+export interface AdminUserQuery {
+  limit?: number;
+  cursor?: string;
+  email_prefix?: string;
+  banned?: boolean;
+  group_id?: number;
+}
+
+export interface AdminUserCreateInput {
+  email: string;
+  password: string;
+  group_id: number | null;
+  transfer_enable: number;
+  expired_at: string | null;
+  speed_limit: number;
+  device_limit: number;
+  banned: boolean;
+}
+
+export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "password"> {
+  revision: number;
+}
+
 export interface AdminAPI {
   listMachines: () => Promise<Machine[]>;
   createMachine: (input: { name: string; notes: string; is_active: boolean }) => Promise<MachineEnrollment>;
@@ -145,6 +192,11 @@ export interface AdminAPI {
   createRoutingRule: (input: RoutingRuleInput) => Promise<RoutingRule>;
   updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
   deleteRoutingRule: (id: number) => Promise<void>;
+  listAdminUsers: (query?: AdminUserQuery) => Promise<AdminUserPage>;
+  getAdminUser: (id: number) => Promise<AdminUser>;
+  createAdminUser: (input: AdminUserCreateInput) => Promise<AdminUser>;
+  updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
+  resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
 }
 
 interface Envelope<T> {
@@ -295,6 +347,35 @@ export class APIClient implements AdminAPI {
 
   async deleteRoutingRule(id: number): Promise<void> {
     await this.request<void>(`/api/v1/admin/routing-rules/${id}`, { method: "DELETE" });
+  }
+
+  async listAdminUsers(query: AdminUserQuery = {}): Promise<AdminUserPage> {
+    const params = new URLSearchParams();
+    if (query.limit !== undefined) params.set("limit", String(query.limit));
+    if (query.cursor !== undefined && query.cursor !== "") params.set("cursor", query.cursor);
+    if (query.email_prefix !== undefined && query.email_prefix !== "") params.set("email_prefix", query.email_prefix);
+    if (query.banned !== undefined) params.set("banned", String(query.banned));
+    if (query.group_id !== undefined) params.set("group_id", String(query.group_id));
+    const suffix = params.size === 0 ? "" : `?${params.toString()}`;
+    return this.request<AdminUserPage>(`/api/v1/admin/users${suffix}`);
+  }
+
+  async getAdminUser(id: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}`);
+  }
+
+  async createAdminUser(input: AdminUserCreateInput): Promise<AdminUser> {
+    return this.request<AdminUser>("/api/v1/admin/users", { method: "POST", body: input });
+  }
+
+  async updateAdminUser(id: number, input: AdminUserUpdateInput): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}`, { method: "PATCH", body: input });
+  }
+
+  async resetAdminUserPassword(id: number, revision: number, newPassword: string): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/password`, {
+      method: "PUT", body: { revision, new_password: newPassword }
+    });
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
