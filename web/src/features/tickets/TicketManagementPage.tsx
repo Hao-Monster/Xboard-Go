@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import type { AdminTicketQuery, Ticket, TicketLevel, TicketPage, TicketReplyStatus, TicketStatus } from "../../lib/api";
+import type { AdminTicketQuery, Ticket, TicketLevel, TicketPage, TicketReplyStatus, TicketSettings, TicketSettingsInput, TicketStatus } from "../../lib/api";
 import { formatDate, levelLabel, TicketDetailDialog } from "./TicketDetailDialog";
+import { TicketSettingsDialog } from "./TicketSettingsDialog";
 
 interface TicketManagementAPI {
   listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
   getAdminTicket: (id: number) => Promise<Ticket>;
   replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
   closeAdminTicket: (id: number) => Promise<Ticket>;
+  getTicketSettings: () => Promise<TicketSettings>;
+  updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
 }
 
 export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketManagementAPI; initialStatus?: TicketStatus }) {
@@ -20,6 +23,7 @@ export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketMa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const getTicket = useCallback((id: number) => api.getAdminTicket(id), [api]);
   const replyTicket = useCallback((id: number, message: string) => api.replyAdminTicket(id, message), [api]);
   const closeTicket = useCallback((id: number) => api.closeAdminTicket(id), [api]);
@@ -84,7 +88,7 @@ export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketMa
   };
 
   return <main className="page-shell ticket-page">
-    <header className="page-header"><div><p className="eyebrow">Support operations</p><h1>工单管理</h1><p className="muted">搜索、查看、回复和关闭用户工单。</p></div></header>
+    <header className="page-header"><div><p className="eyebrow">Support operations</p><h1>工单管理</h1><p className="muted">搜索、查看、回复和关闭用户工单。</p></div><button className="button secondary" onClick={() => setSettingsOpen(true)}>工单设置</button></header>
     <div className="ticket-status-tabs" role="group" aria-label="工单状态"><button className={`button ${status === 0 ? "primary" : "secondary"}`} onClick={() => switchStatus(0)}>处理中</button><button className={`button ${status === 1 ? "primary" : "secondary"}`} onClick={() => switchStatus(1)}>已关闭</button></div>
     <form className="ticket-filter-bar" onSubmit={submit}>
       <label className="search-field">搜索工单<input type="search" role="searchbox" aria-label="搜索工单" value={query} placeholder="工单主题或用户邮箱" onChange={(event) => setQuery(event.target.value)} /></label>
@@ -104,6 +108,7 @@ export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketMa
       {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>上一页</button><span>第 {page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>下一页</button></div>}
     </div>}
     {selected !== null && <TicketDetailDialog ticketID={selected} administrator load={getTicket} reply={replyTicket} close={closeTicket} onUpdated={replace} onClose={() => setSelected(null)} />}
+    {settingsOpen && <TicketSettingsDialog api={api} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }
 

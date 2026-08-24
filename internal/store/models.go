@@ -13,6 +13,7 @@ var (
 	ErrEmailInUse           = fmt.Errorf("%w: email already in use", ErrConflict)
 	ErrOpenTicketExists     = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
 	ErrTicketClosed         = fmt.Errorf("%w: ticket is closed", ErrConflict)
+	ErrTicketReplyPending   = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
 	ErrTicketMessageLimit   = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
 	ErrInvalidInput         = errors.New("invalid input")
 	ErrInvalidEnrollment    = errors.New("invalid or expired enrollment")
@@ -96,6 +97,52 @@ type TicketPage struct {
 	Total    int64    `json:"total"`
 	Page     int      `json:"page"`
 	PageSize int      `json:"page_size"`
+}
+
+type TicketSettings struct {
+	Revision            int64     `json:"revision"`
+	AppName             string    `json:"app_name"`
+	AppURL              string    `json:"app_url"`
+	TicketMustWaitReply bool      `json:"ticket_must_wait_reply"`
+	SMTPEnabled         bool      `json:"smtp_enabled"`
+	SMTPHost            string    `json:"smtp_host"`
+	SMTPPort            int       `json:"smtp_port"`
+	SMTPUsername        string    `json:"smtp_username"`
+	SMTPPasswordSet     bool      `json:"smtp_password_set"`
+	SMTPPasswordCipher  []byte    `json:"-"`
+	SMTPEncryption      string    `json:"smtp_encryption"`
+	SMTPFromAddress     string    `json:"smtp_from_address"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type SaveTicketSettingsInput struct {
+	AppName             string
+	AppURL              string
+	TicketMustWaitReply bool
+	SMTPEnabled         bool
+	SMTPHost            string
+	SMTPPort            int
+	SMTPUsername        string
+	ReplaceSMTPPassword bool
+	SMTPPasswordCipher  []byte
+	SMTPEncryption      string
+	SMTPFromAddress     string
+}
+
+type TicketMailJob struct {
+	ID                 int64
+	Attempt            int
+	Recipient          string
+	Subject            string
+	Message            string
+	AppName            string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
 }
 
 type Knowledge struct {

@@ -90,7 +90,9 @@ jobs:
         run: |
           mkdir -p .local
           password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
           printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
           printf 'XBOARD_PACKAGED_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
           docker compose -f compose.local.yaml up --build --wait
       - name: Run browser tests against the packaged application
@@ -99,6 +101,7 @@ jobs:
           XBOARD_E2E_EXTERNAL_SERVER: "true"
           XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
           XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
+          XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
         run: pnpm --dir web test:e2e
       - name: Capture container logs on failure
         if: failure()

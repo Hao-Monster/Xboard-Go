@@ -219,7 +219,7 @@ func TestTicketReadPathsUseBoundedOrderingIndexes(t *testing.T) {
 	}
 }
 
-func TestSchemaV8AddsTicketTablesWithoutChangingExistingUsers(t *testing.T) {
+func TestMigrationFromV7AddsTicketAndSettingsTablesWithoutChangingExistingUsers(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "tickets-v7.db")
 	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
 	if err != nil {
@@ -246,7 +246,7 @@ func TestSchemaV8AddsTicketTablesWithoutChangingExistingUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v7 to v8) error = %v", err)
+		t.Fatalf("Migrate(v7 to current) error = %v", err)
 	}
 	var version, userCount int
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
@@ -255,7 +255,7 @@ func TestSchemaV8AddsTicketTablesWithoutChangingExistingUsers(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE email = 'preserved-ticket-user@example.test'`).Scan(&userCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 8 || userCount != 1 {
+	if version != 10 || userCount != 1 {
 		t.Fatalf("schema version=%d preserved users=%d", version, userCount)
 	}
 	user, err := database.FindUserByEmail(ctx, "preserved-ticket-user@example.test")

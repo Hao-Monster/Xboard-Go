@@ -1,11 +1,33 @@
 package config
 
 import (
+	"bytes"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestLoadReadsAndValidatesSettingsEncryptionKey(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
+	t.Setenv("XBOARD_SETTINGS_ENCRYPTION_KEY", encoded)
+	t.Setenv("XBOARD_SETTINGS_ENCRYPTION_KEY_FILE", "")
+	settings, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.SettingsEncryptionKey) != 32 || settings.SettingsEncryptionKey[0] != 0x42 {
+		t.Fatal("Load() did not decode the 256-bit settings key")
+	}
+
+	for _, invalid := range []string{"not-base64", base64.StdEncoding.EncodeToString(make([]byte, 31))} {
+		t.Setenv("XBOARD_SETTINGS_ENCRYPTION_KEY", invalid)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted invalid settings encryption key %q", invalid)
+		}
+	}
+}
 
 func TestLoadValidatesBootstrapPairAndInterval(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "admin@example.test")

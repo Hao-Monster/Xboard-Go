@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
+	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -514,6 +515,10 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 	if function != nil {
 		catalogHTTPClient = catalogHTTPFunc(function)
 	}
+	settingsCipher, err := appsettings.NewCipher(make([]byte, 32))
+	if err != nil {
+		t.Fatalf("NewCipher() error = %v", err)
+	}
 	handler := New(Dependencies{
 		Store:             database,
 		PasswordHasher:    hasher,
@@ -522,6 +527,7 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 		NodeRelease:       "v1.14.3",
 		CookieSecure:      false,
 		CatalogHTTPClient: catalogHTTPClient,
+		SettingsCipher:    settingsCipher,
 	})
 	return handler, database
 }

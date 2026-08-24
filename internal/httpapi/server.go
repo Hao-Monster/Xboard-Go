@@ -16,6 +16,7 @@ import (
 
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
+	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -40,6 +41,8 @@ type Dependencies struct {
 	NodePushInterval  int
 	NodePullInterval  int
 	CatalogHTTPClient clientcatalog.HTTPDoer
+	SettingsCipher    *appsettings.Cipher
+	SMTPAllowInsecure bool
 }
 
 type server struct {
@@ -66,6 +69,8 @@ type server struct {
 	nodePushInterval    int
 	nodePullInterval    int
 	clientCatalog       *clientcatalog.Service
+	settingsCipher      *appsettings.Cipher
+	smtpAllowInsecure   bool
 }
 
 type contextKey int
@@ -135,6 +140,8 @@ func New(dependencies Dependencies) http.Handler {
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
 		}),
+		settingsCipher:    dependencies.SettingsCipher,
+		smtpAllowInsecure: dependencies.SMTPAllowInsecure,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -215,6 +222,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/client-catalog", api.listAdminClientCatalog)
 	admin.HandleFunc("PUT /api/v1/admin/client-catalog", api.saveClientCatalog)
 	admin.HandleFunc("GET /api/v1/admin/tickets", api.listAdminTickets)
+	admin.HandleFunc("GET /api/v1/admin/ticket-settings", api.getTicketSettings)
+	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
 	admin.HandleFunc("GET /api/v1/admin/tickets/{ticketID}", api.getAdminTicket)
 	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/messages", api.replyAdminTicket)
 	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/close", api.closeAdminTicket)

@@ -164,6 +164,13 @@ h3 { margin-bottom: 12px; }
 .ticket-message header { display: flex; justify-content: space-between; gap: 12px; color: #9da7ba; font-size: .69rem; }
 .ticket-message p { margin: 9px 0 0; white-space: pre-wrap; line-height: 1.55; }
 .ticket-reply-form { padding-top: 14px; border-top: 1px solid #2d3340; }
+.ticket-settings-form { margin-top: 20px; }
+.settings-fieldset { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 16px; border: 1px solid #303746; border-radius: 12px; background: #10131a; }
+.settings-fieldset legend { padding: 0 7px; color: #aebfff; font-size: .78rem; font-weight: 750; }
+.settings-fieldset > .small { margin: -6px 0 0; line-height: 1.5; }
+.ticket-settings-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(110px, .7fr); gap: 12px; }
+.ticket-settings-grid label { min-width: 0; }
+.settings-clear-secret { justify-self: start; }
 .security-note { align-self: center; border: 1px solid #2b6857; border-radius: 999px; padding: 7px 11px; color: #89e0c1; background: #143229; font-size: .75rem; font-weight: 700; white-space: nowrap; }
 .client-admin-layout { display: grid; grid-template-columns: minmax(190px, 240px) minmax(0, 1fr); gap: 18px; margin-top: 28px; align-items: start; }
 .client-tabs { position: sticky; top: 84px; display: grid; gap: 5px; max-height: calc(100vh - 108px); overflow: auto; padding: 8px; border: 1px solid #2d3340; border-radius: 14px; background: #11151d; }
@@ -264,6 +271,7 @@ textarea { min-height: 100px; resize: vertical; }
 	.ticket-detail-heading { flex-direction: column; }
 	.ticket-badges { justify-content: flex-start; }
 	.ticket-message { width: 92%; }
+	.ticket-settings-grid { grid-template-columns: 1fr; }
   .user-filter-bar .search-field, .user-filter-bar .button { grid-column: 1 / -1; }
   .filter-bar .search-field { grid-column: 1 / -1; }
   .node-row { align-items: stretch; flex-direction: column; }

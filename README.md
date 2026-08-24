@@ -15,17 +15,27 @@ Licensed under the [Apache License 2.0](LICENSE).
 ## Local container
 
 The local Compose profile builds one non-root, read-only image containing the
-Go API and the immutable frontend build. Store a temporary password in the
-Git-ignored `.local/bootstrap-password.txt`; Compose mounts it as a file-backed
-secret rather than exposing it in the application container environment.
+Go API and the immutable frontend build. Store a temporary password and an
+independent 256-bit settings-encryption key in the Git-ignored `.local`
+directory; Compose mounts both as file-backed secrets rather than exposing
+them in the application container environment.
 
 ```bash
 mkdir -p .local
 printf '%s' 'replace-with-a-local-password' > .local/bootstrap-password.txt
+openssl rand -base64 32 > .local/settings-encryption-key.txt
 chmod 600 .local/bootstrap-password.txt
+chmod 600 .local/settings-encryption-key.txt
 docker compose -f compose.local.yaml up --build --wait
 ```
 
-Open `http://127.0.0.1:7080`. Runtime data is stored in the
-`xboard-go-data` named volume. This profile is for isolated development and
-compatibility testing; it is not a production deployment definition.
+Open `http://127.0.0.1:7080`. Captured local test mail is available only on
+the loopback interface at `http://127.0.0.1:7082`; its SMTP port is not
+published to the host. Runtime application data is stored in the
+`xboard-go-data` named volume, while captured mail is intentionally ephemeral.
+This profile explicitly permits cleartext SMTP only inside its isolated Docker
+network and is not a production deployment definition.
+
+Keep the settings-encryption key for as long as the database contains an SMTP
+credential. The application intentionally refuses to start if the key is
+missing or cannot authenticate the stored ciphertext.

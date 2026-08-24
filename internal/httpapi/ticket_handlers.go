@@ -285,6 +285,8 @@ func handleTicketError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusConflict, "open_ticket_exists", "存在未关闭的工单", nil)
 	case errors.Is(err, store.ErrTicketClosed):
 		writeAPIError(w, http.StatusConflict, "ticket_closed", "工单已关闭，无法回复", nil)
+	case errors.Is(err, store.ErrTicketReplyPending):
+		writeAPIError(w, http.StatusConflict, "ticket_reply_pending", "请等待技术支持回复", nil)
 	case errors.Is(err, store.ErrTicketMessageLimit):
 		writeAPIError(w, http.StatusConflict, "ticket_message_limit", "工单消息已达到上限，请新建工单继续联系", nil)
 	default:

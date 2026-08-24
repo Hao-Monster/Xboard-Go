@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -24,6 +25,9 @@ type Config struct {
 	BootstrapAdminEmail    string
 	BootstrapAdminPassword string
 	SchedulerInterval      time.Duration
+	MailPollInterval       time.Duration
+	SMTPAllowInsecure      bool
+	SettingsEncryptionKey  []byte
 	WebSocketEnabled       bool
 	WebSocketURL           string
 	NodePushInterval       int
@@ -38,6 +42,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	interval, err := parseDurationEnv("XBOARD_SCHEDULER_INTERVAL", time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	mailPollInterval, err := parseDurationEnv("XBOARD_MAIL_POLL_INTERVAL", 5*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	smtpAllowInsecure, err := parseBoolEnv("XBOARD_SMTP_ALLOW_INSECURE", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -58,6 +70,17 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	settingsKeyValue, err := readSecretEnv("XBOARD_SETTINGS_ENCRYPTION_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	var settingsEncryptionKey []byte
+	if strings.TrimSpace(settingsKeyValue) != "" {
+		settingsEncryptionKey, err = base64.StdEncoding.DecodeString(strings.TrimSpace(settingsKeyValue))
+		if err != nil || len(settingsEncryptionKey) != 32 {
+			return Config{}, errors.New("XBOARD_SETTINGS_ENCRYPTION_KEY must be a base64-encoded 256-bit key")
+		}
+	}
 
 	config := Config{
 		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
@@ -68,6 +91,9 @@ func Load() (Config, error) {
 		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword: bootstrapPassword,
 		SchedulerInterval:      interval,
+		MailPollInterval:       mailPollInterval,
+		SMTPAllowInsecure:      smtpAllowInsecure,
+		SettingsEncryptionKey:  append([]byte(nil), settingsEncryptionKey...),
 		WebSocketEnabled:       webSocketEnabled,
 		WebSocketURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
 		NodePushInterval:       nodePushInterval,
@@ -95,6 +121,9 @@ func Load() (Config, error) {
 	}
 	if config.SchedulerInterval < 100*time.Millisecond || config.SchedulerInterval > time.Minute {
 		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
+	}
+	if config.MailPollInterval < 250*time.Millisecond || config.MailPollInterval > time.Minute {
+		return Config{}, errors.New("XBOARD_MAIL_POLL_INTERVAL must be between 250ms and 1m")
 	}
 	if config.NodePushInterval < 5 || config.NodePushInterval > 3_600 || config.NodePullInterval < 5 || config.NodePullInterval > 3_600 {
 		return Config{}, errors.New("node push and pull intervals must be between 5 and 3600 seconds")

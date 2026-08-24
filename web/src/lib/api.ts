@@ -286,6 +286,37 @@ export interface TicketInput {
   message: string;
 }
 
+export type SMTPEncryption = "starttls" | "tls" | "none";
+
+export interface TicketSettings {
+  revision: number;
+  app_name: string;
+  app_url: string;
+  ticket_must_wait_reply: boolean;
+  smtp_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password_set: boolean;
+  smtp_encryption: SMTPEncryption;
+  smtp_from_address: string;
+  updated_at: string;
+}
+
+export interface TicketSettingsInput {
+  revision: number;
+  app_name: string;
+  app_url: string;
+  ticket_must_wait_reply: boolean;
+  smtp_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password?: string;
+  smtp_encryption: SMTPEncryption;
+  smtp_from_address: string;
+}
+
 export interface AdminTicketQuery {
   page?: number;
   page_size?: number;
@@ -350,6 +381,8 @@ export interface AdminAPI {
   getAdminTicket: (id: number) => Promise<Ticket>;
   replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
   closeAdminTicket: (id: number) => Promise<Ticket>;
+  getTicketSettings: () => Promise<TicketSettings>;
+  updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
@@ -588,6 +621,14 @@ export class APIClient implements AdminAPI {
 
   async closeAdminTicket(id: number): Promise<Ticket> {
     return this.request<Ticket>(`/api/v1/admin/tickets/${id}/close`, { method: "POST", body: {} });
+  }
+
+  async getTicketSettings(): Promise<TicketSettings> {
+    return this.request<TicketSettings>("/api/v1/admin/ticket-settings");
+  }
+
+  async updateTicketSettings(input: TicketSettingsInput): Promise<TicketSettings> {
+    return this.request<TicketSettings>("/api/v1/admin/ticket-settings", { method: "PUT", body: input });
   }
 
   async listNotices(): Promise<Notice[]> {
