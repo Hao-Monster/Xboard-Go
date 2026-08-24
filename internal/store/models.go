@@ -15,6 +15,10 @@ var (
 	ErrEmailDomainNotAllowed = errors.New("email domain is not allowed")
 	ErrGmailAliasNotAllowed  = errors.New("Gmail alias is not allowed")
 	ErrRegistrationIPLimited = errors.New("registration IP limit reached")
+	ErrPasswordResetInvalid  = errors.New("password reset code is invalid")
+	ErrPasswordResetLocked   = errors.New("password reset confirmation is locked")
+	ErrPasswordResetLimited  = errors.New("password reset request is limited")
+	ErrMailUnavailable       = errors.New("mail service is unavailable")
 	ErrOpenTicketExists      = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
 	ErrTicketClosed          = fmt.Errorf("%w: ticket is closed", ErrConflict)
 	ErrTicketReplyPending    = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
@@ -181,6 +185,48 @@ type TicketMailJob struct {
 	SMTPFromAddress    string
 }
 
+type PasswordResetRequestInput struct {
+	Email       string
+	EmailDigest []byte
+	CodeDigest  []byte
+	CodeCipher  []byte
+}
+
+type PasswordResetChallenge struct {
+	UserID       int64
+	PasswordHash string
+}
+
+type PasswordResetMailJob struct {
+	ID                 int64
+	Attempt            int
+	EmailDigest        []byte
+	Recipient          string
+	CodeCipher         []byte
+	AppName            string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
+}
+
+type PasswordResetLimitError struct {
+	RetryAfterSeconds int64
+}
+
+func (e *PasswordResetLimitError) Error() string { return ErrPasswordResetLimited.Error() }
+func (e *PasswordResetLimitError) Unwrap() error { return ErrPasswordResetLimited }
+
+type PasswordResetLockedError struct {
+	RetryAfterSeconds int64
+}
+
+func (e *PasswordResetLockedError) Error() string { return ErrPasswordResetLocked.Error() }
+func (e *PasswordResetLockedError) Unwrap() error { return ErrPasswordResetLocked }
+
 type SystemQueueStats struct {
 	Pending         int64      `json:"pending"`
 	Claimed         int64      `json:"claimed"`
@@ -191,6 +237,7 @@ type SystemQueueStats struct {
 
 type TicketMailFailure struct {
 	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
 	Recipient     string    `json:"recipient"`
 	TicketSubject string    `json:"ticket_subject"`
 	AttemptCount  int       `json:"attempt_count"`

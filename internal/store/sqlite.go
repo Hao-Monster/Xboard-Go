@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 16
+const currentSchemaVersion = 17
 
 type Store struct {
 	db      *sql.DB
@@ -164,6 +164,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v16: %w", err)
 		}
 		version = 16
+	}
+	if version < 17 {
+		if _, err := tx.ExecContext(ctx, schemaV17); err != nil {
+			return fmt.Errorf("apply schema v17: %w", err)
+		}
+		version = 17
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -710,4 +716,44 @@ CREATE TABLE registration_ip_limits (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_registration_ip_limits_reset_at ON registration_ip_limits(reset_at);
+`
+
+const schemaV17 = `
+CREATE TABLE password_reset_challenges (
+    email_digest BLOB PRIMARY KEY CHECK (length(email_digest) = 32),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    code_digest BLOB CHECK (code_digest IS NULL OR length(code_digest) = 32),
+    expires_at INTEGER NOT NULL,
+    resend_after INTEGER NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts BETWEEN 0 AND 3),
+    failure_reset_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_password_reset_challenges_expires ON password_reset_challenges(expires_at);
+
+CREATE TABLE password_reset_mail_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_digest BLOB NOT NULL CHECK (length(email_digest) = 32),
+    recipient TEXT NOT NULL CHECK (length(recipient) BETWEEN 3 AND 320),
+    code_cipher BLOB CHECK (code_cipher IS NULL OR length(code_cipher) BETWEEN 32 AND 512),
+    app_name TEXT NOT NULL CHECK (length(app_name) BETWEEN 1 AND 100),
+    app_url TEXT NOT NULL DEFAULT '' CHECK (length(app_url) <= 2048),
+    available_at INTEGER NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    claim_token TEXT,
+    claimed_at INTEGER,
+    sent_at INTEGER,
+    failed_at INTEGER,
+    cancelled_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK (claim_token IS NULL OR length(claim_token) BETWEEN 1 AND 128),
+    CHECK (last_error IS NULL OR length(last_error) <= 4096)
+);
+CREATE INDEX idx_password_reset_mail_due ON password_reset_mail_outbox(available_at, id)
+    WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
+CREATE INDEX idx_password_reset_mail_failed ON password_reset_mail_outbox(failed_at DESC, id DESC)
+    WHERE failed_at IS NOT NULL;
 `

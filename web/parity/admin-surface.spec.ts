@@ -367,6 +367,97 @@ test("legacy registration email policies and successful-IP limit remain observab
   }
 });
 
+test("legacy password recovery preserves fields, cooldown, lockout, one-time code, and session revocation", async ({ page }) => {
+  test.setTimeout(90_000);
+  const newPassword = `legacy-reset-password-${Date.now()}`;
+  const encodedEmail = Buffer.from(legacyEmail, "utf8").toString("base64");
+  const encodedOriginalPassword = Buffer.from(legacyPassword, "utf8").toString("base64");
+  const clearCache = `$email=base64_decode("${encodedEmail}"); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("EMAIL_VERIFY_CODE",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("LAST_SEND_EMAIL_VERIFY_TIMESTAMP",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("FORGET_REQUEST_LIMIT",$email));`;
+  const tinker = (statement: string) => execFileSync(
+    "docker",
+    ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${statement}`],
+    { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }
+  );
+
+  try {
+    tinker(clearCache);
+    clearLegacyPasswordResetCache(legacyEmail);
+    await page.goto(new URL("/#/forgetpassword", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveTitle(/重置密码 \| XBoard/);
+    for (const placeholder of ["邮箱", "邮箱验证码", "密码", "再次输入密码"]) {
+      await expect(page.getByPlaceholder(placeholder, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "重置密码", exact: true })).toBeVisible();
+    await expect(page.getByText("返回登入", { exact: true })).toBeVisible();
+
+    const loggedIn = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: legacyEmail, password: legacyPassword }
+    });
+    expect(loggedIn.status()).toBe(200);
+    const authorization = readStringProperty(readProperty(await loggedIn.json() as unknown, "data"), "auth_data");
+    expect(authorization).toBeTruthy();
+    if (!authorization) throw new Error("legacy password recovery session token is missing");
+    const oldSession = await page.request.get(new URL("/api/v1/user/info", legacyURL).toString(), { headers: { authorization } });
+    expect(oldSession.status()).toBe(200);
+
+    const sent = await page.request.post(new URL("/api/v1/passport/comm/sendEmailVerify", legacyURL).toString(), {
+      data: { email: legacyEmail }
+    });
+    expect(sent.status()).toBe(200);
+    expect(readProperty(await sent.json() as unknown, "data")).toBe(true);
+    const repeated = await page.request.post(new URL("/api/v1/passport/comm/sendEmailVerify", legacyURL).toString(), {
+      data: { email: legacyEmail }
+    });
+    expect(repeated.status()).toBe(400);
+    expect(readStringProperty(await repeated.json() as unknown, "message")).toBe("验证码已发送，请过一会儿再请求");
+
+    const code = readLegacyPasswordResetCode(legacyEmail);
+    expect(code).toMatch(/^\d{6}$/);
+    const wrongCodes = ["000000", "000001", "000002"].map((candidate) => candidate === code ? "999999" : candidate);
+    for (const wrongCode of wrongCodes) {
+      const wrong = await page.request.post(new URL("/api/v1/passport/auth/forget", legacyURL).toString(), {
+        data: { email: legacyEmail, password: newPassword, email_code: wrongCode }
+      });
+      expect(wrong.status()).toBe(400);
+      expect(readStringProperty(await wrong.json() as unknown, "message")).toBe("邮箱验证码有误");
+    }
+    const locked = await page.request.post(new URL("/api/v1/passport/auth/forget", legacyURL).toString(), {
+      data: { email: legacyEmail, password: newPassword, email_code: code }
+    });
+    expect(locked.status()).toBe(429);
+    expect(readStringProperty(await locked.json() as unknown, "message")).toBe("重置失败，请稍后再试");
+
+    tinker(`$email=base64_decode("${encodedEmail}"); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("FORGET_REQUEST_LIMIT",$email));`);
+    const reset = await page.request.post(new URL("/api/v1/passport/auth/forget", legacyURL).toString(), {
+      data: { email: legacyEmail, password: newPassword, email_code: code }
+    });
+    expect(reset.status()).toBe(200);
+    expect(readProperty(await reset.json() as unknown, "data")).toBe(true);
+    const revokedSession = await page.request.get(new URL("/api/v1/user/info", legacyURL).toString(), { headers: { authorization } });
+    expect(revokedSession.status()).toBe(403);
+    const reused = await page.request.post(new URL("/api/v1/passport/auth/forget", legacyURL).toString(), {
+      data: { email: legacyEmail, password: `${newPassword}-again`, email_code: code }
+    });
+    expect(reused.status()).toBe(400);
+    expect(readStringProperty(await reused.json() as unknown, "message")).toBe("邮箱验证码有误");
+    expect((await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: legacyEmail, password: legacyPassword }
+    })).status()).toBe(400);
+    expect((await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: legacyEmail, password: newPassword }
+    })).status()).toBe(200);
+  } finally {
+    const restore = `$email=base64_decode("${encodedEmail}"); $user=App\\Models\\User::byEmail($email)->first(); if ($user) { $user->password=password_hash(base64_decode("${encodedOriginalPassword}"), PASSWORD_DEFAULT); $user->password_algo=null; $user->password_salt=null; $user->save(); } ${clearCache}`;
+    tinker(restore);
+    clearLegacyPasswordResetCache(legacyEmail);
+    const restoredLogin = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: legacyEmail, password: legacyPassword }
+    });
+    expect(restoredLogin.status()).toBe(200);
+  }
+});
+
 test("legacy site identity settings persist and feed the public guest contract", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
@@ -895,6 +986,32 @@ function requiredEnv(name: string) {
 function legacyAdminAPI(path: string) {
   const securePath = new URL(legacyURL).pathname.replace(/\/$/, "");
   return new URL(`/api/v2${securePath}${path}`, legacyURL).toString();
+}
+
+function readLegacyPasswordResetCode(email: string): string {
+  const keys = legacyRedisKeys(`*EMAIL_VERIFY_CODE_${email}`);
+  expect(keys).toHaveLength(1);
+  if (keys.length !== 1) return "";
+  return execFileSync("docker", [
+    "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "--raw", "GET", keys[0]
+  ], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }).trim();
+}
+
+function clearLegacyPasswordResetCache(email: string): void {
+  for (const marker of ["EMAIL_VERIFY_CODE", "LAST_SEND_EMAIL_VERIFY_TIMESTAMP", "FORGET_REQUEST_LIMIT"]) {
+    for (const key of legacyRedisKeys(`*${marker}_${email}`)) {
+      execFileSync("docker", [
+        "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "DEL", key
+      ], { stdio: "ignore" });
+    }
+  }
+}
+
+function legacyRedisKeys(pattern: string): string[] {
+  const output = execFileSync("docker", [
+    "exec", legacyDockerContainer, "redis-cli", "-s", "/data/redis.sock", "-n", "1", "--scan", "--pattern", pattern
+  ], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+  return output.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
 }
 
 function isVisibleLegacyNotice(value: unknown): boolean {

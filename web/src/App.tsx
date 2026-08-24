@@ -22,7 +22,7 @@ const defaultGuestConfig: GuestConfig = {
   captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
 };
-type AuthMode = "login" | "register";
+type AuthMode = "login" | "register" | "recover";
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -47,8 +47,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const authTitle = authMode === "register" ? "注册" : authMode === "recover" ? "重置密码" : "登录";
     document.title = session === null
-      ? `${authMode === "register" ? "注册" : "登录"} | ${guestConfig.app_name}`
+      ? `${authTitle} | ${guestConfig.app_name}`
       : `${guestConfig.app_name} 控制面板`;
     let description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (description === null) {
@@ -67,7 +68,7 @@ export function App() {
 
   const switchAuthMode = (mode: AuthMode) => {
     setAuthMode(mode);
-    window.history.replaceState(null, "", mode === "register" ? "#/register" : "#/login");
+    window.history.replaceState(null, "", mode === "register" ? "#/register" : mode === "recover" ? "#/forgetpassword" : "#/login");
   };
 
   const authenticated = (nextSession: UserSession) => {
@@ -139,25 +140,73 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [emailCode, setEmailCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [message, setMessage] = useState("");
+  const [resetComplete, setResetComplete] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setTimeout(() => setCooldown((current) => Math.max(0, current - 1)), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
+
+  useEffect(() => {
+    if (!resetComplete) return;
+    const timer = window.setTimeout(() => {
+      setResetComplete(false);
+      setMessage("");
+      setEmailCode("");
+      onModeChange("login");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [onModeChange, resetComplete]);
+
+  const sendPasswordResetCode = async () => {
+    setError("");
+    setMessage("");
+    if (email.trim() === "") {
+      setError("请输入邮箱");
+      return;
+    }
+    setSendingCode(true);
+    try {
+      await api.requestPasswordReset(email);
+      setCooldown(60);
+      setMessage("验证码已发送，请检查邮箱");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "验证码发送失败");
+    } finally {
+      setSendingCode(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setError("");
+    setMessage("");
     try {
-      if (mode === "register") {
+      if (mode === "register" || mode === "recover") {
         if (password !== confirmation) {
           setError("两次输入的密码不一致");
           return;
         }
+      }
+      if (mode === "register") {
         onAuthenticated(await api.register(email, password, confirmation));
+      } else if (mode === "recover") {
+        await api.resetPassword(email, emailCode, password);
+        setMessage("重置密码成功,正在返回登录");
+        setResetComplete(true);
       } else {
         onAuthenticated(await api.login(email, password));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : (mode === "register" ? "注册失败" : "登录失败"));
+      setError(cause instanceof Error ? cause.message : (mode === "register" ? "注册失败" : mode === "recover" ? "重置密码失败" : "登录失败"));
     } finally {
       setSubmitting(false);
     }
@@ -167,21 +216,28 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
     <main className="login-shell">
       <section className="login-card">
         <div className="brand large"><BrandMark appName={config.app_name} logo={config.logo} /><span>{config.app_name}</span></div>
-        <h1>{mode === "register" ? "注册" : "登录"} {config.app_name}</h1>
-        <p className="muted">{config.app_description ?? (mode === "register" ? "创建账号进入用户面板。" : "使用账号进入控制面板。")}</p>
+        <h1>{mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录"} {config.app_name}</h1>
+        <p className="muted">{config.app_description ?? (mode === "register" ? "创建账号进入用户面板。" : mode === "recover" ? "使用邮箱验证码重置账号密码。" : "使用账号进入控制面板。")}</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>
           <label>邮箱<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
           {mode === "register" && Array.isArray(config.email_whitelist_suffix) && config.email_whitelist_suffix.length > 0 &&
             <p className="small muted registration-domain-hint">允许邮箱后缀：{config.email_whitelist_suffix.join("、")}</p>}
-          <label>密码<input type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} minLength={mode === "register" ? 8 : undefined} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
-          {mode === "register" && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
+          {mode === "recover" && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendPasswordResetCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : "发送"}</button></div>}
+          <label>密码<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
+          {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
-          <button className="button primary full" type="submit" disabled={submitting}>{submitting ? (mode === "register" ? "正在注册…" : "正在登录…") : (mode === "register" ? "注册" : "登录")}</button>
+          {message !== "" && <div className="alert success" role="status">{message}</div>}
+          <button className="button primary full" type="submit" disabled={submitting || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
         </form>
-        <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
+        {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
+          setError(""); setMessage(""); setResetComplete(false); onModeChange("recover");
+        }}>忘记密码</button>}
+        <button className="button ghost full auth-mode-switch" type="button" disabled={submitting || sendingCode} onClick={() => {
           setError("");
-          onModeChange(mode === "register" ? "login" : "register");
-        }}>{mode === "register" ? "返回登入" : "注册账号"}</button>
+          setMessage("");
+          setResetComplete(false);
+          onModeChange(mode === "login" ? "register" : "login");
+        }}>{mode === "login" ? "注册账号" : "返回登入"}</button>
         {config.tos_url !== null && <p className="login-terms"><a href={config.tos_url} target="_blank" rel="noreferrer noopener">用户条款</a></p>}
       </section>
     </main>
@@ -189,5 +245,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
 }
 
 function authModeFromHash(): AuthMode {
-  return window.location.hash.startsWith("#/register") ? "register" : "login";
+  if (window.location.hash.startsWith("#/register")) return "register";
+  if (window.location.hash.startsWith("#/forgetpassword")) return "recover";
+  return "login";
 }

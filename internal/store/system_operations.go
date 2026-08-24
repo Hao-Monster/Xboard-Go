@@ -96,13 +96,19 @@ func (s *Store) GetSystemQueueStats(ctx context.Context) (SystemQueueStats, erro
 	var stats SystemQueueStats
 	var oldestPending sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
+		WITH all_mail AS (
+			SELECT sent_at, failed_at, claim_token, available_at FROM ticket_mail_outbox
+			UNION ALL
+			SELECT sent_at, failed_at, claim_token, available_at FROM password_reset_mail_outbox
+			WHERE cancelled_at IS NULL
+		)
 		SELECT
 			COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND claim_token IS NOT NULL THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN sent_at IS NOT NULL THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN failed_at IS NOT NULL THEN 1 ELSE 0 END), 0),
 			MIN(CASE WHEN sent_at IS NULL AND failed_at IS NULL THEN available_at END)
-		FROM ticket_mail_outbox
+		FROM all_mail
 	`).Scan(&stats.Pending, &stats.Claimed, &stats.Sent, &stats.Failed, &oldestPending); err != nil {
 		return SystemQueueStats{}, fmt.Errorf("get system queue stats: %w", err)
 	}
@@ -118,32 +124,42 @@ func (s *Store) ListTicketMailFailures(ctx context.Context, page, pageSize int) 
 		return TicketMailFailurePage{}, ErrInvalidInput
 	}
 	var total int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_mail_outbox WHERE failed_at IS NOT NULL`).Scan(&total); err != nil {
-		return TicketMailFailurePage{}, fmt.Errorf("count failed ticket mail: %w", err)
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM ticket_mail_outbox WHERE failed_at IS NOT NULL) +
+			(SELECT COUNT(*) FROM password_reset_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL)
+	`).Scan(&total); err != nil {
+		return TicketMailFailurePage{}, fmt.Errorf("count failed mail: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, recipient, ticket_subject, attempt_count, COALESCE(last_error, ''), created_at, failed_at
-		FROM ticket_mail_outbox
-		WHERE failed_at IS NOT NULL
+		SELECT id, kind, recipient, subject, attempt_count, last_error, created_at, failed_at FROM (
+			SELECT id, 'ticket' AS kind, recipient, ticket_subject AS subject, attempt_count,
+			       COALESCE(last_error, '') AS last_error, created_at, failed_at
+			FROM ticket_mail_outbox WHERE failed_at IS NOT NULL
+			UNION ALL
+			SELECT -id AS id, 'password_reset' AS kind, recipient, '密码重置验证码' AS subject, attempt_count,
+			       COALESCE(last_error, '') AS last_error, created_at, failed_at
+			FROM password_reset_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL
+		)
 		ORDER BY failed_at DESC, id DESC LIMIT ? OFFSET ?
 	`, pageSize, (page-1)*pageSize)
 	if err != nil {
-		return TicketMailFailurePage{}, fmt.Errorf("list failed ticket mail: %w", err)
+		return TicketMailFailurePage{}, fmt.Errorf("list failed mail: %w", err)
 	}
 	defer rows.Close()
 	items := make([]TicketMailFailure, 0, min(pageSize, int(total)))
 	for rows.Next() {
 		var item TicketMailFailure
 		var createdAt, failedAt int64
-		if err := rows.Scan(&item.ID, &item.Recipient, &item.TicketSubject, &item.AttemptCount, &item.LastError, &createdAt, &failedAt); err != nil {
-			return TicketMailFailurePage{}, fmt.Errorf("scan failed ticket mail: %w", err)
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Recipient, &item.TicketSubject, &item.AttemptCount, &item.LastError, &createdAt, &failedAt); err != nil {
+			return TicketMailFailurePage{}, fmt.Errorf("scan failed mail: %w", err)
 		}
 		item.CreatedAt = time.Unix(createdAt, 0).UTC()
 		item.FailedAt = time.Unix(failedAt, 0).UTC()
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return TicketMailFailurePage{}, fmt.Errorf("iterate failed ticket mail: %w", err)
+		return TicketMailFailurePage{}, fmt.Errorf("iterate failed mail: %w", err)
 	}
 	return TicketMailFailurePage{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }

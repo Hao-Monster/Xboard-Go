@@ -95,6 +95,14 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 		`, now.Unix(), now.Unix()); err != nil {
 			return TicketSettings{}, fmt.Errorf("cancel disabled ticket mail: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE password_reset_mail_outbox
+			SET cancelled_at = ?, code_cipher = NULL,
+			    last_error = 'cancelled because SMTP notifications were disabled', updated_at = ?
+			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
+		`, now.Unix(), now.Unix()); err != nil {
+			return TicketSettings{}, fmt.Errorf("cancel disabled password reset mail: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return TicketSettings{}, fmt.Errorf("commit ticket settings: %w", err)

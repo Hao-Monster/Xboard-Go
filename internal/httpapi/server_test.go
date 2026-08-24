@@ -520,19 +520,24 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 	if err != nil {
 		t.Fatalf("NewCipher() error = %v", err)
 	}
+	passwordResetProtector, err := security.NewPasswordResetProtector(make([]byte, 32))
+	if err != nil {
+		t.Fatalf("NewPasswordResetProtector() error = %v", err)
+	}
 	runtimeTracker := operations.NewTracker(fixedNow().Add(-time.Hour))
 	runtimeTracker.MarkSchedulerRun(fixedNow())
 	runtimeTracker.MarkMailRun(fixedNow())
 	handler := New(Dependencies{
-		Store:             database,
-		PasswordHasher:    hasher,
-		Now:               fixedNow,
-		PanelURL:          "https://panel.example.test",
-		NodeRelease:       "v1.14.3",
-		CookieSecure:      false,
-		CatalogHTTPClient: catalogHTTPClient,
-		SettingsCipher:    settingsCipher,
-		RuntimeTracker:    runtimeTracker,
+		Store:                  database,
+		PasswordHasher:         hasher,
+		Now:                    fixedNow,
+		PanelURL:               "https://panel.example.test",
+		NodeRelease:            "v1.14.3",
+		CookieSecure:           false,
+		CatalogHTTPClient:      catalogHTTPClient,
+		SettingsCipher:         settingsCipher,
+		PasswordResetProtector: passwordResetProtector,
+		RuntimeTracker:         runtimeTracker,
 	})
 	return handler, database
 }

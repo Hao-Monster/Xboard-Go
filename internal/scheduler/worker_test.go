@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -134,5 +135,51 @@ func TestWorkerPrunesExpiredRegistrationIPState(t *testing.T) {
 	worker.applyDue(ctx)
 	if removed, err := database.PruneExpiredRegistrationIPLimits(ctx, now.Add(time.Minute), 100); err != nil || removed != 0 {
 		t.Fatalf("worker left expired registration IP state: removed=%d err=%v", removed, err)
+	}
+}
+
+func TestWorkerPrunesExpiredPasswordResetChallengesAndEncryptedMail(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-password-reset-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-reset@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetTicketSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateTicketSettings(ctx, user.ID, settings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Worker Reset", SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025,
+		SMTPEncryption: "none", SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protector, _ := security.NewPasswordResetProtector(make([]byte, 32))
+	emailDigest, _ := protector.EmailDigest(user.Email)
+	codeDigest, _ := protector.CodeDigest(user.Email, "789012")
+	codeCipher, _ := protector.EncryptCode(user.Email, "789012")
+	if queued, err := database.RequestPasswordReset(ctx, store.PasswordResetRequestInput{
+		Email: user.Email, EmailDigest: emailDigest, CodeDigest: codeDigest, CodeCipher: codeCipher,
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestPasswordReset() = (%v, %v)", queued, err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now.Add(5 * time.Minute) }
+	worker.applyDue(ctx)
+	if removed, err := database.PruneExpiredPasswordResets(ctx, now.Add(5*time.Minute), 100); err != nil || removed != 0 {
+		t.Fatalf("worker left expired password reset state: removed=%d err=%v", removed, err)
+	}
+	if _, claimed, err := database.ClaimPasswordResetMail(ctx, "expired-worker-check", now.Add(5*time.Minute), time.Minute); err != nil || claimed {
+		t.Fatalf("expired password reset mail remained claimable: claimed=%v err=%v", claimed, err)
 	}
 }
