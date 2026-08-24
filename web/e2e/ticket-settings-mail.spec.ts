@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -31,7 +31,7 @@ test("ticket wait policy and administrator reply email work through the local Do
     await dialog.getByRole("button", { name: "创建" }).click();
     await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
     await login(page, userEmail, userPassword);
     await page.getByRole("button", { name: "我的工单", exact: true }).click();
     await page.getByRole("button", { name: "新建工单" }).click();
@@ -46,7 +46,7 @@ test("ticket wait policy and administrator reply email work through the local Do
     await expect(dialog.getByRole("alert")).toContainText("请等待技术支持回复");
     await dialog.getByRole("button", { name: "关闭工单详情" }).click();
 
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
     await login(page, adminEmail, adminPassword);
     await page.getByRole("button", { name: "工单管理", exact: true }).click();
     await page.getByRole("searchbox", { name: "搜索工单" }).fill(userEmail);
@@ -67,7 +67,7 @@ test("ticket wait policy and administrator reply email work through the local Do
     expect(captured).toContain("http://127.0.0.1:7080");
 
     await dialog.getByRole("button", { name: "关闭工单详情" }).click();
-    await page.getByRole("button", { name: "退出" }).click();
+    await logoutAndWait(page);
     await login(page, userEmail, userPassword);
     await page.getByRole("button", { name: "我的工单", exact: true }).click();
     await page.getByRole("button", { name: `查看工单：${subject}` }).click();
@@ -110,8 +110,8 @@ async function restoreTicketSettings(page: Page) {
     const closeSettings = page.getByRole("button", { name: "关闭工单设置", exact: true });
     if (await closeDetail.count() > 0) await closeDetail.click();
     else if (await closeSettings.count() > 0) await closeSettings.click();
-    const logout = page.getByRole("button", { name: "退出" });
-    if (await logout.count() > 0) await logout.click();
+    const logoutButton = page.getByRole("button", { name: "退出" });
+    if (await logoutButton.count() > 0) await logoutAndWait(page);
     await login(page, adminEmail, adminPassword);
     await configureTicketSettings(page, false, false);
   } catch {

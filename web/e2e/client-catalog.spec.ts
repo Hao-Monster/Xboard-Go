@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("administrator configures client actions and a user browses secure platform downloads", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -27,7 +27,7 @@ test("administrator configures client actions and a user browses secure platform
   await page.getByRole("button", { name: "保存全部配置" }).click();
   await expect(page.getByText("客户端按钮配置已保存。", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, email, password);
   await page.getByRole("button", { name: "客户端下载", exact: true }).click();
   await expect(page.getByRole("heading", { name: "客户端下载" })).toBeVisible();
@@ -48,7 +48,7 @@ test("administrator configures client actions and a user browses secure platform
   await expect(dialog.getByRole("img", { name: "Karing 下载二维码" })).toHaveAttribute("src", /^data:image\/svg\+xml;base64,/);
   await dialog.getByRole("button", { name: "关闭扫码下载 Karing" }).click();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, adminEmail, adminPassword);
   await page.getByRole("button", { name: "客户端管理", exact: true }).click();
   for (const label of ["直接下载", "扫码下载", "网盘下载", "使用教程"]) await android.getByLabel(label).fill("");
