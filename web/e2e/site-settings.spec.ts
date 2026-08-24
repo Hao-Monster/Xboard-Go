@@ -9,6 +9,7 @@ interface SiteSettings {
   app_url: string;
   tos_url: string;
   logo: string;
+  stop_register: boolean;
 }
 
 test("administrator site identity persists into the public shell and can be restored", async ({ page, request }) => {
@@ -24,7 +25,8 @@ test("administrator site identity persists into the public shell and can be rest
     app_description: `Observable identity ${unique}`,
     app_url: `https://site-${unique}.example.test/`,
     tos_url: `https://site-${unique}.example.test/terms/`,
-    logo: `https://images.example.test/brand-${unique}.svg`
+    logo: `https://images.example.test/brand-${unique}.svg`,
+    stop_register: true
   };
   let original: SiteSettings | null = null;
   let createdKnowledge: { id: number; revision: number } | null = null;
@@ -45,6 +47,7 @@ test("administrator site identity persists into the public shell and can be rest
     await page.getByLabel("站点网址").fill(changed.app_url);
     await page.getByLabel("用户条款(TOS)URL").fill(changed.tos_url);
     await page.getByLabel("LOGO").fill(changed.logo);
+    await page.getByRole("checkbox", { name: "停止新用户注册" }).check();
     await page.getByRole("button", { name: "保存站点设置" }).click();
     await expect(page.getByRole("status")).toContainText("站点设置已保存");
     await expect(page.locator(".brand").getByText(changed.app_name, { exact: true })).toBeVisible();
@@ -57,10 +60,15 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址")).toHaveValue(changed.app_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
+    await expect(page.getByRole("checkbox", { name: "停止新用户注册" })).toBeChecked();
     const publicResponse = await request.get("/api/v1/guest/comm/config");
     expect(publicResponse.ok()).toBeTruthy();
     const publicPayload = await publicResponse.json() as { data?: Record<string, unknown> };
-    expect(publicPayload.data).toMatchObject(changed);
+    expect(publicPayload.data).toMatchObject({
+      app_name: changed.app_name, app_description: changed.app_description, app_url: changed.app_url,
+      tos_url: changed.tos_url, logo: changed.logo
+    });
+    expect(publicPayload.data).not.toHaveProperty("stop_register");
 
     const knowledgeResponse = await adminRequest(page, "/api/v1/admin/knowledge", "POST", {
       language: "zh-CN", category: "Brand parity", title: `Brand guide ${unique}`,
@@ -95,6 +103,12 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(tos).toHaveAttribute("target", "_blank");
     await expect(tos).toHaveAttribute("rel", /noopener/);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", changed.app_description);
+    await page.getByRole("button", { name: "注册账号" }).click();
+    await page.getByLabel("邮箱").fill(`closed-${unique}@example.test`);
+    await page.getByLabel("密码", { exact: true }).fill(`closed-password-${unique}`);
+    await page.getByLabel("再次输入密码").fill(`closed-password-${unique}`);
+    await page.getByRole("button", { name: "注册", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveText("本站已关闭注册");
   } finally {
     if (original !== null) {
       await ensureAdmin(page);
@@ -109,7 +123,8 @@ test("administrator site identity persists into the public shell and can be rest
         app_description: original.app_description,
         app_url: original.app_url,
         tos_url: original.tos_url,
-        logo: original.logo
+        logo: original.logo,
+        stop_register: original.stop_register
       });
       expect(restored.status, restored.body).toBe(200);
       await page.reload();

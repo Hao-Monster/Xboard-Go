@@ -11,6 +11,7 @@ var (
 	ErrNotFound             = errors.New("not found")
 	ErrConflict             = errors.New("conflict")
 	ErrEmailInUse           = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrRegistrationClosed   = errors.New("registration is closed")
 	ErrOpenTicketExists     = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
 	ErrTicketClosed         = fmt.Errorf("%w: ticket is closed", ErrConflict)
 	ErrTicketReplyPending   = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
@@ -136,6 +137,7 @@ type SiteSettings struct {
 	AppURL         string    `json:"app_url"`
 	TOSURL         string    `json:"tos_url"`
 	Logo           string    `json:"logo"`
+	StopRegister   bool      `json:"stop_register"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -145,6 +147,7 @@ type SaveSiteSettingsInput struct {
 	AppURL         string
 	TOSURL         string
 	Logo           string
+	StopRegister   bool
 }
 
 type TicketMailJob struct {

@@ -43,31 +43,52 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionToken, err := security.NewOpaqueToken(32)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
-		return
-	}
-	csrfToken, err := security.NewOpaqueToken(32)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
-		return
-	}
-	now := s.now()
-	expiresAt := now.Add(12 * time.Hour)
-	if err := s.store.CreateSession(r.Context(), user.ID, sessionToken.Digest, csrfToken.Digest, expiresAt, now); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+	if !s.issueSession(w, r, user) {
 		return
 	}
 	s.loginAttempts.reset(attemptKey)
-
-	http.SetCookie(w, s.sessionCookie(sessionToken.Plaintext, expiresAt))
-	http.SetCookie(w, s.csrfCookie(csrfToken.Plaintext, expiresAt))
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id":       user.ID,
 		"email":    user.Email,
 		"is_admin": user.IsAdmin,
 	})
+}
+
+func (s *server) issueSession(w http.ResponseWriter, r *http.Request, user store.User) bool {
+	credentials, err := s.newSessionCredentials()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return false
+	}
+	if err := s.store.CreateSession(r.Context(), user.ID, credentials.token.Digest, credentials.csrf.Digest, credentials.expiresAt, s.now()); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return false
+	}
+	s.setSessionCookies(w, credentials)
+	return true
+}
+
+type sessionCredentials struct {
+	token     security.OpaqueToken
+	csrf      security.OpaqueToken
+	expiresAt time.Time
+}
+
+func (s *server) newSessionCredentials() (sessionCredentials, error) {
+	sessionToken, err := security.NewOpaqueToken(32)
+	if err != nil {
+		return sessionCredentials{}, err
+	}
+	csrfToken, err := security.NewOpaqueToken(32)
+	if err != nil {
+		return sessionCredentials{}, err
+	}
+	return sessionCredentials{token: sessionToken, csrf: csrfToken, expiresAt: s.now().Add(12 * time.Hour)}, nil
+}
+
+func (s *server) setSessionCookies(w http.ResponseWriter, credentials sessionCredentials) {
+	http.SetCookie(w, s.sessionCookie(credentials.token.Plaintext, credentials.expiresAt))
+	http.SetCookie(w, s.csrfCookie(credentials.csrf.Plaintext, credentials.expiresAt))
 }
 
 func (s *server) session(w http.ResponseWriter, r *http.Request) {

@@ -11,6 +11,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const currentSchemaVersion = 15
+
 type Store struct {
 	db      *sql.DB
 	writeMu sync.Mutex
@@ -58,7 +60,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 14 {
+	if version > currentSchemaVersion {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -150,6 +152,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v14: %w", err)
 		}
 		version = 14
+	}
+	if version < 15 {
+		if _, err := tx.ExecContext(ctx, schemaV15); err != nil {
+			return fmt.Errorf("apply schema v15: %w", err)
+		}
+		version = 15
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -676,4 +684,8 @@ ALTER TABLE app_settings ADD COLUMN tos_url TEXT NOT NULL DEFAULT '' CHECK (leng
 
 const schemaV14 = `
 ALTER TABLE app_settings ADD COLUMN logo TEXT NOT NULL DEFAULT '' CHECK (length(logo) <= 2048);
+`
+
+const schemaV15 = `
+ALTER TABLE app_settings ADD COLUMN stop_register INTEGER NOT NULL DEFAULT 0 CHECK (stop_register IN (0, 1));
 `

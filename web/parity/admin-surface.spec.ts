@@ -164,6 +164,99 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(errors).toEqual([]);
 });
 
+test("legacy basic registration follows the public form and stop-register policy", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const configuration = readProperty(await fetched.json() as unknown, "data");
+  const site = readObjectProperty(configuration, "site");
+  const safe = readObjectProperty(configuration, "safe");
+  const invite = readObjectProperty(configuration, "invite");
+  const original = {
+    stop_register: readProperty(site, "stop_register"),
+    invite_force: readProperty(invite, "invite_force"),
+    email_verify: readProperty(safe, "email_verify"),
+    email_whitelist_enable: readProperty(safe, "email_whitelist_enable"),
+    email_gmail_limit_enable: readProperty(safe, "email_gmail_limit_enable"),
+    captcha_enable: readProperty(safe, "captcha_enable"),
+    register_limit_by_ip_enable: readProperty(safe, "register_limit_by_ip_enable")
+  };
+  const unique = Date.now();
+  const email = `REGISTER-PARITY-${unique}@LEGACY.LOCAL`;
+  const normalizedEmail = email.toLowerCase();
+  const closedEmail = `register-closed-${unique}@legacy.local`;
+  const password = `register-parity-password-${unique}`;
+
+  try {
+    const opened = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: {
+        stop_register: 0,
+        invite_force: 0,
+        email_verify: 0,
+        email_whitelist_enable: 0,
+        email_gmail_limit_enable: 0,
+        captcha_enable: 0,
+        register_limit_by_ip_enable: 0
+      }
+    });
+    expect(opened.status()).toBe(200);
+
+    await page.goto(new URL("/#/register", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveTitle(/注册 \| XBoard/);
+    await expect(page.getByPlaceholder("邮箱", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("密码", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("再次输入密码", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("邀请码,（选填）", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "注册", exact: true })).toBeVisible();
+    await expect(page.getByText("返回登入", { exact: true })).toBeVisible();
+
+    const registered = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email, password }
+    });
+    expect(registered.status()).toBe(200);
+    const registrationPayload = await registered.json() as unknown;
+    expect(readStringProperty(registrationPayload, "status")).toBe("success");
+    expect(readStringProperty(readProperty(registrationPayload, "data"), "auth_data")).toBeTruthy();
+
+    const login = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: normalizedEmail, password }
+    });
+    expect(login.status()).toBe(200);
+
+    const duplicate = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email: normalizedEmail, password }
+    });
+    expect(duplicate.status()).toBe(400);
+    expect(readStringProperty(await duplicate.json() as unknown, "message")).toBe("邮箱已在系统中存在");
+
+    const closed = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers, data: { stop_register: 1 }
+    });
+    expect(closed.status()).toBe(200);
+    const blocked = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email: closedEmail, password }
+    });
+    expect(blocked.status()).toBe(400);
+    expect(readStringProperty(await blocked.json() as unknown, "message")).toBe("本站已关闭注册");
+    const blockedLogin = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
+      data: { email: closedEmail, password }
+    });
+    expect(blockedLogin.status()).not.toBe(200);
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    const cleanup = `App\\Models\\User::whereIn("email",["${normalizedEmail}","${closedEmail}"])->delete();`;
+    execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
+  }
+});
+
 test("legacy site identity settings persist and feed the public guest contract", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));

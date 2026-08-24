@@ -22,11 +22,13 @@ const defaultGuestConfig: GuestConfig = {
   captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
 };
+type AuthMode = "login" | "register";
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [guestConfig, setGuestConfig] = useState<GuestConfig>(defaultGuestConfig);
   const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<AuthMode>(() => authModeFromHash());
   const [page, setPage] = useState<"system" | "settings" | "servers" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
 
   useEffect(() => {
@@ -45,7 +47,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    document.title = `${guestConfig.app_name} 控制面板`;
+    document.title = session === null
+      ? `${authMode === "register" ? "注册" : "登录"} | ${guestConfig.app_name}`
+      : `${guestConfig.app_name} 控制面板`;
     let description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (description === null) {
       description = document.createElement("meta");
@@ -53,7 +57,24 @@ export function App() {
       document.head.append(description);
     }
     description.content = guestConfig.app_description ?? `${guestConfig.app_name} 控制面板`;
-  }, [guestConfig]);
+  }, [authMode, guestConfig, session]);
+
+  useEffect(() => {
+    const followHash = () => setAuthMode(authModeFromHash());
+    window.addEventListener("hashchange", followHash);
+    return () => window.removeEventListener("hashchange", followHash);
+  }, []);
+
+  const switchAuthMode = (mode: AuthMode) => {
+    setAuthMode(mode);
+    window.history.replaceState(null, "", mode === "register" ? "#/register" : "#/login");
+  };
+
+  const authenticated = (nextSession: UserSession) => {
+    setSession(nextSession);
+    setAuthMode("login");
+    window.history.replaceState(null, "", "#/");
+  };
 
   const identityChanged = (settings: SiteSettings) => {
     setGuestConfig((current) => ({
@@ -66,7 +87,7 @@ export function App() {
     return <div className="app-loading">正在加载 {guestConfig.app_name}…</div>;
   }
   if (session === null) {
-    return <LoginPage config={guestConfig} onLogin={setSession} />;
+    return <AuthPage config={guestConfig} mode={authMode} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
   }
   if (!session.is_admin) {
     return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} onSignedOut={() => setSession(null)} /></Suspense>;
@@ -108,9 +129,15 @@ export function App() {
   );
 }
 
-function LoginPage({ config, onLogin }: { config: GuestConfig; onLogin: (session: UserSession) => void }) {
+function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
+  config: GuestConfig;
+  mode: AuthMode;
+  onAuthenticated: (session: UserSession) => void;
+  onModeChange: (mode: AuthMode) => void;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -119,9 +146,17 @@ function LoginPage({ config, onLogin }: { config: GuestConfig; onLogin: (session
     setSubmitting(true);
     setError("");
     try {
-      onLogin(await api.login(email, password));
+      if (mode === "register") {
+        if (password !== confirmation) {
+          setError("两次输入的密码不一致");
+          return;
+        }
+        onAuthenticated(await api.register(email, password, confirmation));
+      } else {
+        onAuthenticated(await api.login(email, password));
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "登录失败");
+      setError(cause instanceof Error ? cause.message : (mode === "register" ? "注册失败" : "登录失败"));
     } finally {
       setSubmitting(false);
     }
@@ -131,16 +166,25 @@ function LoginPage({ config, onLogin }: { config: GuestConfig; onLogin: (session
     <main className="login-shell">
       <section className="login-card">
         <div className="brand large"><BrandMark appName={config.app_name} logo={config.logo} /><span>{config.app_name}</span></div>
-        <h1>登录 {config.app_name}</h1>
-        <p className="muted">{config.app_description ?? "使用账号进入控制面板。"}</p>
+        <h1>{mode === "register" ? "注册" : "登录"} {config.app_name}</h1>
+        <p className="muted">{config.app_description ?? (mode === "register" ? "创建账号进入用户面板。" : "使用账号进入控制面板。")}</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>
-          <label>邮箱<input type="email" autoComplete="username" value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
-          <label>密码<input type="password" autoComplete="current-password" value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
+          <label>邮箱<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>密码<input type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} minLength={mode === "register" ? 8 : undefined} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
+          {mode === "register" && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
-          <button className="button primary full" type="submit" disabled={submitting}>{submitting ? "正在登录…" : "登录"}</button>
+          <button className="button primary full" type="submit" disabled={submitting}>{submitting ? (mode === "register" ? "正在注册…" : "正在登录…") : (mode === "register" ? "注册" : "登录")}</button>
         </form>
+        <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
+          setError("");
+          onModeChange(mode === "register" ? "login" : "register");
+        }}>{mode === "register" ? "返回登入" : "注册账号"}</button>
         {config.tos_url !== null && <p className="login-terms"><a href={config.tos_url} target="_blank" rel="noreferrer noopener">用户条款</a></p>}
       </section>
     </main>
   );
+}
+
+function authModeFromHash(): AuthMode {
+  return window.location.hash.startsWith("#/register") ? "register" : "login";
 }

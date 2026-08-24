@@ -105,7 +105,7 @@ func TestSchemaV2MigrationPreservesFirstSliceData(t *testing.T) {
 		t.Fatalf("migrated node = %#v, err=%v", node, err)
 	}
 	var version int
-	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 14 {
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 15 {
 		t.Fatalf("schema version = %d, err=%v", version, err)
 	}
 }
@@ -116,14 +116,14 @@ func TestMigrationRejectsNewerSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.db.Exec(`PRAGMA user_version = 15`); err != nil {
+	if _, err := database.db.Exec(`PRAGMA user_version = 16`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(context.Background()); err == nil {
 		t.Fatal("Migrate() accepted a schema created by a newer application version")
 	}
 	var version int
-	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 15 {
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 16 {
 		t.Fatalf("schema version after rejection = %d, err=%v", version, err)
 	}
 }

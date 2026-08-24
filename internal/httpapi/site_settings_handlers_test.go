@@ -25,7 +25,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		initialGuest.IsEmailVerify != 0 || initialGuest.IsCaptcha != 0 || initialGuest.CaptchaType != "recaptcha" || initialGuest.IsRecaptcha != 0 {
 		t.Fatalf("initial guest config = %#v", initialGuest)
 	}
-	if strings.Contains(publicInitial.Body.String(), "revision") || strings.Contains(publicInitial.Body.String(), "smtp") {
+	if strings.Contains(publicInitial.Body.String(), "revision") || strings.Contains(publicInitial.Body.String(), "smtp") || strings.Contains(publicInitial.Body.String(), "stop_register") {
 		t.Fatalf("public config disclosed internal settings: %s", publicInitial.Body)
 	}
 	assertGuestConfigKeys(t, publicInitial)
@@ -44,7 +44,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
-		"logo":"https://images.example.test/brand.svg"
+		"logo":"https://images.example.test/brand.svg","stop_register":true
 	}`)
 	if updatedResponse.Code != http.StatusOK {
 		t.Fatalf("update admin settings status=%d body=%s", updatedResponse.Code, updatedResponse.Body)
@@ -52,7 +52,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updated := decodeSiteSettingsEnvelope(t, updatedResponse)
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "Fast and safe control plane" ||
 		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
-		updated.Logo != "https://images.example.test/brand.svg" {
+		updated.Logo != "https://images.example.test/brand.svg" || !updated.StopRegister {
 		t.Fatalf("updated admin settings = %#v", updated)
 	}
 
@@ -63,29 +63,41 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		stringValue(guest.Logo) != updated.Logo {
 		t.Fatalf("public config did not observe update: %#v", guest)
 	}
+	preservedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":2,"app_name":"Example Board","app_description":"Fast and safe control plane",
+		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
+		"logo":"https://images.example.test/brand.svg"
+	}`)
+	if preservedResponse.Code != http.StatusOK {
+		t.Fatalf("legacy-shape settings update status=%d body=%s", preservedResponse.Code, preservedResponse.Body)
+	}
+	preserved := decodeSiteSettingsEnvelope(t, preservedResponse)
+	if preserved.Revision != 3 || !preserved.StopRegister {
+		t.Fatalf("legacy-shape settings update reopened registration: %#v", preserved)
+	}
 
 	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Stale","app_description":"","app_url":"","tos_url":""
 	}`)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
 	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
-		"revision":2,"app_name":"Example","app_description":"","app_url":"","tos_url":"",
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"",
 		"logo":"https://user@example.test/logo.png"
 	}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
 	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
-		"revision":2,"app_name":"Example","app_description":"","app_url":"","tos_url":"","smtp_password":"secret"
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","smtp_password":"secret"
 	}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 	withoutCSRF := admin
 	withoutCSRF.csrf = ""
 	csrfRejected := withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
-		"revision":2,"app_name":"No CSRF","app_description":"","app_url":"","tos_url":""
+		"revision":3,"app_name":"No CSRF","app_description":"","app_url":"","tos_url":""
 	}`)
 	expectAPIError(t, csrfRejected, http.StatusForbidden, "csrf_failed")
 
 	current, err := database.GetSiteSettings(t.Context())
-	if err != nil || current.Revision != 2 || current.AppName != updated.AppName {
+	if err != nil || current.Revision != 3 || current.AppName != updated.AppName || !current.StopRegister {
 		t.Fatalf("rejected updates changed persistent state: settings=%#v err=%v", current, err)
 	}
 }

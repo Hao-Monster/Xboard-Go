@@ -28,14 +28,14 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	updated, err := database.UpdateSiteSettings(ctx, administrator.ID, initial.Revision, SaveSiteSettingsInput{
 		AppName: "  Example Board  ", AppDescription: "  First line\nSecond line  ",
 		AppURL: "https://panel.example.test/", TOSURL: "https://panel.example.test/terms/",
-		Logo: " https://images.example.test/brand.svg?version=1#logo ",
+		Logo: " https://images.example.test/brand.svg?version=1#logo ", StopRegister: true,
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "First line\nSecond line" ||
 		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
-		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" {
+		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" || !updated.StopRegister {
 		t.Fatalf("normalized site settings = %#v", updated)
 	}
 
@@ -64,7 +64,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if afterTicketUpdate.Revision != ticketSettings.Revision || afterTicketUpdate.AppDescription != updated.AppDescription ||
-		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo {
+		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo || !afterTicketUpdate.StopRegister {
 		t.Fatalf("ticket settings update lost site-only fields: %#v", afterTicketUpdate)
 	}
 }
@@ -185,12 +185,57 @@ func TestSchemaV14MigrationPreservesV13SiteSettings(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 14 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
+	if version != 15 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
 		settings.AppURL != "https://v13.example.test/" || settings.TOSURL != "https://v13.example.test/terms/" || settings.Logo != "" {
 		t.Fatalf("v13 to v14 migration result: version=%d settings=%#v", version, settings)
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET logo = ? WHERE id = 1`, strings.Repeat("a", 2_049)); err == nil {
 		t.Fatal("database accepted an oversized logo")
+	}
+}
+
+func TestSchemaV15MigrationPreservesV14SettingsAndDefaultsRegistrationOpen(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "schema-v14.db")
+	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	for step, schema := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV7Constraints,
+		schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14,
+	} {
+		if _, err := database.db.ExecContext(ctx, schema); err != nil {
+			t.Fatalf("apply pre-v15 schema step %d: %v", step+1, err)
+		}
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE app_settings SET app_name = 'V14 Board', app_description = 'Preserved',
+			app_url = 'https://v14.example.test/', tos_url = 'https://v14.example.test/terms/',
+			logo = 'https://v14.example.test/logo.svg', revision = 17;
+		PRAGMA user_version = 14;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(v14 to v15) error = %v", err)
+	}
+	settings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 15 || settings.Revision != 17 || settings.AppName != "V14 Board" || settings.AppDescription != "Preserved" ||
+		settings.AppURL != "https://v14.example.test/" || settings.TOSURL != "https://v14.example.test/terms/" ||
+		settings.Logo != "https://v14.example.test/logo.svg" || settings.StopRegister {
+		t.Fatalf("v14 to v15 migration result: version=%d settings=%#v", version, settings)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET stop_register = 2 WHERE id = 1`); err == nil {
+		t.Fatal("database accepted an invalid stop_register value")
 	}
 }
 
@@ -233,7 +278,7 @@ func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_audit_logs`).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 14 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
+	if version != 15 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
 		settings.AppURL != "https://preserved.example.test" || settings.AppDescription != "" || settings.TOSURL != "" || settings.Logo != "" || auditCount != 1 {
 		t.Fatalf("migration result: version=%d settings=%#v audits=%d", version, settings, auditCount)
 	}
