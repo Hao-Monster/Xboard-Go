@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("user and administrator complete the legacy ticket lifecycle", async ({ page }) => {
   test.setTimeout(60_000);
@@ -25,7 +25,7 @@ test("user and administrator complete the legacy ticket lifecycle", async ({ pag
   await dialog.getByRole("button", { name: "创建" }).click();
   await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, userEmail, userPassword);
   await page.getByRole("button", { name: "我的工单", exact: true }).click();
   await expect(page.getByRole("heading", { name: "我的工单" })).toBeVisible();
@@ -61,7 +61,7 @@ test("user and administrator complete the legacy ticket lifecycle", async ({ pag
   await dialog.getByRole("button", { name: "关闭工单详情" }).click();
   await expectLayoutWithinViewport(page);
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, adminEmail, adminPassword);
   await page.getByRole("button", { name: "工单管理", exact: true }).click();
   await page.getByRole("button", { name: "已关闭", exact: true }).click();
@@ -77,7 +77,7 @@ test("user and administrator complete the legacy ticket lifecycle", async ({ pag
   await expect(dialog.getByText("已关闭", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "关闭工单详情" }).click();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, userEmail, userPassword);
   await page.getByRole("button", { name: "我的工单", exact: true }).click();
   await page.getByRole("button", { name: `查看工单：${subject}` }).click();

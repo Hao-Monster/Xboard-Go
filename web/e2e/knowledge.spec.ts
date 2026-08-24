@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("administrator manages knowledge while active, inactive, and public readers receive the correct content", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -46,7 +46,7 @@ test("administrator manages knowledge while active, inactive, and public readers
   expect(publicHTML).not.toContain("/api/v1/client/subscribe?token=");
   expect(publicHTML).not.toMatch(/<script|onerror=/i);
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, inactiveEmail, password);
   await page.getByRole("button", { name: "知识库", exact: true }).click();
   await expect(page.getByText(editedTitle, { exact: true })).toBeVisible();
@@ -57,7 +57,7 @@ test("administrator manages knowledge while active, inactive, and public readers
   await expect(dialog.getByText(privateText, { exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: `关闭${editedTitle}` }).click();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, activeEmail, password);
   await page.getByRole("button", { name: "知识库", exact: true }).click();
   await page.getByRole("button", { name: `阅读：${editedTitle}` }).click();
@@ -67,7 +67,7 @@ test("administrator manages knowledge while active, inactive, and public readers
   await expect(dialog.locator("script")).toHaveCount(0);
   await dialog.getByRole("button", { name: `关闭${editedTitle}` }).click();
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, adminEmail, adminPassword);
   await page.getByRole("button", { name: "知识库管理", exact: true }).click();
   for (const title of [hiddenTitle, editedTitle]) {

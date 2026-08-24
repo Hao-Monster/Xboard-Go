@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("administrator manages ordered notices and a user reads only visible safe markdown", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -49,7 +49,7 @@ test("administrator manages ordered notices and a user reads only visible safe m
   await expect(dialog).toBeHidden();
   await expect(page.locator("tbody tr").first()).toContainText(revisedTitle);
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, userEmail, userPassword);
   await expect(page.getByRole("heading", { name: "公告", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: revisedTitle })).toBeVisible();
@@ -59,7 +59,7 @@ test("administrator manages ordered notices and a user reads only visible safe m
   await expect(page.getByRole("link", { name: "unsafe" })).not.toHaveAttribute("href", /^javascript:/i);
   await expectLayoutWithinViewport(page);
 
-  await page.getByRole("button", { name: "退出" }).click();
+  await logoutAndWait(page);
   await login(page, adminEmail, adminPassword);
   await page.getByRole("button", { name: "公告管理", exact: true }).click();
   for (const title of [hiddenTitle, revisedTitle]) {
