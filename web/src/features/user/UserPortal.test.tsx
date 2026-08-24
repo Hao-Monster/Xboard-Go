@@ -21,9 +21,10 @@ describe("UserPortal", () => {
     };
     const onSignedOut = vi.fn();
     const user = userEvent.setup();
-    render(<UserPortal api={api} session={session} siteName="Tenant Board" onSignedOut={onSignedOut} />);
+    render(<UserPortal api={api} session={session} siteName="Tenant Board" siteLogo="https://images.example.test/tenant.svg" onSignedOut={onSignedOut} />);
 
     expect(screen.getByText("Tenant Board", { exact: true })).toBeVisible();
+    expect(screen.getByRole("img", { name: "Tenant Board LOGO" })).toHaveAttribute("src", "https://images.example.test/tenant.svg");
 
     expect(await screen.findByRole("heading", { name: "公告" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "客户端下载" }));
@@ -53,7 +54,7 @@ describe("UserPortal", () => {
     };
     const onSignedOut = vi.fn();
     const user = userEvent.setup();
-    render(<UserPortal api={api} session={session} siteName="Tenant Board" onSignedOut={onSignedOut} />);
+    render(<UserPortal api={api} session={session} siteName="Tenant Board" siteLogo={null} onSignedOut={onSignedOut} />);
 
     await user.click(screen.getByRole("button", { name: "退出" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("会话注销失败");

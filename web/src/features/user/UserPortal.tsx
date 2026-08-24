@@ -5,6 +5,7 @@ import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
 import { UserTicketsPage } from "../tickets/UserTicketsPage";
+import { BrandMark } from "../../components/BrandMark";
 
 interface UserPortalAPI {
   listVisibleNotices: (page?: number) => Promise<NoticePage>;
@@ -20,10 +21,11 @@ interface UserPortalAPI {
   logout: () => Promise<void>;
 }
 
-export function UserPortal({ api, session, siteName, onSignedOut }: {
+export function UserPortal({ api, session, siteName, siteLogo, onSignedOut }: {
   api: UserPortalAPI;
   session: UserSession;
   siteName: string;
+  siteLogo: string | null;
   onSignedOut: () => void;
 }) {
   const [page, setPage] = useState<"notices" | "knowledge" | "tickets" | "clients">("notices");
@@ -41,7 +43,7 @@ export function UserPortal({ api, session, siteName, onSignedOut }: {
 
   return <div className="app-frame">
     <nav className="topbar" aria-label="用户导航">
-      <div className="brand"><span className="brand-mark">X</span><span>{siteName}</span></div>
+      <div className="brand"><BrandMark appName={siteName} logo={siteLogo} /><span>{siteName}</span></div>
       <div className="admin-nav">
         <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
         <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>

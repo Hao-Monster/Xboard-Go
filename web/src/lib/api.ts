@@ -323,6 +323,7 @@ export interface SiteSettings {
   app_description: string;
   app_url: string;
   tos_url: string;
+  logo: string;
   updated_at: string;
 }
 
@@ -332,6 +333,7 @@ export interface SiteSettingsInput {
   app_description: string;
   app_url: string;
   tos_url: string;
+  logo: string;
 }
 
 export interface GuestConfig {

@@ -12,6 +12,7 @@ import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagemen
 import { TicketManagementPage } from "./features/tickets/TicketManagementPage";
 import { SystemOperationsPage } from "./features/system/SystemOperationsPage";
 import { SiteSettingsPage } from "./features/settings/SiteSettingsPage";
+import { BrandMark } from "./components/BrandMark";
 
 const api = new APIClient();
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -57,7 +58,7 @@ export function App() {
   const identityChanged = (settings: SiteSettings) => {
     setGuestConfig((current) => ({
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
-      app_url: settings.app_url || null, tos_url: settings.tos_url || null
+      app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null
     }));
   };
 
@@ -68,7 +69,7 @@ export function App() {
     return <LoginPage config={guestConfig} onLogin={setSession} />;
   }
   if (!session.is_admin) {
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
     <div className="app-frame">
@@ -129,7 +130,7 @@ function LoginPage({ config, onLogin }: { config: GuestConfig; onLogin: (session
   return (
     <main className="login-shell">
       <section className="login-card">
-        <div className="brand large"><span className="brand-mark">X</span><span>{config.app_name}</span></div>
+        <div className="brand large"><BrandMark appName={config.app_name} logo={config.logo} /><span>{config.app_name}</span></div>
         <h1>登录 {config.app_name}</h1>
         <p className="muted">{config.app_description ?? "使用账号进入控制面板。"}</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>

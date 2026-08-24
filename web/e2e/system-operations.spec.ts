@@ -26,7 +26,7 @@ test("administrator inspects worker health, failed mail, and body-free mutation 
   try {
     await page.getByRole("button", { name: "系统状态", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统状态" })).toBeVisible();
-    await expect(page.getByText("Schema v13", { exact: true })).toBeVisible();
+    await expect(page.getByText("Schema v14", { exact: true })).toBeVisible();
     await expect(page.getByText("正常", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "失败邮件任务" })).toBeVisible();
 

@@ -18,6 +18,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.02em; }
 .brand.large { font-size: 1.15rem; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: #0b0d12; background: linear-gradient(135deg, #a6bbff, #78e5cb); }
+.brand-logo { width: 30px; height: 30px; flex: 0 0 30px; object-fit: contain; }
 .admin-nav { display: flex; align-items: center; gap: 4px; }
 .nav-link { min-height: 36px; border: 0; border-radius: 9px; padding: 0 13px; color: #9ea7ba; background: transparent; font-size: .82rem; }
 .nav-link:hover { color: #e8ebf2; background: #242a35; }

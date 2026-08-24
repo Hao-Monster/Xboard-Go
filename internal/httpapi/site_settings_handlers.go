@@ -35,6 +35,7 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		TOSURL: nullablePublicString(settings.TOSURL), CaptchaType: "recaptcha",
 		RecaptchaV3ScoreThreshold: 0.5, AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
+		Logo: nullablePublicString(settings.Logo),
 	})
 }
 
@@ -54,13 +55,14 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		AppDescription string `json:"app_description"`
 		AppURL         string `json:"app_url"`
 		TOSURL         string `json:"tos_url"`
+		Logo           string `json:"logo"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
 	updated, err := s.store.UpdateSiteSettings(r.Context(), session.UserID, input.Revision, store.SaveSiteSettingsInput{
-		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL,
+		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
 	}, s.now())
 	if errors.Is(err, store.ErrConflict) {
 		writeAPIError(w, http.StatusConflict, "settings_conflict", "设置已被其他管理员修改，请刷新后重试", nil)
