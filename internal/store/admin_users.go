@@ -224,7 +224,7 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	}
 	credentialsChanged := existing.Email != input.Email || (!existing.Banned && input.Banned)
 	if credentialsChanged {
-		if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`, now.Unix(), userID); err != nil {
+		if err := revokeAllCredentialsTx(ctx, tx, userID, now); err != nil {
 			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("revoke user sessions: %w", err)
 		}
 	}
@@ -286,7 +286,7 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 		}
 		return AdminUser{}, ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`, now.Unix(), userID); err != nil {
+	if err := revokeAllCredentialsTx(ctx, tx, userID, now); err != nil {
 		return AdminUser{}, fmt.Errorf("revoke sessions after password reset: %w", err)
 	}
 	updated, err := getAdminUserTx(ctx, tx, userID)

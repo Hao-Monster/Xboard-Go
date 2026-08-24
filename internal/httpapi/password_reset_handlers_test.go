@@ -51,6 +51,17 @@ func TestPasswordResetConfirmationChangesPasswordRevokesSessionsAndConsumesCode(
 	api, database := newTestAPI(t)
 	enablePasswordResetSMTP(t, database)
 	oldSession := loginAdmin(t, api)
+	accessToken := oldSession.request(t, api, http.MethodPost, "/api/v1/auth/access-tokens", `{"name":"password-reset-client"}`)
+	if accessToken.Code != http.StatusCreated {
+		t.Fatalf("create password-reset access token status=%d body=%s", accessToken.Code, accessToken.Body)
+	}
+	var accessTokenPayload struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, accessToken, &accessTokenPayload)
+	authorization := "Bearer " + accessTokenPayload.Data.Token
 
 	request := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request", `{"email":"admin@example.test"}`)
 	if request.Code != http.StatusAccepted {
@@ -65,6 +76,9 @@ func TestPasswordResetConfirmationChangesPasswordRevokesSessionsAndConsumesCode(
 	}
 	if session := oldSession.request(t, api, http.MethodGet, "/api/v1/auth/session", ""); session.Code != http.StatusUnauthorized {
 		t.Fatalf("old session remained active: status=%d body=%s", session.Code, session.Body)
+	}
+	if session := bearerRequest(api, http.MethodGet, "/api/v1/auth/session", authorization, ""); session.Code != http.StatusUnauthorized {
+		t.Fatalf("password reset left access token active: status=%d body=%s", session.Code, session.Body)
 	}
 	oldLogin := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/login", `{"email":"admin@example.test","password":"admin-password-123"}`)
 	expectAPIError(t, oldLogin, http.StatusUnauthorized, "invalid_credentials")

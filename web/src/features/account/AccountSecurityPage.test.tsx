@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AccountSecurityPage } from "./AccountSecurityPage";
-import type { AccountSecurityAPI, AccountSession } from "../../lib/api";
+import type { AccountAccessToken, AccountSecurityAPI, AccountSession } from "../../lib/api";
 
 const sessions: AccountSession[] = [
   {
@@ -21,6 +21,16 @@ const sessions: AccountSession[] = [
     expires_at: "2026-08-24T13:00:00Z"
   }
 ];
+
+const accessTokens: AccountAccessToken[] = [{
+  id: 33,
+  name: "automation client",
+  is_current: false,
+  created_at: "2026-08-24T04:00:00Z",
+  updated_at: "2026-08-24T04:00:00Z",
+  last_used_at: null,
+  expires_at: null
+}];
 
 describe("AccountSecurityPage", () => {
   it("shows a load failure and retries without a false empty state", async () => {
@@ -110,12 +120,61 @@ describe("AccountSecurityPage", () => {
     expect(api.revokeAccountSession).toHaveBeenCalledWith(11);
     expect(onSignedOut).toHaveBeenCalledOnce();
   });
+
+  it("creates a permanent access token, shows it once, copies it, and never persists it", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem");
+    const api = makeAPI();
+    api.createAccessToken.mockResolvedValueOnce({
+      id: 44,
+      name: "home server",
+      token: "a".repeat(48),
+      token_type: "Bearer",
+      created_at: "2026-08-24T05:00:00Z",
+      expires_at: null
+    });
+    render(<AccountSecurityPage api={api} onSignedOut={vi.fn()} />);
+
+    await screen.findByText("没有长期访问凭证。");
+    await user.type(screen.getByLabelText("凭证名称"), "home server");
+    await user.click(screen.getByRole("button", { name: "创建凭证" }));
+
+    expect(api.createAccessToken).toHaveBeenCalledWith("home server", null);
+    const oneTime = await screen.findByRole("status");
+    expect(oneTime).toHaveTextContent(`Bearer ${"a".repeat(48)}`);
+    expect(storageWrite).not.toHaveBeenCalled();
+    await user.click(within(oneTime).getByRole("button", { name: "复制凭证" }));
+    expect(writeText).toHaveBeenCalledWith(`Bearer ${"a".repeat(48)}`);
+    expect(within(oneTime).getByRole("button", { name: "已复制" })).toBeVisible();
+    await user.click(within(oneTime).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByText(`Bearer ${"a".repeat(48)}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId("access-token-44")).toBeVisible();
+    storageWrite.mockRestore();
+  });
+
+  it("lists and revokes a long-lived access token without false success", async () => {
+    const user = userEvent.setup();
+    const api = makeAPI(accessTokens);
+    render(<AccountSecurityPage api={api} onSignedOut={vi.fn()} />);
+
+    const token = await screen.findByTestId("access-token-33");
+    expect(token).toHaveTextContent("永久");
+    await user.click(within(token).getByRole("button", { name: "撤销凭证" }));
+    expect(api.revokeAccessToken).toHaveBeenCalledWith(33);
+    expect(screen.queryByTestId("access-token-33")).not.toBeInTheDocument();
+  });
 });
 
-function makeAPI() {
+function makeAPI(tokens: AccountAccessToken[] = []) {
   return {
     listAccountSessions: vi.fn<() => Promise<AccountSession[]>>().mockResolvedValue(sessions.map((session) => ({ ...session }))),
     revokeAccountSession: vi.fn<(id: number) => Promise<void>>().mockResolvedValue(undefined),
+    listAccessTokens: vi.fn<() => Promise<AccountAccessToken[]>>().mockResolvedValue(tokens.map((token) => ({ ...token }))),
+    createAccessToken: vi.fn<AccountSecurityAPI["createAccessToken"]>(),
+    revokeAccessToken: vi.fn<(id: number) => Promise<void>>().mockResolvedValue(undefined),
+    revokeAllAccessTokens: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     changePassword: vi.fn<(oldPassword: string, newPassword: string) => Promise<void>>().mockResolvedValue(undefined)
   } satisfies AccountSecurityAPI;
 }

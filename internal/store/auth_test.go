@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,11 @@ func TestChangePasswordRevokesAllSessionsAndRejectsStaleHash(t *testing.T) {
 	ctx := context.Background()
 	createTestSession(t, database, user.ID, "session-one", now.Add(time.Hour), now)
 	createTestSession(t, database, user.ID, "session-two", now.Add(time.Hour), now)
+	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
+		UserID: user.ID, TokenHash: strings.Repeat("e", 64), Name: "password-change-device",
+	}, now); err != nil {
+		t.Fatalf("CreateAccessToken() error = %v", err)
+	}
 
 	if err := database.ChangePassword(ctx, user.ID, "old-hash", "new-hash", now); err != nil {
 		t.Fatalf("ChangePassword() error = %v", err)
@@ -98,6 +104,9 @@ func TestChangePasswordRevokesAllSessionsAndRejectsStaleHash(t *testing.T) {
 	sessions, err := database.ListActiveSessions(ctx, user.ID, 0, now)
 	if err != nil || len(sessions) != 0 {
 		t.Fatalf("active sessions after password change = %#v, err=%v", sessions, err)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("e", 64), now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("access token after password change error = %v, want ErrNotFound", err)
 	}
 
 	if err := database.ChangePassword(ctx, user.ID, "old-hash", "stale-overwrite", now); !errors.Is(err, ErrConflict) {

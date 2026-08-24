@@ -14,6 +14,14 @@ import (
 )
 
 func (s *server) register(w http.ResponseWriter, r *http.Request) {
+	s.registerAccount(w, r, false)
+}
+
+func (s *server) legacyRegister(w http.ResponseWriter, r *http.Request) {
+	s.registerAccount(w, r, true)
+}
+
+func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy bool) {
 	sourceIP := requestIP(r)
 	if !s.registrationRequests.take(sourceIP, s.now()) {
 		w.Header().Set("Retry-After", "900")
@@ -29,6 +37,9 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	if !decodeJSON(w, r, &input) {
 		return
+	}
+	if legacy && input.PasswordConfirmation == "" {
+		input.PasswordConfirmation = input.Password
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	fields := validateRegistration(input.Email, input.Password, input.PasswordConfirmation)
@@ -149,12 +160,22 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	var accessToken security.OpaqueToken
+	var accessTokenName string
+	if legacy {
+		accessToken, accessTokenName, err = newAccessTokenCredentials("")
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+	}
 	now := s.now()
 	user, err := s.store.RegisterUserWithSession(r.Context(), store.RegisterUserInput{
 		Email: input.Email, PasswordHash: passwordHash, SourceIP: sourceIP,
 		EmailDigest: emailDigest, EmailCodeDigest: emailCodeDigest, InvitationCodeDigest: invitationCodeDigest,
 	}, store.RegistrationSessionInput{
 		TokenHash: credentials.token.Digest, CSRFHash: credentials.csrf.Digest, ExpiresAt: credentials.expiresAt,
+		AccessTokenHash: accessToken.Digest, AccessTokenName: accessTokenName,
 	}, now)
 	switch {
 	case errors.Is(err, store.ErrRegistrationClosed):
@@ -182,6 +203,10 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setSessionCookies(w, credentials)
+	if legacy {
+		writeSuccess(w, http.StatusOK, legacyAuthData(user, accessToken.Plaintext))
+		return
+	}
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": user.ID, "email": user.Email, "is_admin": user.IsAdmin,
 	})

@@ -94,9 +94,28 @@ export interface AccountSession {
   expires_at: string;
 }
 
+export interface AccountAccessToken {
+  id: number;
+  name: string;
+  is_current: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+}
+
+export interface IssuedAccessToken extends Pick<AccountAccessToken, "id" | "name" | "created_at" | "expires_at"> {
+  token: string;
+  token_type: "Bearer";
+}
+
 export interface AccountSecurityAPI {
   listAccountSessions: () => Promise<AccountSession[]>;
   revokeAccountSession: (id: number) => Promise<void>;
+  listAccessTokens: () => Promise<AccountAccessToken[]>;
+  createAccessToken: (name: string, expiresAt: string | null) => Promise<IssuedAccessToken>;
+  revokeAccessToken: (id: number) => Promise<void>;
+  revokeAllAccessTokens: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
 }
 
@@ -627,6 +646,24 @@ export class APIClient implements AdminAPI {
 
   async revokeAccountSession(id: number): Promise<void> {
     await this.request<void>(`/api/v1/auth/sessions/${id}`, { method: "DELETE" });
+  }
+
+  async listAccessTokens(): Promise<AccountAccessToken[]> {
+    return this.request<AccountAccessToken[]>("/api/v1/auth/access-tokens");
+  }
+
+  async createAccessToken(name: string, expiresAt: string | null): Promise<IssuedAccessToken> {
+    const body: Record<string, string> = { name };
+    if (expiresAt !== null) body.expires_at = expiresAt;
+    return this.request<IssuedAccessToken>("/api/v1/auth/access-tokens", { method: "POST", body });
+  }
+
+  async revokeAccessToken(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/auth/access-tokens/${id}`, { method: "DELETE" });
+  }
+
+  async revokeAllAccessTokens(): Promise<void> {
+    await this.request<void>("/api/v1/auth/access-tokens", { method: "DELETE" });
   }
 
   async changePassword(oldPassword: string, newPassword: string): Promise<void> {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestQuickLoginLinkExchangeIsAtomicOneTimeAndConcurrent(t *testing.T) {
 			_, err := database.ExchangeLoginLink(ctx, LoginLinkExchangeInput{
 				TokenDigest: digest, SessionTokenHash: fmt.Sprintf("login-link-session-%d", index),
 				CSRFHash: fmt.Sprintf("login-link-csrf-%d", index), SessionExpiresAt: now.Add(12 * time.Hour),
+				AccessTokenHash: strings.Repeat(string(rune('a'+index)), 64), AccessTokenName: fmt.Sprintf("login-link-device-%d", index),
 			}, now)
 			results <- err
 		}(index)
@@ -49,9 +51,12 @@ func TestQuickLoginLinkExchangeIsAtomicOneTimeAndConcurrent(t *testing.T) {
 	if succeeded != 1 || invalid != 1 {
 		t.Fatalf("concurrent exchange results success=%d invalid=%d", succeeded, invalid)
 	}
-	var sessionCount int
+	var sessionCount, accessTokenCount int
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_sessions WHERE token_hash LIKE 'login-link-session-%'`).Scan(&sessionCount); err != nil || sessionCount != 1 {
 		t.Fatalf("created sessions = %d, err=%v", sessionCount, err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM access_tokens WHERE name LIKE 'login-link-device-%'`).Scan(&accessTokenCount); err != nil || accessTokenCount != 1 {
+		t.Fatalf("created access tokens = %d, err=%v", accessTokenCount, err)
 	}
 }
 

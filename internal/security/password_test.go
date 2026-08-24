@@ -51,3 +51,20 @@ func TestOpaqueTokenStoresOnlyDigest(t *testing.T) {
 		t.Fatalf("DigestToken() = %q, want %q", got, first.Digest)
 	}
 }
+
+func TestRandomHexUsesTheRequestedEntropy(t *testing.T) {
+	first, err := NewRandomHex(10)
+	if err != nil {
+		t.Fatalf("NewRandomHex() error = %v", err)
+	}
+	second, err := NewRandomHex(10)
+	if err != nil {
+		t.Fatalf("NewRandomHex() second error = %v", err)
+	}
+	if len(first) != 20 || len(second) != 20 || first == second {
+		t.Fatalf("random labels first=%q second=%q", first, second)
+	}
+	if _, err := NewRandomHex(7); err == nil {
+		t.Fatal("NewRandomHex() accepted insufficient entropy")
+	}
+}

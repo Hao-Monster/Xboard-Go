@@ -143,9 +143,11 @@ func (s *Store) RequestMailLoginLink(ctx context.Context, input MailLoginLinkReq
 }
 
 func (s *Store) ExchangeLoginLink(ctx context.Context, input LoginLinkExchangeInput, now time.Time) (LoginLinkExchange, error) {
+	accessTokenRequested := input.AccessTokenHash != "" || input.AccessTokenName != ""
 	if len(input.TokenDigest) != 32 || (len(input.AlternateTokenDigest) != 0 && len(input.AlternateTokenDigest) != 32) ||
 		strings.TrimSpace(input.SessionTokenHash) == "" || strings.TrimSpace(input.CSRFHash) == "" ||
-		!input.SessionExpiresAt.After(now) || now.IsZero() {
+		!input.SessionExpiresAt.After(now) || now.IsZero() ||
+		(accessTokenRequested && (!validAccessTokenHash(input.AccessTokenHash) || strings.TrimSpace(input.AccessTokenName) == "" || len([]rune(input.AccessTokenName)) > 80)) {
 		return LoginLinkExchange{}, fmt.Errorf("%w: invalid login link exchange", ErrInvalidInput)
 	}
 	defer s.lockWrite()()
@@ -162,13 +164,14 @@ func (s *Store) ExchangeLoginLink(ctx context.Context, input LoginLinkExchangeIn
 	var result LoginLinkExchange
 	var consumedDigest []byte
 	err = tx.QueryRowContext(ctx, `
-		SELECT u.id, u.email, u.password_hash, u.is_admin, u.banned, u.account_kind, l.redirect_path, l.token_digest
+		SELECT u.id, u.email, u.password_hash, u.is_admin, u.banned, u.account_kind, u.subscription_token,
+		       l.redirect_path, l.token_digest
 		FROM login_link_tokens l JOIN users u ON u.id = l.user_id
 		WHERE l.token_digest IN (?, ?) AND l.expires_at > ? AND u.account_kind = ? AND u.banned = 0
 		ORDER BY CASE l.purpose WHEN 'quick' THEN 0 ELSE 1 END LIMIT 1
 	`, input.TokenDigest, alternateDigest, now.Unix(), AccountKindHuman).Scan(
 		&result.User.ID, &result.User.Email, &result.User.PasswordHash, &result.User.IsAdmin,
-		&result.User.Banned, &result.User.AccountKind, &result.Redirect, &consumedDigest,
+		&result.User.Banned, &result.User.AccountKind, &result.User.SubscriptionToken, &result.Redirect, &consumedDigest,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LoginLinkExchange{}, ErrLoginLinkInvalid
@@ -197,6 +200,14 @@ func (s *Store) ExchangeLoginLink(ctx context.Context, input LoginLinkExchangeIn
 		VALUES (?, ?, ?, ?, ?)
 	`, result.User.ID, input.SessionTokenHash, input.CSRFHash, input.SessionExpiresAt.Unix(), now.Unix()); err != nil {
 		return LoginLinkExchange{}, fmt.Errorf("create login link session: %w", err)
+	}
+	if accessTokenRequested {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO access_tokens (user_id, token_hash, name, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, result.User.ID, input.AccessTokenHash, strings.TrimSpace(input.AccessTokenName), now.Unix(), now.Unix()); err != nil {
+			return LoginLinkExchange{}, fmt.Errorf("create login link access token: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return LoginLinkExchange{}, fmt.Errorf("commit login link exchange: %w", err)

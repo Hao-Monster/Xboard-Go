@@ -181,6 +181,11 @@ func TestAdminUserMutationIsOptimisticAndRevokesSensitiveState(t *testing.T) {
 	if err := database.CreateSession(ctx, user.ID, "session-digest", "csrf-digest", now.Add(time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
+		UserID: user.ID, TokenHash: strings.Repeat("1", 64), Name: "admin-update-client",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.db.ExecContext(ctx, `
 		INSERT INTO node_device_ips (node_id, user_id, ip, expires_at) VALUES (1, ?, '192.0.2.8', ?)
 	`, user.ID, now.Add(time.Minute).Unix()); err != nil {
@@ -209,6 +214,9 @@ func TestAdminUserMutationIsOptimisticAndRevokesSensitiveState(t *testing.T) {
 	}
 	if _, err := database.AuthenticateSession(ctx, "session-digest", now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("sensitive update left session active: %v", err)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("1", 64), now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("sensitive update left access token active: %v", err)
 	}
 	var deviceCount, onlineCount int
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_device_ips WHERE user_id = ?`, user.ID).Scan(&deviceCount); err != nil {
@@ -242,6 +250,11 @@ func TestAdminPasswordResetRevokesSessionsAndChecksRevision(t *testing.T) {
 	if err := database.CreateSession(ctx, user.ID, "password-session", "csrf", now.Add(time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
+		UserID: user.ID, TokenHash: strings.Repeat("2", 64), Name: "admin-password-client",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
 	updated, err := database.ResetAdminUserPassword(ctx, user.ID, user.Revision, "new-hash", now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -251,6 +264,9 @@ func TestAdminPasswordResetRevokesSessionsAndChecksRevision(t *testing.T) {
 	}
 	if _, err := database.AuthenticateSession(ctx, "password-session", now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("password reset left session active: %v", err)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("2", 64), now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("password reset left access token active: %v", err)
 	}
 	found, err := database.FindUserByID(ctx, user.ID)
 	if err != nil || found.PasswordHash != "new-hash" {

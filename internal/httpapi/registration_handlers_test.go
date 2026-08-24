@@ -70,6 +70,37 @@ func TestBasicRegistrationContractAndStopPolicy(t *testing.T) {
 	}
 }
 
+func TestLegacyRegistrationReturnsPermanentBearerWithoutConfirmationField(t *testing.T) {
+	api, database := newTestAPI(t)
+	registered := testClient{}.request(t, api, http.MethodPost, "/api/v1/passport/auth/register", `{
+		"email":"  LEGACY-REGISTER@EXAMPLE.TEST  ",
+		"password":"legacy-password-123"
+	}`)
+	if registered.Code != http.StatusOK {
+		t.Fatalf("legacy registration status=%d body=%s", registered.Code, registered.Body)
+	}
+	var payload struct {
+		Data struct {
+			Authorization     string `json:"auth_data"`
+			SubscriptionToken string `json:"token"`
+			IsAdmin           bool   `json:"is_admin"`
+			IsDistributor     bool   `json:"is_distributor"`
+		} `json:"data"`
+	}
+	decodeResponse(t, registered, &payload)
+	if !strings.HasPrefix(payload.Data.Authorization, "Bearer ") || len(strings.TrimPrefix(payload.Data.Authorization, "Bearer ")) != 48 ||
+		payload.Data.SubscriptionToken == "" || payload.Data.IsAdmin || payload.Data.IsDistributor {
+		t.Fatalf("legacy registration payload=%#v", payload.Data)
+	}
+	if response := bearerRequest(api, http.MethodGet, "/api/v1/auth/session", payload.Data.Authorization, ""); response.Code != http.StatusOK {
+		t.Fatalf("legacy registration bearer status=%d body=%s", response.Code, response.Body)
+	}
+	user, err := database.FindUserByEmail(t.Context(), "legacy-register@example.test")
+	if err != nil || user.Email != "legacy-register@example.test" {
+		t.Fatalf("legacy registered user=%#v err=%v", user, err)
+	}
+}
+
 func TestRegistrationEmailAndSuccessfulIPPolicies(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)

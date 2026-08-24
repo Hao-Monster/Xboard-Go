@@ -26,6 +26,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .account { display: flex; align-items: center; gap: 16px; color: #aab1c1; font-size: .875rem; }
 .account-security-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 20px; margin-top: 26px; align-items: start; }
 .security-card { display: grid; gap: 20px; padding: 22px; border: 1px solid #2d3340; border-radius: 16px; background: rgb(18 21 29 / 90%); box-shadow: 0 14px 35px rgb(0 0 0 / 20%); }
+.access-token-card { grid-column: 1 / -1; }
+.access-token-form { display: grid; grid-template-columns: minmax(220px, 1.5fr) minmax(180px, .7fr) auto; align-items: end; gap: 12px; }
+.access-token-form label { display: grid; gap: 7px; color: #aeb7c8; font-size: .78rem; }
+.issued-token { display: grid; gap: 12px; padding: 16px; border: 1px solid #645928; border-radius: 13px; background: #292411; }
+.issued-token code { display: block; overflow-wrap: anywhere; padding: 12px; border-radius: 9px; color: #f3dfa0; background: #111318; }
 .security-card h2 { margin: 0 0 5px; }
 .count-badge { min-width: 28px; padding: 4px 9px; border-radius: 999px; color: #b8c4ff; background: #252c48; text-align: center; font-size: .75rem; }
 .session-list { display: grid; gap: 12px; }
@@ -280,6 +285,8 @@ textarea { min-height: 100px; resize: vertical; }
   .nav-link { flex: 1 0 auto; }
   .account > span { display: none; }
   .account-security-grid { grid-template-columns: 1fr; }
+  .access-token-form { grid-template-columns: 1fr; }
+  .access-token-form .button { width: 100%; }
   .session-row { align-items: stretch; flex-direction: column; }
   .session-row > .button { width: 100%; }
   .page-shell { width: min(100% - 24px, 1180px); padding-top: 32px; }

@@ -41,10 +41,10 @@ func (s *Store) BootstrapAdmin(ctx context.Context, email, passwordHash string, 
 func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned, account_kind
+		SELECT id, email, password_hash, is_admin, banned, account_kind, subscription_token
 		FROM users
 		WHERE email = ? COLLATE NOCASE
-	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind)
+	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -57,10 +57,10 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error)
 func (s *Store) FindUserByID(ctx context.Context, userID int64) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned, account_kind
+		SELECT id, email, password_hash, is_admin, banned, account_kind, subscription_token
 		FROM users
 		WHERE id = ?
-	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind)
+	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -111,6 +111,7 @@ func (s *Store) AuthenticateSession(ctx context.Context, tokenHash string, now t
 		return SessionUser{}, ErrNotFound
 	}
 	session.ExpiresAt = time.Unix(expiresAt, 0).UTC()
+	session.CredentialKind = CredentialKindCookieSession
 	if lastUsed.Valid {
 		value := time.Unix(lastUsed.Int64, 0).UTC()
 		session.LastUsedAt = &value
@@ -212,10 +213,7 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, expectedHash, 
 	if changed == 0 {
 		return ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE admin_sessions SET revoked_at = ?
-		WHERE user_id = ? AND revoked_at IS NULL
-	`, now.Unix(), userID); err != nil {
+	if err := revokeAllCredentialsTx(ctx, tx, userID, now); err != nil {
 		return fmt.Errorf("revoke sessions after password change: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

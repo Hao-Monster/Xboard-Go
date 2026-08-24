@@ -203,9 +203,7 @@ func (s *Store) ResetPasswordWithChallenge(ctx context.Context, emailDigest, cod
 	if changed != 1 {
 		return ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE admin_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL
-	`, now.Unix(), challenge.UserID); err != nil {
+	if err := revokeAllCredentialsTx(ctx, tx, challenge.UserID, now); err != nil {
 		return fmt.Errorf("revoke sessions after password reset: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM password_reset_challenges WHERE email_digest = ?`, emailDigest); err != nil {

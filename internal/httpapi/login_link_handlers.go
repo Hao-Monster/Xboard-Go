@@ -18,11 +18,32 @@ func (s *server) createQuickLoginLink(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 && !decodeJSON(w, r, &input) {
 		return
 	}
+	session, _ := sessionFromContext(r.Context())
+	s.createQuickLoginLinkForUser(w, r, session.UserID, input.Redirect)
+}
+
+func (s *server) legacyPassportQuickLoginLink(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Authorization string `json:"auth_data"`
+		Redirect      string `json:"redirect"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, err := s.authenticateBearerValue(r.Context(), input.Authorization)
+	if err != nil {
+		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "登录凭证无效或已撤销", nil)
+		return
+	}
+	s.createQuickLoginLinkForUser(w, r, session.UserID, input.Redirect)
+}
+
+func (s *server) createQuickLoginLinkForUser(w http.ResponseWriter, r *http.Request, userID int64, requestedRedirect string) {
 	if s.loginLinkProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "login_link_unavailable", "登录链接服务暂不可用", nil)
 		return
 	}
-	redirect := normalizeLoginLinkRedirect(input.Redirect)
+	redirect := normalizeLoginLinkRedirect(requestedRedirect)
 	token, err := s.loginLinkProtector.NewToken()
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -33,8 +54,7 @@ func (s *server) createQuickLoginLink(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
-	session, _ := sessionFromContext(r.Context())
-	if err := s.store.CreateQuickLoginLink(r.Context(), session.UserID, digest, redirect, s.now()); err != nil {
+	if err := s.store.CreateQuickLoginLink(r.Context(), userID, digest, redirect, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -157,7 +177,7 @@ func (s *server) exchangeLoginLink(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	s.exchangeLoginLinkToken(w, r, input.Token)
+	s.exchangeLoginLinkToken(w, r, input.Token, false)
 }
 
 func (s *server) legacyTokenToLogin(w http.ResponseWriter, r *http.Request) {
@@ -175,10 +195,10 @@ func (s *server) legacyTokenToLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, s.loginLinkURL(token, normalizeLoginLinkRedirect(r.URL.Query().Get("redirect"))), http.StatusFound)
 		return
 	}
-	s.exchangeLoginLinkToken(w, r, r.URL.Query().Get("verify"))
+	s.exchangeLoginLinkToken(w, r, r.URL.Query().Get("verify"), true)
 }
 
-func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, token string) {
+func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, token string, issueLegacyAccessToken bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	if s.loginLinkProtector == nil {
@@ -200,9 +220,19 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	var accessToken security.OpaqueToken
+	var accessTokenName string
+	if issueLegacyAccessToken {
+		accessToken, accessTokenName, err = newAccessTokenCredentials("")
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+	}
 	exchangeInput := store.LoginLinkExchangeInput{
 		TokenDigest: quickDigest, AlternateTokenDigest: emailDigest, SessionTokenHash: credentials.token.Digest,
 		CSRFHash: credentials.csrf.Digest, SessionExpiresAt: credentials.expiresAt,
+		AccessTokenHash: accessToken.Digest, AccessTokenName: accessTokenName,
 	}
 	exchanged, err := s.store.ExchangeLoginLink(r.Context(), exchangeInput, s.now())
 	if errors.Is(err, store.ErrLoginLinkInvalid) {
@@ -214,6 +244,10 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.setSessionCookies(w, credentials)
+	if issueLegacyAccessToken {
+		writeSuccess(w, http.StatusOK, legacyAuthData(exchanged.User, accessToken.Plaintext))
+		return
+	}
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": exchanged.User.ID, "email": exchanged.User.Email, "is_admin": exchanged.User.IsAdmin,
 		"redirect": exchanged.Redirect,
