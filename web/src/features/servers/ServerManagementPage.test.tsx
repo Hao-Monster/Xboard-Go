@@ -266,6 +266,8 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     updateNotice: vi.fn(),
     setNoticeVisibility: vi.fn(),
     reorderNotices: vi.fn(),
-    deleteNotice: vi.fn()
+    deleteNotice: vi.fn(),
+    listClientCatalogAdmin: vi.fn(),
+    saveClientCatalog: vi.fn()
   };
 }

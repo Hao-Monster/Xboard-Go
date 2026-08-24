@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -25,19 +26,20 @@ const (
 )
 
 type Dependencies struct {
-	Context          context.Context
-	Store            *store.Store
-	PasswordHasher   security.PasswordHasher
-	Now              func() time.Time
-	PanelURL         string
-	NodeRelease      string
-	CookieSecure     bool
-	AllowedOrigins   []string
-	Logger           *slog.Logger
-	WebSocketEnabled bool
-	WebSocketURL     string
-	NodePushInterval int
-	NodePullInterval int
+	Context           context.Context
+	Store             *store.Store
+	PasswordHasher    security.PasswordHasher
+	Now               func() time.Time
+	PanelURL          string
+	NodeRelease       string
+	CookieSecure      bool
+	AllowedOrigins    []string
+	Logger            *slog.Logger
+	WebSocketEnabled  bool
+	WebSocketURL      string
+	NodePushInterval  int
+	NodePullInterval  int
+	CatalogHTTPClient clientcatalog.HTTPDoer
 }
 
 type server struct {
@@ -62,6 +64,7 @@ type server struct {
 	webSocketURL        string
 	nodePushInterval    int
 	nodePullInterval    int
+	clientCatalog       *clientcatalog.Service
 }
 
 type contextKey int
@@ -127,6 +130,9 @@ func New(dependencies Dependencies) http.Handler {
 		webSocketURL:        strings.TrimRight(dependencies.WebSocketURL, "/"),
 		nodePushInterval:    dependencies.NodePushInterval,
 		nodePullInterval:    dependencies.NodePullInterval,
+		clientCatalog: clientcatalog.New(clientcatalog.Options{
+			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
+		}),
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -143,6 +149,10 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("DELETE /api/v1/auth/sessions/{sessionID}", api.requireSession(api.requireCSRF(http.HandlerFunc(api.revokeAccountSession))))
 	root.Handle("PUT /api/v1/auth/password", api.requireSession(api.requireCSRF(http.HandlerFunc(api.changePassword))))
 	root.Handle("GET /api/v1/notices", api.requireSession(http.HandlerFunc(api.listVisibleNotices)))
+	root.Handle("GET /api/v1/client-catalog", api.requireSession(http.HandlerFunc(api.listUserClientCatalog)))
+	root.Handle("GET /api/v1/client-catalog/qr", api.requireSession(http.HandlerFunc(api.clientCatalogQR)))
+	root.HandleFunc("GET /client-download/{clientID}/{platform}", api.clientDownloadRedirect)
+	root.HandleFunc("GET /client-link/{clientID}/{platform}/{action}", api.clientActionRedirect)
 	root.HandleFunc("POST /api/v1/machines/enroll", api.exchangeEnrollment)
 	root.HandleFunc("GET /api/v1/machines/{machineID}/nodes", api.agentNodes)
 	root.HandleFunc("POST /api/v1/machines/{machineID}/status", api.agentStatus)
@@ -183,6 +193,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/notices/{noticeID}", api.updateNotice)
 	admin.HandleFunc("PATCH /api/v1/admin/notices/{noticeID}/visibility", api.setNoticeVisibility)
 	admin.HandleFunc("DELETE /api/v1/admin/notices/{noticeID}", api.deleteNotice)
+	admin.HandleFunc("GET /api/v1/admin/client-catalog", api.listAdminClientCatalog)
+	admin.HandleFunc("PUT /api/v1/admin/client-catalog", api.saveClientCatalog)
 	admin.HandleFunc("GET /api/v1/admin/users", api.listAdminUsers)
 	admin.HandleFunc("POST /api/v1/admin/users", api.createAdminUser)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)

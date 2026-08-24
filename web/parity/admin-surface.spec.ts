@@ -74,6 +74,20 @@ test("legacy administrator surface remains observable without frontend source", 
   if (!Array.isArray(userNoticePayload.data)) throw new Error("legacy user notice data must be an array");
   expect(userNoticePayload.data.length).toBeLessThanOrEqual(5);
   expect(userNoticePayload.data.every((item) => isVisibleLegacyNotice(item))).toBe(true);
+
+  const clientCatalogResponse = page.waitForResponse((response) => response.url().includes("/client-catalog") && !response.url().includes("/save"));
+  await page.locator(".xboard-client-catalog-nav").click();
+  const fetchedCatalog = await clientCatalogResponse;
+  expect(fetchedCatalog.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "客户端管理" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存全部配置" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Karing/ })).toBeVisible();
+  const userCatalog = await page.request.get(new URL("/api/v1/user/client-catalog", legacyURL).toString(), {
+    headers: { authorization }
+  });
+  expect(userCatalog.status()).toBe(200);
+  const clientPayload = await userCatalog.json() as { data?: unknown };
+  expectLegacyClientCatalog(clientPayload.data);
   expect(errors).toEqual([]);
 });
 
@@ -93,11 +107,30 @@ test("implemented Go administrator concepts map to the legacy navigation", async
       ["用户管理", "用户管理"],
       ["权限组管理", "权限组"],
       ["路由管理", "路由规则"],
-      ["公告管理", "公告管理"]
+      ["公告管理", "公告管理"],
+      ["客户端管理", "客户端管理"]
     ] as const) {
-      await expect(legacyPage.getByRole("link", { name: legacyLabel, exact: true })).toBeVisible();
+      const legacyEntry = legacyLabel === "客户端管理"
+        ? legacyPage.locator(".xboard-client-catalog-nav")
+        : legacyPage.getByRole("link", { name: legacyLabel, exact: true });
+      await expect(legacyEntry).toBeVisible();
       await expect(goPage.getByRole("button", { name: goLabel, exact: true })).toBeVisible();
     }
+
+    const legacyCatalogRequest = legacyPage.waitForResponse((response) => response.url().includes("/client-catalog") && !response.url().includes("/save"));
+    await legacyPage.locator(".xboard-client-catalog-nav").click();
+    const legacyCatalogResponse = await legacyCatalogRequest;
+    const authorization = legacyCatalogResponse.request().headers().authorization;
+    expect(authorization).toBeTruthy();
+    const legacyUserResponse = await legacyPage.request.get(new URL("/api/v1/user/client-catalog", legacyURL).toString(), {
+      headers: { authorization }
+    });
+    const goUserResponse = await goPage.request.get(new URL("/api/v1/client-catalog", goURL).toString());
+    expect(legacyUserResponse.status()).toBe(200);
+    expect(goUserResponse.status()).toBe(200);
+    const legacyPayload: unknown = await legacyUserResponse.json();
+    const goPayload: unknown = await goUserResponse.json();
+    expect(normalizeClientCatalog(readProperty(legacyPayload, "data"))).toEqual(normalizeClientCatalog(readProperty(goPayload, "data")));
     expect(legacyErrors).toEqual([]);
     expect(goErrors).toEqual([]);
   } finally {
@@ -139,4 +172,67 @@ function requiredEnv(name: string) {
 
 function isVisibleLegacyNotice(value: unknown): boolean {
   return typeof value === "object" && value !== null && "show" in value && value.show === true;
+}
+
+function expectLegacyClientCatalog(value: unknown): void {
+  expect(Array.isArray(value)).toBe(true);
+  if (!Array.isArray(value)) return;
+  expect(value).toHaveLength(15);
+  const entries: unknown[] = value;
+  const ids = entries.map((item: unknown) => readStringProperty(item, "id"));
+  expect(ids.slice(0, 4)).toEqual(["karing", "happ", "clash-mi", "koalaclash"]);
+  const platforms = new Set(["android", "ios", "windows", "macos", "linux"]);
+  for (const item of entries) {
+    const downloads = readArrayProperty(item, "downloads");
+    expect(downloads).not.toBeNull();
+    if (downloads === null) continue;
+    for (const download of downloads) {
+      const platform = readStringProperty(download, "platform");
+      const downloadURL = readStringProperty(download, "download_url");
+      expect(platforms.has(platform ?? "")).toBe(true);
+      expect(downloadURL).toContain("/client-download/");
+    }
+  }
+}
+
+function readStringProperty(value: unknown, key: string): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const property: unknown = Reflect.get(value, key);
+  return typeof property === "string" ? property : null;
+}
+
+function readArrayProperty(value: unknown, key: string): unknown[] | null {
+  if (typeof value !== "object" || value === null) return null;
+  const property: unknown = Reflect.get(value, key);
+  return Array.isArray(property) ? property as unknown[] : null;
+}
+
+function readProperty(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return Reflect.get(value, key) as unknown;
+}
+
+function normalizeClientCatalog(value: unknown) {
+  expect(Array.isArray(value)).toBe(true);
+  if (!Array.isArray(value)) return [];
+  return (value as unknown[]).map((client: unknown) => ({
+    id: readStringProperty(client, "id"),
+    name: readStringProperty(client, "name"),
+    core: readStringProperty(client, "core"),
+    description: readStringProperty(client, "description"),
+    featured: readProperty(client, "featured") === true,
+    hwid: readProperty(client, "hwid") === true,
+    downloads: (readArrayProperty(client, "downloads") ?? []).map((download: unknown) => ({
+      platform: readStringProperty(download, "platform"),
+      source: readStringProperty(download, "source"),
+      downloadPath: pathOf(readStringProperty(download, "download_url")),
+      hasCloud: readStringProperty(download, "cloud_url") !== null,
+      hasTutorial: readStringProperty(download, "tutorial_url") !== null
+    }))
+  }));
+}
+
+function pathOf(address: string | null): string | null {
+  if (address === null) return null;
+  return new URL(address, "https://panel.invalid").pathname;
 }

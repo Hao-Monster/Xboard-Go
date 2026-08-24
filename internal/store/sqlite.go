@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 5 {
+	if version > 6 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -90,6 +90,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v5: %w", err)
 		}
 		version = 5
+	}
+	if version < 6 {
+		if _, err := tx.ExecContext(ctx, schemaV6); err != nil {
+			return fmt.Errorf("apply schema v6: %w", err)
+		}
+		version = 6
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -403,4 +409,22 @@ CREATE TABLE notices (
 );
 CREATE INDEX idx_notices_sort ON notices(sort_position, id DESC);
 CREATE INDEX idx_notices_visible_sort ON notices(visible, sort_position, id DESC);
+`
+
+const schemaV6 = `
+CREATE TABLE client_catalog_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO client_catalog_config (id, revision, updated_at) VALUES (1, 1, 0);
+
+CREATE TABLE client_catalog_links (
+    client_id TEXT NOT NULL CHECK (length(client_id) BETWEEN 1 AND 64),
+    platform TEXT NOT NULL CHECK (platform IN ('android', 'ios', 'windows', 'macos', 'linux')),
+    action TEXT NOT NULL CHECK (action IN ('direct', 'qr', 'cloud', 'tutorial')),
+    url TEXT NOT NULL CHECK (length(url) BETWEEN 1 AND 2048),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (client_id, platform, action)
+);
 `

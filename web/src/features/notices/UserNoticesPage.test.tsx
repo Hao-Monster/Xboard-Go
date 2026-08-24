@@ -2,10 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { NoticePage, UserSession } from "../../lib/api";
+import type { NoticePage } from "../../lib/api";
 import { UserNoticesPage } from "./UserNoticesPage";
-
-const session: UserSession = { id: 12, email: "user@example.test", is_admin: false };
 
 describe("UserNoticesPage", () => {
   it("renders only server-provided visible pages as safe markdown and paginates", async () => {
@@ -20,12 +18,10 @@ describe("UserNoticesPage", () => {
     };
     const second: NoticePage = { items: [], total: 6, page: 2, page_size: 5 };
     const api = {
-      listVisibleNotices: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
-      logout: vi.fn().mockResolvedValue(undefined)
+      listVisibleNotices: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
     };
-    const signedOut = vi.fn();
     const user = userEvent.setup();
-    render(<UserNoticesPage api={api} session={session} onSignedOut={signedOut} />);
+    render(<UserNoticesPage api={api} />);
 
     expect(await screen.findByRole("heading", { name: "Service update" })).toBeVisible();
     expect(screen.getByText("Available now", { selector: "strong" })).toBeVisible();
@@ -37,7 +33,5 @@ describe("UserNoticesPage", () => {
     await waitFor(() => expect(api.listVisibleNotices).toHaveBeenLastCalledWith(2));
     expect(await screen.findByText("本页没有公告。")).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "退出" }));
-    await waitFor(() => expect(signedOut).toHaveBeenCalled());
   });
 });

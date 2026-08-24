@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -480,6 +481,10 @@ func loginAs(t *testing.T, api http.Handler, email, password string) testClient 
 }
 
 func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
+	return newTestAPIWithCatalogHTTP(t, nil)
+}
+
+func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http.Response, error)) (http.Handler, *store.Store) {
 	t.Helper()
 	database, err := store.OpenSQLite(fmt.Sprintf("file:http-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
@@ -505,15 +510,26 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}
 
+	var catalogHTTPClient clientcatalog.HTTPDoer
+	if function != nil {
+		catalogHTTPClient = catalogHTTPFunc(function)
+	}
 	handler := New(Dependencies{
-		Store:          database,
-		PasswordHasher: hasher,
-		Now:            fixedNow,
-		PanelURL:       "https://panel.example.test",
-		NodeRelease:    "v1.14.3",
-		CookieSecure:   false,
+		Store:             database,
+		PasswordHasher:    hasher,
+		Now:               fixedNow,
+		PanelURL:          "https://panel.example.test",
+		NodeRelease:       "v1.14.3",
+		CookieSecure:      false,
+		CatalogHTTPClient: catalogHTTPClient,
 	})
 	return handler, database
+}
+
+type catalogHTTPFunc func(*http.Request) (*http.Response, error)
+
+func (function catalogHTTPFunc) Do(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
 
 func fixedNow() time.Time {
