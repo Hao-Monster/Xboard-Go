@@ -125,7 +125,8 @@ func serveStaticFile(w http.ResponseWriter, r *http.Request, file staticFile) {
 func isBackendPath(path string) bool {
 	return path == "/healthz" || path == "/ws" || strings.HasPrefix(path, "/api/") ||
 		path == "/client-download" || strings.HasPrefix(path, "/client-download/") ||
-		path == "/client-link" || strings.HasPrefix(path, "/client-link/")
+		path == "/client-link" || strings.HasPrefix(path, "/client-link/") ||
+		path == "/guide" || strings.HasPrefix(path, "/guide/")
 }
 
 func setSecurityHeaders(w http.ResponseWriter) {

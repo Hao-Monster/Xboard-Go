@@ -451,3 +451,12 @@ func newTestStore(t *testing.T) *Store {
 	}
 	return store
 }
+
+func testSubscriptionToken(tb testing.TB) string {
+	tb.Helper()
+	token, err := newSubscriptionToken()
+	if err != nil {
+		tb.Fatalf("newSubscriptionToken() error = %v", err)
+	}
+	return token
+}

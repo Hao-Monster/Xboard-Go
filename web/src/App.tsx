@@ -8,6 +8,7 @@ import { ServerManagementPage } from "./features/servers/ServerManagementPage";
 import { APIClient, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
+import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagementPage";
 
 const api = new APIClient();
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -15,7 +16,7 @@ const UserPortal = lazy(async () => import("./features/user/UserPortal").then((m
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "notices" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
 
   useEffect(() => {
     void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
@@ -40,6 +41,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
           <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => setPage("routes")}>路由规则</button>
           <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告管理</button>
+          <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库管理</button>
           <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => setPage("clients")}>客户端管理</button>
           <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => setPage("account")}>账号安全</button>
         </div>
@@ -53,6 +55,7 @@ export function App() {
       {page === "groups" && <ServerGroupsPage api={api} />}
       {page === "routes" && <RoutingRulesPage api={api} />}
       {page === "notices" && <NoticeManagementPage api={api} />}
+      {page === "knowledge" && <KnowledgeManagementPage api={api} />}
       {page === "clients" && <ClientCatalogManagementPage api={api} />}
       {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
     </div>

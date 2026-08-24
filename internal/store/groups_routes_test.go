@@ -63,9 +63,9 @@ func TestSchemaV3BackfillsExistingGroupReferences(t *testing.T) {
 		t.Fatal("v3 node group foreign key accepted a missing group")
 	}
 	if _, err := database.db.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, is_admin, banned, created_at, updated_at, group_id)
-		VALUES ('invalid-group@example.test', 'hash', 0, 0, ?, ?, 999999)
-	`, now, now); err == nil {
+		INSERT INTO users (email, password_hash, is_admin, banned, created_at, updated_at, group_id, subscription_token)
+		VALUES ('invalid-group@example.test', 'hash', 0, 0, ?, ?, 999999, ?)
+	`, now, now, testSubscriptionToken(t)); err == nil {
 		t.Fatal("v3 user group trigger accepted a missing group")
 	}
 	if _, err := database.db.ExecContext(ctx, `DELETE FROM server_groups WHERE id = 42`); err == nil {

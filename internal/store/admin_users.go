@@ -144,13 +144,17 @@ func (s *Store) CreateAdminUser(ctx context.Context, input CreateAdminUserInput,
 	if input.ExpiredAt != nil {
 		expiredAt = input.ExpiredAt.Unix()
 	}
+	subscriptionToken, err := newSubscriptionToken()
+	if err != nil {
+		return AdminUser{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
-			expired_at, speed_limit, device_limit, created_at, updated_at
-		) VALUES (?, ?, 0, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?)
+			expired_at, speed_limit, device_limit, subscription_token, created_at, updated_at
+		) VALUES (?, ?, 0, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Email, input.PasswordHash, input.Banned, uuid.NewString(), groupID, input.TransferEnable,
-		expiredAt, input.SpeedLimit, input.DeviceLimit, now.Unix(), now.Unix())
+		expiredAt, input.SpeedLimit, input.DeviceLimit, subscriptionToken, now.Unix(), now.Unix())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return AdminUser{}, ErrEmailInUse

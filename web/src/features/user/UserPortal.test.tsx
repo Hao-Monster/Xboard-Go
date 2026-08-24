@@ -13,6 +13,8 @@ describe("UserPortal", () => {
       listVisibleNotices: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 5 }),
       listClientCatalog: vi.fn().mockResolvedValue([]),
       clientCatalogQR: vi.fn(),
+      listKnowledge: vi.fn().mockResolvedValue([]),
+      getKnowledge: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined)
     };
     const onSignedOut = vi.fn();
@@ -23,6 +25,9 @@ describe("UserPortal", () => {
     await user.click(screen.getByRole("button", { name: "客户端下载" }));
     expect(await screen.findByRole("heading", { name: "客户端下载" })).toBeVisible();
     expect(api.listClientCatalog).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "知识库" }));
+    expect(await screen.findByRole("heading", { name: "知识库" })).toBeVisible();
+    expect(api.listKnowledge).toHaveBeenCalledWith("zh-CN", "");
 
     await user.click(screen.getByRole("button", { name: "退出" }));
     await waitFor(() => expect(onSignedOut).toHaveBeenCalledTimes(1));
@@ -33,6 +38,8 @@ describe("UserPortal", () => {
       listVisibleNotices: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 5 }),
       listClientCatalog: vi.fn().mockResolvedValue([]),
       clientCatalogQR: vi.fn(),
+      listKnowledge: vi.fn().mockResolvedValue([]),
+      getKnowledge: vi.fn(),
       logout: vi.fn().mockRejectedValue(new Error("会话注销失败"))
     };
     const onSignedOut = vi.fn();

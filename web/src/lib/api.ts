@@ -150,6 +150,30 @@ export interface NoticePage {
   page_size: number;
 }
 
+export type KnowledgeLanguage = "en-US" | "ja-JP" | "ko-KR" | "vi-VN" | "zh-CN" | "zh-TW" | "ru-RU";
+
+export interface KnowledgeArticle {
+  id: number;
+  language: KnowledgeLanguage;
+  category: string;
+  title: string;
+  body?: string;
+  sort: number;
+  show: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  share_url: string;
+}
+
+export interface KnowledgeInput {
+  language: KnowledgeLanguage;
+  category: string;
+  title: string;
+  body: string;
+  show: boolean;
+}
+
 export interface ClientCatalogActionLinks {
   direct: string;
   qr: string;
@@ -280,6 +304,14 @@ export interface AdminAPI {
   setNoticeVisibility: (id: number, revision: number, show: boolean) => Promise<Notice>;
   reorderNotices: (ids: number[]) => Promise<Notice[]>;
   deleteNotice: (id: number, revision: number) => Promise<void>;
+  listKnowledgeAdmin: () => Promise<KnowledgeArticle[]>;
+  getKnowledgeAdmin: (id: number) => Promise<KnowledgeArticle>;
+  listKnowledgeCategories: () => Promise<string[]>;
+  createKnowledge: (input: KnowledgeInput) => Promise<KnowledgeArticle>;
+  updateKnowledge: (id: number, revision: number, input: KnowledgeInput) => Promise<KnowledgeArticle>;
+  setKnowledgeVisibility: (id: number, revision: number, show: boolean) => Promise<KnowledgeArticle>;
+  reorderKnowledge: (ids: number[]) => Promise<KnowledgeArticle[]>;
+  deleteKnowledge: (id: number, revision: number) => Promise<void>;
   listClientCatalogAdmin: () => Promise<AdminClientCatalog>;
   saveClientCatalog: (revision: number, links: ClientCatalogOverrideInput) => Promise<AdminClientCatalog>;
 }
@@ -493,6 +525,48 @@ export class APIClient implements AdminAPI {
 
   async listVisibleNotices(page = 1): Promise<NoticePage> {
     return this.request<NoticePage>(`/api/v1/notices?page=${page}`);
+  }
+
+  async listKnowledgeAdmin(): Promise<KnowledgeArticle[]> {
+    return this.request<KnowledgeArticle[]>("/api/v1/admin/knowledge");
+  }
+
+  async getKnowledgeAdmin(id: number): Promise<KnowledgeArticle> {
+    return this.request<KnowledgeArticle>(`/api/v1/admin/knowledge/${id}`);
+  }
+
+  async listKnowledgeCategories(): Promise<string[]> {
+    return this.request<string[]>("/api/v1/admin/knowledge/categories");
+  }
+
+  async createKnowledge(input: KnowledgeInput): Promise<KnowledgeArticle> {
+    return this.request<KnowledgeArticle>("/api/v1/admin/knowledge", { method: "POST", body: input });
+  }
+
+  async updateKnowledge(id: number, revision: number, input: KnowledgeInput): Promise<KnowledgeArticle> {
+    return this.request<KnowledgeArticle>(`/api/v1/admin/knowledge/${id}`, { method: "PATCH", body: { revision, ...input } });
+  }
+
+  async setKnowledgeVisibility(id: number, revision: number, show: boolean): Promise<KnowledgeArticle> {
+    return this.request<KnowledgeArticle>(`/api/v1/admin/knowledge/${id}/visibility`, { method: "PATCH", body: { revision, show } });
+  }
+
+  async reorderKnowledge(ids: number[]): Promise<KnowledgeArticle[]> {
+    return this.request<KnowledgeArticle[]>("/api/v1/admin/knowledge/order", { method: "PUT", body: { ids } });
+  }
+
+  async deleteKnowledge(id: number, revision: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/knowledge/${id}?revision=${revision}`, { method: "DELETE" });
+  }
+
+  async listKnowledge(language: KnowledgeLanguage, keyword = ""): Promise<KnowledgeArticle[]> {
+    const query = new URLSearchParams({ language });
+    if (keyword.trim() !== "") query.set("keyword", keyword.trim());
+    return this.request<KnowledgeArticle[]>(`/api/v1/knowledge?${query.toString()}`);
+  }
+
+  async getKnowledge(id: number): Promise<KnowledgeArticle> {
+    return this.request<KnowledgeArticle>(`/api/v1/knowledge/${id}`);
   }
 
   async listClientCatalogAdmin(): Promise<AdminClientCatalog> {

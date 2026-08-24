@@ -34,9 +34,9 @@ func BenchmarkListServerGroups1000(b *testing.B) {
 	}
 	for index := 1; index <= 10_000; index++ {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO users (email, password_hash, is_admin, banned, group_id, created_at, updated_at)
-			VALUES (?, 'hash', 0, 0, ?, ?, ?)
-		`, fmt.Sprintf("user-%05d@example.test", index), (index-1)%1_000+1, now, now); err != nil {
+			INSERT INTO users (email, password_hash, is_admin, banned, group_id, subscription_token, created_at, updated_at)
+			VALUES (?, 'hash', 0, 0, ?, ?, ?, ?)
+		`, fmt.Sprintf("user-%05d@example.test", index), (index-1)%1_000+1, testSubscriptionToken(b), now, now); err != nil {
 			b.Fatal(err)
 		}
 	}

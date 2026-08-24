@@ -231,13 +231,17 @@ func (s *Store) CreateRuntimeUser(ctx context.Context, input CreateRuntimeUserIn
 	if !groupExists {
 		return RuntimeUser{}, fmt.Errorf("%w: runtime user group does not exist", ErrInvalidInput)
 	}
+	subscriptionToken, err := newSubscriptionToken()
+	if err != nil {
+		return RuntimeUser{}, err
+	}
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable, traffic_u, traffic_d,
-			expired_at, speed_limit, device_limit, created_at, updated_at
-		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			expired_at, speed_limit, device_limit, subscription_token, created_at, updated_at
+		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Email, input.PasswordHash, input.Banned, input.AccountKind, input.UUID, input.GroupID, input.TransferEnable,
-		input.TrafficUpload, input.TrafficDownload, expiredAt, input.SpeedLimit, input.DeviceLimit, now.Unix(), now.Unix())
+		input.TrafficUpload, input.TrafficDownload, expiredAt, input.SpeedLimit, input.DeviceLimit, subscriptionToken, now.Unix(), now.Unix())
 	if err != nil {
 		return RuntimeUser{}, fmt.Errorf("create runtime user: %w", err)
 	}
