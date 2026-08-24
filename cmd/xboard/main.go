@@ -62,10 +62,16 @@ func main() {
 		os.Exit(1)
 	}
 	var passwordResetProtector *security.PasswordResetProtector
+	var registrationEmailProtector *security.RegistrationEmailProtector
 	if len(settings.SettingsEncryptionKey) == 32 {
 		passwordResetProtector, err = security.NewPasswordResetProtector(settings.SettingsEncryptionKey)
 		if err != nil {
 			logger.Error("initialize password reset encryption", "error", err)
+			os.Exit(1)
+		}
+		registrationEmailProtector, err = security.NewRegistrationEmailProtector(settings.SettingsEncryptionKey)
+		if err != nil {
+			logger.Error("initialize registration email encryption", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -93,26 +99,27 @@ func main() {
 	runtimeTracker := operations.NewTracker(time.Now())
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger, runtimeTracker)
 	go worker.Run(ctx)
-	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
+	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
-		Store:                  database,
-		PasswordHasher:         passwordHasher,
-		PanelURL:               settings.PanelURL,
-		NodeRelease:            settings.NodeRelease,
-		CookieSecure:           settings.CookieSecure,
-		AllowedOrigins:         settings.AllowedOrigins,
-		Logger:                 logger,
-		Context:                ctx,
-		WebSocketEnabled:       settings.WebSocketEnabled,
-		WebSocketURL:           settings.WebSocketURL,
-		NodePushInterval:       settings.NodePushInterval,
-		NodePullInterval:       settings.NodePullInterval,
-		SettingsCipher:         settingsCipher,
-		PasswordResetProtector: passwordResetProtector,
-		SMTPAllowInsecure:      settings.SMTPAllowInsecure,
-		RuntimeTracker:         runtimeTracker,
+		Store:                      database,
+		PasswordHasher:             passwordHasher,
+		PanelURL:                   settings.PanelURL,
+		NodeRelease:                settings.NodeRelease,
+		CookieSecure:               settings.CookieSecure,
+		AllowedOrigins:             settings.AllowedOrigins,
+		Logger:                     logger,
+		Context:                    ctx,
+		WebSocketEnabled:           settings.WebSocketEnabled,
+		WebSocketURL:               settings.WebSocketURL,
+		NodePushInterval:           settings.NodePushInterval,
+		NodePullInterval:           settings.NodePullInterval,
+		SettingsCipher:             settingsCipher,
+		PasswordResetProtector:     passwordResetProtector,
+		RegistrationEmailProtector: registrationEmailProtector,
+		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
+		RuntimeTracker:             runtimeTracker,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)

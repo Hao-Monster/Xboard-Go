@@ -89,6 +89,8 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.email_verify} onChange={(event) => updateDraft("email_verify", event.target.checked)} />邮箱验证</label>
+          <p className="small muted">启用后，新用户必须通过 6 位一次性邮箱验证码；请先在邮件设置中启用 SMTP。</p>
           <label className="switch-label"><input type="checkbox" checked={draft.email_whitelist_enable} onChange={(event) => updateDraft("email_whitelist_enable", event.target.checked)} />邮箱后缀白名单</label>
           {draft.email_whitelist_enable && <label>邮箱后缀<textarea required aria-describedby="email-whitelist-help" value={draft.email_whitelist_suffix.join("\n")} onChange={(event) => updateDraft("email_whitelist_suffix", suffixesFromText(event.target.value))} /></label>}
           {draft.email_whitelist_enable && <p className="small muted" id="email-whitelist-help">每行一个完整域名，不支持通配符；域名匹配不区分大小写。</p>}
@@ -119,6 +121,7 @@ function toDraft(settings: SiteSettings): SiteDraft {
     tos_url: settings.tos_url,
     logo: settings.logo,
     stop_register: settings.stop_register,
+    email_verify: settings.email_verify,
     email_whitelist_enable: settings.email_whitelist_enable,
     email_whitelist_suffix: settings.email_whitelist_suffix,
     email_gmail_limit_enable: settings.email_gmail_limit_enable,

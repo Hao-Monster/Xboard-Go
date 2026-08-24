@@ -10,14 +10,15 @@ import (
 )
 
 type Worker struct {
-	store                  *store.Store
-	interval               time.Duration
-	now                    func() time.Time
-	logger                 *slog.Logger
-	lastTicketSweep        time.Time
-	lastIPSweep            time.Time
-	lastPasswordResetSweep time.Time
-	tracker                *operations.Tracker
+	store                      *store.Store
+	interval                   time.Duration
+	now                        func() time.Time
+	logger                     *slog.Logger
+	lastTicketSweep            time.Time
+	lastIPSweep                time.Time
+	lastPasswordResetSweep     time.Time
+	lastRegistrationEmailSweep time.Time
+	tracker                    *operations.Tracker
 }
 
 func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
@@ -56,6 +57,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.closeStaleTickets(ctx, now)
 	w.pruneRegistrationIPLimits(ctx, now)
 	w.prunePasswordResets(ctx, now)
+	w.pruneRegistrationEmailVerifications(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -72,6 +74,23 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) pruneRegistrationEmailVerifications(ctx context.Context, now time.Time) {
+	if !w.lastRegistrationEmailSweep.IsZero() && now.Sub(w.lastRegistrationEmailSweep) < time.Minute {
+		return
+	}
+	w.lastRegistrationEmailSweep = now
+	removed, err := w.store.PruneExpiredRegistrationEmailVerifications(ctx, now, 1_000)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("prune expired registration email verifications", "error", err)
+		}
+		return
+	}
+	if removed > 0 {
+		w.logger.Info("expired registration email verifications pruned", "count", removed)
 	}
 }
 

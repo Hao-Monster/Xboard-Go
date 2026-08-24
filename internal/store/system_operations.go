@@ -101,6 +101,9 @@ func (s *Store) GetSystemQueueStats(ctx context.Context) (SystemQueueStats, erro
 			UNION ALL
 			SELECT sent_at, failed_at, claim_token, available_at FROM password_reset_mail_outbox
 			WHERE cancelled_at IS NULL
+			UNION ALL
+			SELECT sent_at, failed_at, claim_token, available_at FROM registration_email_mail_outbox
+			WHERE cancelled_at IS NULL
 		)
 		SELECT
 			COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL THEN 1 ELSE 0 END), 0),
@@ -127,7 +130,8 @@ func (s *Store) ListTicketMailFailures(ctx context.Context, page, pageSize int) 
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM ticket_mail_outbox WHERE failed_at IS NOT NULL) +
-			(SELECT COUNT(*) FROM password_reset_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL)
+			(SELECT COUNT(*) FROM password_reset_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL) +
+			(SELECT COUNT(*) FROM registration_email_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL)
 	`).Scan(&total); err != nil {
 		return TicketMailFailurePage{}, fmt.Errorf("count failed mail: %w", err)
 	}
@@ -140,6 +144,10 @@ func (s *Store) ListTicketMailFailures(ctx context.Context, page, pageSize int) 
 			SELECT -id AS id, 'password_reset' AS kind, recipient, '密码重置验证码' AS subject, attempt_count,
 			       COALESCE(last_error, '') AS last_error, created_at, failed_at
 			FROM password_reset_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL
+			UNION ALL
+			SELECT -id AS id, 'registration_email_verification' AS kind, recipient, '注册邮箱验证码' AS subject, attempt_count,
+			       COALESCE(last_error, '') AS last_error, created_at, failed_at
+			FROM registration_email_mail_outbox WHERE failed_at IS NOT NULL AND cancelled_at IS NULL
 		)
 		ORDER BY failed_at DESC, id DESC LIMIT ? OFFSET ?
 	`, pageSize, (page-1)*pageSize)

@@ -262,6 +262,91 @@ test("legacy basic registration follows the public form and stop-register policy
   }
 });
 
+test("legacy registration email verification requires a one-time six-digit code", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const configuration = readProperty(await fetched.json() as unknown, "data");
+  const site = readObjectProperty(configuration, "site");
+  const safe = readObjectProperty(configuration, "safe");
+  const invite = readObjectProperty(configuration, "invite");
+  const original = {
+    stop_register: readProperty(site, "stop_register"),
+    invite_force: readProperty(invite, "invite_force"),
+    email_verify: readProperty(safe, "email_verify"),
+    email_whitelist_enable: readProperty(safe, "email_whitelist_enable"),
+    email_gmail_limit_enable: readProperty(safe, "email_gmail_limit_enable"),
+    captcha_enable: readProperty(safe, "captcha_enable"),
+    register_limit_by_ip_enable: readProperty(safe, "register_limit_by_ip_enable")
+  };
+  const unique = Date.now();
+  const email = `registration-verify-${unique}@legacy.local`;
+  const password = `registration-verify-password-${unique}`;
+
+  try {
+    clearLegacyPasswordResetCache(email);
+    const enabled = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: {
+        stop_register: 0, invite_force: 0, email_verify: 1, email_whitelist_enable: 0,
+        email_gmail_limit_enable: 0, captcha_enable: 0, register_limit_by_ip_enable: 0
+      }
+    });
+    expect(enabled.status()).toBe(200);
+    const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(readProperty(readProperty(await guest.json() as unknown, "data"), "is_email_verify")).toBe(1);
+
+    await page.goto(new URL("/#/register", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder("邮箱验证码", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
+
+    const sent = await page.request.post(new URL("/api/v1/passport/comm/sendEmailVerify", legacyURL).toString(), { data: { email } });
+    expect(sent.status()).toBe(200);
+    expect(readProperty(await sent.json() as unknown, "data")).toBe(true);
+    const code = readLegacyPasswordResetCode(email);
+    expect(code).toMatch(/^\d{6}$/);
+
+    const resend = await page.request.post(new URL("/api/v1/passport/comm/sendEmailVerify", legacyURL).toString(), { data: { email } });
+    expect(resend.status()).toBe(400);
+    expect(readStringProperty(await resend.json() as unknown, "message")).toBe("验证码已发送，请过一会儿再请求");
+
+    const missing = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email, password }
+    });
+    expect(missing.status()).toBe(422);
+    const wrong = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email, password, email_code: code === "000000" ? "999999" : "000000" }
+    });
+    expect(wrong.status()).toBe(400);
+    expect(readStringProperty(await wrong.json() as unknown, "message")).toBe("邮箱验证码有误");
+
+    const registered = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email, password, email_code: code }
+    });
+    expect(registered.status()).toBe(200);
+    expect(readStringProperty(readProperty(await registered.json() as unknown, "data"), "auth_data")).toBeTruthy();
+    expect(legacyRedisKeys(`*EMAIL_VERIFY_CODE_${email}`)).toEqual([]);
+
+    const reused = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+      data: { email, password, email_code: code }
+    });
+    expect(reused.status()).toBe(400);
+    expect(readStringProperty(await reused.json() as unknown, "message")).toBe("邮箱验证码有误");
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    const cleanup = `App\\Models\\User::where("email","${email}")->delete();`;
+    execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
+    clearLegacyPasswordResetCache(email);
+  }
+});
+
 test("legacy registration email policies and successful-IP limit remain observable", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));

@@ -10,6 +10,7 @@ interface SiteSettings {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_verify: boolean;
   email_whitelist_enable: boolean;
   email_whitelist_suffix: string[];
   email_gmail_limit_enable: boolean;
@@ -154,6 +155,7 @@ test("administrator site identity persists into the public shell and can be rest
         tos_url: original.tos_url,
         logo: original.logo,
         stop_register: original.stop_register,
+        email_verify: original.email_verify,
         email_whitelist_enable: original.email_whitelist_enable,
         email_whitelist_suffix: original.email_whitelist_suffix,
         email_gmail_limit_enable: original.email_gmail_limit_enable,

@@ -10,6 +10,7 @@ interface SiteSettings {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_verify: boolean;
   email_whitelist_enable: boolean;
   email_whitelist_suffix: string[];
   email_gmail_limit_enable: boolean;
@@ -38,6 +39,7 @@ test("public registration enforces legacy email policies and successful-IP quota
     let current = await saveSiteSettings(page, {
       ...original,
       stop_register: false,
+      email_verify: false,
       email_whitelist_enable: true,
       email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true,
@@ -138,6 +140,7 @@ async function saveSiteSettings(page: Page, settings: SiteSettings): Promise<Sit
     tos_url: settings.tos_url,
     logo: settings.logo,
     stop_register: settings.stop_register,
+    email_verify: settings.email_verify,
     email_whitelist_enable: settings.email_whitelist_enable,
     email_whitelist_suffix: settings.email_whitelist_suffix,
     email_gmail_limit_enable: settings.email_gmail_limit_enable,

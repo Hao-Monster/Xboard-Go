@@ -23,16 +23,17 @@ const (
 )
 
 type Worker struct {
-	store          *store.Store
-	cipher         *appsettings.Cipher
-	resetProtector *security.PasswordResetProtector
-	sender         Sender
-	interval       time.Duration
-	logger         *slog.Logger
-	tracker        *operations.Tracker
+	store                 *store.Store
+	cipher                *appsettings.Cipher
+	resetProtector        *security.PasswordResetProtector
+	registrationProtector *security.RegistrationEmailProtector
+	sender                Sender
+	interval              time.Duration
+	logger                *slog.Logger
+	tracker               *operations.Tracker
 }
 
-func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtector *security.PasswordResetProtector, sender Sender, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
+func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtector *security.PasswordResetProtector, registrationProtector *security.RegistrationEmailProtector, sender Sender, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
 	if interval <= 0 {
 		interval = defaultPollPeriod
 	}
@@ -43,7 +44,10 @@ func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, resetProtec
 	if len(trackers) > 0 {
 		tracker = trackers[0]
 	}
-	return &Worker{store: database, cipher: cipherBox, resetProtector: resetProtector, sender: sender, interval: interval, logger: logger, tracker: tracker}
+	return &Worker{
+		store: database, cipher: cipherBox, resetProtector: resetProtector,
+		registrationProtector: registrationProtector, sender: sender, interval: interval, logger: logger, tracker: tracker,
+	}
 }
 
 func (worker *Worker) Run(ctx context.Context) {
@@ -96,6 +100,13 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 	if resetClaimed {
 		return true, worker.deliverPasswordReset(ctx, resetJob, claimToken, now)
 	}
+	registrationJob, registrationClaimed, err := worker.store.ClaimRegistrationEmailVerificationMail(ctx, claimToken, now, mailClaimLease)
+	if err != nil {
+		return false, err
+	}
+	if registrationClaimed {
+		return true, worker.deliverRegistrationEmailVerification(ctx, registrationJob, claimToken, now)
+	}
 	job, claimed, err := worker.store.ClaimTicketMail(ctx, claimToken, now, mailClaimLease)
 	if err != nil || !claimed {
 		return false, err
@@ -134,6 +145,51 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 		return true, fmt.Errorf("complete ticket email job: %w", err)
 	}
 	return true, nil
+}
+
+func (worker *Worker) deliverRegistrationEmailVerification(ctx context.Context, job store.RegistrationEmailVerificationMailJob, claimToken string, now time.Time) error {
+	if worker.registrationProtector == nil {
+		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("registration email encryption key is unavailable"))
+	}
+	code, err := worker.registrationProtector.DecryptCode(job.Recipient, job.CodeCipher)
+	if err != nil {
+		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("decrypt registration email code"))
+	}
+	defer func() {
+		for index := range code {
+			code[index] = 0
+		}
+	}()
+	configuration := SMTPConfig{
+		Host: job.SMTPHost, Port: job.SMTPPort, Username: job.SMTPUsername,
+		Encryption: job.SMTPEncryption, FromAddress: job.SMTPFromAddress,
+	}
+	if len(job.SMTPPasswordCipher) > 0 {
+		if worker.cipher == nil {
+			return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("settings encryption key is unavailable"))
+		}
+		plaintext, decryptErr := worker.cipher.Decrypt(job.SMTPPasswordCipher)
+		if decryptErr != nil {
+			return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("decrypt SMTP credential"))
+		}
+		configuration.Password = string(plaintext)
+		for index := range plaintext {
+			plaintext[index] = 0
+		}
+	}
+	message := Message{
+		To: job.Recipient, Subject: fmt.Sprintf("%s邮箱验证码", strings.TrimSpace(job.AppName)),
+		Text: fmt.Sprintf("您的邮箱验证码是：%s\r\n验证码 5 分钟内有效，请勿泄露给他人。", string(code)),
+	}
+	if err := worker.sender.Send(ctx, configuration, message); err != nil {
+		configuration.Password = ""
+		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, err)
+	}
+	configuration.Password = ""
+	if err := worker.store.CompleteRegistrationEmailVerificationMail(ctx, job.ID, claimToken, now); err != nil {
+		return fmt.Errorf("complete registration verification email job: %w", err)
+	}
+	return nil
 }
 
 func (worker *Worker) deliverPasswordReset(ctx context.Context, job store.PasswordResetMailJob, claimToken string, now time.Time) error {
@@ -194,6 +250,13 @@ func (worker *Worker) recordPasswordResetFailure(ctx context.Context, job store.
 		return fmt.Errorf("record password reset email failure after %v: %w", deliveryError, err)
 	}
 	return fmt.Errorf("password reset email attempt %d failed: %w", job.Attempt, deliveryError)
+}
+
+func (worker *Worker) recordRegistrationEmailFailure(ctx context.Context, job store.RegistrationEmailVerificationMailJob, claimToken string, now time.Time, deliveryError error) error {
+	if err := worker.store.FailRegistrationEmailVerificationMail(ctx, job.ID, claimToken, deliveryError.Error(), now.Add(passwordResetMailRetryDelay(job.Attempt)), now); err != nil {
+		return fmt.Errorf("record registration verification email failure after %v: %w", deliveryError, err)
+	}
+	return fmt.Errorf("registration verification email attempt %d failed: %w", job.Attempt, deliveryError)
 }
 
 func passwordResetMailRetryDelay(attempt int) time.Duration {

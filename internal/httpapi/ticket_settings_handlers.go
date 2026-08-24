@@ -81,6 +81,10 @@ func (s *server) updateTicketSettings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusConflict, "settings_conflict", "设置已被其他管理员修改，请刷新后重试", nil)
 		return
 	}
+	if errors.Is(err, store.ErrRegistrationEmailVerificationNeedsMail) {
+		writeAPIError(w, http.StatusConflict, "registration_email_requires_smtp", "注册邮箱验证启用期间不能关闭 SMTP 邮件服务", nil)
+		return
+	}
 	if err != nil {
 		handleStoreError(w, err)
 		return

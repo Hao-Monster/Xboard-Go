@@ -23,7 +23,7 @@ const defaultEmailWhitelistStorage = "gmail.com,qq.com,163.com,yahoo.com,sina.co
 func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
-		       email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
+		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire, updated_at
 		FROM app_settings WHERE id = 1
 	`))
@@ -47,14 +47,24 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, fmt.Errorf("begin site settings update: %w", err)
 	}
 	defer tx.Rollback()
+	var currentEmailVerificationEnabled, smtpEnabled bool
+	if err := tx.QueryRowContext(ctx, `SELECT email_verify, smtp_enabled FROM app_settings WHERE id = 1`).Scan(
+		&currentEmailVerificationEnabled, &smtpEnabled,
+	); err != nil {
+		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
+	}
+	if normalized.EmailVerificationEnabled && !smtpEnabled {
+		return SiteSettings{}, ErrRegistrationEmailVerificationNeedsMail
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
 		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
-		    email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
+		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
 	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, normalized.StopRegister,
+		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
 		administratorID, now.Unix(), revision)
@@ -73,9 +83,22 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 			return SiteSettings{}, fmt.Errorf("clear disabled registration IP limits: %w", err)
 		}
 	}
+	if currentEmailVerificationEnabled && !normalized.EmailVerificationEnabled {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE registration_email_mail_outbox
+			SET cancelled_at = ?, code_cipher = NULL, claim_token = NULL, claimed_at = NULL,
+			    last_error = 'cancelled because registration email verification was disabled', updated_at = ?
+			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL
+		`, now.Unix(), now.Unix()); err != nil {
+			return SiteSettings{}, fmt.Errorf("cancel disabled registration verification mail: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM registration_email_challenges`); err != nil {
+			return SiteSettings{}, fmt.Errorf("clear disabled registration verification challenges: %w", err)
+		}
+	}
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
-		       email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
+		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire, updated_at
 		FROM app_settings WHERE id = 1
 	`))
@@ -159,7 +182,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	var suffixStorage string
 	if err := row.Scan(
 		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo,
-		&settings.StopRegister, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
+		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes, &updatedAt,
 	); err != nil {
 		return SiteSettings{}, err

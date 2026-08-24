@@ -69,6 +69,15 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 		return TicketSettings{}, fmt.Errorf("begin update ticket settings: %w", err)
 	}
 	defer tx.Rollback()
+	if !normalized.SMTPEnabled {
+		var emailVerificationEnabled bool
+		if err := tx.QueryRowContext(ctx, `SELECT email_verify FROM app_settings WHERE id = 1`).Scan(&emailVerificationEnabled); err != nil {
+			return TicketSettings{}, fmt.Errorf("read registration email verification setting: %w", err)
+		}
+		if emailVerificationEnabled {
+			return TicketSettings{}, ErrRegistrationEmailVerificationNeedsMail
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
 		SET app_name = ?, app_url = ?, ticket_must_wait_reply = ?, smtp_enabled = ?, smtp_host = ?,
@@ -102,6 +111,14 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
 		`, now.Unix(), now.Unix()); err != nil {
 			return TicketSettings{}, fmt.Errorf("cancel disabled password reset mail: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE registration_email_mail_outbox
+			SET cancelled_at = ?, code_cipher = NULL,
+			    last_error = 'cancelled because SMTP notifications were disabled', updated_at = ?
+			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
+		`, now.Unix(), now.Unix()); err != nil {
+			return TicketSettings{}, fmt.Errorf("cancel disabled registration verification mail: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {

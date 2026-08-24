@@ -177,6 +177,59 @@ describe("App public identity bootstrap", () => {
       email: "NEW@EXAMPLE.TEST", password: "password-123", password_confirmation: "password-123"
     } }]);
   });
+
+  it("shows, sends, and submits the legacy registration email code when enabled", async () => {
+    const requests: Array<{ path: string; body: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) {
+        return Promise.resolve(jsonResponse(200, { status: "success", data: {
+          app_name: "Verified Registration", app_description: null, app_url: null, tos_url: null, logo: null,
+          is_email_verify: 1, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+          captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+          recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+        } }));
+      }
+      if (path.endsWith("/api/v1/auth/session")) {
+        return Promise.resolve(jsonResponse(401, { status: "fail", error: { code: "unauthenticated", message: "请先登录" } }));
+      }
+      if (path.endsWith("/api/v1/auth/registration-email/request")) {
+        const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown;
+        requests.push({ path, body });
+        return Promise.resolve(jsonResponse(202, { status: "success", data: true }));
+      }
+      if (path.endsWith("/api/v1/auth/register")) {
+        const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown;
+        requests.push({ path, body });
+        return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 51, email: "verified@example.test", is_admin: false } }));
+      }
+      if (path.endsWith("/api/v1/notices?page=1")) {
+        return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
+      }
+      return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "注册账号" }));
+    await user.type(screen.getByLabelText("邮箱"), "verified@example.test");
+    expect(screen.getByLabelText("邮箱验证码")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("验证码已发送，请检查邮箱");
+    expect(screen.getByRole("button", { name: "60 秒" })).toBeDisabled();
+    await user.type(screen.getByLabelText("邮箱验证码"), "482731");
+    await user.type(screen.getByLabelText("密码", { exact: true }), "password-123");
+    await user.type(screen.getByLabelText("再次输入密码"), "password-123");
+    await user.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(await screen.findByText("verified@example.test", { exact: true })).toBeVisible();
+    expect(requests).toEqual([
+      { path: "/api/v1/auth/registration-email/request", body: { email: "verified@example.test" } },
+      { path: "/api/v1/auth/register", body: {
+        email: "verified@example.test", email_code: "482731", password: "password-123", password_confirmation: "password-123"
+      } }
+    ]);
+  });
 });
 
 function jsonResponse(status: number, body: unknown): Response {

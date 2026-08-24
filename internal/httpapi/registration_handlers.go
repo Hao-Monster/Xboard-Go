@@ -21,6 +21,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		Email                string `json:"email"`
+		EmailCode            string `json:"email_code"`
 		Password             string `json:"password"`
 		PasswordConfirmation string `json:"password_confirmation"`
 	}
@@ -57,6 +58,33 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "registration_closed", "本站已关闭注册", nil)
 		return
 	}
+	var emailDigest, emailCodeDigest []byte
+	if settings.EmailVerificationEnabled {
+		if !validSixDigitEmailCode(input.EmailCode) {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查注册信息", map[string]string{
+				"email_code": "邮箱验证码必须为 6 位数字",
+			})
+			return
+		}
+		if s.registrationEmailProtector == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "mail_unavailable", "邮件服务暂不可用", nil)
+			return
+		}
+		emailDigest, err = s.registrationEmailProtector.EmailDigest(input.Email)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		emailCodeDigest, err = s.registrationEmailProtector.CodeDigest(input.Email, input.EmailCode)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		if err := s.store.CheckRegistrationEmailVerification(r.Context(), emailDigest, emailCodeDigest, s.now()); err != nil {
+			s.writeRegistrationEmailChallengeError(w, err)
+			return
+		}
+	}
 	if _, err := s.store.FindUserByEmail(r.Context(), input.Email); err == nil {
 		writeAPIError(w, http.StatusBadRequest, "email_exists", "邮箱已在系统中存在", map[string]string{"email": "邮箱已在系统中存在"})
 		return
@@ -84,6 +112,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	user, err := s.store.RegisterUserWithSession(r.Context(), store.RegisterUserInput{
 		Email: input.Email, PasswordHash: passwordHash, SourceIP: sourceIP,
+		EmailDigest: emailDigest, EmailCodeDigest: emailCodeDigest,
 	}, store.RegistrationSessionInput{
 		TokenHash: credentials.token.Digest, CSRFHash: credentials.csrf.Digest, ExpiresAt: credentials.expiresAt,
 	}, now)
@@ -97,6 +126,9 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrEmailDomainNotAllowed), errors.Is(err, store.ErrGmailAliasNotAllowed), errors.Is(err, store.ErrRegistrationIPLimited):
 		s.writeRegistrationPolicyError(w, err)
 		return
+	case errors.Is(err, store.ErrRegistrationEmailVerificationInvalid), errors.Is(err, store.ErrRegistrationEmailVerificationLocked), errors.Is(err, store.ErrRegistrationEmailVerificationDisabled):
+		s.writeRegistrationEmailChallengeError(w, err)
+		return
 	case err != nil:
 		handleStoreError(w, err)
 		return
@@ -105,6 +137,24 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": user.ID, "email": user.Email, "is_admin": user.IsAdmin,
 	})
+}
+
+func (s *server) writeRegistrationEmailChallengeError(w http.ResponseWriter, err error) {
+	var locked *store.RegistrationEmailVerificationLockedError
+	if errors.As(err, &locked) {
+		retryAfter := locked.RetryAfterSeconds
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		w.Header().Set("Retry-After", strconv.FormatInt(retryAfter, 10))
+		writeAPIError(w, http.StatusTooManyRequests, "registration_email_locked", "注册失败，请稍后再试", nil)
+		return
+	}
+	if errors.Is(err, store.ErrRegistrationEmailVerificationDisabled) {
+		writeAPIError(w, http.StatusConflict, "registration_email_disabled", "注册邮箱验证未启用", nil)
+		return
+	}
+	writeAPIError(w, http.StatusBadRequest, "registration_email_invalid", "邮箱验证码有误", nil)
 }
 
 func (s *server) writeRegistrationPolicyError(w http.ResponseWriter, err error) bool {
@@ -150,4 +200,16 @@ func validateRegistration(email, password, confirmation string) map[string]strin
 		fields["password_confirmation"] = "两次输入的密码不一致"
 	}
 	return fields
+}
+
+func validSixDigitEmailCode(code string) bool {
+	if len(code) != 6 {
+		return false
+	}
+	for _, character := range code {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }

@@ -81,6 +81,7 @@ export function App() {
     setGuestConfig((current) => ({
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
       app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
+      is_email_verify: settings.email_verify ? 1 : 0,
       email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0
     }));
   };
@@ -160,12 +161,14 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
       setResetComplete(false);
       setMessage("");
       setEmailCode("");
+      setCooldown(0);
+      setError("");
       onModeChange("login");
     }, 500);
     return () => window.clearTimeout(timer);
   }, [onModeChange, resetComplete]);
 
-  const sendPasswordResetCode = async () => {
+  const sendEmailCode = async () => {
     setError("");
     setMessage("");
     if (email.trim() === "") {
@@ -174,7 +177,11 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
     }
     setSendingCode(true);
     try {
-      await api.requestPasswordReset(email);
+      if (mode === "register") {
+        await api.requestRegistrationEmailVerification(email);
+      } else {
+        await api.requestPasswordReset(email);
+      }
       setCooldown(60);
       setMessage("验证码已发送，请检查邮箱");
     } catch (cause) {
@@ -197,7 +204,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
         }
       }
       if (mode === "register") {
-        onAuthenticated(await api.register(email, password, confirmation));
+        onAuthenticated(await api.register(email, password, confirmation, emailCode));
       } else if (mode === "recover") {
         await api.resetPassword(email, emailCode, password);
         setMessage("重置密码成功,正在返回登录");
@@ -222,7 +229,7 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
           <label>邮箱<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
           {mode === "register" && Array.isArray(config.email_whitelist_suffix) && config.email_whitelist_suffix.length > 0 &&
             <p className="small muted registration-domain-hint">允许邮箱后缀：{config.email_whitelist_suffix.join("、")}</p>}
-          {mode === "recover" && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendPasswordResetCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : "发送"}</button></div>}
+          {(mode === "recover" || (mode === "register" && config.is_email_verify === 1)) && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendEmailCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : "发送"}</button></div>}
           <label>密码<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
           {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
@@ -230,11 +237,13 @@ function AuthPage({ config, mode, onAuthenticated, onModeChange }: {
           <button className="button primary full" type="submit" disabled={submitting || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
         </form>
         {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
-          setError(""); setMessage(""); setResetComplete(false); onModeChange("recover");
+          setError(""); setMessage(""); setEmailCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");
         }}>忘记密码</button>}
         <button className="button ghost full auth-mode-switch" type="button" disabled={submitting || sendingCode} onClick={() => {
           setError("");
           setMessage("");
+          setEmailCode("");
+          setCooldown(0);
           setResetComplete(false);
           onModeChange(mode === "login" ? "register" : "login");
         }}>{mode === "login" ? "注册账号" : "返回登入"}</button>

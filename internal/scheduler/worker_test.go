@@ -183,3 +183,56 @@ func TestWorkerPrunesExpiredPasswordResetChallengesAndEncryptedMail(t *testing.T
 		t.Fatalf("expired password reset mail remained claimable: claimed=%v err=%v", claimed, err)
 	}
 }
+
+func TestWorkerPrunesExpiredRegistrationEmailChallengesAndEncryptedMail(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-registration-email-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-registration@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketSettings, _ := database.GetTicketSettings(ctx)
+	if _, err := database.UpdateTicketSettings(ctx, administrator.ID, ticketSettings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Worker Registration", SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025,
+		SMTPEncryption: "none", SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	siteSettings, _ := database.GetSiteSettings(ctx)
+	if _, err := database.UpdateSiteSettings(ctx, administrator.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
+		AppName: siteSettings.AppName, EmailVerificationEnabled: true,
+		EmailWhitelistSuffixes:     siteSettings.EmailWhitelistSuffixes,
+		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protector, _ := security.NewRegistrationEmailProtector(make([]byte, 32))
+	const email = "worker-registration-new@example.test"
+	emailDigest, _ := protector.EmailDigest(email)
+	codeDigest, _ := protector.CodeDigest(email, "890123")
+	codeCipher, _ := protector.EncryptCode(email, "890123")
+	if queued, err := database.RequestRegistrationEmailVerification(ctx, store.RegistrationEmailVerificationRequestInput{
+		Email: email, SourceIP: "127.0.0.1", EmailDigest: emailDigest, CodeDigest: codeDigest, CodeCipher: codeCipher,
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestRegistrationEmailVerification() = (%v, %v)", queued, err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now.Add(5 * time.Minute) }
+	worker.applyDue(ctx)
+	if removed, err := database.PruneExpiredRegistrationEmailVerifications(ctx, now.Add(5*time.Minute), 100); err != nil || removed != 0 {
+		t.Fatalf("worker left expired registration email state: removed=%d err=%v", removed, err)
+	}
+	if _, claimed, err := database.ClaimRegistrationEmailVerificationMail(ctx, "expired-registration-check", now.Add(5*time.Minute), time.Minute); err != nil || claimed {
+		t.Fatalf("expired registration email remained claimable: claimed=%v err=%v", claimed, err)
+	}
+}

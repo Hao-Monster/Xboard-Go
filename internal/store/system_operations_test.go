@@ -175,6 +175,59 @@ func TestSystemQueueStatsAndFailedMailPaginationExcludeMessageBodies(t *testing.
 	if strings.Contains(fmt.Sprint(page.Items), "382741") {
 		t.Fatal("failed mail diagnostics exposed the password reset code")
 	}
+
+	siteSettings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateSiteSettings(ctx, admin.ID, siteSettings.Revision, SaveSiteSettingsInput{
+		AppName: siteSettings.AppName, AppDescription: siteSettings.AppDescription, AppURL: siteSettings.AppURL,
+		TOSURL: siteSettings.TOSURL, Logo: siteSettings.Logo, EmailVerificationEnabled: true,
+		EmailWhitelistSuffixes:     siteSettings.EmailWhitelistSuffixes,
+		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount,
+		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+	}, now.Add(11*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	registrationProtector, _ := security.NewRegistrationEmailProtector(make([]byte, 32))
+	const registrationEmail = "queue-registration@example.test"
+	registrationEmailDigest, _ := registrationProtector.EmailDigest(registrationEmail)
+	registrationCodeDigest, _ := registrationProtector.CodeDigest(registrationEmail, "593817")
+	registrationCodeCipher, _ := registrationProtector.EncryptCode(registrationEmail, "593817")
+	if queued, err := database.RequestRegistrationEmailVerification(ctx, RegistrationEmailVerificationRequestInput{
+		Email: registrationEmail, SourceIP: "127.0.0.1", EmailDigest: registrationEmailDigest,
+		CodeDigest: registrationCodeDigest, CodeCipher: registrationCodeCipher,
+	}, now.Add(11*time.Minute)); err != nil || !queued {
+		t.Fatalf("RequestRegistrationEmailVerification() = (%v, %v)", queued, err)
+	}
+	for attempt, claimAt := range []time.Time{now.Add(11 * time.Minute), now.Add(11*time.Minute + 20*time.Second), now.Add(12 * time.Minute)} {
+		token := fmt.Sprintf("registration-failure-%d", attempt)
+		registrationJob, claimed, err := database.ClaimRegistrationEmailVerificationMail(ctx, token, claimAt, time.Minute)
+		if err != nil || !claimed {
+			t.Fatalf("registration mail claim %d = (%#v, %v, %v)", attempt+1, registrationJob, claimed, err)
+		}
+		retryDelay := 10 * time.Second
+		if attempt == 1 {
+			retryDelay = 30 * time.Second
+		} else if attempt >= 2 {
+			retryDelay = 0
+		}
+		if err := database.FailRegistrationEmailVerificationMail(ctx, registrationJob.ID, token, "registration delivery refused", claimAt.Add(retryDelay), claimAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err = database.GetSystemQueueStats(ctx)
+	if err != nil || stats.Failed != 3 || stats.Pending != 0 {
+		t.Fatalf("three-kind queue stats = %#v err=%v", stats, err)
+	}
+	page, err = database.ListTicketMailFailures(ctx, 1, 20)
+	if err != nil || page.Total != 3 || len(page.Items) != 3 || page.Items[0].Kind != "registration_email_verification" ||
+		page.Items[0].TicketSubject != "注册邮箱验证码" || page.Items[0].Recipient != registrationEmail {
+		t.Fatalf("three-kind failed mail page = %#v err=%v", page, err)
+	}
+	if strings.Contains(fmt.Sprint(page.Items), "593817") {
+		t.Fatal("failed mail diagnostics exposed the registration email code")
+	}
 }
 
 func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *testing.T) {
@@ -218,12 +271,16 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE registration_ip_limits`); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"password_reset_mail_outbox", "password_reset_challenges"} {
+	for _, table := range []string{
+		"registration_email_mail_outbox", "registration_email_challenges",
+		"password_reset_mail_outbox", "password_reset_challenges",
+	} {
 		if _, err := database.db.ExecContext(ctx, `DROP TABLE `+table); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, column := range []string{
+		"email_verify",
 		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
 		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",
 	} {
