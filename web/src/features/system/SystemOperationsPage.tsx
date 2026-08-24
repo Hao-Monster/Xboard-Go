@@ -131,10 +131,10 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
     </section>
 
     <section className="system-section" aria-labelledby="mail-failures-heading">
-      <div className="section-heading"><div><h2 id="mail-failures-heading">失败邮件任务</h2><p className="muted">展示投递诊断元数据，不展示工单回复正文或 SMTP 凭据。</p></div></div>
-      <div className="resource-table-wrap"><table className="resource-table"><thead><tr><th>工单主题</th><th>收件人</th><th>尝试</th><th>错误</th><th>失败时间</th></tr></thead><tbody>
-        {failures?.items.map((item) => <tr key={item.id}><td data-label="工单主题"><strong>{item.ticket_subject}</strong><small className="muted">任务 #{item.id}</small></td><td data-label="收件人">{item.recipient}</td><td data-label="尝试">{item.attempt_count}</td><td data-label="错误"><span className="system-error-text">{item.last_error}</span></td><td data-label="失败时间">{formatDate(item.failed_at)}</td></tr>)}
-        {failures !== null && failures.items.length === 0 && <tr><td colSpan={5}>暂无失败邮件任务。</td></tr>}
+      <div className="section-heading"><div><h2 id="mail-failures-heading">失败邮件任务</h2><p className="muted">展示投递诊断元数据，不展示工单回复正文、验证码或 SMTP 凭据。</p></div></div>
+      <div className="resource-table-wrap"><table className="resource-table"><thead><tr><th>邮件主题</th><th>类型</th><th>收件人</th><th>尝试</th><th>错误</th><th>失败时间</th></tr></thead><tbody>
+        {failures?.items.map((item) => <tr key={`${item.kind}-${item.id}`}><td data-label="邮件主题"><strong>{item.ticket_subject}</strong><small className="muted">任务 #{Math.abs(item.id)}</small></td><td data-label="类型">{item.kind === "password_reset" ? "密码重置" : "工单通知"}</td><td data-label="收件人">{item.recipient}</td><td data-label="尝试">{item.attempt_count}</td><td data-label="错误"><span className="system-error-text">{item.last_error}</span></td><td data-label="失败时间">{formatDate(item.failed_at)}</td></tr>)}
+        {failures !== null && failures.items.length === 0 && <tr><td colSpan={6}>暂无失败邮件任务。</td></tr>}
       </tbody></table>
         {failures !== null && failures.total > failures.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={failures.page <= 1} onClick={() => void changeFailurePage(failures.page - 1)}>失败任务上一页</button><span>第 {failures.page} 页</span><button className="button secondary compact" disabled={failures.page * failures.page_size >= failures.total} onClick={() => void changeFailurePage(failures.page + 1)}>失败任务下一页</button></div>}
       </div>

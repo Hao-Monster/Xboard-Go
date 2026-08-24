@@ -64,7 +64,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	releaseHashSlot, ok := s.beginRegistrationHash()
+	releaseHashSlot, ok := s.beginPasswordHash()
 	if !ok {
 		w.Header().Set("Retry-After", "1")
 		writeAPIError(w, http.StatusTooManyRequests, "registration_busy", "注册服务繁忙，请稍后重试", nil)
@@ -125,10 +125,10 @@ func (s *server) writeRegistrationPolicyError(w http.ResponseWriter, err error) 
 	return false
 }
 
-func (s *server) beginRegistrationHash() (func(), bool) {
+func (s *server) beginPasswordHash() (func(), bool) {
 	select {
-	case s.registrationHashSlots <- struct{}{}:
-		return func() { <-s.registrationHashSlots }, true
+	case s.passwordHashSlots <- struct{}{}:
+		return func() { <-s.passwordHashSlots }, true
 	default:
 		return func() {}, false
 	}

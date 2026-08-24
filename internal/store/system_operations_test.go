@@ -3,8 +3,11 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 )
 
 func TestAdminAuditLogIsAppendOnlyFilteredAndDoesNotStoreRequestBodies(t *testing.T) {
@@ -128,8 +131,49 @@ func TestSystemQueueStatsAndFailedMailPaginationExcludeMessageBodies(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].LastError != "permanent refusal" || page.Items[0].Recipient != user.Email {
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Kind != "ticket" || page.Items[0].LastError != "permanent refusal" || page.Items[0].Recipient != user.Email {
 		t.Fatalf("failed mail page = %#v", page)
+	}
+
+	protector, err := security.NewPasswordResetProtector(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	emailDigest, _ := protector.EmailDigest(user.Email)
+	codeDigest, _ := protector.CodeDigest(user.Email, "382741")
+	codeCipher, _ := protector.EncryptCode(user.Email, "382741")
+	if queued, err := database.RequestPasswordReset(ctx, PasswordResetRequestInput{
+		Email: user.Email, EmailDigest: emailDigest, CodeDigest: codeDigest, CodeCipher: codeCipher,
+	}, now.Add(9*time.Minute)); err != nil || !queued {
+		t.Fatalf("RequestPasswordReset() = (%v, %v)", queued, err)
+	}
+	for attempt, claimAt := range []time.Time{now.Add(9 * time.Minute), now.Add(9*time.Minute + 20*time.Second), now.Add(10 * time.Minute)} {
+		token := fmt.Sprintf("reset-failure-%d", attempt)
+		resetJob, claimed, err := database.ClaimPasswordResetMail(ctx, token, claimAt, time.Minute)
+		if err != nil || !claimed {
+			t.Fatalf("password reset claim %d = (%#v, %v, %v)", attempt+1, resetJob, claimed, err)
+		}
+		retryDelay := 10 * time.Second
+		if attempt == 1 {
+			retryDelay = 30 * time.Second
+		} else if attempt >= 2 {
+			retryDelay = 0
+		}
+		if err := database.FailPasswordResetMail(ctx, resetJob.ID, token, "reset delivery refused", claimAt.Add(retryDelay), claimAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err = database.GetSystemQueueStats(ctx)
+	if err != nil || stats.Failed != 2 || stats.Pending != 0 {
+		t.Fatalf("combined queue stats = %#v err=%v", stats, err)
+	}
+	page, err = database.ListTicketMailFailures(ctx, 1, 20)
+	if err != nil || page.Total != 2 || len(page.Items) != 2 || page.Items[0].Kind != "password_reset" ||
+		page.Items[0].ID >= 0 || page.Items[0].TicketSubject != "密码重置验证码" || page.Items[0].Recipient != user.Email {
+		t.Fatalf("combined failed mail page = %#v err=%v", page, err)
+	}
+	if strings.Contains(fmt.Sprint(page.Items), "382741") {
+		t.Fatal("failed mail diagnostics exposed the password reset code")
 	}
 }
 
@@ -174,6 +218,11 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE registration_ip_limits`); err != nil {
 		t.Fatal(err)
 	}
+	for _, table := range []string{"password_reset_mail_outbox", "password_reset_challenges"} {
+		if _, err := database.db.ExecContext(ctx, `DROP TABLE `+table); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, column := range []string{
 		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
 		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",
@@ -198,7 +247,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ticket_mail_outbox_failed'`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 16 || auditCount != 1 || indexCount != 1 {
+	if version != currentSchemaVersion || auditCount != 1 || indexCount != 1 {
 		t.Fatalf("migration result: version=%d audits=%d failed_index=%d", version, auditCount, indexCount)
 	}
 }

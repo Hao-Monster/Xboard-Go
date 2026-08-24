@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -18,6 +19,65 @@ type recordingSender struct {
 	failure        error
 	configurations []SMTPConfig
 	messages       []Message
+}
+
+func TestWorkerDecryptsAndDeliversPasswordResetCodeBeforeTicketMail(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 8, 25, 3, 0, 0, 0, time.UTC)
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "password-reset-worker.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "reset-mail@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetTicketSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateTicketSettings(ctx, user.ID, settings.Revision, store.SaveTicketSettingsInput{
+		AppName: "Reset Board", AppURL: "https://panel.example.test", SMTPEnabled: true,
+		SMTPHost: "mailpit", SMTPPort: 1025, SMTPEncryption: EncryptionNone, SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protector, err := security.NewPasswordResetProtector(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const code = "384729"
+	emailDigest, _ := protector.EmailDigest(user.Email)
+	codeDigest, _ := protector.CodeDigest(user.Email, code)
+	codeCipher, _ := protector.EncryptCode(user.Email, code)
+	if queued, err := database.RequestPasswordReset(ctx, store.PasswordResetRequestInput{
+		Email: user.Email, EmailDigest: emailDigest, CodeDigest: codeDigest, CodeCipher: codeCipher,
+	}, now); err != nil || !queued {
+		t.Fatalf("RequestPasswordReset() = (%v, %v)", queued, err)
+	}
+
+	sender := &recordingSender{failure: errors.New("temporary reset SMTP failure")}
+	worker := NewWorker(database, nil, protector, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worked, err := worker.RunOnce(ctx, now)
+	if !worked || err == nil {
+		t.Fatalf("first RunOnce() = (%v, %v), want retryable failure", worked, err)
+	}
+	sender.failure = nil
+	worked, err = worker.RunOnce(ctx, now.Add(20*time.Second))
+	if !worked || err != nil {
+		t.Fatalf("second RunOnce() = (%v, %v), want successful retry", worked, err)
+	}
+	if len(sender.messages) != 2 || sender.messages[1].To != user.Email || sender.messages[1].Subject != "Reset Board邮箱验证码" ||
+		!strings.Contains(sender.messages[1].Text, code) || !strings.Contains(sender.messages[1].Text, "5 分钟") {
+		t.Fatalf("password reset message = %#v", sender.messages)
+	}
+	if _, claimed, err := database.ClaimPasswordResetMail(ctx, "after-send", now.Add(21*time.Second), time.Minute); err != nil || claimed {
+		t.Fatalf("completed password reset mail remained claimable: claimed=%v err=%v", claimed, err)
+	}
 }
 
 func (sender *recordingSender) Send(_ context.Context, configuration SMTPConfig, message Message) error {
@@ -74,7 +134,7 @@ func TestWorkerDecryptsRetriesAndCompletesTicketNotification(t *testing.T) {
 	}
 
 	sender := &recordingSender{failure: errors.New("temporary SMTP failure")}
-	worker := NewWorker(database, cipherBox, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := NewWorker(database, cipherBox, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worked, err := worker.RunOnce(ctx, now.Add(2*time.Minute))
 	if !worked || err == nil {
 		t.Fatalf("first RunOnce() = (%v, %v), want attempted failure", worked, err)

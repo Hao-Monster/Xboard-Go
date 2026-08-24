@@ -212,7 +212,7 @@ func TestSchemaV14MigrationPreservesV13SiteSettings(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 16 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
+	if version != currentSchemaVersion || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
 		settings.AppURL != "https://v13.example.test/" || settings.TOSURL != "https://v13.example.test/terms/" || settings.Logo != "" {
 		t.Fatalf("v13 to v14 migration result: version=%d settings=%#v", version, settings)
 	}
@@ -256,7 +256,7 @@ func TestSchemaV15MigrationPreservesV14SettingsAndDefaultsRegistrationOpen(t *te
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 16 || settings.Revision != 17 || settings.AppName != "V14 Board" || settings.AppDescription != "Preserved" ||
+	if version != currentSchemaVersion || settings.Revision != 17 || settings.AppName != "V14 Board" || settings.AppDescription != "Preserved" ||
 		settings.AppURL != "https://v14.example.test/" || settings.TOSURL != "https://v14.example.test/terms/" ||
 		settings.Logo != "https://v14.example.test/logo.svg" || settings.StopRegister {
 		t.Fatalf("v14 to v15 migration result: version=%d settings=%#v", version, settings)
@@ -302,7 +302,7 @@ func TestSchemaV16MigrationPreservesV15SettingsAndDefaultsRegistrationPolicies(t
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='registration_ip_limits'`).Scan(&counterTable); err != nil {
 		t.Fatal(err)
 	}
-	if version != 16 || settings.Revision != 23 || settings.AppName != "V15 Board" || settings.Logo != "https://v15.example.test/logo.svg" ||
+	if version != currentSchemaVersion || settings.Revision != 23 || settings.AppName != "V15 Board" || settings.Logo != "https://v15.example.test/logo.svg" ||
 		!settings.StopRegister || settings.EmailWhitelistEnabled || settings.GmailAliasLimitEnabled || settings.RegistrationIPLimitEnabled ||
 		settings.RegistrationIPLimitCount != 3 || settings.RegistrationIPLimitMinutes != 60 || counterTable != 1 ||
 		!slices.Equal(settings.EmailWhitelistSuffixes, strings.Split(defaultEmailWhitelistStorage, ",")) {
@@ -358,7 +358,7 @@ func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_audit_logs`).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 16 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
+	if version != currentSchemaVersion || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
 		settings.AppURL != "https://preserved.example.test" || settings.AppDescription != "" || settings.TOSURL != "" || settings.Logo != "" || auditCount != 1 {
 		t.Fatalf("migration result: version=%d settings=%#v audits=%d", version, settings, auditCount)
 	}

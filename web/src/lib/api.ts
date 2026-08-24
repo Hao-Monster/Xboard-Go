@@ -411,6 +411,7 @@ export interface AdminAuditPage {
 
 export interface TicketMailFailure {
   id: number;
+  kind: "ticket" | "password_reset";
   recipient: string;
   ticket_subject: string;
   attempt_count: number;
@@ -565,6 +566,16 @@ export class APIClient implements AdminAPI {
   async register(email: string, password: string, passwordConfirmation: string): Promise<UserSession> {
     return this.request<UserSession>("/api/v1/auth/register", {
       method: "POST", body: { email, password, password_confirmation: passwordConfirmation }
+    });
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    await this.request<boolean>("/api/v1/auth/password-reset/request", { method: "POST", body: { email } });
+  }
+
+  async resetPassword(email: string, emailCode: string, password: string): Promise<void> {
+    await this.request<boolean>("/api/v1/auth/password-reset/confirm", {
+      method: "POST", body: { email, email_code: emailCode, password }
     });
   }
 

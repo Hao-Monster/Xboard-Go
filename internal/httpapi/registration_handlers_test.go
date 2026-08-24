@@ -168,7 +168,7 @@ func TestRegistrationPolicyRejectionSkipsPasswordHash(t *testing.T) {
 	hasher := &countingRegistrationHasher{}
 	api := &server{
 		store: database, passwordHasher: hasher, now: fixedNow,
-		registrationRequests: newRequestLimiter(20, 15*time.Minute), registrationHashSlots: make(chan struct{}, 2),
+		registrationRequests: newRequestLimiter(20, 15*time.Minute), passwordHashSlots: make(chan struct{}, 2),
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
 		"email":"precheck-third@example.test","password":"password-123","password_confirmation":"password-123"
@@ -234,16 +234,16 @@ func TestRequestIPCanonicalizesPeerAndIgnoresUntrustedForwardingHeaders(t *testi
 }
 
 func TestRegistrationHashConcurrencyIsMemoryBounded(t *testing.T) {
-	api := &server{registrationHashSlots: make(chan struct{}, 2)}
-	firstRelease, first := api.beginRegistrationHash()
-	secondRelease, second := api.beginRegistrationHash()
-	thirdRelease, third := api.beginRegistrationHash()
+	api := &server{passwordHashSlots: make(chan struct{}, 2)}
+	firstRelease, first := api.beginPasswordHash()
+	secondRelease, second := api.beginPasswordHash()
+	thirdRelease, third := api.beginPasswordHash()
 	if !first || !second || third {
 		t.Fatalf("hash slots first=%t second=%t third=%t", first, second, third)
 	}
 	thirdRelease()
 	firstRelease()
-	reusedRelease, reused := api.beginRegistrationHash()
+	reusedRelease, reused := api.beginPasswordHash()
 	if !reused {
 		t.Fatal("released registration hash slot was not reusable")
 	}
@@ -256,7 +256,7 @@ func TestRegistrationRechecksClosureAfterPasswordHash(t *testing.T) {
 	hasher := &blockingRegistrationHasher{started: make(chan struct{}), release: make(chan struct{})}
 	api := &server{
 		store: database, passwordHasher: hasher, now: fixedNow,
-		registrationRequests: newRequestLimiter(20, 15*time.Minute), registrationHashSlots: make(chan struct{}, 2),
+		registrationRequests: newRequestLimiter(20, 15*time.Minute), passwordHashSlots: make(chan struct{}, 2),
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
 		"email":"closure-race@example.test","password":"password-123","password_confirmation":"password-123"

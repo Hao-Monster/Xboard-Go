@@ -268,6 +268,9 @@ textarea { min-height: 100px; resize: vertical; }
 .login-card { width: min(420px, 100%); padding: 32px; border: 1px solid #303643; border-radius: 20px; background: rgb(19 22 29 / 94%); box-shadow: 0 30px 90px rgb(0 0 0 / 42%); }
 .login-card h1 { margin-top: 28px; font-size: 2rem; }
 .auth-mode-switch { margin-top: 10px; }
+.verification-field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.verification-field-row > label { min-width: 0; }
+.verification-field-row > .button { min-width: 92px; }
 .login-terms { margin: 20px 0 0; text-align: center; font-size: .78rem; }
 .login-terms a { color: #9db8ff; }
 
