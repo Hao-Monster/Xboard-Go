@@ -156,11 +156,16 @@ test("legacy system configuration exposes its observable sections and API groups
   ]));
   expect(Object.keys(readObjectProperty(data, "safe"))).toEqual(expect.arrayContaining([
     "email_verify", "safe_mode_enable", "secure_path", "email_whitelist_enable", "email_whitelist_suffix",
-    "captcha_enable", "captcha_type", "register_limit_by_ip_enable", "password_limit_enable"
+    "captcha_enable", "captcha_type", "register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",
+    "password_limit_enable"
   ]));
   expect(Object.keys(readObjectProperty(data, "email"))).toEqual(expect.arrayContaining([
     "email_host", "email_port", "email_username", "email_password", "email_encryption", "email_from_address", "remind_mail_enable"
   ]));
+  await page.getByRole("link", { name: "安全设置", exact: true }).filter({ visible: true }).click();
+  for (const field of ["邮箱验证", "禁止使用Gmail多别名", "邮箱后缀白名单", "IP注册限制"]) {
+    await expect(page.getByText(field, { exact: true }).filter({ visible: true }).first(), field).toBeVisible();
+  }
   expect(errors).toEqual([]);
 });
 
@@ -253,6 +258,111 @@ test("legacy basic registration follows the public form and stop-register policy
   } finally {
     await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
     const cleanup = `App\\Models\\User::whereIn("email",["${normalizedEmail}","${closedEmail}"])->delete();`;
+    execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
+  }
+});
+
+test("legacy registration email policies and successful-IP limit remain observable", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const configuration = readProperty(await fetched.json() as unknown, "data");
+  const site = readObjectProperty(configuration, "site");
+  const safe = readObjectProperty(configuration, "safe");
+  const invite = readObjectProperty(configuration, "invite");
+  const original = {
+    stop_register: readProperty(site, "stop_register"),
+    invite_force: readProperty(invite, "invite_force"),
+    email_verify: readProperty(safe, "email_verify"),
+    email_whitelist_enable: readProperty(safe, "email_whitelist_enable"),
+    email_whitelist_suffix: readProperty(safe, "email_whitelist_suffix"),
+    email_gmail_limit_enable: readProperty(safe, "email_gmail_limit_enable"),
+    captcha_enable: readProperty(safe, "captcha_enable"),
+    register_limit_by_ip_enable: readProperty(safe, "register_limit_by_ip_enable"),
+    register_limit_count: readProperty(safe, "register_limit_count"),
+    register_limit_expire: readProperty(safe, "register_limit_expire")
+  };
+  const unique = Date.now();
+  const password = `registration-policy-password-${unique}`;
+  const testIP = `198.51.100.${unique % 200 + 1}`;
+  const emails = {
+    allowed: `policy-allowed-${unique}@allowed.test`,
+    blocked: `policy-blocked-${unique}@blocked.test`,
+    uppercaseDomain: `POLICY-UPPER-${unique}@ALLOWED.TEST`,
+    gmailAlias: `policy.alias.${unique}@gmail.com`,
+    gmailSimple: `policysimple${unique}@gmail.com`,
+    nonGmailDot: `policy.alias.${unique}@example.test`,
+    firstIP: `policy-ip1-${unique}@example.test`,
+    secondIP: `policy-ip2-${unique}@example.test`,
+    thirdIP: `policy-ip3-${unique}@example.test`
+  };
+  const register = (email: string, extraHeaders?: Record<string, string>) => page.request.post(
+    new URL("/api/v1/passport/auth/register", legacyURL).toString(),
+    { data: { email, password }, headers: extraHeaders }
+  );
+
+  try {
+    const whitelist = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: {
+        stop_register: 0, invite_force: 0, email_verify: 0, captcha_enable: 0,
+        email_whitelist_enable: 1, email_whitelist_suffix: ["allowed.test"],
+        email_gmail_limit_enable: 0, register_limit_by_ip_enable: 0
+      }
+    });
+    expect(whitelist.status()).toBe(200);
+    const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(readProperty(readProperty(await guest.json() as unknown, "data"), "email_whitelist_suffix")).toEqual(["allowed.test"]);
+
+    const blocked = await register(emails.blocked);
+    expect(blocked.status()).toBe(400);
+    expect(readStringProperty(await blocked.json() as unknown, "message")).toBe("邮箱后缀不处于白名单中");
+    const legacyCaseSensitiveRejection = await register(emails.uppercaseDomain);
+    expect(legacyCaseSensitiveRejection.status()).toBe(400);
+    expect(readStringProperty(await legacyCaseSensitiveRejection.json() as unknown, "message")).toBe("邮箱后缀不处于白名单中");
+    expect((await register(emails.allowed)).status()).toBe(200);
+
+    const gmailLimit = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: { email_whitelist_enable: 0, email_gmail_limit_enable: 1 }
+    });
+    expect(gmailLimit.status()).toBe(200);
+    const gmailAlias = await register(emails.gmailAlias);
+    expect(gmailAlias.status()).toBe(400);
+    expect(readStringProperty(await gmailAlias.json() as unknown, "message")).toBe("不支持 Gmail 别名邮箱");
+    expect((await register(emails.gmailSimple)).status()).toBe(200);
+    const overbroadLegacyRejection = await register(emails.nonGmailDot);
+    expect(overbroadLegacyRejection.status()).toBe(400);
+    expect(readStringProperty(await overbroadLegacyRejection.json() as unknown, "message")).toBe("不支持 Gmail 别名邮箱");
+
+    const ipLimit = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: {
+        email_gmail_limit_enable: 0, register_limit_by_ip_enable: 1,
+        register_limit_count: 2, register_limit_expire: 1
+      }
+    });
+    expect(ipLimit.status()).toBe(200);
+    const ipHeaders = { "X-Forwarded-For": testIP };
+    const duplicateDoesNotConsumeQuota = await register(emails.allowed, ipHeaders);
+    expect(duplicateDoesNotConsumeQuota.status()).toBe(400);
+    expect(readStringProperty(await duplicateDoesNotConsumeQuota.json() as unknown, "message")).toBe("邮箱已在系统中存在");
+    expect((await register(emails.firstIP, ipHeaders)).status()).toBe(200);
+    expect((await register(emails.secondIP, ipHeaders)).status()).toBe(200);
+    const rateLimited = await register(emails.thirdIP, ipHeaders);
+    expect(rateLimited.status()).toBe(429);
+    expect(readStringProperty(await rateLimited.json() as unknown, "message")).toBe("注册频繁，请等待 1 分钟后再次尝试");
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    const allEmails = Object.values(emails).map((email) => `"${email}"`).join(",");
+    const cleanup = `App\\Models\\User::whereIn("email",[${allEmails}])->delete(); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("REGISTER_IP_RATE_LIMIT","${testIP}"));`;
     execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
   }
 });

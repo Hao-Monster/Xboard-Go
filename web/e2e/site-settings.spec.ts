@@ -10,6 +10,12 @@ interface SiteSettings {
   tos_url: string;
   logo: string;
   stop_register: boolean;
+  email_whitelist_enable: boolean;
+  email_whitelist_suffix: string[];
+  email_gmail_limit_enable: boolean;
+  register_limit_by_ip_enable: boolean;
+  register_limit_count: number;
+  register_limit_expire: number;
 }
 
 test("administrator site identity persists into the public shell and can be restored", async ({ page, request }) => {
@@ -26,7 +32,13 @@ test("administrator site identity persists into the public shell and can be rest
     app_url: `https://site-${unique}.example.test/`,
     tos_url: `https://site-${unique}.example.test/terms/`,
     logo: `https://images.example.test/brand-${unique}.svg`,
-    stop_register: true
+    stop_register: true,
+    email_whitelist_enable: true,
+    email_whitelist_suffix: ["example.test", "gmail.com"],
+    email_gmail_limit_enable: true,
+    register_limit_by_ip_enable: true,
+    register_limit_count: 2,
+    register_limit_expire: 30
   };
   let original: SiteSettings | null = null;
   let createdKnowledge: { id: number; revision: number } | null = null;
@@ -48,6 +60,12 @@ test("administrator site identity persists into the public shell and can be rest
     await page.getByLabel("用户条款(TOS)URL").fill(changed.tos_url);
     await page.getByLabel("LOGO").fill(changed.logo);
     await page.getByRole("checkbox", { name: "停止新用户注册" }).check();
+    await page.getByRole("checkbox", { name: "邮箱后缀白名单" }).check();
+    await page.getByRole("textbox", { name: "邮箱后缀", exact: true }).fill(changed.email_whitelist_suffix.join("\n"));
+    await page.getByRole("checkbox", { name: "禁止使用Gmail多别名" }).check();
+    await page.getByRole("checkbox", { name: "IP注册限制" }).check();
+    await page.getByLabel("注册次数").fill(String(changed.register_limit_count));
+    await page.getByLabel("限制时长（分钟）").fill(String(changed.register_limit_expire));
     await page.getByRole("button", { name: "保存站点设置" }).click();
     await expect(page.getByRole("status")).toContainText("站点设置已保存");
     await expect(page.locator(".brand").getByText(changed.app_name, { exact: true })).toBeVisible();
@@ -61,14 +79,25 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByLabel("站点网址")).toHaveValue(changed.app_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
     await expect(page.getByRole("checkbox", { name: "停止新用户注册" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "邮箱后缀白名单" })).toBeChecked();
+    await expect(page.getByRole("textbox", { name: "邮箱后缀", exact: true })).toHaveValue(changed.email_whitelist_suffix.join("\n"));
+    await expect(page.getByRole("checkbox", { name: "禁止使用Gmail多别名" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "IP注册限制" })).toBeChecked();
+    await expect(page.getByLabel("注册次数")).toHaveValue(String(changed.register_limit_count));
+    await expect(page.getByLabel("限制时长（分钟）")).toHaveValue(String(changed.register_limit_expire));
     const publicResponse = await request.get("/api/v1/guest/comm/config");
     expect(publicResponse.ok()).toBeTruthy();
     const publicPayload = await publicResponse.json() as { data?: Record<string, unknown> };
     expect(publicPayload.data).toMatchObject({
       app_name: changed.app_name, app_description: changed.app_description, app_url: changed.app_url,
-      tos_url: changed.tos_url, logo: changed.logo
+      tos_url: changed.tos_url, logo: changed.logo, email_whitelist_suffix: changed.email_whitelist_suffix
     });
     expect(publicPayload.data).not.toHaveProperty("stop_register");
+    expect(publicPayload.data).not.toHaveProperty("email_whitelist_enable");
+    expect(publicPayload.data).not.toHaveProperty("email_gmail_limit_enable");
+    expect(publicPayload.data).not.toHaveProperty("register_limit_by_ip_enable");
+    expect(publicPayload.data).not.toHaveProperty("register_limit_count");
+    expect(publicPayload.data).not.toHaveProperty("register_limit_expire");
 
     const knowledgeResponse = await adminRequest(page, "/api/v1/admin/knowledge", "POST", {
       language: "zh-CN", category: "Brand parity", title: `Brand guide ${unique}`,
@@ -124,7 +153,13 @@ test("administrator site identity persists into the public shell and can be rest
         app_url: original.app_url,
         tos_url: original.tos_url,
         logo: original.logo,
-        stop_register: original.stop_register
+        stop_register: original.stop_register,
+        email_whitelist_enable: original.email_whitelist_enable,
+        email_whitelist_suffix: original.email_whitelist_suffix,
+        email_gmail_limit_enable: original.email_gmail_limit_enable,
+        register_limit_by_ip_enable: original.register_limit_by_ip_enable,
+        register_limit_count: original.register_limit_count,
+        register_limit_expire: original.register_limit_expire
       });
       expect(restored.status, restored.body).toBe(200);
       await page.reload();

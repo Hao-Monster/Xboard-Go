@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -14,12 +15,50 @@ import (
 type RegisterUserInput struct {
 	Email        string
 	PasswordHash string
+	SourceIP     string
 }
 
 type RegistrationSessionInput struct {
 	TokenHash string
 	CSRFHash  string
 	ExpiresAt time.Time
+}
+
+type RegistrationIPLimitError struct {
+	RetryAfterSeconds int64
+	WindowMinutes     int
+}
+
+func (e *RegistrationIPLimitError) Error() string { return ErrRegistrationIPLimited.Error() }
+func (e *RegistrationIPLimitError) Unwrap() error { return ErrRegistrationIPLimited }
+
+type registrationPolicy struct {
+	stopRegister               bool
+	emailWhitelistEnabled      bool
+	emailWhitelistSuffixes     []string
+	gmailAliasLimitEnabled     bool
+	registrationIPLimitEnabled bool
+	registrationIPLimitCount   int
+	registrationIPLimitMinutes int
+}
+
+func CheckRegistrationEmailPolicy(settings SiteSettings, email string) error {
+	return checkRegistrationEmailPolicy(registrationPolicyFromSettings(settings), normalizeEmail(email))
+}
+
+func (s *Store) CheckRegistrationIPLimit(ctx context.Context, settings SiteSettings, sourceIP string, now time.Time) error {
+	policy := registrationPolicyFromSettings(settings)
+	if !policy.registrationIPLimitEnabled {
+		return nil
+	}
+	if !validRegistrationSourceIP(sourceIP) {
+		return fmt.Errorf("%w: invalid registration source IP", ErrInvalidInput)
+	}
+	count, resetAt, err := readRegistrationIPCounter(ctx, s.db, sourceIP)
+	if err != nil {
+		return err
+	}
+	return registrationIPLimitError(policy, count, resetAt, now)
 }
 
 // RegisterUser checks the registration policy and inserts the account while
@@ -57,11 +96,28 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 	}
 	defer tx.Rollback()
 
-	var stopped bool
-	if err := tx.QueryRowContext(ctx, `SELECT stop_register FROM app_settings WHERE id = 1`).Scan(&stopped); err != nil {
+	policy, err := readRegistrationPolicy(ctx, tx)
+	if err != nil {
 		return User{}, fmt.Errorf("read registration policy: %w", err)
 	}
-	if stopped {
+	var ipCount int
+	var ipResetAt int64
+	if policy.registrationIPLimitEnabled {
+		if !validRegistrationSourceIP(input.SourceIP) {
+			return User{}, fmt.Errorf("%w: invalid registration source IP", ErrInvalidInput)
+		}
+		ipCount, ipResetAt, err = readRegistrationIPCounter(ctx, tx, input.SourceIP)
+		if err != nil {
+			return User{}, err
+		}
+		if err := registrationIPLimitError(policy, ipCount, ipResetAt, now); err != nil {
+			return User{}, err
+		}
+	}
+	if err := checkRegistrationEmailPolicy(policy, input.Email); err != nil {
+		return User{}, err
+	}
+	if policy.stopRegister {
 		return User{}, ErrRegistrationClosed
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -95,10 +151,136 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 			return User{}, fmt.Errorf("create initial registration session: %w", err)
 		}
 	}
+	if policy.registrationIPLimitEnabled {
+		nextCount := 1
+		if ipResetAt > now.Unix() {
+			nextCount = ipCount + 1
+		}
+		resetAt := now.Add(time.Duration(policy.registrationIPLimitMinutes) * time.Minute).Unix()
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO registration_ip_limits (source_ip, successful_count, reset_at, updated_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(source_ip) DO UPDATE SET
+				successful_count = excluded.successful_count,
+				reset_at = excluded.reset_at,
+				updated_at = excluded.updated_at
+		`, input.SourceIP, nextCount, resetAt, now.Unix()); err != nil {
+			return User{}, fmt.Errorf("record registration IP limit: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return User{}, fmt.Errorf("commit registration: %w", err)
 	}
 	return user, nil
+}
+
+type registrationPolicyRow interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (registrationPolicy, error) {
+	var policy registrationPolicy
+	var suffixStorage string
+	err := query.QueryRowContext(ctx, `
+		SELECT stop_register, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
+		       register_limit_by_ip_enable, register_limit_count, register_limit_expire
+		FROM app_settings WHERE id = 1
+	`).Scan(
+		&policy.stopRegister, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
+		&policy.registrationIPLimitEnabled, &policy.registrationIPLimitCount, &policy.registrationIPLimitMinutes,
+	)
+	if err != nil {
+		return registrationPolicy{}, err
+	}
+	policy.emailWhitelistSuffixes = normalizeEmailWhitelistSuffixes(strings.Split(suffixStorage, ","))
+	return policy, nil
+}
+
+func registrationPolicyFromSettings(settings SiteSettings) registrationPolicy {
+	return registrationPolicy{
+		stopRegister: settings.StopRegister, emailWhitelistEnabled: settings.EmailWhitelistEnabled,
+		emailWhitelistSuffixes: settings.EmailWhitelistSuffixes, gmailAliasLimitEnabled: settings.GmailAliasLimitEnabled,
+		registrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
+		registrationIPLimitCount:   settings.RegistrationIPLimitCount,
+		registrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+	}
+}
+
+func checkRegistrationEmailPolicy(policy registrationPolicy, email string) error {
+	separator := strings.LastIndexByte(email, '@')
+	if separator < 1 || separator == len(email)-1 {
+		return fmt.Errorf("%w: invalid registration email", ErrInvalidInput)
+	}
+	localPart, domain := email[:separator], email[separator+1:]
+	if policy.emailWhitelistEnabled {
+		allowed := false
+		for _, suffix := range policy.emailWhitelistSuffixes {
+			if domain == suffix {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return ErrEmailDomainNotAllowed
+		}
+	}
+	if policy.gmailAliasLimitEnabled && (domain == "gmail.com" || domain == "googlemail.com") &&
+		(strings.Contains(localPart, ".") || strings.Contains(localPart, "+")) {
+		return ErrGmailAliasNotAllowed
+	}
+	return nil
+}
+
+func readRegistrationIPCounter(ctx context.Context, query registrationPolicyRow, sourceIP string) (int, int64, error) {
+	var count int
+	var resetAt int64
+	err := query.QueryRowContext(ctx, `
+		SELECT successful_count, reset_at FROM registration_ip_limits WHERE source_ip = ?
+	`, sourceIP).Scan(&count, &resetAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, fmt.Errorf("read registration IP limit: %w", err)
+	}
+	return count, resetAt, nil
+}
+
+func registrationIPLimitError(policy registrationPolicy, count int, resetAt int64, now time.Time) error {
+	if resetAt <= now.Unix() || count < policy.registrationIPLimitCount {
+		return nil
+	}
+	retryAfter := resetAt - now.Unix()
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	return &RegistrationIPLimitError{RetryAfterSeconds: retryAfter, WindowMinutes: policy.registrationIPLimitMinutes}
+}
+
+func validRegistrationSourceIP(sourceIP string) bool {
+	address := net.ParseIP(sourceIP)
+	return address != nil && address.String() == sourceIP
+}
+
+func (s *Store) PruneExpiredRegistrationIPLimits(ctx context.Context, now time.Time, limit int) (int64, error) {
+	if limit < 1 || limit > 1_000 {
+		return 0, fmt.Errorf("%w: invalid registration IP prune limit", ErrInvalidInput)
+	}
+	defer s.lockWrite()()
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM registration_ip_limits
+		WHERE source_ip IN (
+			SELECT source_ip FROM registration_ip_limits WHERE reset_at <= ? ORDER BY reset_at, source_ip LIMIT ?
+		)
+	`, now.Unix(), limit)
+	if err != nil {
+		return 0, fmt.Errorf("prune registration IP limits: %w", err)
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count pruned registration IP limits: %w", err)
+	}
+	return removed, nil
 }
 
 func findUserTx(ctx context.Context, tx *sql.Tx, userID int64) (User, error) {

@@ -8,19 +8,22 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("not found")
-	ErrConflict             = errors.New("conflict")
-	ErrEmailInUse           = fmt.Errorf("%w: email already in use", ErrConflict)
-	ErrRegistrationClosed   = errors.New("registration is closed")
-	ErrOpenTicketExists     = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
-	ErrTicketClosed         = fmt.Errorf("%w: ticket is closed", ErrConflict)
-	ErrTicketReplyPending   = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
-	ErrTicketMessageLimit   = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
-	ErrInvalidInput         = errors.New("invalid input")
-	ErrInvalidEnrollment    = errors.New("invalid or expired enrollment")
-	ErrInvalidCredential    = errors.New("invalid machine credential")
-	ErrNodeNotLinked        = errors.New("node is not linked to a machine")
-	ErrRuntimeNotConfigured = errors.New("node runtime is not configured")
+	ErrNotFound              = errors.New("not found")
+	ErrConflict              = errors.New("conflict")
+	ErrEmailInUse            = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrRegistrationClosed    = errors.New("registration is closed")
+	ErrEmailDomainNotAllowed = errors.New("email domain is not allowed")
+	ErrGmailAliasNotAllowed  = errors.New("Gmail alias is not allowed")
+	ErrRegistrationIPLimited = errors.New("registration IP limit reached")
+	ErrOpenTicketExists      = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
+	ErrTicketClosed          = fmt.Errorf("%w: ticket is closed", ErrConflict)
+	ErrTicketReplyPending    = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
+	ErrTicketMessageLimit    = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrInvalidEnrollment     = errors.New("invalid or expired enrollment")
+	ErrInvalidCredential     = errors.New("invalid machine credential")
+	ErrNodeNotLinked         = errors.New("node is not linked to a machine")
+	ErrRuntimeNotConfigured  = errors.New("node runtime is not configured")
 )
 
 type User struct {
@@ -131,23 +134,35 @@ type SaveTicketSettingsInput struct {
 }
 
 type SiteSettings struct {
-	Revision       int64     `json:"revision"`
-	AppName        string    `json:"app_name"`
-	AppDescription string    `json:"app_description"`
-	AppURL         string    `json:"app_url"`
-	TOSURL         string    `json:"tos_url"`
-	Logo           string    `json:"logo"`
-	StopRegister   bool      `json:"stop_register"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	Revision                   int64     `json:"revision"`
+	AppName                    string    `json:"app_name"`
+	AppDescription             string    `json:"app_description"`
+	AppURL                     string    `json:"app_url"`
+	TOSURL                     string    `json:"tos_url"`
+	Logo                       string    `json:"logo"`
+	StopRegister               bool      `json:"stop_register"`
+	EmailWhitelistEnabled      bool      `json:"email_whitelist_enable"`
+	EmailWhitelistSuffixes     []string  `json:"email_whitelist_suffix"`
+	GmailAliasLimitEnabled     bool      `json:"email_gmail_limit_enable"`
+	RegistrationIPLimitEnabled bool      `json:"register_limit_by_ip_enable"`
+	RegistrationIPLimitCount   int       `json:"register_limit_count"`
+	RegistrationIPLimitMinutes int       `json:"register_limit_expire"`
+	UpdatedAt                  time.Time `json:"updated_at"`
 }
 
 type SaveSiteSettingsInput struct {
-	AppName        string
-	AppDescription string
-	AppURL         string
-	TOSURL         string
-	Logo           string
-	StopRegister   bool
+	AppName                    string
+	AppDescription             string
+	AppURL                     string
+	TOSURL                     string
+	Logo                       string
+	StopRegister               bool
+	EmailWhitelistEnabled      bool
+	EmailWhitelistSuffixes     []string
+	GmailAliasLimitEnabled     bool
+	RegistrationIPLimitEnabled bool
+	RegistrationIPLimitCount   int
+	RegistrationIPLimitMinutes int
 }
 
 type TicketMailJob struct {

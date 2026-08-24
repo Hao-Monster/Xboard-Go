@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -11,7 +13,8 @@ import (
 )
 
 func (s *server) register(w http.ResponseWriter, r *http.Request) {
-	if !s.registrationRequests.take(requestIP(r), s.now()) {
+	sourceIP := requestIP(r)
+	if !s.registrationRequests.take(sourceIP, s.now()) {
 		w.Header().Set("Retry-After", "900")
 		writeAPIError(w, http.StatusTooManyRequests, "registration_rate_limited", "注册请求过于频繁，请稍后重试", nil)
 		return
@@ -33,6 +36,20 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := s.store.GetSiteSettings(r.Context())
 	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if err := s.store.CheckRegistrationIPLimit(r.Context(), settings, sourceIP, s.now()); err != nil {
+		if s.writeRegistrationPolicyError(w, err) {
+			return
+		}
+		handleStoreError(w, err)
+		return
+	}
+	if err := store.CheckRegistrationEmailPolicy(settings, input.Email); err != nil {
+		if s.writeRegistrationPolicyError(w, err) {
+			return
+		}
 		handleStoreError(w, err)
 		return
 	}
@@ -66,7 +83,7 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.now()
 	user, err := s.store.RegisterUserWithSession(r.Context(), store.RegisterUserInput{
-		Email: input.Email, PasswordHash: passwordHash,
+		Email: input.Email, PasswordHash: passwordHash, SourceIP: sourceIP,
 	}, store.RegistrationSessionInput{
 		TokenHash: credentials.token.Digest, CSRFHash: credentials.csrf.Digest, ExpiresAt: credentials.expiresAt,
 	}, now)
@@ -77,6 +94,9 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrEmailInUse):
 		writeAPIError(w, http.StatusBadRequest, "email_exists", "邮箱已在系统中存在", map[string]string{"email": "邮箱已在系统中存在"})
 		return
+	case errors.Is(err, store.ErrEmailDomainNotAllowed), errors.Is(err, store.ErrGmailAliasNotAllowed), errors.Is(err, store.ErrRegistrationIPLimited):
+		s.writeRegistrationPolicyError(w, err)
+		return
 	case err != nil:
 		handleStoreError(w, err)
 		return
@@ -85,6 +105,24 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": user.ID, "email": user.Email, "is_admin": user.IsAdmin,
 	})
+}
+
+func (s *server) writeRegistrationPolicyError(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, store.ErrEmailDomainNotAllowed):
+		writeAPIError(w, http.StatusBadRequest, "email_domain_not_allowed", "邮箱后缀不处于白名单中", map[string]string{"email": "邮箱后缀不处于白名单中"})
+		return true
+	case errors.Is(err, store.ErrGmailAliasNotAllowed):
+		writeAPIError(w, http.StatusBadRequest, "gmail_alias_not_allowed", "不支持 Gmail 别名邮箱", map[string]string{"email": "不支持 Gmail 别名邮箱"})
+		return true
+	}
+	var limited *store.RegistrationIPLimitError
+	if errors.As(err, &limited) {
+		w.Header().Set("Retry-After", strconv.FormatInt(limited.RetryAfterSeconds, 10))
+		writeAPIError(w, http.StatusTooManyRequests, "registration_ip_limited", fmt.Sprintf("注册频繁，请等待 %d 分钟后再次尝试", limited.WindowMinutes), nil)
+		return true
+	}
+	return false
 }
 
 func (s *server) beginRegistrationHash() (func(), bool) {

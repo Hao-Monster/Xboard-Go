@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 15
+const currentSchemaVersion = 16
 
 type Store struct {
 	db      *sql.DB
@@ -158,6 +158,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v15: %w", err)
 		}
 		version = 15
+	}
+	if version < 16 {
+		if _, err := tx.ExecContext(ctx, schemaV16); err != nil {
+			return fmt.Errorf("apply schema v16: %w", err)
+		}
+		version = 16
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -688,4 +694,20 @@ ALTER TABLE app_settings ADD COLUMN logo TEXT NOT NULL DEFAULT '' CHECK (length(
 
 const schemaV15 = `
 ALTER TABLE app_settings ADD COLUMN stop_register INTEGER NOT NULL DEFAULT 0 CHECK (stop_register IN (0, 1));
+`
+
+const schemaV16 = `
+ALTER TABLE app_settings ADD COLUMN email_whitelist_enable INTEGER NOT NULL DEFAULT 0 CHECK (email_whitelist_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN email_whitelist_suffix TEXT NOT NULL DEFAULT '` + defaultEmailWhitelistStorage + `' CHECK (length(email_whitelist_suffix) <= 8192);
+ALTER TABLE app_settings ADD COLUMN email_gmail_limit_enable INTEGER NOT NULL DEFAULT 0 CHECK (email_gmail_limit_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN register_limit_by_ip_enable INTEGER NOT NULL DEFAULT 0 CHECK (register_limit_by_ip_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN register_limit_count INTEGER NOT NULL DEFAULT 3 CHECK (register_limit_count BETWEEN 1 AND 100);
+ALTER TABLE app_settings ADD COLUMN register_limit_expire INTEGER NOT NULL DEFAULT 60 CHECK (register_limit_expire BETWEEN 1 AND 10080);
+CREATE TABLE registration_ip_limits (
+    source_ip TEXT PRIMARY KEY CHECK (length(source_ip) BETWEEN 2 AND 64),
+    successful_count INTEGER NOT NULL CHECK (successful_count BETWEEN 1 AND 100),
+    reset_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_registration_ip_limits_reset_at ON registration_ip_limits(reset_at);
 `

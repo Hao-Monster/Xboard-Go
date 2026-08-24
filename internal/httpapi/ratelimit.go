@@ -134,7 +134,13 @@ func (l *attemptLimiter) removeExpired(now time.Time) {
 func requestIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil {
+		if address := net.ParseIP(host); address != nil {
+			return address.String()
+		}
 		return host
+	}
+	if address := net.ParseIP(r.RemoteAddr); address != nil {
+		return address.String()
 	}
 	return r.RemoteAddr
 }
