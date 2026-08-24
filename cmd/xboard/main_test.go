@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -25,6 +26,51 @@ func TestPrepareSQLiteDirectory(t *testing.T) {
 	}
 	if err := prepareSQLiteDirectory("file:memory?mode=memory&cache=shared"); err != nil {
 		t.Fatalf("memory DSN should be a no-op: %v", err)
+	}
+}
+
+func TestInitializeInvitationProtectorFailsClosedForStoredCodes(t *testing.T) {
+	ctx := t.Context()
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "invitations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC)
+	owner, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "invitation-main@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x42}, 32)
+	protector, err := security.NewInvitationProtector(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const code = "Abcd1234"
+	digest, err := protector.CodeDigest(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := protector.EncryptCode(owner.ID, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateInvitationCode(ctx, owner.ID, store.CreateInvitationCodeInput{
+		CodeDigest: digest, CodeCipher: ciphertext,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initializeInvitationProtector(ctx, database, nil); err == nil {
+		t.Fatal("initializeInvitationProtector() accepted a missing key")
+	}
+	if _, err := initializeInvitationProtector(ctx, database, bytes.Repeat([]byte{0x24}, 32)); err == nil {
+		t.Fatal("initializeInvitationProtector() accepted the wrong key")
+	}
+	if initialized, err := initializeInvitationProtector(ctx, database, key); err != nil || initialized == nil {
+		t.Fatalf("initializeInvitationProtector() rejected the matching key: protector=%v err=%v", initialized, err)
 	}
 }
 

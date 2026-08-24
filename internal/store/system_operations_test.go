@@ -271,6 +271,15 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE registration_ip_limits`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `DROP TABLE invitation_codes`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `DROP INDEX idx_users_invite_user_id`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN invite_user_id`); err != nil {
+		t.Fatal(err)
+	}
 	for _, table := range []string{
 		"registration_email_mail_outbox", "registration_email_challenges",
 		"password_reset_mail_outbox", "password_reset_challenges",
@@ -280,6 +289,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 		}
 	}
 	for _, column := range []string{
+		"invite_force", "invite_gen_limit", "invite_never_expire",
 		"email_verify",
 		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
 		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",

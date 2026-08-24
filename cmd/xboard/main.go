@@ -75,6 +75,11 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	invitationProtector, err := initializeInvitationProtector(ctx, database, settings.SettingsEncryptionKey)
+	if err != nil {
+		logger.Error("initialize invitation encryption", "error", err)
+		os.Exit(1)
+	}
 	for index := range settings.SettingsEncryptionKey {
 		settings.SettingsEncryptionKey[index] = 0
 	}
@@ -118,6 +123,7 @@ func main() {
 		SettingsCipher:             settingsCipher,
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,
+		InvitationProtector:        invitationProtector,
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
 		RuntimeTracker:             runtimeTracker,
 	})
@@ -152,6 +158,38 @@ func main() {
 		logger.Error("serve HTTP", "error", err)
 		os.Exit(1)
 	}
+}
+
+func initializeInvitationProtector(ctx context.Context, database *store.Store, key []byte) (*security.InvitationProtector, error) {
+	required, err := database.InvitationProtectionRequired(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != 32 {
+		if required {
+			return nil, errors.New("settings encryption key is required for invitation codes")
+		}
+		return nil, nil
+	}
+	protector, err := security.NewInvitationProtector(key)
+	if err != nil {
+		return nil, err
+	}
+	ownerID, ciphertext, exists, err := database.InvitationProtectionProbe(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return protector, nil
+	}
+	plaintext, err := protector.DecryptCode(ownerID, ciphertext)
+	for index := range plaintext {
+		plaintext[index] = 0
+	}
+	if err != nil {
+		return nil, errors.New("settings encryption key cannot decrypt the stored invitation code")
+	}
+	return protector, nil
 }
 
 func initializeSettingsCipher(ctx context.Context, database *store.Store, key []byte) (*appsettings.Cipher, error) {

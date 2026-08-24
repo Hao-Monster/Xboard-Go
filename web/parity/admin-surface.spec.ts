@@ -452,6 +452,173 @@ test("legacy registration email policies and successful-IP limit remain observab
   }
 });
 
+test("legacy invitation registration preserves forced, single-use, reusable, and referral behavior", async ({ page }) => {
+  test.setTimeout(90_000);
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const configuration = readProperty(await fetched.json() as unknown, "data");
+  const site = readObjectProperty(configuration, "site");
+  const safe = readObjectProperty(configuration, "safe");
+  const invite = readObjectProperty(configuration, "invite");
+  const original = {
+    stop_register: readProperty(site, "stop_register"),
+    invite_force: readProperty(invite, "invite_force"),
+    invite_gen_limit: readProperty(invite, "invite_gen_limit"),
+    invite_never_expire: readProperty(invite, "invite_never_expire"),
+    email_verify: readProperty(safe, "email_verify"),
+    email_whitelist_enable: readProperty(safe, "email_whitelist_enable"),
+    email_gmail_limit_enable: readProperty(safe, "email_gmail_limit_enable"),
+    captcha_enable: readProperty(safe, "captcha_enable"),
+    register_limit_by_ip_enable: readProperty(safe, "register_limit_by_ip_enable")
+  };
+  const unique = Date.now();
+  const password = `legacy-invite-password-${unique}`;
+  // The legacy login form silently truncates email values after 40 characters.
+  const emails = {
+    inviter: `li-${unique}@test.local`,
+    missing: `lim-${unique}@test.local`,
+    invalid: `lii-${unique}@test.local`,
+    optionalInvalid: `lio-${unique}@test.local`,
+    singleUse: `lis-${unique}@test.local`,
+    reused: `lir-${unique}@test.local`,
+    reusedAgain: `lira-${unique}@test.local`
+  };
+  const register = (email: string, inviteCode?: string) => page.request.post(
+    new URL("/api/v1/passport/auth/register", legacyURL).toString(),
+    { data: { email, password, ...(inviteCode === undefined ? {} : { invite_code: inviteCode }) } }
+  );
+  const fetchInvites = async (userHeaders: Record<string, string>) => {
+    const response = await page.request.get(new URL("/api/v1/user/invite/fetch", legacyURL).toString(), { headers: userHeaders });
+    expect(response.status()).toBe(200);
+    return readProperty(await response.json() as unknown, "data");
+  };
+
+  try {
+    const opened = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: {
+        stop_register: 0, invite_force: 0, invite_gen_limit: 1, invite_never_expire: 0,
+        email_verify: 0, email_whitelist_enable: 0, email_gmail_limit_enable: 0,
+        captcha_enable: 0, register_limit_by_ip_enable: 0
+      }
+    });
+    expect(opened.status()).toBe(200);
+    const optionalGuest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(readProperty(readProperty(await optionalGuest.json() as unknown, "data"), "is_invite_force")).toBe(0);
+    await page.goto(new URL("/#/register", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder("邀请码,（选填）", { exact: true })).toBeVisible();
+
+    const inviterRegistration = await register(emails.inviter);
+    expect(inviterRegistration.status()).toBe(200);
+    const inviterAuthorization = readStringProperty(readProperty(await inviterRegistration.json() as unknown, "data"), "auth_data");
+    expect(inviterAuthorization).toBeTruthy();
+    if (!inviterAuthorization) throw new Error("legacy inviter authorization is missing");
+    const userHeaders = { authorization: inviterAuthorization };
+    expect(readArrayProperty(await fetchInvites(userHeaders), "codes")).toEqual([]);
+
+    const generated = await page.request.get(new URL("/api/v1/user/invite/save", legacyURL).toString(), { headers: userHeaders });
+    expect(generated.status()).toBe(200);
+    expect(readProperty(await generated.json() as unknown, "data")).toBe(true);
+    let invitationData = await fetchInvites(userHeaders);
+    let codes = readArrayProperty(invitationData, "codes");
+    expect(codes).toHaveLength(1);
+    if (codes === null || codes.length !== 1) throw new Error("legacy invitation code was not generated");
+    const singleUseCode = readStringProperty(codes[0], "code");
+    expect(singleUseCode).toMatch(/^[A-Za-z0-9]{8}$/);
+    if (!singleUseCode) throw new Error("legacy invitation code is missing");
+
+    const viewed = await page.request.post(new URL("/api/v1/passport/comm/pv", legacyURL).toString(), { data: { invite_code: singleUseCode } });
+    expect(viewed.status()).toBe(200);
+    invitationData = await fetchInvites(userHeaders);
+    codes = readArrayProperty(invitationData, "codes");
+    expect(readProperty(codes?.[0], "pv")).toBe(1);
+    await page.goto(new URL(`/#/register?code=${singleUseCode}`, legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    const linkedInvitation = page.getByPlaceholder("邀请码,（选填）", { exact: true });
+    await expect(linkedInvitation).toHaveValue(singleUseCode);
+    await expect(linkedInvitation).toBeDisabled();
+
+    await page.context().clearCookies();
+    await page.goto(new URL("/", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const loginFields = page.locator("input:visible");
+    await loginFields.first().fill(emails.inviter);
+    await loginFields.nth(1).fill(password);
+    await loginFields.nth(1).press("Enter");
+    const invitationNavigation = page.getByText("我的邀请", { exact: true });
+    await expect(invitationNavigation).toBeVisible();
+    await invitationNavigation.click();
+    await expect(page).toHaveURL(/#\/invite$/);
+    await expect(page.getByText("邀请码管理", { exact: true })).toBeVisible();
+    await expect(page.getByText(singleUseCode, { exact: true })).toBeVisible();
+    await expect(page.getByText("生成邀请码", { exact: true })).toBeVisible();
+
+    const forced = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers, data: { invite_force: 1, invite_never_expire: 0 }
+    });
+    expect(forced.status()).toBe(200);
+    const forcedGuest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(readProperty(readProperty(await forcedGuest.json() as unknown, "data"), "is_invite_force")).toBe(1);
+    await page.goto(new URL("/#/register", legacyURL).toString(), { waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder("邀请码,（必填）", { exact: true })).toBeVisible();
+
+    const missing = await register(emails.missing);
+    expect(missing.status()).toBe(422);
+    expect(readStringProperty(await missing.json() as unknown, "message")).toBe("必须使用邀请码才可以注册");
+    const invalid = await register(emails.invalid, "NotARealCode");
+    expect(invalid.status()).toBe(400);
+    expect(readStringProperty(await invalid.json() as unknown, "message")).toBe("邀请码无效");
+    expect((await register(emails.singleUse, singleUseCode)).status()).toBe(200);
+    const reusedSingleUse = await register(emails.reused, singleUseCode);
+    expect(reusedSingleUse.status()).toBe(400);
+    expect(readStringProperty(await reusedSingleUse.json() as unknown, "message")).toBe("邀请码无效");
+    invitationData = await fetchInvites(userHeaders);
+    expect(readArrayProperty(invitationData, "codes")).toEqual([]);
+    expect(readArrayProperty(invitationData, "stat")?.[0]).toBe(1);
+
+    const optional = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: { invite_force: 0 } });
+    expect(optional.status()).toBe(200);
+    expect((await register(emails.optionalInvalid, "NotARealCode")).status()).toBe(200);
+    invitationData = await fetchInvites(userHeaders);
+    expect(readArrayProperty(invitationData, "stat")?.[0]).toBe(1);
+
+    const generatedReusable = await page.request.get(new URL("/api/v1/user/invite/save", legacyURL).toString(), { headers: userHeaders });
+    expect(generatedReusable.status()).toBe(200);
+    invitationData = await fetchInvites(userHeaders);
+    codes = readArrayProperty(invitationData, "codes");
+    expect(codes).toHaveLength(1);
+    const reusableCode = readStringProperty(codes?.[0], "code");
+    expect(reusableCode).toMatch(/^[A-Za-z0-9]{8}$/);
+    if (!reusableCode) throw new Error("legacy reusable invitation code is missing");
+    const limitReached = await page.request.get(new URL("/api/v1/user/invite/save", legacyURL).toString(), { headers: userHeaders });
+    expect(limitReached.status()).toBe(400);
+    expect(readStringProperty(await limitReached.json() as unknown, "message")).toBe("已达到创建数量上限");
+
+    const reusable = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers, data: { invite_force: 1, invite_never_expire: 1 }
+    });
+    expect(reusable.status()).toBe(200);
+    expect((await register(emails.reused, reusableCode)).status()).toBe(200);
+    expect((await register(emails.reusedAgain, reusableCode)).status()).toBe(200);
+    invitationData = await fetchInvites(userHeaders);
+    expect(readStringProperty(readArrayProperty(invitationData, "codes")?.[0], "code")).toBe(reusableCode);
+    expect(readArrayProperty(invitationData, "stat")?.[0]).toBe(3);
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    const allEmails = Object.values(emails).map((email) => `"${email}"`).join(",");
+    const cleanup = `$ids=App\\Models\\User::whereIn("email",[${allEmails}])->pluck("id"); App\\Models\\InviteCode::whereIn("user_id",$ids)->delete(); App\\Models\\User::whereIn("email",[${allEmails}])->delete();`;
+    execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
+  }
+});
+
 test("legacy password recovery preserves fields, cooldown, lockout, one-time code, and session revocation", async ({ page }) => {
   test.setTimeout(90_000);
   const newPassword = `legacy-reset-password-${Date.now()}`;

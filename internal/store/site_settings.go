@@ -16,6 +16,7 @@ const (
 	maxEmailWhitelistBytes  = 8_192
 	maxRegistrationIPCount  = 100
 	maxRegistrationIPWindow = 10_080
+	maxInvitationCodeLimit  = 100
 )
 
 const defaultEmailWhitelistStorage = "gmail.com,qq.com,163.com,yahoo.com,sina.com,126.com,outlook.com,yeah.net,foxmail.com"
@@ -24,7 +25,8 @@ func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
-		       register_limit_by_ip_enable, register_limit_count, register_limit_expire, updated_at
+		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       invite_force, invite_gen_limit, invite_never_expire, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -61,12 +63,14 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
+		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
 	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, normalized.StopRegister,
 		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
+		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire,
 		administratorID, now.Unix(), revision)
 	if err != nil {
 		return SiteSettings{}, fmt.Errorf("update site settings: %w", err)
@@ -99,7 +103,8 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
-		       register_limit_by_ip_enable, register_limit_count, register_limit_expire, updated_at
+		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       invite_force, invite_gen_limit, invite_never_expire, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -132,6 +137,9 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 		len(strings.Join(input.EmailWhitelistSuffixes, ",")) > maxEmailWhitelistBytes ||
 		input.RegistrationIPLimitCount < 1 || input.RegistrationIPLimitCount > maxRegistrationIPCount ||
 		input.RegistrationIPLimitMinutes < 1 || input.RegistrationIPLimitMinutes > maxRegistrationIPWindow {
+		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
+	}
+	if input.InvitationCodeLimit < 0 || input.InvitationCodeLimit > maxInvitationCodeLimit {
 		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
 	}
 	for _, suffix := range input.EmailWhitelistSuffixes {
@@ -183,7 +191,9 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	if err := row.Scan(
 		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo,
 		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
-		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes, &updatedAt,
+		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
+		&settings.InvitationForceEnabled, &settings.InvitationCodeLimit, &settings.InvitationNeverExpire,
+		&updatedAt,
 	); err != nil {
 		return SiteSettings{}, err
 	}

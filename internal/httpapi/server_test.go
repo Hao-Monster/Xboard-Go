@@ -487,6 +487,14 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 }
 
 func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http.Response, error)) (http.Handler, *store.Store) {
+	return newTestAPIWithOptions(t, function, true)
+}
+
+func newTestAPIWithoutInvitationProtection(t *testing.T) (http.Handler, *store.Store) {
+	return newTestAPIWithOptions(t, nil, false)
+}
+
+func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool) (http.Handler, *store.Store) {
 	t.Helper()
 	database, err := store.OpenSQLite(fmt.Sprintf("file:http-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
@@ -528,6 +536,13 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 	if err != nil {
 		t.Fatalf("NewRegistrationEmailProtector() error = %v", err)
 	}
+	var invitationProtector *security.InvitationProtector
+	if protectInvitations {
+		invitationProtector, err = security.NewInvitationProtector(make([]byte, 32))
+		if err != nil {
+			t.Fatalf("NewInvitationProtector() error = %v", err)
+		}
+	}
 	runtimeTracker := operations.NewTracker(fixedNow().Add(-time.Hour))
 	runtimeTracker.MarkSchedulerRun(fixedNow())
 	runtimeTracker.MarkMailRun(fixedNow())
@@ -542,6 +557,7 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 		SettingsCipher:             settingsCipher,
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,
+		InvitationProtector:        invitationProtector,
 		RuntimeTracker:             runtimeTracker,
 	})
 	return handler, database

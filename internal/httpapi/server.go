@@ -45,6 +45,7 @@ type Dependencies struct {
 	SettingsCipher             *appsettings.Cipher
 	PasswordResetProtector     *security.PasswordResetProtector
 	RegistrationEmailProtector *security.RegistrationEmailProtector
+	InvitationProtector        *security.InvitationProtector
 	SMTPAllowInsecure          bool
 	RuntimeTracker             *operations.Tracker
 }
@@ -69,6 +70,7 @@ type server struct {
 	passwordResetRequests      *requestLimiter
 	passwordResetConfirmations *requestLimiter
 	registrationEmailRequests  *requestLimiter
+	invitationViewRequests     *requestLimiter
 	passwordHashSlots          chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
@@ -86,6 +88,7 @@ type server struct {
 	settingsCipher             *appsettings.Cipher
 	passwordResetProtector     *security.PasswordResetProtector
 	registrationEmailProtector *security.RegistrationEmailProtector
+	invitationProtector        *security.InvitationProtector
 	smtpAllowInsecure          bool
 	runtimeTracker             *operations.Tracker
 }
@@ -150,6 +153,7 @@ func New(dependencies Dependencies) http.Handler {
 		passwordResetRequests:      newRequestLimiter(10, 15*time.Minute),
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute),
 		registrationEmailRequests:  newRequestLimiter(10, 15*time.Minute),
+		invitationViewRequests:     newRequestLimiter(60, 15*time.Minute),
 		passwordHashSlots:          make(chan struct{}, 2),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
@@ -168,6 +172,7 @@ func New(dependencies Dependencies) http.Handler {
 		settingsCipher:             dependencies.SettingsCipher,
 		passwordResetProtector:     dependencies.PasswordResetProtector,
 		registrationEmailProtector: dependencies.RegistrationEmailProtector,
+		invitationProtector:        dependencies.InvitationProtector,
 		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
 		runtimeTracker:             dependencies.RuntimeTracker,
 	}
@@ -190,6 +195,9 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/auth/sessions", api.requireSession(http.HandlerFunc(api.listAccountSessions)))
 	root.Handle("DELETE /api/v1/auth/sessions/{sessionID}", api.requireSession(api.requireCSRF(http.HandlerFunc(api.revokeAccountSession))))
 	root.Handle("PUT /api/v1/auth/password", api.requireSession(api.requireCSRF(http.HandlerFunc(api.changePassword))))
+	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
+	root.Handle("POST /api/v1/invitations", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createInvitation))))
+	root.Handle("POST /api/v1/invitations/view", api.requireTrustedOrigin(http.HandlerFunc(api.recordInvitationView)))
 	root.Handle("GET /api/v1/notices", api.requireSession(http.HandlerFunc(api.listVisibleNotices)))
 	root.Handle("GET /api/v1/knowledge", api.requireSession(http.HandlerFunc(api.listUserKnowledge)))
 	root.Handle("GET /api/v1/knowledge/{knowledgeID}", api.requireSession(http.HandlerFunc(api.getUserKnowledge)))

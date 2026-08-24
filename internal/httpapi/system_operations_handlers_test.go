@@ -36,7 +36,7 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 		} `json:"data"`
 	}
 	decodeResponse(t, statusResponse, &statusPayload)
-	if statusPayload.Data.SchemaVersion != 18 || statusPayload.Data.Scheduler["healthy"] != true || statusPayload.Data.MailWorker["healthy"] != true {
+	if statusPayload.Data.SchemaVersion != 19 || statusPayload.Data.Scheduler["healthy"] != true || statusPayload.Data.MailWorker["healthy"] != true {
 		t.Fatalf("system status payload = %#v", statusPayload.Data)
 	}
 

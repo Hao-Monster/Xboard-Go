@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 18
+const currentSchemaVersion = 19
 
 type Store struct {
 	db      *sql.DB
@@ -176,6 +176,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v18: %w", err)
 		}
 		version = 18
+	}
+	if version < 19 {
+		if _, err := tx.ExecContext(ctx, schemaV19); err != nil {
+			return fmt.Errorf("apply schema v19: %w", err)
+		}
+		version = 19
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -803,4 +809,26 @@ CREATE INDEX idx_registration_email_mail_due ON registration_email_mail_outbox(a
     WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
 CREATE INDEX idx_registration_email_mail_failed ON registration_email_mail_outbox(failed_at DESC, id DESC)
     WHERE failed_at IS NOT NULL;
+`
+
+const schemaV19 = `
+ALTER TABLE app_settings ADD COLUMN invite_force INTEGER NOT NULL DEFAULT 0 CHECK (invite_force IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN invite_gen_limit INTEGER NOT NULL DEFAULT 5 CHECK (invite_gen_limit BETWEEN 0 AND 100);
+ALTER TABLE app_settings ADD COLUMN invite_never_expire INTEGER NOT NULL DEFAULT 0 CHECK (invite_never_expire IN (0, 1));
+
+ALTER TABLE users ADD COLUMN invite_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX idx_users_invite_user_id ON users(invite_user_id);
+
+CREATE TABLE invitation_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_digest BLOB NOT NULL UNIQUE CHECK (length(code_digest) = 32),
+    code_cipher BLOB NOT NULL CHECK (length(code_cipher) BETWEEN 32 AND 128),
+    pv INTEGER NOT NULL DEFAULT 0 CHECK (pv >= 0),
+    consumed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_invitation_codes_owner_active ON invitation_codes(user_id, created_at DESC, id DESC)
+    WHERE consumed_at IS NULL;
 `

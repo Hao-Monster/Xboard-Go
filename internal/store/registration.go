@@ -13,11 +13,12 @@ import (
 )
 
 type RegisterUserInput struct {
-	Email           string
-	PasswordHash    string
-	SourceIP        string
-	EmailDigest     []byte
-	EmailCodeDigest []byte
+	Email                string
+	PasswordHash         string
+	SourceIP             string
+	EmailDigest          []byte
+	EmailCodeDigest      []byte
+	InvitationCodeDigest []byte
 }
 
 type RegistrationSessionInput struct {
@@ -43,6 +44,8 @@ type registrationPolicy struct {
 	registrationIPLimitEnabled bool
 	registrationIPLimitCount   int
 	registrationIPLimitMinutes int
+	invitationForceEnabled     bool
+	invitationNeverExpire      bool
 }
 
 func CheckRegistrationEmailPolicy(settings SiteSettings, email string) error {
@@ -123,6 +126,10 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 	if policy.stopRegister {
 		return User{}, ErrRegistrationClosed
 	}
+	invitation, err := resolveInvitationCodeTx(ctx, tx, input.InvitationCodeDigest, policy.invitationForceEnabled)
+	if err != nil {
+		return User{}, err
+	}
 	if policy.emailVerificationEnabled {
 		if err := validateRegistrationEmailChallengeTx(ctx, tx, input.EmailDigest, input.EmailCodeDigest, now); err != nil {
 			return User{}, err
@@ -131,9 +138,9 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
-			expired_at, speed_limit, device_limit, subscription_token, created_at, updated_at
-		) VALUES (?, ?, 0, 0, 'human', ?, NULL, 0, NULL, 0, 0, ?, ?, ?)
-	`, input.Email, input.PasswordHash, uuid.NewString(), subscriptionToken, now.Unix(), now.Unix())
+			expired_at, speed_limit, device_limit, subscription_token, invite_user_id, created_at, updated_at
+		) VALUES (?, ?, 0, 0, 'human', ?, NULL, 0, NULL, 0, 0, ?, ?, ?, ?)
+	`, input.Email, input.PasswordHash, uuid.NewString(), subscriptionToken, nullableInvitationOwner(invitation), now.Unix(), now.Unix())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			var existing int
@@ -181,6 +188,21 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 			return User{}, err
 		}
 	}
+	if invitation != nil && !policy.invitationNeverExpire {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE invitation_codes SET consumed_at = ?, updated_at = ? WHERE id = ? AND consumed_at IS NULL
+		`, now.Unix(), now.Unix(), invitation.id)
+		if err != nil {
+			return User{}, fmt.Errorf("consume invitation code: %w", err)
+		}
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return User{}, fmt.Errorf("count consumed invitation code: %w", err)
+		}
+		if updated != 1 {
+			return User{}, ErrInvitationCodeInvalid
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return User{}, fmt.Errorf("commit registration: %w", err)
 	}
@@ -196,11 +218,13 @@ func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (r
 	var suffixStorage string
 	err := query.QueryRowContext(ctx, `
 		SELECT stop_register, email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
-		       register_limit_by_ip_enable, register_limit_count, register_limit_expire
+		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       invite_force, invite_never_expire
 		FROM app_settings WHERE id = 1
 	`).Scan(
 		&policy.stopRegister, &policy.emailVerificationEnabled, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
 		&policy.registrationIPLimitEnabled, &policy.registrationIPLimitCount, &policy.registrationIPLimitMinutes,
+		&policy.invitationForceEnabled, &policy.invitationNeverExpire,
 	)
 	if err != nil {
 		return registrationPolicy{}, err
@@ -217,7 +241,42 @@ func registrationPolicyFromSettings(settings SiteSettings) registrationPolicy {
 		registrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		registrationIPLimitCount:   settings.RegistrationIPLimitCount,
 		registrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		invitationForceEnabled:     settings.InvitationForceEnabled,
+		invitationNeverExpire:      settings.InvitationNeverExpire,
 	}
+}
+
+func resolveInvitationCodeTx(ctx context.Context, tx *sql.Tx, codeDigest []byte, force bool) (*activeInvitation, error) {
+	if len(codeDigest) == 0 {
+		if force {
+			return nil, ErrInvitationCodeRequired
+		}
+		return nil, nil
+	}
+	if len(codeDigest) != invitationDigestBytes {
+		if force {
+			return nil, ErrInvitationCodeInvalid
+		}
+		return nil, nil
+	}
+	invitation, err := readActiveInvitation(ctx, tx, codeDigest)
+	if errors.Is(err, sql.ErrNoRows) {
+		if force {
+			return nil, ErrInvitationCodeInvalid
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("resolve invitation code: %w", err)
+	}
+	return &invitation, nil
+}
+
+func nullableInvitationOwner(invitation *activeInvitation) any {
+	if invitation == nil {
+		return nil
+	}
+	return invitation.ownerID
 }
 
 func checkRegistrationEmailPolicy(policy registrationPolicy, email string) error {

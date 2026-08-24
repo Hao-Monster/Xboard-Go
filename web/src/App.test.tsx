@@ -167,6 +167,8 @@ describe("App public identity bootstrap", () => {
     await user.click(await screen.findByRole("button", { name: "注册账号" }));
     expect(screen.getByRole("heading", { name: "注册 Registration Board" })).toBeVisible();
     expect(screen.getByText("允许邮箱后缀：example.test", { exact: true })).toBeVisible();
+    expect(screen.getByLabelText("邀请码")).toHaveAttribute("placeholder", "邀请码,（选填）");
+    expect(screen.getByLabelText("邀请码")).not.toBeRequired();
     await user.type(screen.getByLabelText("邮箱"), "NEW@EXAMPLE.TEST");
     await user.type(screen.getByLabelText("密码", { exact: true }), "password-123");
     await user.type(screen.getByLabelText("再次输入密码"), "password-123");
@@ -176,6 +178,63 @@ describe("App public identity bootstrap", () => {
     expect(requests).toEqual([{ path: "/api/v1/auth/register", body: {
       email: "NEW@EXAMPLE.TEST", password: "password-123", password_confirmation: "password-123"
     } }]);
+  });
+
+  it("requires and submits the legacy invitation field when forced", async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) {
+        return Promise.resolve(jsonResponse(200, { status: "success", data: {
+          app_name: "Invitation Board", app_description: null, app_url: null, tos_url: null, logo: null,
+          is_email_verify: 0, is_invite_force: 1, email_whitelist_suffix: 0, is_captcha: 0,
+          captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+          recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+        } }));
+      }
+      if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(401, { status: "fail", error: { code: "unauthenticated", message: "请先登录" } }));
+      if (path.endsWith("/api/v1/auth/register")) {
+        requests.push(JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown);
+        return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 88, email: "invited@example.test", is_admin: false } }));
+      }
+      if (path.endsWith("/api/v1/notices?page=1")) return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
+      return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "注册账号" }));
+    expect(screen.getByLabelText("邀请码")).toHaveAttribute("placeholder", "邀请码,（必填）");
+    expect(screen.getByLabelText("邀请码")).toBeRequired();
+    await user.type(screen.getByLabelText("邮箱"), "invited@example.test");
+    await user.type(screen.getByLabelText("邀请码"), "Abcd1234");
+    await user.type(screen.getByLabelText("密码", { exact: true }), "password-123");
+    await user.type(screen.getByLabelText("再次输入密码"), "password-123");
+    await user.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(await screen.findByText("invited@example.test", { exact: true })).toBeVisible();
+    expect(requests).toEqual([{
+      email: "invited@example.test", password: "password-123", password_confirmation: "password-123", invite_code: "Abcd1234"
+    }]);
+  });
+
+  it("prefills and locks an invitation from the legacy registration link", async () => {
+    window.history.replaceState(null, "", "#/register?code=Link1234");
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        app_name: "Linked Board", app_description: null, app_url: null, tos_url: null, logo: null,
+        is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+        captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+        recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+      } }));
+      return Promise.resolve(jsonResponse(401, { status: "fail", error: { code: "unauthenticated", message: "请先登录" } }));
+    }));
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "注册 Linked Board" })).toBeVisible();
+    expect(screen.getByLabelText("邀请码")).toHaveValue("Link1234");
+    expect(screen.getByLabelText("邀请码")).toBeDisabled();
   });
 
   it("shows, sends, and submits the legacy registration email code when enabled", async () => {
