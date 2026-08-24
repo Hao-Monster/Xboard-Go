@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 7 {
+	if version > 8 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -108,6 +108,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v7 constraints: %w", err)
 		}
 		version = 7
+	}
+	if version < 8 {
+		if _, err := tx.ExecContext(ctx, schemaV8); err != nil {
+			return fmt.Errorf("apply schema v8: %w", err)
+		}
+		version = 8
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -519,4 +525,33 @@ WHEN NEW.subscription_token IS NULL OR length(NEW.subscription_token) <> 32 OR N
 BEGIN
     SELECT RAISE(ABORT, 'invalid subscription token');
 END;
+`
+
+const schemaV8 = `
+CREATE TABLE tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL CHECK (length(subject) BETWEEN 1 AND 255),
+    level INTEGER NOT NULL CHECK (level IN (0, 1, 2)),
+    status INTEGER NOT NULL DEFAULT 0 CHECK (status IN (0, 1)),
+    reply_status INTEGER NOT NULL DEFAULT 0 CHECK (reply_status IN (0, 1)),
+    last_reply_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_tickets_one_open_per_user ON tickets(user_id) WHERE status = 0;
+CREATE INDEX idx_tickets_user_created ON tickets(user_id, created_at DESC, id DESC);
+CREATE INDEX idx_tickets_status_updated ON tickets(status, updated_at DESC, id DESC);
+CREATE INDEX idx_tickets_status_reply_updated ON tickets(status, reply_status, updated_at DESC, id DESC);
+CREATE INDEX idx_tickets_level_updated ON tickets(level, updated_at DESC, id DESC);
+
+CREATE TABLE ticket_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 65536),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_ticket_messages_ticket ON ticket_messages(ticket_id, id);
 `

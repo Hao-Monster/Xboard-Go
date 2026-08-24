@@ -59,6 +59,7 @@ type server struct {
 	pullRequests        *requestLimitGroup
 	reportRequests      *requestLimitGroup
 	machineRequests     *requestLimitGroup
+	ticketRequests      *requestLimitGroup
 	hub                 *wsHub
 	webSocketEnabled    bool
 	webSocketURL        string
@@ -126,6 +127,7 @@ func New(dependencies Dependencies) http.Handler {
 		pullRequests:        newRequestLimitGroup(2_400, 600),
 		reportRequests:      newRequestLimitGroup(1_200, 240),
 		machineRequests:     newRequestLimitGroup(1_200, 240),
+		ticketRequests:      newRequestLimitGroup(240, 60),
 		webSocketEnabled:    dependencies.WebSocketEnabled,
 		webSocketURL:        strings.TrimRight(dependencies.WebSocketURL, "/"),
 		nodePushInterval:    dependencies.NodePushInterval,
@@ -153,6 +155,11 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/knowledge/{knowledgeID}", api.requireSession(http.HandlerFunc(api.getUserKnowledge)))
 	root.Handle("GET /api/v1/client-catalog", api.requireSession(http.HandlerFunc(api.listUserClientCatalog)))
 	root.Handle("GET /api/v1/client-catalog/qr", api.requireSession(http.HandlerFunc(api.clientCatalogQR)))
+	root.Handle("GET /api/v1/tickets", api.requireSession(http.HandlerFunc(api.listUserTickets)))
+	root.Handle("POST /api/v1/tickets", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createTicket))))
+	root.Handle("GET /api/v1/tickets/{ticketID}", api.requireSession(http.HandlerFunc(api.getUserTicket)))
+	root.Handle("POST /api/v1/tickets/{ticketID}/messages", api.requireSession(api.requireCSRF(http.HandlerFunc(api.replyUserTicket))))
+	root.Handle("POST /api/v1/tickets/{ticketID}/close", api.requireSession(api.requireCSRF(http.HandlerFunc(api.closeUserTicket))))
 	root.HandleFunc("GET /client-download/{clientID}/{platform}", api.clientDownloadRedirect)
 	root.HandleFunc("GET /client-link/{clientID}/{platform}/{action}", api.clientActionRedirect)
 	root.HandleFunc("GET /guide/{knowledgeID}", api.publicKnowledge)
@@ -207,6 +214,10 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("DELETE /api/v1/admin/knowledge/{knowledgeID}", api.deleteKnowledge)
 	admin.HandleFunc("GET /api/v1/admin/client-catalog", api.listAdminClientCatalog)
 	admin.HandleFunc("PUT /api/v1/admin/client-catalog", api.saveClientCatalog)
+	admin.HandleFunc("GET /api/v1/admin/tickets", api.listAdminTickets)
+	admin.HandleFunc("GET /api/v1/admin/tickets/{ticketID}", api.getAdminTicket)
+	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/messages", api.replyAdminTicket)
+	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/close", api.closeAdminTicket)
 	admin.HandleFunc("GET /api/v1/admin/users", api.listAdminUsers)
 	admin.HandleFunc("POST /api/v1/admin/users", api.createAdminUser)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)

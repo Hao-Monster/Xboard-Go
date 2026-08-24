@@ -247,6 +247,54 @@ export interface AdminUserPage {
   next_cursor?: string;
 }
 
+export type TicketLevel = 0 | 1 | 2;
+export type TicketStatus = 0 | 1;
+export type TicketReplyStatus = 0 | 1;
+
+export interface TicketMessage {
+  id: number;
+  ticket_id: number;
+  is_me: boolean;
+  message: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Ticket {
+  id: number;
+  user_id: number;
+  user_email?: string;
+  subject: string;
+  level: TicketLevel;
+  status: TicketStatus;
+  reply_status: TicketReplyStatus;
+  messages?: TicketMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketPage {
+  items: Ticket[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface TicketInput {
+  subject: string;
+  level: TicketLevel;
+  message: string;
+}
+
+export interface AdminTicketQuery {
+  page?: number;
+  page_size?: number;
+  status?: TicketStatus;
+  reply_status?: TicketReplyStatus;
+  level?: TicketLevel;
+  query?: string;
+}
+
 export interface AdminUserQuery {
   limit?: number;
   cursor?: string;
@@ -298,6 +346,10 @@ export interface AdminAPI {
   createAdminUser: (input: AdminUserCreateInput) => Promise<AdminUser>;
   updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
   resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
+  listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
+  getAdminTicket: (id: number) => Promise<Ticket>;
+  replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
+  closeAdminTicket: (id: number) => Promise<Ticket>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
@@ -493,6 +545,49 @@ export class APIClient implements AdminAPI {
     return this.request<AdminUser>(`/api/v1/admin/users/${id}/password`, {
       method: "PUT", body: { revision, new_password: newPassword }
     });
+  }
+
+  async listTickets(page = 1, pageSize = 20): Promise<TicketPage> {
+    return this.request<TicketPage>(`/api/v1/tickets?page=${page}&page_size=${pageSize}`);
+  }
+
+  async createTicket(input: TicketInput): Promise<Ticket> {
+    return this.request<Ticket>("/api/v1/tickets", { method: "POST", body: input });
+  }
+
+  async getTicket(id: number): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/tickets/${id}`);
+  }
+
+  async replyTicket(id: number, message: string): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/tickets/${id}/messages`, { method: "POST", body: { message } });
+  }
+
+  async closeTicket(id: number): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/tickets/${id}/close`, { method: "POST", body: {} });
+  }
+
+  async listAdminTickets(query: AdminTicketQuery = {}): Promise<TicketPage> {
+    const params = new URLSearchParams();
+    params.set("page", String(query.page ?? 1));
+    params.set("page_size", String(query.page_size ?? 20));
+    if (query.status !== undefined) params.set("status", String(query.status));
+    if (query.reply_status !== undefined) params.set("reply_status", String(query.reply_status));
+    if (query.level !== undefined) params.set("level", String(query.level));
+    if (query.query !== undefined && query.query.trim() !== "") params.set("query", query.query.trim());
+    return this.request<TicketPage>(`/api/v1/admin/tickets?${params.toString()}`);
+  }
+
+  async getAdminTicket(id: number): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/admin/tickets/${id}`);
+  }
+
+  async replyAdminTicket(id: number, message: string): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/admin/tickets/${id}/messages`, { method: "POST", body: { message } });
+  }
+
+  async closeAdminTicket(id: number): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/admin/tickets/${id}/close`, { method: "POST", body: {} });
   }
 
   async listNotices(): Promise<Notice[]> {

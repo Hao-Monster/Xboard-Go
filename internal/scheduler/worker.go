@@ -9,10 +9,11 @@ import (
 )
 
 type Worker struct {
-	store    *store.Store
-	interval time.Duration
-	now      func() time.Time
-	logger   *slog.Logger
+	store           *store.Store
+	interval        time.Duration
+	now             func() time.Time
+	logger          *slog.Logger
+	lastTicketSweep time.Time
 }
 
 func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logger) *Worker {
@@ -41,6 +42,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 func (w *Worker) applyDue(ctx context.Context) {
 	now := w.now()
+	w.closeStaleTickets(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -57,5 +59,22 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) closeStaleTickets(ctx context.Context, now time.Time) {
+	if !w.lastTicketSweep.IsZero() && now.Sub(w.lastTicketSweep) < time.Minute {
+		return
+	}
+	w.lastTicketSweep = now
+	closed, err := w.store.CloseStaleAnsweredTickets(ctx, now.Add(-24*time.Hour), now, 1_000)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("close stale answered tickets", "error", err)
+		}
+		return
+	}
+	if closed > 0 {
+		w.logger.Info("stale answered tickets closed", "count", closed)
 	}
 }
