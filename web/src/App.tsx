@@ -7,14 +7,15 @@ import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
 import { APIClient, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
+import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
 
 const api = new APIClient();
-const UserNoticesPage = lazy(async () => import("./features/notices/UserNoticesPage").then((module) => ({ default: module.UserNoticesPage })));
+const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "notices" | "account">("servers");
+  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "notices" | "clients" | "account">("servers");
 
   useEffect(() => {
     void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
@@ -27,7 +28,7 @@ export function App() {
     return <LoginPage onLogin={setSession} />;
   }
   if (!session.is_admin) {
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserNoticesPage api={api} session={session} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
     <div className="app-frame">
@@ -39,6 +40,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
           <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => setPage("routes")}>路由规则</button>
           <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告管理</button>
+          <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => setPage("clients")}>客户端管理</button>
           <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => setPage("account")}>账号安全</button>
         </div>
         <div className="account">
@@ -51,6 +53,7 @@ export function App() {
       {page === "groups" && <ServerGroupsPage api={api} />}
       {page === "routes" && <RoutingRulesPage api={api} />}
       {page === "notices" && <NoticeManagementPage api={api} />}
+      {page === "clients" && <ClientCatalogManagementPage api={api} />}
       {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
     </div>
   );

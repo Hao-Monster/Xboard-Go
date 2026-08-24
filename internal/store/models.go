@@ -231,6 +231,19 @@ type NoticePage struct {
 	PageSize int      `json:"page_size"`
 }
 
+type ClientCatalogOverride struct {
+	ClientID string `json:"client_id"`
+	Platform string `json:"platform"`
+	Action   string `json:"action"`
+	URL      string `json:"url"`
+}
+
+type ClientCatalogConfig struct {
+	Revision  int64                   `json:"revision"`
+	Links     []ClientCatalogOverride `json:"links"`
+	UpdatedAt time.Time               `json:"updated_at"`
+}
+
 type SaveRoutingRuleInput struct {
 	Remarks     string
 	Match       []string

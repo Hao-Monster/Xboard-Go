@@ -150,6 +150,55 @@ export interface NoticePage {
   page_size: number;
 }
 
+export interface ClientCatalogActionLinks {
+  direct: string;
+  qr: string;
+  cloud: string;
+  tutorial: string;
+}
+
+export interface AdminClientCatalogPlatform {
+  platform: string;
+  links: ClientCatalogActionLinks;
+}
+
+export interface AdminClientCatalogClient {
+  id: string;
+  name: string;
+  core: string;
+  platforms: AdminClientCatalogPlatform[];
+}
+
+export interface AdminClientCatalog {
+  revision: number;
+  clients: AdminClientCatalogClient[];
+}
+
+export type ClientCatalogOverrideInput = Record<string, Record<string, ClientCatalogActionLinks>>;
+
+export interface ClientCatalogDownload {
+  platform: string;
+  source: string;
+  download_url: string;
+  cloud_url: string | null;
+  tutorial_url: string | null;
+}
+
+export interface ClientCatalogEntry {
+  id: string;
+  name: string;
+  core: string;
+  featured: boolean;
+  hwid: boolean;
+  description: string;
+  downloads: ClientCatalogDownload[];
+}
+
+export interface ClientCatalogQR {
+  download_url: string;
+  qr_code: string;
+}
+
 export interface AdminUser {
   id: number;
   email: string;
@@ -231,6 +280,8 @@ export interface AdminAPI {
   setNoticeVisibility: (id: number, revision: number, show: boolean) => Promise<Notice>;
   reorderNotices: (ids: number[]) => Promise<Notice[]>;
   deleteNotice: (id: number, revision: number) => Promise<void>;
+  listClientCatalogAdmin: () => Promise<AdminClientCatalog>;
+  saveClientCatalog: (revision: number, links: ClientCatalogOverrideInput) => Promise<AdminClientCatalog>;
 }
 
 interface Envelope<T> {
@@ -442,6 +493,23 @@ export class APIClient implements AdminAPI {
 
   async listVisibleNotices(page = 1): Promise<NoticePage> {
     return this.request<NoticePage>(`/api/v1/notices?page=${page}`);
+  }
+
+  async listClientCatalogAdmin(): Promise<AdminClientCatalog> {
+    return this.request<AdminClientCatalog>("/api/v1/admin/client-catalog");
+  }
+
+  async saveClientCatalog(revision: number, links: ClientCatalogOverrideInput): Promise<AdminClientCatalog> {
+    return this.request<AdminClientCatalog>("/api/v1/admin/client-catalog", { method: "PUT", body: { revision, links } });
+  }
+
+  async listClientCatalog(): Promise<ClientCatalogEntry[]> {
+    return this.request<ClientCatalogEntry[]>("/api/v1/client-catalog");
+  }
+
+  async clientCatalogQR(client: string, platform: string): Promise<ClientCatalogQR> {
+    const query = new URLSearchParams({ client, platform });
+    return this.request<ClientCatalogQR>(`/api/v1/client-catalog/qr?${query.toString()}`);
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
