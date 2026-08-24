@@ -7,7 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:8080",
-      "/healthz": "http://127.0.0.1:8080"
+      "/healthz": "http://127.0.0.1:8080",
+      "/client-download": "http://127.0.0.1:8080",
+      "/client-link": "http://127.0.0.1:8080"
     }
   },
   preview: {
@@ -15,7 +17,9 @@ export default defineConfig({
     port: 4173,
     proxy: {
       "/api": "http://127.0.0.1:8080",
-      "/healthz": "http://127.0.0.1:8080"
+      "/healthz": "http://127.0.0.1:8080",
+      "/client-download": "http://127.0.0.1:8080",
+      "/client-link": "http://127.0.0.1:8080"
     }
   },
   test: {
