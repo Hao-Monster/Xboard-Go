@@ -260,6 +260,12 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     getAdminUser: vi.fn(),
     createAdminUser: vi.fn(),
     updateAdminUser: vi.fn(),
-    resetAdminUserPassword: vi.fn()
+    resetAdminUserPassword: vi.fn(),
+    listNotices: vi.fn().mockResolvedValue([]),
+    createNotice: vi.fn(),
+    updateNotice: vi.fn(),
+    setNoticeVisibility: vi.fn(),
+    reorderNotices: vi.fn(),
+    deleteNotice: vi.fn()
   };
 }

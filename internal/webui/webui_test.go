@@ -72,6 +72,9 @@ func TestHandlerRejectsUnsafeMethodsAndMissingBuild(t *testing.T) {
 	if recorder.Header().Get("Content-Security-Policy") == "" {
 		t.Fatal("frontend response is missing Content-Security-Policy")
 	}
+	if !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "img-src 'self' data: https: http:") {
+		t.Fatal("frontend policy blocks administrator-configured notice images")
+	}
 }
 
 func writeTestFile(t *testing.T, root, name, content string) {

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const contentSecurityPolicy = "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+const contentSecurityPolicy = "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: https: http:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 
 type staticFile struct {
 	fullPath string

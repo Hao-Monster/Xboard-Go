@@ -33,7 +33,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     }
     await expect(first.locator("[data-testid^='account-session-']")).toHaveCount(1);
     await second.reload();
-    await expect(second.getByRole("heading", { name: "管理员登录" })).toBeVisible();
+    await expect(second.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
 
     await first.getByLabel("当前密码").fill(originalPassword);
     await first.getByLabel("新密码", { exact: true }).fill(replacementPassword);
@@ -44,7 +44,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     await first.getByLabel("确认新密码").fill(replacementPassword);
     passwordMayNeedRestore = true;
     await first.getByRole("button", { name: "修改密码" }).click();
-    await expect(first.getByRole("heading", { name: "管理员登录" })).toBeVisible();
+    await expect(first.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
     await first.getByLabel("邮箱").fill(adminEmail);
     await first.getByLabel("密码").fill(originalPassword);
     await first.getByRole("button", { name: "登录" }).click();
@@ -58,7 +58,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     await first.getByLabel("新密码", { exact: true }).fill(originalPassword);
     await first.getByLabel("确认新密码").fill(originalPassword);
     await first.getByRole("button", { name: "修改密码" }).click();
-    await expect(first.getByRole("heading", { name: "管理员登录" })).toBeVisible();
+    await expect(first.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
     passwordMayNeedRestore = false;
     await login(first, originalPassword);
 
@@ -95,7 +95,7 @@ async function restoreOriginalPassword(browser: Browser) {
     await page.getByLabel("新密码", { exact: true }).fill(originalPassword);
     await page.getByLabel("确认新密码").fill(originalPassword);
     await page.getByRole("button", { name: "修改密码" }).click();
-    await expect(page.getByRole("heading", { name: "管理员登录" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
   } finally {
     await context.close();
   }

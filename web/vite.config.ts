@@ -26,7 +26,7 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: "v8",
-      include: ["src/components/Overlay.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/users/*.tsx"],
+      include: ["src/components/Overlay.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/users/*.tsx", "src/features/notices/*.tsx"],
       reporter: ["text", "json-summary"],
       thresholds: {
         statements: 70,

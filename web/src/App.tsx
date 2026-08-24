@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 
 import { AccountSecurityPage } from "./features/account/AccountSecurityPage";
 import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
@@ -6,13 +6,15 @@ import { UsersPage } from "./features/users/UsersPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
 import { APIClient, type UserSession } from "./lib/api";
+import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 
 const api = new APIClient();
+const UserNoticesPage = lazy(async () => import("./features/notices/UserNoticesPage").then((module) => ({ default: module.UserNoticesPage })));
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "account">("servers");
+  const [page, setPage] = useState<"servers" | "users" | "groups" | "routes" | "notices" | "account">("servers");
 
   useEffect(() => {
     void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
@@ -25,7 +27,7 @@ export function App() {
     return <LoginPage onLogin={setSession} />;
   }
   if (!session.is_admin) {
-    return <div className="app-loading">当前账号没有管理员权限。</div>;
+    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserNoticesPage api={api} session={session} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
     <div className="app-frame">
@@ -36,6 +38,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => setPage("users")}>用户管理</button>
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
           <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => setPage("routes")}>路由规则</button>
+          <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告管理</button>
           <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => setPage("account")}>账号安全</button>
         </div>
         <div className="account">
@@ -47,6 +50,7 @@ export function App() {
       {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
       {page === "groups" && <ServerGroupsPage api={api} />}
       {page === "routes" && <RoutingRulesPage api={api} />}
+      {page === "notices" && <NoticeManagementPage api={api} />}
       {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
     </div>
   );
@@ -75,8 +79,8 @@ function LoginPage({ onLogin }: { onLogin: (session: UserSession) => void }) {
     <main className="login-shell">
       <section className="login-card">
         <div className="brand large"><span className="brand-mark">X</span><span>Xboard-Go</span></div>
-        <h1>管理员登录</h1>
-        <p className="muted">使用管理员账号进入服务器管理。</p>
+        <h1>登录 Xboard-Go</h1>
+        <p className="muted">使用账号进入控制面板。</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>
           <label>邮箱<input type="email" autoComplete="username" value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
           <label>密码<input type="password" autoComplete="current-password" value={password} required onChange={(event) => setPassword(event.target.value)} /></label>

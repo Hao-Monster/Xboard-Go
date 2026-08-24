@@ -122,6 +122,34 @@ export interface RoutingRuleInput {
   action_value: string;
 }
 
+export interface Notice {
+  id: number;
+  sort: number;
+  title: string;
+  content: string;
+  image_url: string | null;
+  tags: string[];
+  show: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoticeInput {
+  title: string;
+  content: string;
+  image_url: string;
+  tags: string[];
+  show: boolean;
+}
+
+export interface NoticePage {
+  items: Notice[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface AdminUser {
   id: number;
   email: string;
@@ -197,6 +225,12 @@ export interface AdminAPI {
   createAdminUser: (input: AdminUserCreateInput) => Promise<AdminUser>;
   updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
   resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
+  listNotices: () => Promise<Notice[]>;
+  createNotice: (input: NoticeInput) => Promise<Notice>;
+  updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
+  setNoticeVisibility: (id: number, revision: number, show: boolean) => Promise<Notice>;
+  reorderNotices: (ids: number[]) => Promise<Notice[]>;
+  deleteNotice: (id: number, revision: number) => Promise<void>;
 }
 
 interface Envelope<T> {
@@ -376,6 +410,38 @@ export class APIClient implements AdminAPI {
     return this.request<AdminUser>(`/api/v1/admin/users/${id}/password`, {
       method: "PUT", body: { revision, new_password: newPassword }
     });
+  }
+
+  async listNotices(): Promise<Notice[]> {
+    return this.request<Notice[]>("/api/v1/admin/notices");
+  }
+
+  async createNotice(input: NoticeInput): Promise<Notice> {
+    return this.request<Notice>("/api/v1/admin/notices", { method: "POST", body: input });
+  }
+
+  async updateNotice(id: number, revision: number, input: NoticeInput): Promise<Notice> {
+    return this.request<Notice>(`/api/v1/admin/notices/${id}`, {
+      method: "PATCH", body: { revision, ...input }
+    });
+  }
+
+  async setNoticeVisibility(id: number, revision: number, show: boolean): Promise<Notice> {
+    return this.request<Notice>(`/api/v1/admin/notices/${id}/visibility`, {
+      method: "PATCH", body: { revision, show }
+    });
+  }
+
+  async reorderNotices(ids: number[]): Promise<Notice[]> {
+    return this.request<Notice[]>("/api/v1/admin/notices/order", { method: "PUT", body: { ids } });
+  }
+
+  async deleteNotice(id: number, revision: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/notices/${id}?revision=${revision}`, { method: "DELETE" });
+  }
+
+  async listVisibleNotices(page = 1): Promise<NoticePage> {
+    return this.request<NoticePage>(`/api/v1/notices?page=${page}`);
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {

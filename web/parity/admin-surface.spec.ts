@@ -52,6 +52,28 @@ test("legacy administrator surface remains observable without frontend source", 
   for (const column of ["邮箱", "在线设备", "状态", "订阅", "权限组", "已用流量", "总流量", "到期时间", "余额", "佣金", "注册时间"]) {
     await expect(page.getByText(column, { exact: true }).first()).toBeVisible();
   }
+
+  const noticeResponse = page.waitForResponse((response) => response.url().includes("/notice/fetch"));
+  await page.locator('a[href="#/config/notice"]').click();
+  const fetchedNotices = await noticeResponse;
+  expect(fetchedNotices.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "公告管理" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /添加公告/ })).toBeVisible();
+  for (const column of ["ID", "显示状态", "标题", "操作"]) {
+    await expect(page.getByText(column, { exact: true }).first()).toBeVisible();
+  }
+  const authorization = fetchedNotices.request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  const userNotices = await page.request.get(new URL("/api/v1/user/notice/fetch?current=1", legacyURL).toString(), {
+    headers: { authorization }
+  });
+  expect(userNotices.status()).toBe(200);
+  const userNoticePayload = await userNotices.json() as { data?: unknown; total?: unknown };
+  expect(Array.isArray(userNoticePayload.data)).toBe(true);
+  expect(typeof userNoticePayload.total).toBe("number");
+  if (!Array.isArray(userNoticePayload.data)) throw new Error("legacy user notice data must be an array");
+  expect(userNoticePayload.data.length).toBeLessThanOrEqual(5);
+  expect(userNoticePayload.data.every((item) => isVisibleLegacyNotice(item))).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -70,7 +92,8 @@ test("implemented Go administrator concepts map to the legacy navigation", async
       ["服务器管理", "服务器管理"],
       ["用户管理", "用户管理"],
       ["权限组管理", "权限组"],
-      ["路由管理", "路由规则"]
+      ["路由管理", "路由规则"],
+      ["公告管理", "公告管理"]
     ] as const) {
       await expect(legacyPage.getByRole("link", { name: legacyLabel, exact: true })).toBeVisible();
       await expect(goPage.getByRole("button", { name: goLabel, exact: true })).toBeVisible();
@@ -112,4 +135,8 @@ function requiredEnv(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for legacy parity tests`);
   return value;
+}
+
+function isVisibleLegacyNotice(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "show" in value && value.show === true;
 }

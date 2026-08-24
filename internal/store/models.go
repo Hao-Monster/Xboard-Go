@@ -203,6 +203,34 @@ type RoutingRule struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type Notice struct {
+	ID           int64     `json:"id"`
+	SortPosition int       `json:"sort"`
+	Title        string    `json:"title"`
+	Content      string    `json:"content"`
+	ImageURL     *string   `json:"image_url"`
+	Tags         []string  `json:"tags"`
+	Visible      bool      `json:"show"`
+	Revision     int64     `json:"revision"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type SaveNoticeInput struct {
+	Title    string
+	Content  string
+	ImageURL string
+	Tags     []string
+	Visible  bool
+}
+
+type NoticePage struct {
+	Items    []Notice `json:"items"`
+	Total    int64    `json:"total"`
+	Page     int      `json:"page"`
+	PageSize int      `json:"page_size"`
+}
+
 type SaveRoutingRuleInput struct {
 	Remarks     string
 	Match       []string
