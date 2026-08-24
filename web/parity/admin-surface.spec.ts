@@ -457,7 +457,7 @@ test("legacy password recovery preserves fields, cooldown, lockout, one-time cod
   const newPassword = `legacy-reset-password-${Date.now()}`;
   const encodedEmail = Buffer.from(legacyEmail, "utf8").toString("base64");
   const encodedOriginalPassword = Buffer.from(legacyPassword, "utf8").toString("base64");
-  const clearCache = `$email=base64_decode("${encodedEmail}"); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("EMAIL_VERIFY_CODE",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("LAST_SEND_EMAIL_VERIFY_TIMESTAMP",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("FORGET_REQUEST_LIMIT",$email));`;
+  const clearCache = `$email=base64_decode("${encodedEmail}"); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("EMAIL_VERIFY_CODE",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("LAST_SEND_EMAIL_VERIFY_TIMESTAMP",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("FORGET_REQUEST_LIMIT",$email)); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("PASSWORD_ERROR_LIMIT",$email));`;
   const tinker = (statement: string) => execFileSync(
     "docker",
     ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${statement}`],
