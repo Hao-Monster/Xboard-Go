@@ -11,6 +11,7 @@ const initial: SiteSettings = {
   app_description: "Existing description",
   app_url: "https://old.example.test",
   tos_url: "https://old.example.test/terms",
+  logo: "https://old.example.test/logo.png",
   updated_at: "2026-08-24T12:00:00Z"
 };
 
@@ -18,7 +19,8 @@ describe("SiteSettingsPage", () => {
   it("loads all legacy identity fields and publishes the saved identity", async () => {
     const updated: SiteSettings = {
       ...initial, revision: 5, app_name: "Example Board", app_description: "Fast control plane",
-      app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/"
+      app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/",
+      logo: "https://images.example.test/brand.svg"
     };
     const api = {
       getSiteSettings: vi.fn().mockResolvedValue(initial),
@@ -33,6 +35,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("站点描述")).toHaveValue("Existing description");
     expect(screen.getByLabelText("站点网址")).toHaveValue("https://old.example.test");
     expect(screen.getByLabelText("用户条款(TOS)URL")).toHaveValue("https://old.example.test/terms");
+    expect(screen.getByLabelText("LOGO")).toHaveValue("https://old.example.test/logo.png");
 
     await user.clear(screen.getByLabelText("站点名称"));
     await user.type(screen.getByLabelText("站点名称"), updated.app_name);
@@ -42,6 +45,8 @@ describe("SiteSettingsPage", () => {
     await user.type(screen.getByLabelText("站点网址"), updated.app_url);
     await user.clear(screen.getByLabelText("用户条款(TOS)URL"));
     await user.type(screen.getByLabelText("用户条款(TOS)URL"), updated.tos_url);
+    await user.clear(screen.getByLabelText("LOGO"));
+    await user.type(screen.getByLabelText("LOGO"), updated.logo);
     await user.click(screen.getByRole("button", { name: "保存站点设置" }));
 
     await waitFor(() => expect(api.updateSiteSettings).toHaveBeenCalledWith({
@@ -49,10 +54,12 @@ describe("SiteSettingsPage", () => {
       app_name: updated.app_name,
       app_description: updated.app_description,
       app_url: updated.app_url,
-      tos_url: updated.tos_url
+      tos_url: updated.tos_url,
+      logo: updated.logo
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("站点设置已保存");
     expect(screen.getByLabelText("站点网址")).toHaveValue(updated.app_url);
+    expect(screen.getByLabelText("LOGO")).toHaveValue(updated.logo);
     expect(onIdentityChanged).toHaveBeenCalledWith(updated);
     await user.type(screen.getByLabelText("站点名称"), " draft");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();

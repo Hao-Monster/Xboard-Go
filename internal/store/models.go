@@ -135,6 +135,7 @@ type SiteSettings struct {
 	AppDescription string    `json:"app_description"`
 	AppURL         string    `json:"app_url"`
 	TOSURL         string    `json:"tos_url"`
+	Logo           string    `json:"logo"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -143,6 +144,7 @@ type SaveSiteSettingsInput struct {
 	AppDescription string
 	AppURL         string
 	TOSURL         string
+	Logo           string
 }
 
 type TicketMailJob struct {

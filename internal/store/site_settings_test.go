@@ -21,19 +21,21 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || initial.AppDescription != "" || initial.AppURL != "" || initial.TOSURL != "" {
+	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || initial.AppDescription != "" || initial.AppURL != "" || initial.TOSURL != "" || initial.Logo != "" {
 		t.Fatalf("initial site settings = %#v", initial)
 	}
 
 	updated, err := database.UpdateSiteSettings(ctx, administrator.ID, initial.Revision, SaveSiteSettingsInput{
 		AppName: "  Example Board  ", AppDescription: "  First line\nSecond line  ",
 		AppURL: "https://panel.example.test/", TOSURL: "https://panel.example.test/terms/",
+		Logo: " https://images.example.test/brand.svg?version=1#logo ",
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "First line\nSecond line" ||
-		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" {
+		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
+		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" {
 		t.Fatalf("normalized site settings = %#v", updated)
 	}
 
@@ -61,7 +63,8 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterTicketUpdate.Revision != ticketSettings.Revision || afterTicketUpdate.AppDescription != updated.AppDescription || afterTicketUpdate.TOSURL != updated.TOSURL {
+	if afterTicketUpdate.Revision != ticketSettings.Revision || afterTicketUpdate.AppDescription != updated.AppDescription ||
+		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo {
 		t.Fatalf("ticket settings update lost site-only fields: %#v", afterTicketUpdate)
 	}
 }
@@ -72,7 +75,10 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
 	administrator := createTicketTestUser(t, database, "site-settings-validation@example.test", now)
 
-	valid := SaveSiteSettingsInput{AppName: "Example", AppDescription: "Description", AppURL: "https://panel.example.test", TOSURL: "https://panel.example.test/terms"}
+	valid := SaveSiteSettingsInput{
+		AppName: "Example", AppDescription: "Description", AppURL: "https://panel.example.test",
+		TOSURL: "https://panel.example.test/terms", Logo: "https://images.example.test/logo.png",
+	}
 	for name, mutate := range map[string]func(*SaveSiteSettingsInput){
 		"empty name":          func(input *SaveSiteSettingsInput) { input.AppName = " " },
 		"long name":           func(input *SaveSiteSettingsInput) { input.AppName = strings.Repeat("站", 101) },
@@ -85,6 +91,11 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 			input.AppURL = "https://example.test/" + strings.Repeat("a", 2_048)
 		},
 		"TOS URL scheme": func(input *SaveSiteSettingsInput) { input.TOSURL = "ftp://example.test/terms" },
+		"logo scheme":    func(input *SaveSiteSettingsInput) { input.Logo = "data:image/svg+xml,unsafe" },
+		"logo userinfo":  func(input *SaveSiteSettingsInput) { input.Logo = "https://user@example.test/logo.png" },
+		"long logo URL": func(input *SaveSiteSettingsInput) {
+			input.Logo = "https://images.example.test/" + strings.Repeat("a", 2_048)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := valid
@@ -140,6 +151,49 @@ func TestSiteURLNormalizationPreservesLegacyURLSemantics(t *testing.T) {
 	}
 }
 
+func TestSchemaV14MigrationPreservesV13SiteSettings(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "schema-v13.db")
+	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	for version, schema := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV7Constraints,
+		schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13,
+	} {
+		if _, err := database.db.ExecContext(ctx, schema); err != nil {
+			t.Fatalf("apply pre-v14 schema step %d: %v", version+1, err)
+		}
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE app_settings SET app_name = 'V13 Board', app_description = 'Preserved',
+			app_url = 'https://v13.example.test/', tos_url = 'https://v13.example.test/terms/', revision = 12;
+		PRAGMA user_version = 13;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(v13 to v14) error = %v", err)
+	}
+	settings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 14 || settings.Revision != 12 || settings.AppName != "V13 Board" || settings.AppDescription != "Preserved" ||
+		settings.AppURL != "https://v13.example.test/" || settings.TOSURL != "https://v13.example.test/terms/" || settings.Logo != "" {
+		t.Fatalf("v13 to v14 migration result: version=%d settings=%#v", version, settings)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET logo = ? WHERE id = 1`, strings.Repeat("a", 2_049)); err == nil {
+		t.Fatal("database accepted an oversized logo")
+	}
+}
+
 func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "schema-v12.db")
 	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
@@ -179,8 +233,8 @@ func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_audit_logs`).Scan(&auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 13 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
-		settings.AppURL != "https://preserved.example.test" || settings.AppDescription != "" || settings.TOSURL != "" || auditCount != 1 {
+	if version != 14 || settings.Revision != 9 || settings.AppName != "Preserved Board" ||
+		settings.AppURL != "https://preserved.example.test" || settings.AppDescription != "" || settings.TOSURL != "" || settings.Logo != "" || auditCount != 1 {
 		t.Fatalf("migration result: version=%d settings=%#v audits=%d", version, settings, auditCount)
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET app_description = ? WHERE id = 1`, strings.Repeat("a", 501)); err == nil {

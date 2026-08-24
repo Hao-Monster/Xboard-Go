@@ -83,8 +83,9 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         <div className="site-settings-url-grid">
           <label>站点网址<input type="url" placeholder="https://panel.example.com" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
           <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
+          <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
         </div>
-        <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。站点描述最多 500 个字符。</p>
+        <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
         {saved && <div className="alert success" role="status">站点设置已保存</div>}
         <div className="form-actions">
           {error !== "" && draft !== null && <button className="button secondary" type="button" disabled={saving} onClick={() => void load()}>刷新最新设置</button>}
@@ -100,7 +101,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     app_name: settings.app_name,
     app_description: settings.app_description,
     app_url: settings.app_url,
-    tos_url: settings.tos_url
+    tos_url: settings.tos_url,
+    logo: settings.logo
   };
 }
 

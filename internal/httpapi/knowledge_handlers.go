@@ -13,8 +13,6 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
-const knowledgeSiteName = "Xboard-Go"
-
 type knowledgeResponse struct {
 	ID           int64     `json:"id"`
 	Language     string    `json:"language"`
@@ -161,9 +159,14 @@ func (s *server) listUserKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	settings, err := s.store.GetSiteSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	responses := make([]knowledgeResponse, 0, len(items))
 	for _, item := range items {
-		item.Body = knowledgecontent.UserContent(item.Body, knowledgeSiteName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+		item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
 		responses = append(responses, s.knowledgeResponse(item, true))
 	}
 	writeSuccess(w, http.StatusOK, responses)
@@ -183,7 +186,12 @@ func (s *server) getUserKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item.Body = knowledgecontent.UserContent(item.Body, knowledgeSiteName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+	settings, err := s.store.GetSiteSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
 	writeSuccess(w, http.StatusOK, s.knowledgeResponse(item, true))
 }
 
@@ -214,7 +222,12 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 	canonical := s.knowledgeShareURL(item)
 	tail := r.PathValue("tail")
 	if tail == "content" {
-		s.publicKnowledgeContent(w, r, item, canonical)
+		settings, settingsErr := s.store.GetSiteSettings(r.Context())
+		if settingsErr != nil {
+			handleStoreError(w, settingsErr)
+			return
+		}
+		s.publicKnowledgeContent(w, r, item, canonical, settings.AppName)
 		return
 	}
 	if tail == "" || tail != knowledgecontent.Slug(item.Title) {
@@ -223,7 +236,12 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := knowledgecontent.PublicContent(item.Body, knowledgeSiteName, s.panelURL+"/#/login")
+	settings, err := s.store.GetSiteSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	body := knowledgecontent.PublicContent(item.Body, settings.AppName, s.panelURL+"/#/login")
 	document, err := knowledgecontent.RenderPublic(body)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "knowledge_render_failed", "知识文章暂时无法显示", nil)
@@ -235,7 +253,7 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := publicKnowledgePageData{
-		AppName: knowledgeSiteName, Article: item, Body: template.HTML(document.HTML), TOC: document.TOC,
+		AppName: settings.AppName, Logo: settings.Logo, Article: item, Body: template.HTML(document.HTML), TOC: document.TOC,
 		CanonicalURL: canonical, Articles: s.publicKnowledgeNavigation(navigation, item.ID),
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -247,8 +265,8 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) publicKnowledgeContent(w http.ResponseWriter, r *http.Request, item store.Knowledge, canonical string) {
-	body := knowledgecontent.PublicContent(item.Body, knowledgeSiteName, s.panelURL+"/#/login")
+func (s *server) publicKnowledgeContent(w http.ResponseWriter, r *http.Request, item store.Knowledge, canonical, siteName string) {
+	body := knowledgecontent.PublicContent(item.Body, siteName, s.panelURL+"/#/login")
 	document, err := knowledgecontent.RenderPublic(body)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "knowledge_render_failed", "知识文章暂时无法显示", nil)
@@ -257,7 +275,7 @@ func (s *server) publicKnowledgeContent(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Cache-Control", "no-store")
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": item.ID, "title": item.Title, "updated_at": item.UpdatedAt.Format("2006-01-02 15:04"),
-		"body": document.HTML, "toc": document.TOC, "share_url": canonical, "page_title": item.Title + " - " + knowledgeSiteName,
+		"body": document.HTML, "toc": document.TOC, "share_url": canonical, "page_title": item.Title + " - " + siteName,
 	})
 }
 
@@ -339,6 +357,7 @@ func (s *server) publicKnowledgeNavigation(items []store.Knowledge, currentID in
 
 type publicKnowledgePageData struct {
 	AppName      string
+	Logo         string
 	Article      store.Knowledge
 	Body         template.HTML
 	TOC          []knowledgecontent.TOCEntry
@@ -349,7 +368,7 @@ type publicKnowledgePageData struct {
 var publicKnowledgePage = template.Must(template.New("public-knowledge").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Article.Title}} - {{.AppName}}</title><link rel="canonical" href="{{.CanonicalURL}}"><link rel="stylesheet" href="/public-knowledge.css"></head>
-<body><header class="public-knowledge-header"><a href="/" class="public-knowledge-brand">{{.AppName}}</a><span>使用指南</span></header>
+<body><header class="public-knowledge-header"><a href="/" class="public-knowledge-brand" aria-label="{{.AppName}}">{{if .Logo}}<img class="public-knowledge-logo" src="{{.Logo}}" alt="{{.AppName}} LOGO" referrerpolicy="no-referrer">{{end}}<span>{{.AppName}}</span></a><span>使用指南</span></header>
 <div class="public-knowledge-layout"><aside class="public-knowledge-articles" aria-label="文章列表"><h2>知识库</h2><nav>{{range .Articles}}<a href="{{.URL}}"{{if .Current}} aria-current="page"{{end}}><small>{{.Category}}</small>{{.Title}}</a>{{else}}<p>暂无文章</p>{{end}}</nav></aside>
 <main class="public-knowledge-main"><article><header><p class="public-knowledge-category">{{.Article.Category}} · {{.Article.Language}}</p><h1>{{.Article.Title}}</h1><time datetime="{{.Article.UpdatedAt.Format "2006-01-02T15:04:05Z07:00"}}">更新于 {{.Article.UpdatedAt.Format "2006-01-02 15:04"}}</time></header><div class="public-knowledge-body">{{.Body}}</div></article></main>
 <aside class="public-knowledge-toc" aria-label="本文目录"><h2>本文目录</h2><nav>{{range .TOC}}<a class="toc-level-{{.Level}}" href="#{{.ID}}">{{.Title}}</a>{{else}}<p>暂无目录</p>{{end}}</nav></aside></div></body></html>`))

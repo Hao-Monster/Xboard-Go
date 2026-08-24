@@ -218,6 +218,91 @@ test("legacy site identity settings persist and feed the public guest contract",
   }
 });
 
+test("legacy logo and site name propagate to the administrator shell and public knowledge", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const originalResponse = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+  expect(originalResponse.status()).toBe(200);
+  const originalSite = readObjectProperty(readProperty(await originalResponse.json() as unknown, "data"), "site");
+  const original = { app_name: readProperty(originalSite, "app_name"), logo: readProperty(originalSite, "logo") };
+  const unique = Date.now();
+  const changed = { app_name: `Logo parity ${unique}`, logo: new URL("/favicon.ico", legacyURL).toString() };
+  const knowledgeTitle = `Logo guide ${unique}`;
+  let knowledgeID: number | null = null;
+
+  try {
+    const saved = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: changed });
+    expect(saved.status()).toBe(200);
+    const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(guest.status()).toBe(200);
+    expect(readProperty(readProperty(await guest.json() as unknown, "data"), "logo")).toBe(changed.logo);
+
+    await page.goto(legacyURL);
+    const runtime: unknown = await page.evaluate(() => (window as typeof window & { settings?: unknown }).settings);
+    expect(readStringProperty(runtime, "title")).toBe(changed.app_name);
+    expect(readStringProperty(runtime, "logo")).toBe(changed.logo);
+
+    const browser = page.context().browser();
+    if (browser === null) throw new Error("legacy browser is unavailable");
+    const publicContext = await browser.newContext({ locale: "zh-CN" });
+    try {
+      const loginPage = await publicContext.newPage();
+      await loginPage.goto(new URL("/", legacyURL).toString());
+      await expect(loginPage.locator(`img[src="${changed.logo}"]`).first()).toBeVisible();
+      await loginLegacyUser(loginPage);
+      await expect(loginPage.locator(`img[src="${changed.logo}"]`).first()).toBeVisible();
+    } finally {
+      await publicContext.close();
+    }
+
+    const knowledgeSaved = await page.request.post(legacyAdminAPI("/knowledge/save"), {
+      headers,
+      data: { title: knowledgeTitle, category: "Brand parity", language: "zh-CN", show: true, body: "# Public brand" }
+    });
+    expect(knowledgeSaved.status()).toBe(200);
+    const list = await page.request.get(legacyAdminAPI("/knowledge/fetch"), { headers });
+    const items = readProperty(await list.json() as unknown, "data");
+    expect(Array.isArray(items)).toBe(true);
+    if (!Array.isArray(items)) throw new Error("legacy administrator knowledge list is not an array");
+    const knowledgeItems = items as unknown[];
+    const created = knowledgeItems.find((item: unknown) => readStringProperty(item, "title") === knowledgeTitle);
+    const rawID = readProperty(created, "id");
+    knowledgeID = typeof rawID === "number" ? rawID : Number(rawID);
+    expect(Number.isSafeInteger(knowledgeID) && knowledgeID > 0).toBe(true);
+
+    const detail = await page.request.get(legacyAdminAPI(`/knowledge/fetch?id=${knowledgeID}`), { headers });
+    const shareURL = readStringProperty(readProperty(await detail.json() as unknown, "data"), "share_url");
+    expect(shareURL).not.toBeNull();
+    if (!shareURL) throw new Error("legacy knowledge share URL is missing");
+    const publicPage = await page.request.get(new URL(new URL(shareURL).pathname, legacyURL).toString());
+    const publicHTML = await publicPage.text();
+    expect(publicPage.status()).toBe(200);
+    expect(publicHTML).toContain(`<title>${knowledgeTitle} - ${changed.app_name}</title>`);
+    expect(publicHTML).toContain(`<img src="${changed.logo}" alt="">`);
+    expect(publicHTML).toContain(`aria-label="${changed.app_name}"`);
+    const content = await page.request.get(new URL(`/guide/${knowledgeID}/content`, legacyURL).toString());
+    expect(content.status()).toBe(200);
+    expect(readProperty(await content.json() as unknown, "page_title")).toBe(`${knowledgeTitle} - ${changed.app_name}`);
+  } finally {
+    if (knowledgeID !== null && Number.isSafeInteger(knowledgeID)) {
+      const removed = await page.request.post(legacyAdminAPI("/knowledge/drop"), { headers, data: { id: knowledgeID } });
+      expect(removed.status()).toBe(200);
+    }
+    const restored = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    expect(restored.status()).toBe(200);
+    const verification = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+    const restoredSite = readObjectProperty(readProperty(await verification.json() as unknown, "data"), "site");
+    expect(readProperty(restoredSite, "app_name")).toBe(original.app_name);
+    expect(readProperty(restoredSite, "logo")).toBe(original.logo);
+  }
+});
+
 test("legacy dashboard exposes scheduler, queue, failed-job, and audit contracts", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacy(page);

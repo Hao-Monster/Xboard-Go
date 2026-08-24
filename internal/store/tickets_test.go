@@ -255,7 +255,7 @@ func TestMigrationFromV7AddsTicketAndSettingsTablesWithoutChangingExistingUsers(
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE email = 'preserved-ticket-user@example.test'`).Scan(&userCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 13 || userCount != 1 {
+	if version != 14 || userCount != 1 {
 		t.Fatalf("schema version=%d preserved users=%d", version, userCount)
 	}
 	user, err := database.FindUserByEmail(ctx, "preserved-ticket-user@example.test")

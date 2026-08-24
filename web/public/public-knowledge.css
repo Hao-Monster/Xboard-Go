@@ -4,7 +4,9 @@ html { scroll-behavior: smooth; }
 body { min-width: 320px; margin: 0; background: radial-gradient(circle at top, #171d2b 0, #0b0d12 46rem); }
 a { color: inherit; }
 .public-knowledge-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 0 26px; border-bottom: 1px solid #2a303b; background: rgb(11 13 18 / 92%); backdrop-filter: blur(18px); }
-.public-knowledge-brand { color: #f8faff; font-weight: 750; text-decoration: none; }
+.public-knowledge-brand { display: flex; align-items: center; gap: 10px; color: #f8faff; font-weight: 750; text-decoration: none; }
+.public-knowledge-brand > span { color: inherit; font-size: inherit; }
+.public-knowledge-logo { width: 30px; height: 30px; object-fit: contain; }
 .public-knowledge-header span { color: #8f99ad; font-size: .86rem; }
 .public-knowledge-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 860px) minmax(180px, 240px); justify-content: center; min-height: calc(100vh - 64px); }
 .public-knowledge-articles, .public-knowledge-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 64px); overflow: auto; padding: 30px 22px; }

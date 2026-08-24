@@ -16,7 +16,7 @@ const (
 
 func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, updated_at
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -36,10 +36,10 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	defer s.lockWrite()()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE app_settings
-		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?,
+		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
-	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL,
+	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo,
 		administratorID, now.Unix(), revision)
 	if err != nil {
 		return SiteSettings{}, fmt.Errorf("update site settings: %w", err)
@@ -52,7 +52,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, ErrConflict
 	}
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, updated_at
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -66,14 +66,16 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 	input.AppDescription = strings.TrimSpace(input.AppDescription)
 	input.AppURL = strings.TrimSpace(input.AppURL)
 	input.TOSURL = strings.TrimSpace(input.TOSURL)
+	input.Logo = strings.TrimSpace(input.Logo)
 	if !utf8.ValidString(input.AppName) || !utf8.ValidString(input.AppDescription) ||
-		!utf8.ValidString(input.AppURL) || !utf8.ValidString(input.TOSURL) ||
+		!utf8.ValidString(input.AppURL) || !utf8.ValidString(input.TOSURL) || !utf8.ValidString(input.Logo) ||
 		utf8.RuneCountInString(input.AppName) < 1 || utf8.RuneCountInString(input.AppName) > maxSiteAppNameRunes ||
 		utf8.RuneCountInString(input.AppDescription) > maxSiteDescriptionRunes ||
 		containsUnsafeTicketControl(input.AppName, false) || containsUnsafeTicketControl(input.AppDescription, true) ||
-		len(input.AppURL) > maxSiteURLBytes || len(input.TOSURL) > maxSiteURLBytes ||
+		len(input.AppURL) > maxSiteURLBytes || len(input.TOSURL) > maxSiteURLBytes || len(input.Logo) > maxSiteURLBytes ||
 		(input.AppURL != "" && !validHTTPURL(input.AppURL)) ||
-		(input.TOSURL != "" && !validHTTPURL(input.TOSURL)) {
+		(input.TOSURL != "" && !validHTTPURL(input.TOSURL)) ||
+		(input.Logo != "" && !validHTTPURL(input.Logo)) {
 		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
 	}
 	return input, nil
@@ -82,7 +84,7 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	var settings SiteSettings
 	var updatedAt int64
-	if err := row.Scan(&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &updatedAt); err != nil {
+	if err := row.Scan(&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo, &updatedAt); err != nil {
 		return SiteSettings{}, err
 	}
 	settings.UpdatedAt = time.Unix(updatedAt, 0).UTC()

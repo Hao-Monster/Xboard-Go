@@ -17,6 +17,13 @@ import (
 func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
+	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":1,"app_name":"Tenant Knowledge","app_description":"","app_url":"https://panel.example.test",
+		"tos_url":"","logo":"https://images.example.test/tenant.png"
+	}`)
+	if siteResponse.Code != http.StatusOK {
+		t.Fatalf("update site identity status=%d body=%s", siteResponse.Code, siteResponse.Body)
+	}
 
 	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge", `{
 		"language":"zh-CN","category":"入门","title":"连接指南",
@@ -52,7 +59,8 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 	if activeResponse.Code != http.StatusOK {
 		t.Fatalf("active user status=%d body=%s", activeResponse.Code, activeResponse.Body)
 	}
-	if !strings.Contains(activeResponse.Body.String(), "订阅专属") || !strings.Contains(activeResponse.Body.String(), "https://panel.example.test/api/v1/client/subscribe?token=") || strings.Contains(activeResponse.Body.String(), "{{siteName}}") {
+	if !strings.Contains(activeResponse.Body.String(), "订阅专属") || !strings.Contains(activeResponse.Body.String(), "Tenant Knowledge") ||
+		!strings.Contains(activeResponse.Body.String(), "https://panel.example.test/api/v1/client/subscribe?token=") || strings.Contains(activeResponse.Body.String(), "{{siteName}}") {
 		t.Fatalf("active user content = %s", activeResponse.Body)
 	}
 
@@ -80,6 +88,14 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 
 func TestPublicKnowledgeUsesCanonicalSafeSharePageWithoutUserSecrets(t *testing.T) {
 	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":1,"app_name":"Public Board","app_description":"","app_url":"https://panel.example.test",
+		"tos_url":"","logo":"https://images.example.test/public.svg?version=1"
+	}`)
+	if siteResponse.Code != http.StatusOK {
+		t.Fatalf("update site identity status=%d body=%s", siteResponse.Code, siteResponse.Body)
+	}
 	article, err := database.CreateKnowledge(context.Background(), store.SaveKnowledgeInput{
 		Language: "zh-CN", Category: "安全", Title: "Public Security Guide", Visible: true,
 		Body: "# Security\n\n{{subscribeUrl}}\n\n<script>alert(1)</script>\n\n<img src=\"https://images.example.test/a.png\" onerror=\"alert(2)\">",
@@ -120,13 +136,22 @@ func TestPublicKnowledgeUsesCanonicalSafeSharePageWithoutUserSecrets(t *testing.
 	if !strings.Contains(page.Body.String(), "https://panel.example.test/#/login") || !strings.Contains(page.Body.String(), "/public-knowledge.css") || !strings.Contains(page.Body.String(), `aria-current="page"`) {
 		t.Fatalf("public page missing login fallback, stylesheet, or current navigation state: %s", page.Body)
 	}
+	for _, branding := range []string{
+		"Public Security Guide - Public Board", `aria-label="Public Board"`,
+		`src="https://images.example.test/public.svg?version=1"`, `alt="Public Board LOGO"`, `referrerpolicy="no-referrer"`,
+	} {
+		if !strings.Contains(page.Body.String(), branding) {
+			t.Fatalf("public page missing branding %q: %s", branding, page.Body)
+		}
+	}
 	if page.Header().Get("Cache-Control") != "no-store" || !strings.Contains(page.Header().Get("Content-Security-Policy"), "style-src 'self'") {
 		t.Fatalf("public page security headers cache=%q csp=%q", page.Header().Get("Cache-Control"), page.Header().Get("Content-Security-Policy"))
 	}
 
 	content := httptest.NewRecorder()
 	api.ServeHTTP(content, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d/content", article.ID), nil))
-	if content.Code != http.StatusOK || !strings.Contains(content.Body.String(), `"share_url":"`+wantCanonical+`"`) || strings.Contains(content.Body.String(), privateToken) {
+	if content.Code != http.StatusOK || !strings.Contains(content.Body.String(), `"share_url":"`+wantCanonical+`"`) ||
+		!strings.Contains(content.Body.String(), `"page_title":"Public Security Guide - Public Board"`) || strings.Contains(content.Body.String(), privateToken) {
 		t.Fatalf("public content status=%d body=%s", content.Code, content.Body)
 	}
 }

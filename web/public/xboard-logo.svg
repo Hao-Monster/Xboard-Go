@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Xboard">
+  <defs>
+    <linearGradient id="xboard-mark" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a6bbff"/>
+      <stop offset="1" stop-color="#78e5cb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#xboard-mark)"/>
+  <path d="M19 17h9l5 9 5-9h9L38 32l10 15h-9l-6-9-6 9h-9l10-15z" fill="#0b0d12"/>
+</svg>
