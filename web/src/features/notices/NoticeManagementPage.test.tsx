@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -68,8 +68,7 @@ describe("NoticeManagementPage", () => {
     await waitFor(() => expect(api.reorderNotices).toHaveBeenCalled());
 
     const search = screen.getByRole("searchbox", { name: "搜索公告标题" });
-    await user.click(search);
-    await user.paste("Draft");
+    fireEvent.change(search, { target: { value: "Draft" } });
     expect(search).toHaveValue("Draft");
     await waitFor(() => expect(screen.queryByText("Service update revised")).not.toBeInTheDocument());
     await user.clear(search);
