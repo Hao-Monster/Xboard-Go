@@ -55,3 +55,43 @@ func TestWorkerAppliesPersistedDueSchedule(t *testing.T) {
 		t.Fatalf("next transition = %s, want after %s", advanced.NextTransitionAt, saved.NextTransitionAt)
 	}
 }
+
+func TestWorkerAutomaticallyClosesTicketsAnsweredMoreThanOneDayAgo(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-ticket-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-ticket-user@example.test", PasswordHash: "hash"}, now.Add(-26*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-ticket-admin@example.test", PasswordHash: "hash"}, now.Add(-26*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := database.CreateTicket(ctx, user.ID, store.SaveTicketInput{Subject: "stale answer", Level: store.TicketLevelLow, Message: "question"}, now.Add(-26*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ReplyTicketAsAdmin(ctx, admin.ID, ticket.ID, "answer", now.Add(-25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now }
+	worker.applyDue(ctx)
+
+	updated, err := database.GetAdminTicket(ctx, ticket.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != store.TicketStatusClosed {
+		t.Fatalf("ticket status = %d, want closed", updated.Status)
+	}
+}

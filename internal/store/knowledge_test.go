@@ -113,8 +113,8 @@ func TestKnowledgeValidationBoundsAndDatabaseMigration(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 7 {
-		t.Fatalf("schema version = %d, want 7", version)
+	if version != 8 {
+		t.Fatalf("schema version = %d, want 8", version)
 	}
 	var missingTokens int
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE subscription_token IS NULL OR length(subscription_token) <> 32`).Scan(&missingTokens); err != nil {
@@ -175,7 +175,7 @@ func TestSchemaV7BackfillsExistingUsersWithUniqueTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v6 to v7) error = %v", err)
+		t.Fatalf("Migrate(v6 to current) error = %v", err)
 	}
 	rows, err := database.db.QueryContext(ctx, `SELECT subscription_token FROM users ORDER BY id`)
 	if err != nil {

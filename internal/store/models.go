@@ -11,6 +11,9 @@ var (
 	ErrNotFound             = errors.New("not found")
 	ErrConflict             = errors.New("conflict")
 	ErrEmailInUse           = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrOpenTicketExists     = fmt.Errorf("%w: an open ticket already exists", ErrConflict)
+	ErrTicketClosed         = fmt.Errorf("%w: ticket is closed", ErrConflict)
+	ErrTicketMessageLimit   = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
 	ErrInvalidInput         = errors.New("invalid input")
 	ErrInvalidEnrollment    = errors.New("invalid or expired enrollment")
 	ErrInvalidCredential    = errors.New("invalid machine credential")
@@ -25,6 +28,74 @@ type User struct {
 	IsAdmin      bool
 	Banned       bool
 	AccountKind  string
+}
+
+type TicketStatus int
+
+const (
+	TicketStatusOpen TicketStatus = iota
+	TicketStatusClosed
+)
+
+type TicketReplyStatus int
+
+const (
+	TicketReplyWaiting TicketReplyStatus = iota
+	TicketReplyAnswered
+)
+
+type TicketLevel int
+
+const (
+	TicketLevelLow TicketLevel = iota
+	TicketLevelMedium
+	TicketLevelHigh
+)
+
+type TicketMessage struct {
+	ID        int64     `json:"id"`
+	TicketID  int64     `json:"ticket_id"`
+	UserID    int64     `json:"-"`
+	IsMe      bool      `json:"is_me"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Ticket struct {
+	ID              int64             `json:"id"`
+	UserID          int64             `json:"user_id"`
+	UserEmail       string            `json:"user_email,omitempty"`
+	Subject         string            `json:"subject"`
+	Level           TicketLevel       `json:"level"`
+	Status          TicketStatus      `json:"status"`
+	ReplyStatus     TicketReplyStatus `json:"reply_status"`
+	LastReplyUserID int64             `json:"-"`
+	Messages        []TicketMessage   `json:"messages,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+}
+
+type SaveTicketInput struct {
+	Subject string
+	Level   TicketLevel
+	Message string
+}
+
+type TicketFilter struct {
+	Page        int
+	PageSize    int
+	Status      *TicketStatus
+	ReplyStatus *TicketReplyStatus
+	Level       *TicketLevel
+	Query       string
+}
+
+type TicketPage struct {
+	Items    []Ticket `json:"items"`
+	Total    int64    `json:"total"`
+	Page     int      `json:"page"`
+	PageSize int      `json:"page_size"`
 }
 
 type Knowledge struct {
