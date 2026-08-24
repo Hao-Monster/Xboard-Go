@@ -56,13 +56,24 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		AppURL         string `json:"app_url"`
 		TOSURL         string `json:"tos_url"`
 		Logo           string `json:"logo"`
+		StopRegister   *bool  `json:"stop_register"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	stopRegister := input.StopRegister
+	if stopRegister == nil {
+		current, err := s.store.GetSiteSettings(r.Context())
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		stopRegister = &current.StopRegister
+	}
 	session, _ := sessionFromContext(r.Context())
 	updated, err := s.store.UpdateSiteSettings(r.Context(), session.UserID, input.Revision, store.SaveSiteSettingsInput{
 		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
+		StopRegister: *stopRegister,
 	}, s.now())
 	if errors.Is(err, store.ErrConflict) {
 		writeAPIError(w, http.StatusConflict, "settings_conflict", "设置已被其他管理员修改，请刷新后重试", nil)

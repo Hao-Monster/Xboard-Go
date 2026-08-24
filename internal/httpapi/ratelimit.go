@@ -23,6 +23,10 @@ type requestLimitGroup struct {
 	byCredential *requestLimiter
 }
 
+func newRequestLimiter(maximum int, window time.Duration) *requestLimiter {
+	return &requestLimiter{entries: make(map[string]attemptEntry), maximum: maximum, window: window}
+}
+
 func newRequestLimitGroup(perIP, perCredential int) *requestLimitGroup {
 	return &requestLimitGroup{
 		byIP:         &requestLimiter{entries: make(map[string]attemptEntry), maximum: perIP, window: time.Minute},

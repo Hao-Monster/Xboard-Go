@@ -168,6 +168,9 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN logo`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN stop_register`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 11`); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +187,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ticket_mail_outbox_failed'`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 14 || auditCount != 1 || indexCount != 1 {
+	if version != 15 || auditCount != 1 || indexCount != 1 {
 		t.Fatalf("migration result: version=%d audits=%d failed_index=%d", version, auditCount, indexCount)
 	}
 }

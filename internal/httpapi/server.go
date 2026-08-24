@@ -47,33 +47,40 @@ type Dependencies struct {
 	RuntimeTracker    *operations.Tracker
 }
 
+type passwordService interface {
+	Hash(password string) (string, error)
+	Verify(password, encoded string) bool
+}
+
 type server struct {
-	store               *store.Store
-	passwordHasher      security.PasswordHasher
-	dummyHash           string
-	now                 func() time.Time
-	panelURL            string
-	nodeRelease         string
-	cookieSecure        bool
-	allowedOrigins      map[string]struct{}
-	logger              *slog.Logger
-	loginAttempts       *attemptLimiter
-	enrollAttempts      *attemptLimiter
-	machineAuthFailures *attemptLimiter
-	handshakeRequests   *requestLimitGroup
-	pullRequests        *requestLimitGroup
-	reportRequests      *requestLimitGroup
-	machineRequests     *requestLimitGroup
-	ticketRequests      *requestLimitGroup
-	hub                 *wsHub
-	webSocketEnabled    bool
-	webSocketURL        string
-	nodePushInterval    int
-	nodePullInterval    int
-	clientCatalog       *clientcatalog.Service
-	settingsCipher      *appsettings.Cipher
-	smtpAllowInsecure   bool
-	runtimeTracker      *operations.Tracker
+	store                 *store.Store
+	passwordHasher        passwordService
+	dummyHash             string
+	now                   func() time.Time
+	panelURL              string
+	nodeRelease           string
+	cookieSecure          bool
+	allowedOrigins        map[string]struct{}
+	logger                *slog.Logger
+	loginAttempts         *attemptLimiter
+	registrationRequests  *requestLimiter
+	registrationHashSlots chan struct{}
+	enrollAttempts        *attemptLimiter
+	machineAuthFailures   *attemptLimiter
+	handshakeRequests     *requestLimitGroup
+	pullRequests          *requestLimitGroup
+	reportRequests        *requestLimitGroup
+	machineRequests       *requestLimitGroup
+	ticketRequests        *requestLimitGroup
+	hub                   *wsHub
+	webSocketEnabled      bool
+	webSocketURL          string
+	nodePushInterval      int
+	nodePullInterval      int
+	clientCatalog         *clientcatalog.Service
+	settingsCipher        *appsettings.Cipher
+	smtpAllowInsecure     bool
+	runtimeTracker        *operations.Tracker
 }
 
 type contextKey int
@@ -122,27 +129,29 @@ func New(dependencies Dependencies) http.Handler {
 	}
 
 	api := &server{
-		store:               dependencies.Store,
-		passwordHasher:      dependencies.PasswordHasher,
-		dummyHash:           dummyHash,
-		now:                 dependencies.Now,
-		panelURL:            strings.TrimRight(dependencies.PanelURL, "/"),
-		nodeRelease:         dependencies.NodeRelease,
-		cookieSecure:        dependencies.CookieSecure,
-		allowedOrigins:      allowedOrigins,
-		logger:              dependencies.Logger,
-		loginAttempts:       newAttemptLimiter(5, 15*time.Minute),
-		enrollAttempts:      newAttemptLimiter(20, 15*time.Minute),
-		machineAuthFailures: newAttemptLimiter(60, time.Minute),
-		handshakeRequests:   newRequestLimitGroup(60, 20),
-		pullRequests:        newRequestLimitGroup(2_400, 600),
-		reportRequests:      newRequestLimitGroup(1_200, 240),
-		machineRequests:     newRequestLimitGroup(1_200, 240),
-		ticketRequests:      newRequestLimitGroup(240, 60),
-		webSocketEnabled:    dependencies.WebSocketEnabled,
-		webSocketURL:        strings.TrimRight(dependencies.WebSocketURL, "/"),
-		nodePushInterval:    dependencies.NodePushInterval,
-		nodePullInterval:    dependencies.NodePullInterval,
+		store:                 dependencies.Store,
+		passwordHasher:        dependencies.PasswordHasher,
+		dummyHash:             dummyHash,
+		now:                   dependencies.Now,
+		panelURL:              strings.TrimRight(dependencies.PanelURL, "/"),
+		nodeRelease:           dependencies.NodeRelease,
+		cookieSecure:          dependencies.CookieSecure,
+		allowedOrigins:        allowedOrigins,
+		logger:                dependencies.Logger,
+		loginAttempts:         newAttemptLimiter(5, 15*time.Minute),
+		registrationRequests:  newRequestLimiter(20, 15*time.Minute),
+		registrationHashSlots: make(chan struct{}, 2),
+		enrollAttempts:        newAttemptLimiter(20, 15*time.Minute),
+		machineAuthFailures:   newAttemptLimiter(60, time.Minute),
+		handshakeRequests:     newRequestLimitGroup(60, 20),
+		pullRequests:          newRequestLimitGroup(2_400, 600),
+		reportRequests:        newRequestLimitGroup(1_200, 240),
+		machineRequests:       newRequestLimitGroup(1_200, 240),
+		ticketRequests:        newRequestLimitGroup(240, 60),
+		webSocketEnabled:      dependencies.WebSocketEnabled,
+		webSocketURL:          strings.TrimRight(dependencies.WebSocketURL, "/"),
+		nodePushInterval:      dependencies.NodePushInterval,
+		nodePullInterval:      dependencies.NodePullInterval,
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
 		}),
@@ -160,6 +169,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
+	root.Handle("POST /api/v1/auth/register", api.requireTrustedOrigin(http.HandlerFunc(api.register)))
 	root.Handle("GET /api/v1/auth/session", api.requireSession(http.HandlerFunc(api.session)))
 	root.Handle("POST /api/v1/auth/logout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.logout))))
 	root.Handle("GET /api/v1/auth/sessions", api.requireSession(http.HandlerFunc(api.listAccountSessions)))
@@ -360,11 +370,9 @@ func (s *server) requireCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if origin := strings.TrimRight(r.Header.Get("Origin"), "/"); origin != "" {
-			if _, allowed := s.allowedOrigins[origin]; !allowed {
-				writeAPIError(w, http.StatusForbidden, "invalid_origin", "请求来源不受信任", nil)
-				return
-			}
+		if !s.originTrusted(r) {
+			writeAPIError(w, http.StatusForbidden, "invalid_origin", "请求来源不受信任", nil)
+			return
 		}
 		session, ok := sessionFromContext(r.Context())
 		csrfCookie, err := r.Cookie(CSRFCookieName)
@@ -377,6 +385,25 @@ func (s *server) requireCSRF(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *server) requireTrustedOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.originTrusted(r) {
+			writeAPIError(w, http.StatusForbidden, "invalid_origin", "请求来源不受信任", nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *server) originTrusted(r *http.Request) bool {
+	origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
+	if origin == "" {
+		return true
+	}
+	_, allowed := s.allowedOrigins[origin]
+	return allowed
 }
 
 func (s *server) securityHeaders(next http.Handler) http.Handler {

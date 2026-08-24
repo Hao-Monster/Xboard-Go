@@ -64,7 +64,7 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
     }
   };
 
-  const updateDraft = (field: keyof SiteDraft, value: string) => {
+  const updateDraft = <K extends keyof SiteDraft,>(field: K, value: SiteDraft[K]) => {
     if (draft === null) return;
     setDraft({ ...draft, [field]: value });
     setSaved(false);
@@ -85,6 +85,7 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
           <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
           <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
         </div>
+        <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
         <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
         {saved && <div className="alert success" role="status">站点设置已保存</div>}
         <div className="form-actions">
@@ -102,7 +103,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     app_description: settings.app_description,
     app_url: settings.app_url,
     tos_url: settings.tos_url,
-    logo: settings.logo
+    logo: settings.logo,
+    stop_register: settings.stop_register
   };
 }
 

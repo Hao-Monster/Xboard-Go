@@ -16,7 +16,7 @@ const (
 
 func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, updated_at
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -36,10 +36,10 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	defer s.lockWrite()()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE app_settings
-		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?,
+		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
-	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo,
+	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, normalized.StopRegister,
 		administratorID, now.Unix(), revision)
 	if err != nil {
 		return SiteSettings{}, fmt.Errorf("update site settings: %w", err)
@@ -52,7 +52,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, ErrConflict
 	}
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, updated_at
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register, updated_at
 		FROM app_settings WHERE id = 1
 	`))
 	if err != nil {
@@ -84,7 +84,7 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	var settings SiteSettings
 	var updatedAt int64
-	if err := row.Scan(&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo, &updatedAt); err != nil {
+	if err := row.Scan(&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo, &settings.StopRegister, &updatedAt); err != nil {
 		return SiteSettings{}, err
 	}
 	settings.UpdatedAt = time.Unix(updatedAt, 0).UTC()

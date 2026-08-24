@@ -324,6 +324,7 @@ export interface SiteSettings {
   app_url: string;
   tos_url: string;
   logo: string;
+  stop_register: boolean;
   updated_at: string;
 }
 
@@ -334,6 +335,7 @@ export interface SiteSettingsInput {
   app_url: string;
   tos_url: string;
   logo: string;
+  stop_register: boolean;
 }
 
 export interface GuestConfig {
@@ -546,6 +548,12 @@ export class APIClient implements AdminAPI {
 
   async login(email: string, password: string): Promise<UserSession> {
     return this.request<UserSession>("/api/v1/auth/login", { method: "POST", body: { email, password } });
+  }
+
+  async register(email: string, password: string, passwordConfirmation: string): Promise<UserSession> {
+    return this.request<UserSession>("/api/v1/auth/register", {
+      method: "POST", body: { email, password, password_confirmation: passwordConfirmation }
+    });
   }
 
   async logout(): Promise<void> {
