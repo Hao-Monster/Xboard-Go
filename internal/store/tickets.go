@@ -215,6 +215,15 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 	if requireOpen && ticket.Status == TicketStatusClosed {
 		return Ticket{}, ErrTicketClosed
 	}
+	if requireOpen && ticket.LastReplyUserID == ticket.UserID {
+		var mustWait bool
+		if err := tx.QueryRowContext(ctx, `SELECT ticket_must_wait_reply FROM app_settings WHERE id = 1`).Scan(&mustWait); err != nil {
+			return Ticket{}, fmt.Errorf("read ticket reply policy: %w", err)
+		}
+		if mustWait {
+			return Ticket{}, ErrTicketReplyPending
+		}
+	}
 	var messageCount int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ?`, ticketID).Scan(&messageCount); err != nil {
 		return Ticket{}, fmt.Errorf("count ticket messages: %w", err)
@@ -222,10 +231,15 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 	if messageCount >= maxTicketMessages {
 		return Ticket{}, ErrTicketMessageLimit
 	}
-	if _, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO ticket_messages (ticket_id, user_id, message, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
-	`, ticketID, authorID, message, now.Unix(), now.Unix()); err != nil {
+	`, ticketID, authorID, message, now.Unix(), now.Unix())
+	if err != nil {
 		return Ticket{}, fmt.Errorf("insert ticket reply: %w", err)
+	}
+	messageID, err := result.LastInsertId()
+	if err != nil {
+		return Ticket{}, fmt.Errorf("read ticket reply id: %w", err)
 	}
 	replyStatus := TicketReplyWaiting
 	if authorID != ticket.UserID {
@@ -235,6 +249,11 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 		UPDATE tickets SET reply_status = ?, last_reply_user_id = ?, updated_at = ? WHERE id = ?
 	`, replyStatus, authorID, now.Unix(), ticketID); err != nil {
 		return Ticket{}, fmt.Errorf("update ticket reply state: %w", err)
+	}
+	if authorID != ticket.UserID {
+		if err := enqueueTicketMailTx(ctx, tx, ticket.UserID, messageID, now); err != nil {
+			return Ticket{}, err
+		}
 	}
 	updated, err := getTicketTx(ctx, tx, ticketID, false)
 	if err != nil {

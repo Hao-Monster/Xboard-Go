@@ -230,6 +230,73 @@ test("legacy ticket API preserves role, ownership, close, and reply state semant
   }
 });
 
+test("legacy ticket wait setting blocks consecutive user replies until an administrator answers", async ({ page }) => {
+  await loginLegacy(page);
+  const ticketResponse = page.waitForResponse((response) => response.url().includes("/ticket/fetch"));
+  await page.locator('a[href="#/user/ticket"]').click();
+  const authorization = (await ticketResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const fetchedSettings = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers: { authorization } });
+  expect(fetchedSettings.status()).toBe(200);
+  const site = readProperty(readProperty(await fetchedSettings.json() as unknown, "data"), "site");
+  const originalWaitSetting = Boolean(readProperty(site, "ticket_must_wait_reply"));
+  const unique = Date.now();
+  const email = `ticket-wait-${unique}@legacy.local`;
+  const password = `ticket-wait-password-${unique}`;
+  const subject = `Ticket wait ${unique}`;
+  try {
+    const enabled = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers: { authorization }, data: { ticket_must_wait_reply: 1 }
+    });
+    expect(enabled.status()).toBe(200);
+
+    const generated = await page.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization }, data: { email_prefix: `ticket-wait-${unique}`, email_suffix: "legacy.local", password }
+    });
+    expect(generated.status()).toBe(200);
+    const login = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), { data: { email, password } });
+    expect(login.status()).toBe(200);
+    const userAuthorization = readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data");
+    if (!userAuthorization) throw new Error("legacy user authorization is missing");
+    const userHeaders = { authorization: userAuthorization };
+
+    const created = await page.request.post(new URL("/api/v1/user/ticket/save", legacyURL).toString(), {
+      headers: userHeaders, data: { subject, level: 0, message: "Initial wait-policy message" }
+    });
+    expect(created.status()).toBe(200);
+    const list = await page.request.get(new URL("/api/v1/user/ticket/fetch", legacyURL).toString(), { headers: userHeaders });
+    const tickets = readProperty(await list.json() as unknown, "data");
+    if (!Array.isArray(tickets)) throw new Error("legacy user ticket list is not an array");
+    const ticketItems: unknown[] = tickets;
+    const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === subject);
+    const ticketID = Number(readProperty(item, "id"));
+    expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
+
+    const blocked = await page.request.post(new URL("/api/v1/user/ticket/reply", legacyURL).toString(), {
+      headers: userHeaders, data: { id: ticketID, message: "Consecutive user reply" }
+    });
+    expect(blocked.status()).toBe(400);
+    expect(readStringProperty(await blocked.json() as unknown, "message")).toBe("请等待技术支持回复");
+
+    const administratorReply = await page.request.post(legacyAdminAPI("/ticket/reply"), {
+      headers: { authorization }, data: { id: ticketID, message: "Administrator unlock reply" }
+    });
+    expect(administratorReply.status()).toBe(200);
+    const allowed = await page.request.post(new URL("/api/v1/user/ticket/reply", legacyURL).toString(), {
+      headers: userHeaders, data: { id: ticketID, message: "Allowed after administrator reply" }
+    });
+    expect(allowed.status()).toBe(200);
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), {
+      headers: { authorization }, data: { ticket_must_wait_reply: originalWaitSetting ? 1 : 0 }
+    });
+    const cleanup = `$u=App\\Models\\User::where("email","${email}")->first(); if($u){$ids=App\\Models\\Ticket::where("user_id",$u->id)->pluck("id"); App\\Models\\TicketMessage::whereIn("ticket_id",$ids)->delete(); App\\Models\\Ticket::whereIn("id",$ids)->delete(); $u->delete();}`;
+    execFileSync("docker", ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${cleanup}`], { stdio: "pipe" });
+  }
+});
+
 test("legacy knowledge runtime preserves visibility, placeholders, access markers, and public sharing", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacy(page);

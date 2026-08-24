@@ -16,8 +16,10 @@ import (
 
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
+	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
+	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/Hao-Monster/Xboard-Go/internal/webui"
 )
@@ -53,6 +55,11 @@ func main() {
 		logger.Error("migrate database", "error", err)
 		os.Exit(1)
 	}
+	settingsCipher, err := initializeSettingsCipher(ctx, database, settings.SettingsEncryptionKey)
+	if err != nil {
+		logger.Error("initialize settings encryption", "error", err)
+		os.Exit(1)
+	}
 
 	passwordHasher := security.DefaultPasswordHasher()
 	if settings.BootstrapAdminEmail != "" {
@@ -73,20 +80,24 @@ func main() {
 
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger)
 	go worker.Run(ctx)
+	mailWorker := mailer.NewWorker(database, settingsCipher, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger)
+	go mailWorker.Run(ctx)
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
-		Store:            database,
-		PasswordHasher:   passwordHasher,
-		PanelURL:         settings.PanelURL,
-		NodeRelease:      settings.NodeRelease,
-		CookieSecure:     settings.CookieSecure,
-		AllowedOrigins:   settings.AllowedOrigins,
-		Logger:           logger,
-		Context:          ctx,
-		WebSocketEnabled: settings.WebSocketEnabled,
-		WebSocketURL:     settings.WebSocketURL,
-		NodePushInterval: settings.NodePushInterval,
-		NodePullInterval: settings.NodePullInterval,
+		Store:             database,
+		PasswordHasher:    passwordHasher,
+		PanelURL:          settings.PanelURL,
+		NodeRelease:       settings.NodeRelease,
+		CookieSecure:      settings.CookieSecure,
+		AllowedOrigins:    settings.AllowedOrigins,
+		Logger:            logger,
+		Context:           ctx,
+		WebSocketEnabled:  settings.WebSocketEnabled,
+		WebSocketURL:      settings.WebSocketURL,
+		NodePushInterval:  settings.NodePushInterval,
+		NodePullInterval:  settings.NodePullInterval,
+		SettingsCipher:    settingsCipher,
+		SMTPAllowInsecure: settings.SMTPAllowInsecure,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)
@@ -119,6 +130,33 @@ func main() {
 		logger.Error("serve HTTP", "error", err)
 		os.Exit(1)
 	}
+}
+
+func initializeSettingsCipher(ctx context.Context, database *store.Store, key []byte) (*appsettings.Cipher, error) {
+	ciphertext, err := database.GetSMTPPasswordCipher(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(key) == 0 {
+		if len(ciphertext) > 0 {
+			return nil, errors.New("settings encryption key is required for the stored SMTP credential")
+		}
+		return nil, nil
+	}
+	cipherBox, err := appsettings.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	if len(ciphertext) > 0 {
+		plaintext, err := cipherBox.Decrypt(ciphertext)
+		if err != nil {
+			return nil, errors.New("settings encryption key cannot decrypt the stored SMTP credential")
+		}
+		for index := range plaintext {
+			plaintext[index] = 0
+		}
+	}
+	return cipherBox, nil
 }
 
 func runHealthcheck() error {

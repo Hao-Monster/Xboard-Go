@@ -265,6 +265,8 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     getAdminTicket: vi.fn(),
     replyAdminTicket: vi.fn(),
     closeAdminTicket: vi.fn(),
+    getTicketSettings: vi.fn(),
+    updateTicketSettings: vi.fn(),
     listNotices: vi.fn().mockResolvedValue([]),
     createNotice: vi.fn(),
     updateNotice: vi.fn(),

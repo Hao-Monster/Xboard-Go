@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 8 {
+	if version > 10 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -114,6 +114,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v8: %w", err)
 		}
 		version = 8
+	}
+	if version < 9 {
+		if _, err := tx.ExecContext(ctx, schemaV9); err != nil {
+			return fmt.Errorf("apply schema v9: %w", err)
+		}
+		version = 9
+	}
+	if version < 10 {
+		if _, err := tx.ExecContext(ctx, schemaV10); err != nil {
+			return fmt.Errorf("apply schema v10: %w", err)
+		}
+		version = 10
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -554,4 +566,61 @@ CREATE TABLE ticket_messages (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_ticket_messages_ticket ON ticket_messages(ticket_id, id);
+`
+
+const schemaV9 = `
+CREATE TABLE app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    app_name TEXT NOT NULL DEFAULT 'Xboard-Go' CHECK (length(app_name) BETWEEN 1 AND 100),
+    app_url TEXT NOT NULL DEFAULT '' CHECK (length(app_url) <= 2048),
+    ticket_must_wait_reply INTEGER NOT NULL DEFAULT 0 CHECK (ticket_must_wait_reply IN (0, 1)),
+    smtp_enabled INTEGER NOT NULL DEFAULT 0 CHECK (smtp_enabled IN (0, 1)),
+    smtp_host TEXT NOT NULL DEFAULT '' CHECK (length(smtp_host) <= 253),
+    smtp_port INTEGER NOT NULL DEFAULT 587 CHECK (smtp_port BETWEEN 1 AND 65535),
+    smtp_username TEXT NOT NULL DEFAULT '' CHECK (length(smtp_username) <= 320),
+    smtp_password_cipher BLOB CHECK (smtp_password_cipher IS NULL OR length(smtp_password_cipher) BETWEEN 1 AND 8192),
+    smtp_encryption TEXT NOT NULL DEFAULT 'starttls' CHECK (smtp_encryption IN ('starttls', 'tls', 'none')),
+    smtp_from_address TEXT NOT NULL DEFAULT '' CHECK (length(smtp_from_address) <= 320),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO app_settings (id) VALUES (1);
+
+CREATE TABLE ticket_mail_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_message_id INTEGER NOT NULL UNIQUE REFERENCES ticket_messages(id) ON DELETE CASCADE,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    available_at INTEGER NOT NULL,
+    claim_token TEXT,
+    claimed_at INTEGER,
+    sent_at INTEGER,
+    failed_at INTEGER,
+    last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 1024),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK ((claim_token IS NULL) = (claimed_at IS NULL)),
+    CHECK (sent_at IS NULL OR failed_at IS NULL)
+);
+CREATE INDEX idx_ticket_mail_outbox_due ON ticket_mail_outbox(available_at, id)
+    WHERE sent_at IS NULL AND failed_at IS NULL;
+
+CREATE TABLE ticket_mail_throttle (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    last_enqueued_at INTEGER NOT NULL
+);
+`
+
+const schemaV10 = `
+ALTER TABLE ticket_mail_outbox ADD COLUMN recipient TEXT NOT NULL DEFAULT '' CHECK (length(recipient) <= 320);
+ALTER TABLE ticket_mail_outbox ADD COLUMN ticket_subject TEXT NOT NULL DEFAULT '' CHECK (length(ticket_subject) <= 200);
+ALTER TABLE ticket_mail_outbox ADD COLUMN reply_message TEXT NOT NULL DEFAULT '' CHECK (length(reply_message) <= 10000);
+ALTER TABLE ticket_mail_outbox ADD COLUMN app_name TEXT NOT NULL DEFAULT '' CHECK (length(app_name) <= 100);
+ALTER TABLE ticket_mail_outbox ADD COLUMN app_url TEXT NOT NULL DEFAULT '' CHECK (length(app_url) <= 2048);
+UPDATE ticket_mail_outbox
+SET recipient = (SELECT u.email FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id JOIN users u ON u.id = t.user_id WHERE m.id = ticket_mail_outbox.ticket_message_id),
+    ticket_subject = (SELECT t.subject FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id WHERE m.id = ticket_mail_outbox.ticket_message_id),
+    reply_message = (SELECT m.message FROM ticket_messages m WHERE m.id = ticket_mail_outbox.ticket_message_id),
+    app_name = (SELECT app_name FROM app_settings WHERE id = 1),
+    app_url = (SELECT app_url FROM app_settings WHERE id = 1);
 `
