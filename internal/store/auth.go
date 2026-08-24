@@ -17,7 +17,7 @@ func (s *Store) BootstrapAdmin(ctx context.Context, email, passwordHash string, 
 	}
 
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE account_kind = 'human'`).Scan(&count); err != nil {
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	if count > 0 {
@@ -37,10 +37,10 @@ func (s *Store) BootstrapAdmin(ctx context.Context, email, passwordHash string, 
 func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned
+		SELECT id, email, password_hash, is_admin, banned, account_kind
 		FROM users
 		WHERE email = ? COLLATE NOCASE
-	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned)
+	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -53,10 +53,10 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error)
 func (s *Store) FindUserByID(ctx context.Context, userID int64) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned
+		SELECT id, email, password_hash, is_admin, banned, account_kind
 		FROM users
 		WHERE id = ?
-	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned)
+	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -86,7 +86,7 @@ func (s *Store) AuthenticateSession(ctx context.Context, tokenHash string, now t
 		SELECT s.id, u.id, u.email, u.is_admin, u.banned, s.csrf_hash, s.expires_at, s.last_used_at
 		FROM admin_sessions s
 		JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+		WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND u.account_kind = 'human'
 	`, tokenHash, now.Unix()).Scan(
 		&session.SessionID,
 		&session.UserID,

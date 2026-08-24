@@ -462,6 +462,88 @@ func TestMachineWebSocketBroadcastsAuthoritativeDevicesAcrossMachines(t *testing
 	}
 }
 
+func TestAdminUserBanPublishesIncrementalRemoval(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+
+	ctx := context.Background()
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "user-delta-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "user-delta-node", Type: "vless", Host: "delta.example.test", Port: "443", Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := loginAdmin(t, api)
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+		"email":"delta-user@example.test","password":"delta-password-123","group_id":7,
+		"transfer_enable":1000000,"speed_limit":10,"device_limit":2,"banned":false
+	}`)
+	if createdResponse.Code != http.StatusCreated {
+		t.Fatalf("create user status = %d body=%s", createdResponse.Code, createdResponse.Body)
+	}
+	var created struct {
+		Data store.AdminUser `json:"data"`
+	}
+	decodeResponse(t, createdResponse, &created)
+
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, created.Data.ID)
+
+	banResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.Data.ID), fmt.Sprintf(`{
+		"revision":%d,"email":"delta-user@example.test","group_id":7,"transfer_enable":1000000,
+		"expired_at":null,"speed_limit":10,"device_limit":2,"banned":true
+	}`, created.Data.Revision))
+	if banResponse.Code != http.StatusOK {
+		t.Fatalf("ban status = %d body=%s", banResponse.Code, banResponse.Body)
+	}
+	event := readWSEvent(t, connection)
+	if event.Event != "sync.user.delta" {
+		t.Fatalf("event = %q, want sync.user.delta", event.Event)
+	}
+	var delta struct {
+		NodeID int64               `json:"node_id"`
+		Action string              `json:"action"`
+		Users  []store.RuntimeUser `json:"users"`
+	}
+	decodeWSData(t, event.Data, &delta)
+	if delta.NodeID != node.ID || delta.Action != "remove" || len(delta.Users) != 1 || delta.Users[0].ID != created.Data.ID || delta.Users[0].UUID == "" {
+		t.Fatalf("delta payload = %#v", delta)
+	}
+	devicesEvent := readWSEvent(t, connection)
+	if devicesEvent.Event != "sync.devices" {
+		t.Fatalf("event after removal = %q, want sync.devices", devicesEvent.Event)
+	}
+	var devices struct {
+		NodeID int64              `json:"node_id"`
+		Users  map[int64][]string `json:"users"`
+	}
+	decodeWSData(t, devicesEvent.Data, &devices)
+	if devices.NodeID != node.ID {
+		t.Fatalf("device snapshot = %#v", devices)
+	}
+	if _, exists := devices.Users[created.Data.ID]; exists {
+		t.Fatalf("revoked user remained in device snapshot: %#v", devices.Users)
+	}
+}
+
 func TestWebSocketUnregisterFencesDeviceCleanupAgainstReconnect(t *testing.T) {
 	_, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()

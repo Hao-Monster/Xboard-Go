@@ -98,14 +98,14 @@ func TestSchemaV2MigrationPreservesFirstSliceData(t *testing.T) {
 	nodeID, _ := result.LastInsertId()
 
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v1 to v3) error = %v", err)
+		t.Fatalf("Migrate(v1 to v4) error = %v", err)
 	}
 	node, err := database.GetNode(ctx, nodeID)
 	if err != nil || node.Name != "preserved-node" || node.MachineID == nil || *node.MachineID != machineID || node.Rate != 1 || node.RuntimeConfigured {
 		t.Fatalf("migrated node = %#v, err=%v", node, err)
 	}
 	var version int
-	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 4 {
 		t.Fatalf("schema version = %d, err=%v", version, err)
 	}
 }
@@ -116,14 +116,14 @@ func TestMigrationRejectsNewerSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.db.Exec(`PRAGMA user_version = 4`); err != nil {
+	if _, err := database.db.Exec(`PRAGMA user_version = 5`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(context.Background()); err == nil {
 		t.Fatal("Migrate() accepted a schema created by a newer application version")
 	}
 	var version int
-	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 4 {
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 5 {
 		t.Fatalf("schema version after rejection = %d, err=%v", version, err)
 	}
 }

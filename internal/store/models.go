@@ -3,12 +3,14 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
 var (
 	ErrNotFound             = errors.New("not found")
 	ErrConflict             = errors.New("conflict")
+	ErrEmailInUse           = fmt.Errorf("%w: email already in use", ErrConflict)
 	ErrInvalidInput         = errors.New("invalid input")
 	ErrInvalidEnrollment    = errors.New("invalid or expired enrollment")
 	ErrInvalidCredential    = errors.New("invalid machine credential")
@@ -22,6 +24,74 @@ type User struct {
 	PasswordHash string
 	IsAdmin      bool
 	Banned       bool
+	AccountKind  string
+}
+
+const (
+	AccountKindHuman                = "human"
+	AccountKindInternalSubscription = "internal_subscription"
+)
+
+type AdminUser struct {
+	ID              int64      `json:"id"`
+	Email           string     `json:"email"`
+	IsAdmin         bool       `json:"is_admin"`
+	Banned          bool       `json:"banned"`
+	GroupID         *int64     `json:"group_id"`
+	TransferEnable  int64      `json:"transfer_enable"`
+	TrafficUpload   int64      `json:"traffic_upload"`
+	TrafficDownload int64      `json:"traffic_download"`
+	ExpiredAt       *time.Time `json:"expired_at"`
+	SpeedLimit      int        `json:"speed_limit"`
+	DeviceLimit     int        `json:"device_limit"`
+	OnlineCount     int        `json:"online_count"`
+	LastOnlineAt    *time.Time `json:"last_online_at"`
+	Revision        int64      `json:"revision"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type AdminUserPage struct {
+	Items      []AdminUser `json:"items"`
+	NextCursor string      `json:"next_cursor,omitempty"`
+}
+
+type AdminUserFilter struct {
+	Limit       int
+	Cursor      string
+	EmailPrefix string
+	Banned      *bool
+	GroupID     *int64
+}
+
+type CreateAdminUserInput struct {
+	Email          string
+	PasswordHash   string
+	GroupID        *int64
+	TransferEnable int64
+	ExpiredAt      *time.Time
+	SpeedLimit     int
+	DeviceLimit    int
+	Banned         bool
+}
+
+type UpdateAdminUserInput struct {
+	Revision       int64
+	Email          string
+	GroupID        *int64
+	TransferEnable int64
+	ExpiredAt      *time.Time
+	SpeedLimit     int
+	DeviceLimit    int
+	Banned         bool
+}
+
+type AdminUserMutation struct {
+	OldGroupID         *int64
+	NewGroupID         *int64
+	UUID               string
+	RuntimeChanged     bool
+	AccessStateCleared bool
 }
 
 type SessionUser struct {
@@ -155,6 +225,7 @@ type RuntimeUser struct {
 type CreateRuntimeUserInput struct {
 	Email           string
 	PasswordHash    string
+	AccountKind     string
 	UUID            string
 	GroupID         int64
 	TransferEnable  int64
