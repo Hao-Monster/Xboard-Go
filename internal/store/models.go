@@ -145,6 +145,63 @@ type TicketMailJob struct {
 	SMTPFromAddress    string
 }
 
+type SystemQueueStats struct {
+	Pending         int64      `json:"pending"`
+	Claimed         int64      `json:"claimed"`
+	Sent            int64      `json:"sent"`
+	Failed          int64      `json:"failed"`
+	OldestPendingAt *time.Time `json:"oldest_pending_at"`
+}
+
+type TicketMailFailure struct {
+	ID            int64     `json:"id"`
+	Recipient     string    `json:"recipient"`
+	TicketSubject string    `json:"ticket_subject"`
+	AttemptCount  int       `json:"attempt_count"`
+	LastError     string    `json:"last_error"`
+	CreatedAt     time.Time `json:"created_at"`
+	FailedAt      time.Time `json:"failed_at"`
+}
+
+type TicketMailFailurePage struct {
+	Items    []TicketMailFailure `json:"items"`
+	Total    int64               `json:"total"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"page_size"`
+}
+
+type AdminAuditLog struct {
+	ID                 int64     `json:"id"`
+	AdministratorID    *int64    `json:"administrator_id"`
+	AdministratorEmail string    `json:"administrator_email"`
+	Method             string    `json:"method"`
+	Route              string    `json:"route"`
+	StatusCode         int       `json:"status_code"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+type AdminAuditInput struct {
+	AdministratorID    int64
+	AdministratorEmail string
+	Method             string
+	Route              string
+	StatusCode         int
+}
+
+type AdminAuditFilter struct {
+	Page     int
+	PageSize int
+	Method   string
+	Query    string
+}
+
+type AdminAuditPage struct {
+	Items    []AdminAuditLog `json:"items"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}
+
 type Knowledge struct {
 	ID           int64     `json:"id"`
 	Language     string    `json:"language"`

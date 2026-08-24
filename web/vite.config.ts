@@ -30,9 +30,10 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: true,
     restoreMocks: true,
+    fileParallelism: false,
     coverage: {
       provider: "v8",
-      include: ["src/components/Overlay.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/users/*.tsx", "src/features/notices/*.tsx", "src/features/clients/*.tsx", "src/features/knowledge/*.tsx", "src/features/tickets/*.tsx", "src/features/user/*.tsx"],
+      include: ["src/components/Overlay.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/users/*.tsx", "src/features/notices/*.tsx", "src/features/clients/*.tsx", "src/features/knowledge/*.tsx", "src/features/tickets/*.tsx", "src/features/system/*.tsx", "src/features/user/*.tsx"],
       reporter: ["text", "json-summary"],
       thresholds: {
         statements: 70,

@@ -10,6 +10,7 @@ import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
 import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagementPage";
 import { TicketManagementPage } from "./features/tickets/TicketManagementPage";
+import { SystemOperationsPage } from "./features/system/SystemOperationsPage";
 
 const api = new APIClient();
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -17,7 +18,7 @@ const UserPortal = lazy(async () => import("./features/user/UserPortal").then((m
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<"servers" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "servers" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
 
   useEffect(() => {
     void api.session().then(setSession).catch(() => setSession(null)).finally(() => setLoading(false));
@@ -37,6 +38,7 @@ export function App() {
       <nav className="topbar" aria-label="管理端导航">
         <div className="brand"><span className="brand-mark">X</span><span>Xboard-Go</span></div>
         <div className="admin-nav">
+          <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => setPage("system")}>系统状态</button>
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => setPage("users")}>用户管理</button>
           <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>工单管理</button>
@@ -52,6 +54,7 @@ export function App() {
           <button className="button ghost compact" onClick={() => void api.logout().catch(() => undefined).then(() => setSession(null))}>退出</button>
         </div>
       </nav>
+      {page === "system" && <SystemOperationsPage api={api} />}
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
       {page === "tickets" && <TicketManagementPage api={api} />}

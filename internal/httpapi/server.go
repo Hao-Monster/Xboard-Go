@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -43,6 +44,7 @@ type Dependencies struct {
 	CatalogHTTPClient clientcatalog.HTTPDoer
 	SettingsCipher    *appsettings.Cipher
 	SMTPAllowInsecure bool
+	RuntimeTracker    *operations.Tracker
 }
 
 type server struct {
@@ -71,6 +73,7 @@ type server struct {
 	clientCatalog       *clientcatalog.Service
 	settingsCipher      *appsettings.Cipher
 	smtpAllowInsecure   bool
+	runtimeTracker      *operations.Tracker
 }
 
 type contextKey int
@@ -101,6 +104,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
+	}
+	if dependencies.RuntimeTracker == nil {
+		dependencies.RuntimeTracker = operations.NewTracker(dependencies.Now())
 	}
 	dummyHash, err := dependencies.PasswordHasher.Hash("xboard-dummy-login-password")
 	if err != nil {
@@ -142,6 +148,7 @@ func New(dependencies Dependencies) http.Handler {
 		}),
 		settingsCipher:    dependencies.SettingsCipher,
 		smtpAllowInsecure: dependencies.SMTPAllowInsecure,
+		runtimeTracker:    dependencies.RuntimeTracker,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -235,9 +242,72 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}/activation-schedule", api.getActivationSchedule)
 	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}/activation-schedule", api.saveActivationSchedule)
 	admin.HandleFunc("DELETE /api/v1/admin/nodes/{nodeID}/activation-schedule", api.deleteActivationSchedule)
-	root.Handle("/api/v1/admin/", api.requireSession(api.requireAdmin(api.requireCSRF(admin))))
+	admin.HandleFunc("GET /api/v1/admin/system/status", api.getSystemStatus)
+	admin.HandleFunc("GET /api/v1/admin/system/audit", api.listAdminAudit)
+	admin.HandleFunc("GET /api/v1/admin/system/mail-failures", api.listTicketMailFailures)
+	root.Handle("/api/v1/admin/", api.requireSession(api.requireAdmin(api.auditAdminMutations(api.requireCSRF(api.recoverPanic(admin))))))
 
 	return api.securityHeaders(api.recoverPanic(root))
+}
+
+func (s *server) auditAdminMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		default:
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		route := r.Pattern
+		if route == "" || route == "/api/v1/admin/" {
+			route = r.URL.Path
+		} else if _, patternRoute, found := strings.Cut(route, " "); found {
+			route = patternRoute
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
+		defer cancel()
+		if err := s.store.RecordAdminAudit(ctx, store.AdminAuditInput{
+			AdministratorID: session.UserID, AdministratorEmail: session.Email,
+			Method: r.Method, Route: route, StatusCode: recorder.statusCode(),
+		}, s.now()); err != nil {
+			s.logger.Warn("record administrator audit", "administrator_id", session.UserID, "method", r.Method, "route", route, "error", err)
+		}
+	})
+}
+
+type responseStatusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *responseStatusRecorder) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseStatusRecorder) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (w *responseStatusRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *responseStatusRecorder) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
 }
 
 func (s *server) allowServerRequest(w http.ResponseWriter, r *http.Request, limiter *requestLimitGroup, machineID int64) bool {

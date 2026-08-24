@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -14,16 +15,21 @@ type Worker struct {
 	now             func() time.Time
 	logger          *slog.Logger
 	lastTicketSweep time.Time
+	tracker         *operations.Tracker
 }
 
-func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logger) *Worker {
+func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
 	if interval <= 0 {
 		interval = time.Second
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: database, interval: interval, now: time.Now, logger: logger}
+	var tracker *operations.Tracker
+	if len(trackers) > 0 {
+		tracker = trackers[0]
+	}
+	return &Worker{store: database, interval: interval, now: time.Now, logger: logger, tracker: tracker}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -42,6 +48,9 @@ func (w *Worker) Run(ctx context.Context) {
 
 func (w *Worker) applyDue(ctx context.Context) {
 	now := w.now()
+	if w.tracker != nil {
+		defer func() { w.tracker.MarkSchedulerRun(w.now()) }()
+	}
 	w.closeStaleTickets(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {

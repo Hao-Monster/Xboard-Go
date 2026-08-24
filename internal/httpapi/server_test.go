@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -519,6 +520,9 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 	if err != nil {
 		t.Fatalf("NewCipher() error = %v", err)
 	}
+	runtimeTracker := operations.NewTracker(fixedNow().Add(-time.Hour))
+	runtimeTracker.MarkSchedulerRun(fixedNow())
+	runtimeTracker.MarkMailRun(fixedNow())
 	handler := New(Dependencies{
 		Store:             database,
 		PasswordHasher:    hasher,
@@ -528,6 +532,7 @@ func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http
 		CookieSecure:      false,
 		CatalogHTTPClient: catalogHTTPClient,
 		SettingsCipher:    settingsCipher,
+		RuntimeTracker:    runtimeTracker,
 	})
 	return handler, database
 }
