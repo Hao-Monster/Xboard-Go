@@ -317,6 +317,70 @@ export interface TicketSettingsInput {
   smtp_from_address: string;
 }
 
+export interface WorkerStatus {
+  healthy: boolean;
+  last_run_at: string | null;
+}
+
+export interface SystemQueueStats {
+  pending: number;
+  claimed: number;
+  sent: number;
+  failed: number;
+  oldest_pending_at: string | null;
+}
+
+export interface SystemStatus {
+  started_at: string;
+  uptime_seconds: number;
+  schema_version: number;
+  scheduler: WorkerStatus;
+  mail_worker: WorkerStatus;
+  mail_queue: SystemQueueStats;
+}
+
+export type AuditMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+
+export interface AdminAuditLog {
+  id: number;
+  administrator_id: number | null;
+  administrator_email: string;
+  method: AuditMethod;
+  route: string;
+  status_code: number;
+  created_at: string;
+}
+
+export interface AdminAuditPage {
+  items: AdminAuditLog[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface TicketMailFailure {
+  id: number;
+  recipient: string;
+  ticket_subject: string;
+  attempt_count: number;
+  last_error: string;
+  created_at: string;
+  failed_at: string;
+}
+
+export interface TicketMailFailurePage {
+  items: TicketMailFailure[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface SystemOperationsAPI {
+  getSystemStatus: () => Promise<SystemStatus>;
+  listAdminAudit: (page?: number, pageSize?: number, method?: AuditMethod | "", query?: string) => Promise<AdminAuditPage>;
+  listTicketMailFailures: (page?: number, pageSize?: number) => Promise<TicketMailFailurePage>;
+}
+
 export interface AdminTicketQuery {
   page?: number;
   page_size?: number;
@@ -399,6 +463,9 @@ export interface AdminAPI {
   deleteKnowledge: (id: number, revision: number) => Promise<void>;
   listClientCatalogAdmin: () => Promise<AdminClientCatalog>;
   saveClientCatalog: (revision: number, links: ClientCatalogOverrideInput) => Promise<AdminClientCatalog>;
+  getSystemStatus: () => Promise<SystemStatus>;
+  listAdminAudit: (page?: number, pageSize?: number, method?: AuditMethod | "", query?: string) => Promise<AdminAuditPage>;
+  listTicketMailFailures: (page?: number, pageSize?: number) => Promise<TicketMailFailurePage>;
 }
 
 interface Envelope<T> {
@@ -629,6 +696,21 @@ export class APIClient implements AdminAPI {
 
   async updateTicketSettings(input: TicketSettingsInput): Promise<TicketSettings> {
     return this.request<TicketSettings>("/api/v1/admin/ticket-settings", { method: "PUT", body: input });
+  }
+
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.request<SystemStatus>("/api/v1/admin/system/status");
+  }
+
+  async listAdminAudit(page = 1, pageSize = 20, method: AuditMethod | "" = "", query = ""): Promise<AdminAuditPage> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (method !== "") params.set("method", method);
+    if (query.trim() !== "") params.set("query", query.trim());
+    return this.request<AdminAuditPage>(`/api/v1/admin/system/audit?${params.toString()}`);
+  }
+
+  async listTicketMailFailures(page = 1, pageSize = 20): Promise<TicketMailFailurePage> {
+    return this.request<TicketMailFailurePage>(`/api/v1/admin/system/mail-failures?page=${page}&page_size=${pageSize}`);
   }
 
   async listNotices(): Promise<Notice[]> {

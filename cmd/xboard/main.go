@@ -17,6 +17,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
@@ -78,9 +79,10 @@ func main() {
 		}
 	}
 
-	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger)
+	runtimeTracker := operations.NewTracker(time.Now())
+	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger, runtimeTracker)
 	go worker.Run(ctx)
-	mailWorker := mailer.NewWorker(database, settingsCipher, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger)
+	mailWorker := mailer.NewWorker(database, settingsCipher, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
@@ -98,6 +100,7 @@ func main() {
 		NodePullInterval:  settings.NodePullInterval,
 		SettingsCipher:    settingsCipher,
 		SMTPAllowInsecure: settings.SMTPAllowInsecure,
+		RuntimeTracker:    runtimeTracker,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -26,16 +27,21 @@ type Worker struct {
 	sender   Sender
 	interval time.Duration
 	logger   *slog.Logger
+	tracker  *operations.Tracker
 }
 
-func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, sender Sender, interval time.Duration, logger *slog.Logger) *Worker {
+func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, sender Sender, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
 	if interval <= 0 {
 		interval = defaultPollPeriod
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: database, cipher: cipherBox, sender: sender, interval: interval, logger: logger}
+	var tracker *operations.Tracker
+	if len(trackers) > 0 {
+		tracker = trackers[0]
+	}
+	return &Worker{store: database, cipher: cipherBox, sender: sender, interval: interval, logger: logger, tracker: tracker}
 }
 
 func (worker *Worker) Run(ctx context.Context) {
@@ -55,8 +61,11 @@ func (worker *Worker) Run(ctx context.Context) {
 }
 
 func (worker *Worker) runBatch(ctx context.Context, now time.Time) {
+	worker.markHeartbeat()
+	defer worker.markHeartbeat()
 	for index := 0; index < maxMailBatch; index++ {
 		worked, err := worker.RunOnce(ctx, now)
+		worker.markHeartbeat()
 		if err != nil {
 			worker.logger.Warn("deliver ticket email", "error", err)
 		}
@@ -65,6 +74,12 @@ func (worker *Worker) runBatch(ctx context.Context, now time.Time) {
 		}
 	}
 	worker.logger.Warn("ticket email batch limit reached", "limit", maxMailBatch)
+}
+
+func (worker *Worker) markHeartbeat() {
+	if worker.tracker != nil {
+		worker.tracker.MarkMailRun(time.Now())
+	}
 }
 
 func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) {

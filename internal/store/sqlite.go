@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 10 {
+	if version > 12 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -126,6 +126,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v10: %w", err)
 		}
 		version = 10
+	}
+	if version < 11 {
+		if _, err := tx.ExecContext(ctx, schemaV11); err != nil {
+			return fmt.Errorf("apply schema v11: %w", err)
+		}
+		version = 11
+	}
+	if version < 12 {
+		if _, err := tx.ExecContext(ctx, schemaV12); err != nil {
+			return fmt.Errorf("apply schema v12: %w", err)
+		}
+		version = 12
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -623,4 +635,24 @@ SET recipient = (SELECT u.email FROM ticket_messages m JOIN tickets t ON t.id = 
     reply_message = (SELECT m.message FROM ticket_messages m WHERE m.id = ticket_mail_outbox.ticket_message_id),
     app_name = (SELECT app_name FROM app_settings WHERE id = 1),
     app_url = (SELECT app_url FROM app_settings WHERE id = 1);
+`
+
+const schemaV11 = `
+CREATE TABLE admin_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    administrator_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    administrator_email TEXT NOT NULL CHECK (length(administrator_email) BETWEEN 1 AND 320),
+    method TEXT NOT NULL CHECK (method IN ('POST', 'PUT', 'PATCH', 'DELETE')),
+    route TEXT NOT NULL CHECK (length(route) BETWEEN 1 AND 512),
+    status_code INTEGER NOT NULL CHECK (status_code BETWEEN 100 AND 599),
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_admin_audit_logs_created ON admin_audit_logs(id DESC);
+CREATE INDEX idx_admin_audit_logs_administrator ON admin_audit_logs(administrator_id, id DESC);
+CREATE INDEX idx_admin_audit_logs_method ON admin_audit_logs(method, id DESC);
+`
+
+const schemaV12 = `
+CREATE INDEX idx_ticket_mail_outbox_failed ON ticket_mail_outbox(failed_at DESC, id DESC)
+    WHERE failed_at IS NOT NULL;
 `

@@ -128,6 +128,82 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(errors).toEqual([]);
 });
 
+test("legacy system configuration exposes its observable sections and API groups", async ({ page }) => {
+  const errors = watchErrors(page);
+  await loginLegacy(page);
+
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const fetchedConfig = await configResponse;
+  expect(fetchedConfig.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
+  for (const section of ["站点设置", "安全设置", "订阅设置", "邀请&佣金设置", "节点配置", "邮件设置", "Telegram设置", "APP设置", "订阅模板"]) {
+    await expect(page.getByRole("link", { name: section, exact: true }).filter({ visible: true }), section).toBeVisible();
+  }
+
+  const authorization = fetchedConfig.request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  const allConfig = await page.request.get(legacyAdminAPI("/config/fetch"), { headers: { authorization } });
+  expect(allConfig.status()).toBe(200);
+  const payload: unknown = await allConfig.json();
+  const data = readProperty(payload, "data");
+  for (const group of ["invite", "site", "subscribe", "frontend", "server", "email", "telegram", "app", "safe", "subscribe_template"]) {
+    expect(readProperty(data, group), `legacy config group ${group}`).toBeDefined();
+  }
+  expect(Object.keys(readObjectProperty(data, "site"))).toEqual(expect.arrayContaining([
+    "logo", "force_https", "stop_register", "app_name", "app_description", "app_url", "subscribe_url",
+    "try_out_plan_id", "try_out_hour", "tos_url", "currency", "currency_symbol", "ticket_must_wait_reply"
+  ]));
+  expect(Object.keys(readObjectProperty(data, "safe"))).toEqual(expect.arrayContaining([
+    "email_verify", "safe_mode_enable", "secure_path", "email_whitelist_enable", "email_whitelist_suffix",
+    "captcha_enable", "captcha_type", "register_limit_by_ip_enable", "password_limit_enable"
+  ]));
+  expect(Object.keys(readObjectProperty(data, "email"))).toEqual(expect.arrayContaining([
+    "email_host", "email_port", "email_username", "email_password", "email_encryption", "email_from_address", "remind_mail_enable"
+  ]));
+  expect(errors).toEqual([]);
+});
+
+test("legacy dashboard exposes scheduler, queue, failed-job, and audit contracts", async ({ page }) => {
+  const errors = watchErrors(page);
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+
+  await page.locator('a[href="#/"]').click();
+  await expect(page.getByText("队列状态", { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("运行状态", { exact: true }).filter({ visible: true })).toBeVisible();
+
+  const headers = { authorization };
+  const [statusResponse, statsResponse, workloadResponse, failedResponse, auditResponse] = await Promise.all([
+    page.request.get(legacyAdminAPI("/system/getSystemStatus"), { headers }),
+    page.request.get(legacyAdminAPI("/system/getQueueStats"), { headers }),
+    page.request.get(legacyAdminAPI("/system/getQueueWorkload"), { headers }),
+    page.request.get(legacyAdminAPI("/system/getHorizonFailedJobs?current=1&page_size=20"), { headers }),
+    page.request.get(legacyAdminAPI("/system/getAuditLog?current=1&page_size=10"), { headers })
+  ]);
+  for (const response of [statusResponse, statsResponse, workloadResponse, failedResponse, auditResponse]) {
+    expect(response.status()).toBe(200);
+  }
+  const status = readObjectProperty(await statusResponse.json() as unknown, "data");
+  expect(Object.keys(status)).toEqual(expect.arrayContaining(["schedule", "horizon", "schedule_last_runtime"]));
+  const stats = readObjectProperty(await statsResponse.json() as unknown, "data");
+  expect(Object.keys(stats)).toEqual(expect.arrayContaining([
+    "failedJobs", "jobsPerMinute", "processes", "recentJobs", "status", "wait"
+  ]));
+  const workload = readProperty(await workloadResponse.json() as unknown, "data");
+  expect(Array.isArray(workload)).toBe(true);
+  const failed = await failedResponse.json() as unknown;
+  expect(Array.isArray(readProperty(failed, "data"))).toBe(true);
+  expect(typeof readProperty(failed, "total")).toBe("number");
+  const audit = await auditResponse.json() as unknown;
+  expect(Array.isArray(readProperty(audit, "data"))).toBe(true);
+  expect(typeof readProperty(audit, "total")).toBe("number");
+  expect(errors).toEqual([]);
+});
+
 test("legacy user ticket surface remains observable without frontend source", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacyUser(page);
@@ -519,6 +595,15 @@ function readArrayProperty(value: unknown, key: string): unknown[] | null {
 function readProperty(value: unknown, key: string): unknown {
   if (typeof value !== "object" || value === null) return undefined;
   return Reflect.get(value, key) as unknown;
+}
+
+function readObjectProperty(value: unknown, key: string): Record<string, unknown> {
+  const property = readProperty(value, key);
+  expect(typeof property).toBe("object");
+  expect(property).not.toBeNull();
+  expect(Array.isArray(property)).toBe(false);
+  if (typeof property !== "object" || property === null || Array.isArray(property)) return {};
+  return property as Record<string, unknown>;
 }
 
 function normalizeClientCatalog(value: unknown) {
