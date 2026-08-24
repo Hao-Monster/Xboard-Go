@@ -448,8 +448,16 @@ func (c testClient) request(t *testing.T, api http.Handler, method, path, body s
 }
 
 func loginAdmin(t *testing.T, api http.Handler) testClient {
+	return loginAs(t, api, "admin@example.test", "admin-password-123")
+}
+
+func loginAs(t *testing.T, api http.Handler, email, password string) testClient {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"admin-password-123"}`))
+	body, err := json.Marshal(map[string]string{"email": email, "password": password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

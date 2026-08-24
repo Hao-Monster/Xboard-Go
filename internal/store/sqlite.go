@@ -58,7 +58,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > 4 {
+	if version > 5 {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
 	if version < 1 {
@@ -84,6 +84,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v4: %w", err)
 		}
 		version = 4
+	}
+	if version < 5 {
+		if _, err := tx.ExecContext(ctx, schemaV5); err != nil {
+			return fmt.Errorf("apply schema v5: %w", err)
+		}
+		version = 5
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -379,4 +385,22 @@ CREATE INDEX idx_users_directory_kind_id ON users(account_kind, id DESC);
 CREATE INDEX idx_users_directory_banned_id ON users(account_kind, banned, id DESC);
 CREATE INDEX idx_users_directory_group_id ON users(account_kind, group_id, id DESC);
 CREATE INDEX idx_users_directory_email_id ON users(account_kind, email COLLATE NOCASE, id DESC);
+`
+
+const schemaV5 = `
+CREATE TABLE notices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sort_position INTEGER NOT NULL DEFAULT 0 CHECK (sort_position >= 0),
+    title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 255),
+    content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 262144),
+    image_url TEXT CHECK (image_url IS NULL OR length(image_url) BETWEEN 1 AND 2048),
+    tags_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array' AND json_array_length(tags_json) <= 20),
+    visible INTEGER NOT NULL DEFAULT 0 CHECK (visible IN (0, 1)),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_notices_sort ON notices(sort_position, id DESC);
+CREATE INDEX idx_notices_visible_sort ON notices(visible, sort_position, id DESC);
 `
