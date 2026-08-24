@@ -47,6 +47,11 @@ func TestHandlerServesFrontendAndDelegatesBackend(t *testing.T) {
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("missing asset status = %d", recorder.Code)
 	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/../index.html", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("traversal path status = %d", recorder.Code)
+	}
 }
 
 func TestHandlerRejectsUnsafeMethodsAndMissingBuild(t *testing.T) {

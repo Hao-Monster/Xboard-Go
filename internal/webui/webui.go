@@ -2,13 +2,22 @@ package webui
 
 import (
 	"errors"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const contentSecurityPolicy = "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+
+type staticFile struct {
+	fullPath string
+	name     string
+	modTime  time.Time
+}
 
 // New serves an immutable frontend build and delegates all API and realtime
 // traffic to api. The build directory is trusted release input, not writable
@@ -21,12 +30,15 @@ func New(root string, api http.Handler) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(filepath.Join(absoluteRoot, "index.html"))
-	if err != nil || !info.Mode().IsRegular() {
+	files, err := buildManifest(absoluteRoot)
+	if err != nil {
+		return nil, err
+	}
+	index, ok := files["index.html"]
+	if !ok {
 		return nil, errors.New("webui: index.html is missing")
 	}
 
-	files := http.FileServer(http.Dir(absoluteRoot))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isBackendPath(r.URL.Path) {
 			api.ServeHTTP(w, r)
@@ -39,29 +51,75 @@ func New(root string, api http.Handler) (http.Handler, error) {
 			return
 		}
 
-		requestPath := filepath.FromSlash(strings.TrimPrefix(r.URL.Path, "/"))
-		candidate := filepath.Join(absoluteRoot, requestPath)
-		relative, err := filepath.Rel(absoluteRoot, candidate)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		requestPath := strings.TrimPrefix(r.URL.Path, "/")
+		if requestPath == "" {
+			requestPath = "index.html"
+		}
+		if !fs.ValidPath(requestPath) {
 			http.NotFound(w, r)
 			return
 		}
-		if fileInfo, err := os.Stat(candidate); err == nil && fileInfo.Mode().IsRegular() {
-			if strings.HasPrefix(strings.TrimPrefix(r.URL.Path, "/"), "assets/") {
+		if file, exists := files[requestPath]; exists {
+			if strings.HasPrefix(requestPath, "assets/") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else if requestPath == "index.html" {
+				w.Header().Set("Cache-Control", "no-store")
 			} else {
 				w.Header().Set("Cache-Control", "public, max-age=3600")
 			}
-			files.ServeHTTP(w, r)
+			serveStaticFile(w, r, file)
 			return
 		}
-		if filepath.Ext(requestPath) != "" {
+		if path.Ext(requestPath) != "" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		http.ServeFile(w, r, filepath.Join(absoluteRoot, "index.html"))
+		serveStaticFile(w, r, index)
 	}), nil
+}
+
+func buildManifest(root string) (map[string]staticFile, error) {
+	files := make(map[string]staticFile)
+	err := filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return errors.New("webui: build contains a non-regular file")
+		}
+		relative, err := filepath.Rel(root, fullPath)
+		if err != nil {
+			return err
+		}
+		files[filepath.ToSlash(relative)] = staticFile{
+			fullPath: fullPath,
+			name:     info.Name(),
+			modTime:  info.ModTime(),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func serveStaticFile(w http.ResponseWriter, r *http.Request, file staticFile) {
+	content, err := os.Open(file.fullPath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer content.Close()
+	http.ServeContent(w, r, file.name, file.modTime, content)
 }
 
 func isBackendPath(path string) bool {
