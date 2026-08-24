@@ -164,6 +164,60 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(errors).toEqual([]);
 });
 
+test("legacy site identity settings persist and feed the public guest contract", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const originalResponse = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+  expect(originalResponse.status()).toBe(200);
+  const originalSite = readObjectProperty(readProperty(await originalResponse.json() as unknown, "data"), "site");
+  const original = {
+    app_name: readProperty(originalSite, "app_name"),
+    app_description: readProperty(originalSite, "app_description"),
+    app_url: readProperty(originalSite, "app_url"),
+    tos_url: readProperty(originalSite, "tos_url")
+  };
+  const unique = Date.now();
+  const changed = {
+    app_name: `Xboard parity ${unique}`,
+    app_description: `Observable legacy description ${unique}`,
+    app_url: `https://legacy-site-${unique}.example.test/`,
+    tos_url: `https://legacy-site-${unique}.example.test/terms/`
+  };
+
+  try {
+    const saved = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: changed });
+    expect(saved.status()).toBe(200);
+
+    const fetched = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+    expect(fetched.status()).toBe(200);
+    const site = readObjectProperty(readProperty(await fetched.json() as unknown, "data"), "site");
+    expect(readProperty(site, "app_name")).toBe(changed.app_name);
+    expect(readProperty(site, "app_description")).toBe(changed.app_description);
+    expect(readProperty(site, "app_url")).toBe(changed.app_url);
+    expect(readProperty(site, "tos_url")).toBe(changed.tos_url);
+
+    const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+    expect(guest.status()).toBe(200);
+    const publicConfig = readProperty(await guest.json() as unknown, "data");
+    expect(readProperty(publicConfig, "app_description")).toBe(changed.app_description);
+    expect(readProperty(publicConfig, "app_url")).toBe(changed.app_url);
+    expect(readProperty(publicConfig, "tos_url")).toBe(changed.tos_url);
+  } finally {
+    const restored = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    expect(restored.status()).toBe(200);
+    const verification = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+    expect(verification.status()).toBe(200);
+    const restoredSite = readObjectProperty(readProperty(await verification.json() as unknown, "data"), "site");
+    for (const [key, value] of Object.entries(original)) expect(readProperty(restoredSite, key)).toBe(value);
+  }
+});
+
 test("legacy dashboard exposes scheduler, queue, failed-job, and audit contracts", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacy(page);

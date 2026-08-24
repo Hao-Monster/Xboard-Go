@@ -129,6 +129,22 @@ type SaveTicketSettingsInput struct {
 	SMTPFromAddress     string
 }
 
+type SiteSettings struct {
+	Revision       int64     `json:"revision"`
+	AppName        string    `json:"app_name"`
+	AppDescription string    `json:"app_description"`
+	AppURL         string    `json:"app_url"`
+	TOSURL         string    `json:"tos_url"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type SaveSiteSettingsInput struct {
+	AppName        string
+	AppDescription string
+	AppURL         string
+	TOSURL         string
+}
+
 type TicketMailJob struct {
 	ID                 int64
 	Attempt            int

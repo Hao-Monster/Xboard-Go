@@ -178,6 +178,10 @@ h3 { margin-bottom: 12px; }
 .settings-fieldset > .small { margin: -6px 0 0; line-height: 1.5; }
 .ticket-settings-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(110px, .7fr); gap: 12px; }
 .ticket-settings-grid label { min-width: 0; }
+.site-settings-card { margin-top: 28px; border: 1px solid #2d3340; border-radius: 16px; padding: 24px; background: rgb(18 21 29 / 90%); box-shadow: 0 14px 35px rgb(0 0 0 / 20%); }
+.site-settings-form { margin-top: 20px; }
+.site-settings-url-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.site-settings-url-grid label { min-width: 0; }
 .settings-clear-secret { justify-self: start; }
 .security-note { align-self: center; border: 1px solid #2b6857; border-radius: 999px; padding: 7px 11px; color: #89e0c1; background: #143229; font-size: .75rem; font-weight: 700; white-space: nowrap; }
 .client-admin-layout { display: grid; grid-template-columns: minmax(190px, 240px) minmax(0, 1fr); gap: 18px; margin-top: 28px; align-items: start; }
@@ -260,6 +264,8 @@ textarea { min-height: 100px; resize: vertical; }
 .app-loading { color: #b6bdcb; }
 .login-card { width: min(420px, 100%); padding: 32px; border: 1px solid #303643; border-radius: 20px; background: rgb(19 22 29 / 94%); box-shadow: 0 30px 90px rgb(0 0 0 / 42%); }
 .login-card h1 { margin-top: 28px; font-size: 2rem; }
+.login-terms { margin: 20px 0 0; text-align: center; font-size: .78rem; }
+.login-terms a { color: #9db8ff; }
 
 @media (max-width: 720px) {
   .topbar { height: auto; min-height: 64px; flex-wrap: wrap; padding: 10px 16px; }
@@ -281,6 +287,8 @@ textarea { min-height: 100px; resize: vertical; }
 	.ticket-badges { justify-content: flex-start; }
 	.ticket-message { width: 92%; }
 	.ticket-settings-grid { grid-template-columns: 1fr; }
+	.site-settings-card { padding: 18px; }
+	.site-settings-url-grid { grid-template-columns: 1fr; }
   .user-filter-bar .search-field, .user-filter-bar .button { grid-column: 1 / -1; }
   .filter-bar .search-field { grid-column: 1 / -1; }
   .node-row { align-items: stretch; flex-direction: column; }
