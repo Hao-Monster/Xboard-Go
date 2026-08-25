@@ -93,6 +93,14 @@ func (s *server) createInvitation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) recordInvitationView(w http.ResponseWriter, r *http.Request) {
+	s.recordInvitationViewResponse(w, r, false)
+}
+
+func (s *server) legacyRecordInvitationView(w http.ResponseWriter, r *http.Request) {
+	s.recordInvitationViewResponse(w, r, true)
+}
+
+func (s *server) recordInvitationViewResponse(w http.ResponseWriter, r *http.Request, legacy bool) {
 	if !s.invitationViewRequests.take(requestIP(r), s.now()) {
 		w.Header().Set("Retry-After", "900")
 		writeAPIError(w, http.StatusTooManyRequests, "invitation_view_rate_limited", "请求过于频繁，请稍后重试", nil)
@@ -112,6 +120,10 @@ func (s *server) recordInvitationView(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+	if legacy {
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
 	}
 	writeSuccess(w, http.StatusOK, true)
 }

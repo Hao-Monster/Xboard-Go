@@ -27,15 +27,32 @@ func (s *server) legacyPassportQuickLoginLink(w http.ResponseWriter, r *http.Req
 		Authorization string `json:"auth_data"`
 		Redirect      string `json:"redirect"`
 	}
-	if !decodeJSON(w, r, &input) {
+	if r.ContentLength != 0 && !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.Authorization == "" {
+		input.Authorization = r.Header.Get("Authorization")
+	}
+	if input.Authorization == "" {
+		writeLegacyPassportAuthorizationError(w, false)
 		return
 	}
 	session, err := s.authenticateBearerValue(r.Context(), input.Authorization)
 	if err != nil {
-		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "登录凭证无效或已撤销", nil)
+		writeLegacyPassportAuthorizationError(w, true)
 		return
 	}
 	s.createQuickLoginLinkForUser(w, r, session.UserID, input.Redirect)
+}
+
+func writeLegacyPassportAuthorizationError(w http.ResponseWriter, expired bool) {
+	code := 401001
+	message := "授权失败，请先登录"
+	if expired {
+		code = 401200
+		message = "账号信息已过期，请重新登录"
+	}
+	writeJSON(w, http.StatusUnauthorized, map[string]any{"message": []any{code, message}})
 }
 
 func (s *server) createQuickLoginLinkForUser(w http.ResponseWriter, r *http.Request, userID int64, requestedRedirect string) {
@@ -61,7 +78,11 @@ func (s *server) createQuickLoginLinkForUser(w http.ResponseWriter, r *http.Requ
 	loginURL := s.loginLinkURL(token, redirect)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	if r.URL.Path == "/api/v1/user/getQuickLoginUrl" || r.URL.Path == "/api/v1/passport/auth/getQuickLoginUrl" {
+	if r.URL.Path == "/api/v1/passport/auth/getQuickLoginUrl" || r.URL.Path == "/api/v2/passport/auth/getQuickLoginUrl" {
+		writeLegacySuccess(w, http.StatusOK, loginURL)
+		return
+	}
+	if r.URL.Path == "/api/v1/user/getQuickLoginUrl" {
 		writeSuccess(w, http.StatusOK, loginURL)
 		return
 	}
@@ -69,7 +90,7 @@ func (s *server) createQuickLoginLinkForUser(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *server) requestMailLoginLink(w http.ResponseWriter, r *http.Request) {
-	legacyRoute := r.URL.Path == "/api/v1/passport/auth/loginWithMailLink"
+	legacyRoute := r.URL.Path == "/api/v1/passport/auth/loginWithMailLink" || r.URL.Path == "/api/v2/passport/auth/loginWithMailLink"
 	if !s.mailLoginRequests.take(requestIP(r), s.now()) {
 		w.Header().Set("Retry-After", "900")
 		writeAPIError(w, http.StatusTooManyRequests, "mail_login_rate_limited", "请求过于频繁，请稍后重试", nil)
@@ -82,8 +103,17 @@ func (s *server) requestMailLoginLink(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(input.Email))
+	rawEmail := input.Email
+	email := strings.ToLower(strings.TrimSpace(rawEmail))
 	if !validPasswordResetEmail(email) {
+		if legacyRoute {
+			message := "validation.email"
+			if strings.TrimSpace(rawEmail) == "" {
+				message = "validation.required"
+			}
+			writeLegacyValidationErrors(w, []legacyValidationField{{name: "email", message: message}})
+			return
+		}
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查邮箱输入", map[string]string{"email": "邮箱格式无效"})
 		return
 	}
@@ -163,11 +193,11 @@ func (s *server) requestMailLoginLink(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	status := http.StatusAccepted
 	if legacyRoute {
-		status = http.StatusOK
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
 	}
-	writeSuccess(w, status, true)
+	writeSuccess(w, http.StatusAccepted, true)
 }
 
 func (s *server) exchangeLoginLink(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +225,12 @@ func (s *server) legacyTokenToLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, s.loginLinkURL(token, normalizeLoginLinkRedirect(r.URL.Query().Get("redirect"))), http.StatusFound)
 		return
 	}
-	s.exchangeLoginLinkToken(w, r, r.URL.Query().Get("verify"), true)
+	verify := r.URL.Query().Get("verify")
+	if verify == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "Invalid request"})
+		return
+	}
+	s.exchangeLoginLinkToken(w, r, verify, true)
 }
 
 func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, token string, issueLegacyAccessToken bool) {
@@ -207,11 +242,19 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 	}
 	quickDigest, err := s.loginLinkProtector.TokenDigest(security.LoginLinkPurposeQuick, token)
 	if err != nil {
+		if issueLegacyAccessToken {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "令牌有误"})
+			return
+		}
 		writeAPIError(w, http.StatusBadRequest, "login_link_invalid", "登录链接无效或已过期", nil)
 		return
 	}
 	emailDigest, err := s.loginLinkProtector.TokenDigest(security.LoginLinkPurposeEmail, token)
 	if err != nil {
+		if issueLegacyAccessToken {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "令牌有误"})
+			return
+		}
 		writeAPIError(w, http.StatusBadRequest, "login_link_invalid", "登录链接无效或已过期", nil)
 		return
 	}
@@ -236,6 +279,10 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 	}
 	exchanged, err := s.store.ExchangeLoginLink(r.Context(), exchangeInput, s.now())
 	if errors.Is(err, store.ErrLoginLinkInvalid) {
+		if issueLegacyAccessToken {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "令牌有误"})
+			return
+		}
 		writeAPIError(w, http.StatusBadRequest, "login_link_invalid", "登录链接无效或已过期", nil)
 		return
 	}
@@ -245,7 +292,7 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 	}
 	s.setSessionCookies(w, credentials)
 	if issueLegacyAccessToken {
-		writeSuccess(w, http.StatusOK, legacyAuthData(exchanged.User, accessToken.Plaintext))
+		writeJSON(w, http.StatusOK, map[string]any{"data": legacyAuthData(exchanged.User, accessToken.Plaintext)})
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{

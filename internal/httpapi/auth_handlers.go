@@ -14,7 +14,7 @@ import (
 )
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.authenticatePasswordLogin(w, r)
+	user, ok := s.authenticatePasswordLogin(w, r, false)
 	if !ok {
 		return
 	}
@@ -29,7 +29,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) legacyLogin(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.authenticatePasswordLogin(w, r)
+	user, ok := s.authenticatePasswordLogin(w, r, true)
 	if !ok {
 		return
 	}
@@ -37,10 +37,10 @@ func (s *server) legacyLogin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeSuccess(w, http.StatusOK, legacyAuthData(user, credential.token.Plaintext))
+	writeLegacySuccess(w, http.StatusOK, legacyAuthData(user, credential.token.Plaintext))
 }
 
-func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Request) (store.User, bool) {
+func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Request, legacy bool) (store.User, bool) {
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -49,6 +49,12 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 		return store.User{}, false
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+	if legacy {
+		if fields := validateLegacyEmailPassword(input.Email, input.Password); len(fields) > 0 {
+			writeLegacyValidationErrors(w, fields)
+			return store.User{}, false
+		}
+	}
 	now := s.now()
 	attemptKey := requestIP(r)
 	if !s.loginAttempts.allowed(attemptKey, now) {
