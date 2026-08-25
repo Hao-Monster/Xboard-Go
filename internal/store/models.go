@@ -501,6 +501,60 @@ type KnowledgeViewer struct {
 	SubscriptionValid bool
 }
 
+var SubscriptionTemplateNames = [...]string{"singbox", "clash", "clashmeta", "stash", "surge", "surfboard"}
+
+type SubscriptionSettings struct {
+	Revision     int64             `json:"revision"`
+	Path         string            `json:"path"`
+	ShowInfo     bool              `json:"show_info"`
+	ShowProtocol bool              `json:"show_protocol"`
+	Templates    map[string]string `json:"templates"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+type SubscriptionRenderConfig struct {
+	Path         string
+	ShowInfo     bool
+	ShowProtocol bool
+	AppName      string
+	AppURL       string
+	Templates    map[string]string
+}
+
+type SaveSubscriptionSettingsInput struct {
+	Path         string
+	ShowInfo     bool
+	ShowProtocol bool
+	Templates    map[string]string
+}
+
+type SubscriptionAccount struct {
+	ID                int64
+	Email             string
+	UUID              string
+	GroupID           *int64
+	PlanID            *int64
+	TransferEnable    int64
+	TrafficUpload     int64
+	TrafficDownload   int64
+	ExpiredAt         *time.Time
+	NextResetAt       *time.Time
+	SpeedLimit        int
+	DeviceLimit       int
+	Banned            bool
+	SubscriptionToken string
+	CreatedAt         time.Time
+}
+
+type SubscriptionSecurityMutation struct {
+	PreviousUUID string
+	GroupID      *int64
+}
+
+func (account SubscriptionAccount) AvailableAt(now time.Time) bool {
+	return !account.Banned && account.TransferEnable != 0 && (account.ExpiredAt == nil || account.ExpiredAt.After(now))
+}
+
 const (
 	AccountKindHuman                = "human"
 	AccountKindInternalSubscription = "internal_subscription"
@@ -659,6 +713,33 @@ type Node struct {
 	MachineID         *int64     `json:"machine_id"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+type SubscriptionNode struct {
+	ID                int64
+	Type              string
+	ExternalCode      string
+	ParentID          *int64
+	Name              string
+	Tags              []string
+	Host              string
+	Port              string
+	ServerPort        int
+	ProtocolSettings  json.RawMessage
+	Show              bool
+	Enabled           bool
+	Sort              int
+	TransferEnable    int64
+	TrafficUpload     int64
+	TrafficDownload   int64
+	ConfiguredRate    float64
+	CreatedAt         time.Time
+	ParentCreatedAt   *time.Time
+	RateTimeEnabled   bool
+	RateTimeRanges    json.RawMessage
+	CustomOutbounds   json.RawMessage
+	CustomRoutes      json.RawMessage
+	CertificateConfig json.RawMessage
 }
 
 type NodeRuntime struct {

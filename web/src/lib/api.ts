@@ -472,6 +472,42 @@ export interface SiteSettingsInput {
   clear_turnstile_secret?: boolean;
 }
 
+export type SubscriptionTemplateName = "singbox" | "clash" | "clashmeta" | "stash" | "surge" | "surfboard";
+
+export interface SubscriptionSettings {
+  revision: number;
+  path: string;
+  show_info: boolean;
+  show_protocol: boolean;
+  templates: Record<SubscriptionTemplateName, string>;
+  updated_at: string;
+}
+
+export type SubscriptionSettingsInput = Omit<SubscriptionSettings, "updated_at">;
+
+export interface UserSubscription {
+  plan_id: number | null;
+  token: string;
+  expired_at: string | null;
+  u: number;
+  d: number;
+  transfer_enable: number;
+  email: string;
+  uuid: string;
+  device_limit: number;
+  speed_limit: number;
+  next_reset_at: string | null;
+  plan: { name: string; renew: boolean } | null;
+  subscribe_url: string;
+  reset_day: number | null;
+  subscription_valid: boolean;
+}
+
+export interface SubscriptionQR {
+  subscribe_url: string;
+  qr_code: string;
+}
+
 export interface GuestConfig {
   app_name: string;
   app_description: string | null;
@@ -987,6 +1023,26 @@ export class APIClient implements AdminAPI {
 
   async updateSiteSettings(input: SiteSettingsInput): Promise<SiteSettings> {
     return this.request<SiteSettings>("/api/v1/admin/site-settings", { method: "PUT", body: input });
+  }
+
+  async getSubscriptionSettings(): Promise<SubscriptionSettings> {
+    return this.request<SubscriptionSettings>("/api/v1/admin/subscription-settings");
+  }
+
+  async updateSubscriptionSettings(input: SubscriptionSettingsInput): Promise<SubscriptionSettings> {
+    return this.request<SubscriptionSettings>("/api/v1/admin/subscription-settings", { method: "PUT", body: input });
+  }
+
+  async getSubscription(): Promise<UserSubscription> {
+    return this.request<UserSubscription>("/api/v1/subscription");
+  }
+
+  async getSubscriptionQR(): Promise<SubscriptionQR> {
+    return this.request<SubscriptionQR>("/api/v1/subscription/qr");
+  }
+
+  async resetSubscriptionSecurity(): Promise<UserSubscription> {
+    return this.request<UserSubscription>("/api/v1/subscription/security/reset", { method: "POST", body: {} });
   }
 
   async getSystemStatus(): Promise<SystemStatus> {

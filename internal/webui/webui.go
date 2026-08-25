@@ -126,7 +126,20 @@ func isBackendPath(path string) bool {
 	return path == "/healthz" || path == "/ws" || strings.HasPrefix(path, "/api/") ||
 		path == "/client-download" || strings.HasPrefix(path, "/client-download/") ||
 		path == "/client-link" || strings.HasPrefix(path, "/client-link/") ||
-		path == "/guide" || strings.HasPrefix(path, "/guide/")
+		path == "/guide" || strings.HasPrefix(path, "/guide/") || isDynamicSubscriptionPath(path)
+}
+
+func isDynamicSubscriptionPath(path string) bool {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) != 2 || segments[0] == "" || len(segments[1]) != 32 {
+		return false
+	}
+	for _, character := range segments[1] {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func setSecurityHeaders(w http.ResponseWriter) {

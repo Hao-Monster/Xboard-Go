@@ -93,6 +93,24 @@ func TestHandlerRejectsUnsafeMethodsAndMissingBuild(t *testing.T) {
 	}
 }
 
+func TestDynamicSubscriptionPathsAreDelegatedWithoutCatchingOrdinarySPARoutes(t *testing.T) {
+	token := "0123456789abcdef0123456789abcdef"
+	for _, test := range []struct {
+		path string
+		want bool
+	}{
+		{path: "/s/" + token, want: true},
+		{path: "/custom-path/" + token, want: true},
+		{path: "/custom-path/ABCDEF0123456789ABCDEF0123456789", want: false},
+		{path: "/account/" + token + "/extra", want: false},
+		{path: "/account/profile", want: false},
+	} {
+		if got := isBackendPath(test.path); got != test.want {
+			t.Errorf("isBackendPath(%q) = %v, want %v", test.path, got, test.want)
+		}
+	}
+}
+
 func writeTestFile(t *testing.T, root, name, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(name))

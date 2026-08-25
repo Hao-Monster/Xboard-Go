@@ -455,6 +455,8 @@ func newTestStore(t *testing.T) *Store {
 func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TABLE subscription_templates;
+		DROP TABLE subscription_settings;
 		DROP INDEX idx_users_plan_capacity;
 		DROP INDEX idx_users_due_traffic_reset;
 		DROP TABLE traffic_reset_logs;

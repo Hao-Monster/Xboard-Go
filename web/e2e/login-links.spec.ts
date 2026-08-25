@@ -117,7 +117,7 @@ test("quick and mail login links are safe, one-time, and land on the legacy dest
     expect(new URL(unsafeURL).hash).toMatch(/^#\/login\?verify=[0-9a-f]{32}&redirect=dashboard$/);
     await logoutAndWait(page);
     await page.goto(unsafeURL);
-    await expect(page.getByRole("button", { name: "公告" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("button", { name: "我的订阅" })).toHaveAttribute("aria-current", "page");
     expect(page.url()).not.toContain("attacker.example.test");
     await logoutAndWait(page);
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, PlanOffer, Ticket, TicketInput, TicketPage, UserSession } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, PlanOffer, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -8,6 +8,7 @@ import { UserTicketsPage } from "../tickets/UserTicketsPage";
 import { BrandMark } from "../../components/BrandMark";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { PlanCatalogPage } from "../plans/PlanCatalogPage";
+import { UserSubscriptionPage } from "../subscription/UserSubscriptionPage";
 
 interface UserPortalAPI {
   listVisibleNotices: (page?: number) => Promise<NoticePage>;
@@ -23,6 +24,9 @@ interface UserPortalAPI {
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
   listPlanOffers: () => Promise<PlanOffer[]>;
+  getSubscription: () => Promise<UserSubscription>;
+  getSubscriptionQR: () => Promise<SubscriptionQR>;
+  resetSubscriptionSecurity: () => Promise<UserSubscription>;
   logout: () => Promise<void>;
 }
 
@@ -34,7 +38,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
   initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
-  const [page, setPage] = useState<"plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
+  const [page, setPage] = useState<"subscription" | "plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
   const [logoutError, setLogoutError] = useState("");
 
   const logout = async () => {
@@ -51,6 +55,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
     <nav className="topbar" aria-label="用户导航">
       <div className="brand"><BrandMark appName={siteName} logo={siteLogo} /><span>{siteName}</span></div>
       <div className="admin-nav">
+        <button className="nav-link" aria-current={page === "subscription" ? "page" : undefined} onClick={() => setPage("subscription")}>我的订阅</button>
         <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>订阅套餐</button>
         <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
         <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>
@@ -61,6 +66,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
       <div className="account"><span>{session.email}</span><button className="button ghost compact" onClick={() => void logout()}>退出</button></div>
     </nav>
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
+    {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
     {page === "plans" && <PlanCatalogPage api={api} />}
     {page === "notices" && <UserNoticesPage api={api} />}
     {page === "knowledge" && <UserKnowledgePage api={api} />}
@@ -70,12 +76,13 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
   </div>;
 }
 
-function portalPage(redirect: LoginLinkRedirect): "plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations" {
+function portalPage(redirect: LoginLinkRedirect): "subscription" | "plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations" {
   switch (redirect) {
     case "invite": return "invitations";
     case "knowledge": return "knowledge";
     case "ticket": return "tickets";
-    case "subscribe": return "plans";
-    default: return "notices";
+    case "subscribe": return "subscription";
+    case "dashboard": return "subscription";
+    default: return "subscription";
   }
 }

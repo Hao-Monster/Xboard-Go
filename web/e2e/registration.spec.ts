@@ -21,7 +21,7 @@ test("public user can register, receives a session, and enters the user portal",
   expect((await registration).status()).toBe(200);
 
   await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "公告", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的订阅", exact: true })).toBeVisible();
   await expectCurrentSession(page, email);
   const cookies = await context.cookies();
   const session = cookies.find((cookie) => cookie.name === "xboard_session");

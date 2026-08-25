@@ -19,7 +19,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .brand.large { font-size: 1.15rem; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: #0b0d12; background: linear-gradient(135deg, #a6bbff, #78e5cb); }
 .brand-logo { width: 30px; height: 30px; flex: 0 0 30px; object-fit: contain; }
-.admin-nav { display: flex; align-items: center; gap: 4px; }
+.admin-nav { display: flex; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
 .nav-link { min-height: 36px; border: 0; border-radius: 9px; padding: 0 13px; color: #9ea7ba; background: transparent; font-size: .82rem; }
 .nav-link:hover { color: #e8ebf2; background: #242a35; }
 .nav-link[aria-current="page"] { color: #cbd6ff; background: #27304a; }
@@ -190,6 +190,32 @@ h3 { margin-bottom: 12px; }
 .site-settings-form { margin-top: 20px; }
 .site-settings-url-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .site-settings-url-grid label { min-width: 0; }
+.subscription-settings-layout { display: grid; gap: 18px; margin-top: 28px; }
+.subscription-settings-layout .site-settings-card { margin-top: 0; }
+.subscription-options .form-stack { margin-top: 20px; }
+.subscription-template-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 20px 0 16px; }
+.subscription-template-tabs button { min-height: 36px; border: 1px solid #353d4c; border-radius: 999px; padding: 0 13px; color: #aeb6c7; background: #171c25; }
+.subscription-template-tabs button:hover { background: #222936; }
+.subscription-template-tabs button.active { color: #dfe5ff; border-color: #52628d; background: #2a3554; }
+.subscription-template-field { display: grid; gap: 8px; color: #cbd0dc; font-size: .84rem; font-weight: 650; }
+.subscription-template-field textarea { min-height: 440px; tab-size: 2; white-space: pre; overflow: auto; font-size: .78rem; line-height: 1.55; }
+.subscription-overview-card, .subscription-action-card { margin-top: 26px; border: 1px solid #2d3340; border-radius: 17px; padding: 24px; background: linear-gradient(145deg, rgb(26 31 42 / 94%), rgb(16 19 27 / 94%)); box-shadow: 0 14px 35px rgb(0 0 0 / 20%); }
+.subscription-plan-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.subscription-plan-heading strong { color: #8fe3cc; font-size: 2rem; }
+.subscription-overview-card progress { width: 100%; height: 14px; overflow: hidden; border: 0; border-radius: 999px; accent-color: #78d8bd; }
+.subscription-overview-card progress::-webkit-progress-bar { background: #252b37; }
+.subscription-overview-card progress::-webkit-progress-value { background: linear-gradient(90deg, #82a9ff, #78e5cb); }
+.subscription-traffic-copy { margin: 10px 0 20px; color: #cbd3df; font-size: .85rem; }
+.subscription-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.subscription-detail-grid div { display: grid; gap: 5px; padding: 13px; border-radius: 11px; background: #0e1117; }
+.subscription-detail-grid span { color: #858fa2; font-size: .7rem; }
+.subscription-detail-grid strong { overflow-wrap: anywhere; font-size: .85rem; }
+.subscription-action-card > label { display: grid; gap: 7px; margin-top: 18px; color: #cbd0dc; font-size: .8rem; font-weight: 650; }
+.subscription-action-card input { overflow: hidden; text-overflow: ellipsis; }
+.subscription-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.copy-status { color: #8fe3c3; }
+.subscription-import-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
+.subscription-import-actions .button { display: inline-flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
 .plan-state-list { display: grid; gap: 5px; }
 .plan-state-list label { display: inline-flex; align-items: center; gap: 6px; color: #bec5d2; font-size: .72rem; }
 .plan-state-list input { width: auto; accent-color: #9ab2ff; }
@@ -315,6 +341,11 @@ textarea { min-height: 100px; resize: vertical; }
 	.ticket-settings-grid { grid-template-columns: 1fr; }
 	.site-settings-card { padding: 18px; }
 	.site-settings-url-grid { grid-template-columns: 1fr; }
+	.subscription-template-field textarea { min-height: 320px; }
+	.subscription-detail-grid { grid-template-columns: 1fr; }
+	.subscription-actions { align-items: stretch; flex-direction: column; }
+	.subscription-actions .button { width: 100%; }
+	.subscription-import-actions { grid-template-columns: 1fr; }
 	.registration-policy-grid { grid-template-columns: 1fr; }
 	.plan-price-grid, .plan-card-grid { grid-template-columns: 1fr; }
   .user-filter-bar .search-field, .user-filter-bar .button { grid-column: 1 / -1; }
