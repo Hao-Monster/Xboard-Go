@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/backup"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
@@ -26,9 +30,15 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/webui"
 )
 
+var buildRevision = "local"
+
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(); err != nil {
+	commandContext, stopCommand := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	handled, commandErr := runCommand(commandContext, os.Args[1:], os.Stdout, os.Stderr, time.Now)
+	stopCommand()
+	if handled {
+		if commandErr != nil {
+			fmt.Fprintln(os.Stderr, commandErr)
 			os.Exit(1)
 		}
 		return
@@ -50,6 +60,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer database.Close()
+	if err := secureSQLiteFiles(settings.DatabaseDSN); err != nil {
+		logger.Error("secure database files", "error", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -174,6 +188,105 @@ func main() {
 		logger.Error("serve HTTP", "error", err)
 		os.Exit(1)
 	}
+}
+
+type commandResult struct {
+	Status   string          `json:"status"`
+	Action   string          `json:"action"`
+	Path     string          `json:"path"`
+	Manifest backup.Manifest `json:"manifest"`
+}
+
+func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	if len(arguments) == 0 {
+		return false, nil
+	}
+	if len(arguments) == 1 && arguments[0] == "healthcheck" {
+		return true, runHealthcheck()
+	}
+	if arguments[0] != "backup" {
+		return true, fmt.Errorf("unknown command %q", arguments[0])
+	}
+	if len(arguments) < 2 {
+		return true, errors.New("backup subcommand is required: create, verify, or restore")
+	}
+
+	switch arguments[1] {
+	case "create":
+		flags := flag.NewFlagSet("backup create", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		defaultDirectory := strings.TrimSpace(os.Getenv("XBOARD_BACKUP_DIRECTORY"))
+		if defaultDirectory == "" {
+			defaultDirectory = "/var/lib/xboard-backups"
+		}
+		defaultOutput := filepath.Join(defaultDirectory, "xboard-"+now().UTC().Format("20060102T150405Z")+".xbbackup")
+		output := flags.String("output", defaultOutput, "new backup archive path")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 {
+			return true, errors.New("backup create does not accept positional arguments")
+		}
+		manifest, err := backup.Create(ctx, config.DatabaseDSN(), *output, buildRevision, now())
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.create", Path: absolute, Manifest: manifest})
+
+	case "verify":
+		flags := flag.NewFlagSet("backup verify", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "backup archive path")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" {
+			return true, errors.New("backup verify requires --input and no positional arguments")
+		}
+		manifest, err := backup.Verify(ctx, *input)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.verify", Path: absolute, Manifest: manifest})
+
+	case "restore":
+		flags := flag.NewFlagSet("backup restore", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "backup archive path")
+		output := flags.String("output", "", "new restored database path")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" {
+			return true, errors.New("backup restore requires --input and --output and accepts no positional arguments")
+		}
+		manifest, err := backup.Restore(ctx, *input, *output)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.restore", Path: absolute, Manifest: manifest})
+
+	default:
+		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
+	}
+}
+
+func encodeCommandResult(output io.Writer, result commandResult) error {
+	encoder := json.NewEncoder(output)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(result)
 }
 
 func initializeInvitationProtector(ctx context.Context, database *store.Store, key []byte) (*security.InvitationProtector, error) {
@@ -306,13 +419,50 @@ func runHealthcheck() error {
 }
 
 func prepareSQLiteDirectory(dsn string) error {
-	if !strings.HasPrefix(dsn, "file:") || strings.Contains(dsn, "mode=memory") {
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
 		return nil
 	}
-	path := strings.TrimPrefix(strings.SplitN(dsn, "?", 2)[0], "file:")
 	directory := filepath.Dir(path)
 	if directory == "." || directory == "" {
 		return nil
 	}
-	return os.MkdirAll(directory, 0o700)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	return os.Chmod(directory, 0o700)
+}
+
+func secureSQLiteFiles(dsn string) error {
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
+		return nil
+	}
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Lstat(candidate)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", filepath.Base(candidate), err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular file", filepath.Base(candidate))
+		}
+		if err := os.Chmod(candidate, 0o600); err != nil {
+			return fmt.Errorf("restrict %s permissions: %w", filepath.Base(candidate), err)
+		}
+	}
+	return nil
+}
+
+func sqliteFilePath(dsn string) (string, bool) {
+	if !strings.HasPrefix(dsn, "file:") || strings.Contains(strings.ToLower(dsn), "mode=memory") {
+		return "", false
+	}
+	path := strings.TrimPrefix(strings.SplitN(dsn, "?", 2)[0], "file:")
+	if path == "" || path == ":memory:" {
+		return "", false
+	}
+	return path, true
 }
