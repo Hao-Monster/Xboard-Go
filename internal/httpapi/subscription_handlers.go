@@ -1,9 +1,7 @@
 package httpapi
 
 import (
-	"bytes"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -150,7 +148,7 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		w.Header().Set(name, value)
 	}
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(w, bytes.NewReader(response.Body)); err != nil {
+	if _, err := w.Write(response.Body); err != nil {
 		s.logger.Debug("write subscription response", "user_id", account.ID, "client", client.Kind.String(), "error", err)
 	}
 }
