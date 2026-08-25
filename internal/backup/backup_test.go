@@ -174,6 +174,24 @@ func TestCreateRejectsFutureSchemaAndNonFileDSN(t *testing.T) {
 	}
 }
 
+func TestValidateSQLiteRejectsNonXboardSchema(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "not-xboard.db")
+	database, err := sql.Open("sqlite", "file:"+databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TABLE unrelated (id INTEGER PRIMARY KEY); PRAGMA user_version = 23;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := validateSQLite(context.Background(), databasePath); err == nil || !strings.Contains(err.Error(), "Xboard schema") {
+		t.Fatalf("validateSQLite(non-Xboard schema) error = %v", err)
+	}
+}
+
 func TestCreateRejectsForeignKeyViolationsAndCancellationLeavesNoOutput(t *testing.T) {
 	directory := t.TempDir()
 	databasePath := filepath.Join(directory, "invalid.db")

@@ -33,6 +33,52 @@ const (
 	backupDirectoryMode = 0o700
 )
 
+var requiredXboardTables = []struct {
+	name       string
+	minVersion int
+}{
+	{"users", 1},
+	{"admin_sessions", 1},
+	{"server_machines", 1},
+	{"nodes", 1},
+	{"server_machine_credentials", 1},
+	{"server_machine_enrollments", 1},
+	{"server_machine_load_history", 1},
+	{"server_activation_schedules", 1},
+	{"node_group_memberships", 2},
+	{"node_report_receipts", 2},
+	{"node_report_traffic_stage", 2},
+	{"user_traffic_stats", 2},
+	{"node_traffic_stats", 2},
+	{"node_device_ips", 2},
+	{"node_user_online", 2},
+	{"node_runtime_state", 2},
+	{"server_groups", 3},
+	{"routing_rules", 3},
+	{"node_route_memberships", 3},
+	{"notices", 5},
+	{"client_catalog_config", 6},
+	{"client_catalog_links", 6},
+	{"knowledge", 7},
+	{"tickets", 8},
+	{"ticket_messages", 8},
+	{"app_settings", 9},
+	{"ticket_mail_outbox", 9},
+	{"ticket_mail_throttle", 9},
+	{"admin_audit_logs", 11},
+	{"registration_ip_limits", 16},
+	{"password_reset_challenges", 17},
+	{"password_reset_mail_outbox", 17},
+	{"registration_email_challenges", 18},
+	{"registration_email_mail_outbox", 18},
+	{"invitation_codes", 19},
+	{"login_link_tokens", 20},
+	{"mail_login_request_limits", 20},
+	{"login_link_mail_outbox", 20},
+	{"access_tokens", 21},
+	{"login_failure_limits", 22},
+}
+
 type Manifest struct {
 	FormatVersion  int       `json:"format_version"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -363,6 +409,9 @@ func validateSQLite(ctx context.Context, path string) (int, int64, error) {
 	if schemaVersion < 1 || schemaVersion > store.CurrentSchemaVersion() {
 		return 0, 0, fmt.Errorf("unsupported schema version %d (supported 1-%d)", schemaVersion, store.CurrentSchemaVersion())
 	}
+	if err := validateXboardSchema(ctx, database, schemaVersion); err != nil {
+		return 0, 0, err
+	}
 	rows, err := database.QueryContext(ctx, `PRAGMA integrity_check`)
 	if err != nil {
 		return 0, 0, err
@@ -401,6 +450,37 @@ func validateSQLite(ctx context.Context, path string) (int, int64, error) {
 		return 0, 0, errors.New("SQLite foreign key check failed")
 	}
 	return schemaVersion, info.Size(), nil
+}
+
+func validateXboardSchema(ctx context.Context, database *sql.DB, schemaVersion int) error {
+	rows, err := database.QueryContext(ctx, `SELECT name FROM sqlite_schema WHERE type = 'table'`)
+	if err != nil {
+		return fmt.Errorf("inspect Xboard schema: %w", err)
+	}
+	tables := make(map[string]struct{}, len(requiredXboardTables))
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Xboard schema: %w", err)
+		}
+		tables[name] = struct{}{}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Xboard schema: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Xboard schema: %w", err)
+	}
+	for _, required := range requiredXboardTables {
+		if required.minVersion > schemaVersion {
+			continue
+		}
+		if _, exists := tables[required.name]; !exists {
+			return fmt.Errorf("Xboard schema version %d is missing required table %q", schemaVersion, required.name)
+		}
+	}
+	return nil
 }
 
 func validateManifest(manifest Manifest) error {
