@@ -22,6 +22,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
+	"github.com/Hao-Monster/Xboard-Go/internal/maintenance"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -197,12 +198,23 @@ type commandResult struct {
 	Manifest backup.Manifest `json:"manifest"`
 }
 
+type maintenanceCommandResult struct {
+	Status string                    `json:"status"`
+	Action string                    `json:"action"`
+	AsOf   time.Time                 `json:"as_of"`
+	Limit  int                       `json:"limit"`
+	Result maintenance.CleanupResult `json:"result"`
+}
+
 func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
 		return false, nil
 	}
 	if len(arguments) == 1 && arguments[0] == "healthcheck" {
 		return true, runHealthcheck()
+	}
+	if arguments[0] == "maintenance" {
+		return runMaintenanceCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] != "backup" {
 		return true, fmt.Errorf("unknown command %q", arguments[0])
@@ -281,6 +293,67 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	default:
 		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
 	}
+}
+
+func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	if len(arguments) == 0 {
+		return true, errors.New("maintenance subcommand is required: cleanup-expired")
+	}
+	if arguments[0] != "cleanup-expired" {
+		return true, fmt.Errorf("unknown maintenance subcommand %q", arguments[0])
+	}
+	flags := flag.NewFlagSet("maintenance cleanup-expired", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	limit := flags.Int("limit", maintenance.DefaultCleanupLimit, "maximum rows processed per cleanup category")
+	if err := flags.Parse(arguments[1:]); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance cleanup-expired does not accept positional arguments")
+	}
+	if *limit < 1 || *limit > maintenance.MaxCleanupLimit {
+		return true, fmt.Errorf("maintenance cleanup-expired --limit must be between 1 and %d", maintenance.MaxCleanupLimit)
+	}
+
+	dsn := config.DatabaseDSN()
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
+		return true, errors.New("maintenance cleanup-expired requires a file-backed SQLite database")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return true, fmt.Errorf("inspect maintenance database: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return true, errors.New("maintenance database must be a regular file")
+	}
+	database, err := store.OpenSQLite(dsn)
+	if err != nil {
+		return true, err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = database.Close()
+		}
+	}()
+	if err := database.ValidateCurrentSchema(ctx); err != nil {
+		return true, fmt.Errorf("maintenance cleanup-expired schema validation failed: %w; run the versioned migration workflow first", err)
+	}
+	asOf := now().UTC()
+	result, err := maintenance.CleanupExpired(ctx, database, asOf, *limit)
+	if err != nil {
+		return true, err
+	}
+	if err := database.Close(); err != nil {
+		return true, fmt.Errorf("close maintenance database: %w", err)
+	}
+	closed = true
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(maintenanceCommandResult{
+		Status: "success", Action: "maintenance.cleanup-expired", AsOf: asOf, Limit: *limit, Result: result,
+	})
 }
 
 func encodeCommandResult(output io.Writer, result commandResult) error {
