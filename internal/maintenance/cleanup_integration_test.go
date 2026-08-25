@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -108,6 +109,67 @@ func TestCleanupExpiredWithSQLitePreservesLiveState(t *testing.T) {
 	var foreignKeyViolations int
 	if err := raw.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&foreignKeyViolations); err != nil || foreignKeyViolations != 0 {
 		t.Fatalf("foreign_key_check = %d, %v", foreignKeyViolations, err)
+	}
+}
+
+func TestCleanupExpiredSharesWorkSafelyWithSchedulerPrune(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 25, 16, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "concurrent-cleanup.db")
+	database, err := store.OpenSQLite("file:" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.ExecContext(ctx, `
+		WITH RECURSIVE entries(value) AS (
+			VALUES(1) UNION ALL SELECT value + 1 FROM entries WHERE value < 100
+		)
+		INSERT INTO login_failure_limits (credential_digest, failure_count, expires_at, updated_at)
+		SELECT randomblob(32), 1, ?, ? FROM entries
+	`, now.Unix(), now.Add(-time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	wait.Add(2)
+	var commandResult CleanupResult
+	var commandErr error
+	var schedulerRemoved int64
+	var schedulerErr error
+	go func() {
+		defer wait.Done()
+		<-start
+		commandResult, commandErr = CleanupExpired(ctx, database, now, 100)
+	}()
+	go func() {
+		defer wait.Done()
+		<-start
+		schedulerRemoved, schedulerErr = database.PruneExpiredLoginFailureLimits(ctx, now, 100)
+	}()
+	close(start)
+	wait.Wait()
+	if commandErr != nil || schedulerErr != nil {
+		t.Fatalf("concurrent cleanup errors = command %v, scheduler %v", commandErr, schedulerErr)
+	}
+	if commandResult.LoginFailureLimitsPruned+schedulerRemoved != 100 {
+		t.Fatalf("concurrent cleanup total = %d + %d, want 100", commandResult.LoginFailureLimitsPruned, schedulerRemoved)
+	}
+	var remaining int
+	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_failure_limits`).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("concurrent cleanup left %d rows", remaining)
 	}
 }
 
