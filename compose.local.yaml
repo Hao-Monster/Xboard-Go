@@ -9,6 +9,8 @@ services:
       - "127.0.0.1:${XBOARD_GO_PORT:-7080}:8080"
     environment:
       XBOARD_PANEL_URL: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
+      XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
       XBOARD_ALLOWED_ORIGINS: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
       XBOARD_BOOTSTRAP_ADMIN_EMAIL: ${XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL:-admin@xboard-go.local}
       XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
@@ -37,6 +39,29 @@ services:
     depends_on:
       mailpit:
         condition: service_started
+
+  maintenance:
+    profiles: [maintenance]
+    image: xboard-go:local
+    build:
+      context: .
+      args:
+        APP_REVISION: ${XBOARD_GO_REVISION:-local}
+    environment:
+      XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
+    volumes:
+      - xboard-go-data:/var/lib/xboard
+      - xboard-go-backups:/var/lib/xboard-backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    restart: "no"
 
   mailpit:
     image: ghcr.io/axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
@@ -92,6 +117,7 @@ services:
 
 volumes:
   xboard-go-data:
+  xboard-go-backups:
 
 secrets:
   bootstrap_admin_password:

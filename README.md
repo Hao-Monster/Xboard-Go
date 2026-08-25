@@ -6,7 +6,7 @@ The project preserves verified business behavior while replacing inaccessible le
 
 The implemented vertical slices cover administrator authentication and account-session security, atomic public email/password registration with administrator-controlled registration policies and optional email verification, invitation-code registration and referral relationship tracking, email-code password recovery, a cursor-paginated user directory and access-state editor, server-machine and node association management, one-time hashed machine enrollment credentials, load reporting, revision-safe daily activation schedules, server permission groups, panel routing rules, notices, multilingual knowledge management and public sharing, a validated cross-platform client download catalog, user and administrator ticket lifecycles, system runtime status and administrator audit, and the Xboard-Node runtime control-plane contract. Password authentication has administrator-configurable persistent error thresholds and expiry windows, normalized identity keys that cannot be bypassed with case or whitespace changes, account-enumeration-resistant failures, and an independent bounded source-IP safeguard. Account holders can list and revoke their active sessions; password and other security-sensitive account changes atomically revoke every session. Registration applies bounded Argon2id concurrency, per-address resource limits, strict origin checks for browsers, normalized email-domain whitelists, scoped Gmail-alias protection, a persistent successful-registration IP quota, Google reCAPTCHA v2/v3 or Cloudflare Turnstile server verification, purpose-isolated six-digit verification codes with durable cooldown, lockout, encrypted outbox delivery and transactional one-time consumption, and CSPRNG invitation codes protected by keyed digests and authenticated encryption at rest. CAPTCHA server credentials are purpose-isolated under authenticated encryption, never returned by the administration API, and enforced on direct registration plus registration and recovery email-code requests; v3 score and action are verified server-side and provider failures fail closed. Invitation relationships and single-use code consumption commit atomically with the user and initial session; reusable codes preserve the verified legacy behavior. Password recovery uses cryptographically generated six-digit codes, persistent cooldown and lockout state, account-enumeration-resistant responses, authenticated encryption at rest, a durable mail outbox, one-time transactional consumption, and bounded password hashing; a successful reset revokes every existing session. The verified Xboard `/api/v1` and `/api/v2` Passport surface remains available for password login and registration, email verification and recovery, mail and quick login links, one-time token exchange, and invitation-view tracking with its legacy validation and response contracts. Internally these compatibility routes preserve purpose isolation, enumeration resistance, bounded abuse controls, transactional credential handling, trusted browser origins, and a redirect allowlist instead of reproducing the legacy open-redirect behavior. Policy checks are repeated transactionally so account, initial session, verification-code consumption, invitation consumption and relationship creation, and IP counter changes cannot bypass concurrent configuration changes or commit partially; expired IP, login-failure, and email-challenge state is removed by bounded background maintenance. Node configuration, selected routing rules, and user snapshots are available over authenticated HTTP and WebSocket transports; user access changes use bounded per-user deltas while traffic reports are transactionally persisted with durable idempotency, node-group authorization, bounded inputs, and cross-node device-state synchronization. Referenced groups and routes are protected by transactional integrity checks so administrative changes cannot leave dangling node configuration. Knowledge articles support categories, languages, optimistic editing, visibility and ordering, subscriber-only regions, user-specific placeholders, and server-rendered public pages with strict HTML sanitization and content-security headers. Client downloads use stable panel routes, strict HTTPS validation, repository-pinned GitHub release resolution, bounded caching, and administrator-configurable action links. Tickets enforce ownership, one-open-ticket-per-user, bounded threads and inputs, role-specific reply rules, automatic stale closure, durable rate-limited reply notifications, encrypted SMTP credentials, and bounded delivery retries. The operations page reports scheduler and mail-worker heartbeats, database schema and combined mail-queue health, failed-delivery metadata, and an append-only mutation audit that deliberately excludes request bodies, verification codes, and credentials.
 
-The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog.
+The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database.
 
 The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
 
@@ -42,3 +42,37 @@ registration-verification mail. The application intentionally refuses to start
 if the key is missing or cannot authenticate a stored SMTP/CAPTCHA credential or
 invitation code; protected email and invitation operations remain unavailable
 without the key.
+
+## Local database backup and recovery
+
+The Compose profile mounts a separate `xboard-go-backups` volume. Creating a
+backup is online: SQLite produces a transactionally consistent snapshot while
+the local application remains available. Every `.xbbackup` archive contains a
+versioned manifest and a compact SQLite snapshot; both create and verify run a
+full SQLite integrity and foreign-key check without loading the database into
+memory.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup create
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup verify \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup
+```
+
+Recovery deliberately writes a new database file and refuses to overwrite an
+existing path. Stop the application, restore into a new file, then explicitly
+select that file. Returning to the original DSN is the rollback path.
+
+```bash
+docker compose -f compose.local.yaml stop xboard-go
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup restore \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --output /var/lib/xboard/restored.db
+XBOARD_DATABASE_DSN=file:/var/lib/xboard/restored.db \
+  docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`; retain
+that secret independently for as long as encrypted settings or pending tokens
+exist. Copy verified archives to independently protected storage when testing
+a real disaster-recovery plan. These commands are currently intended only for
+local and isolated test environments.

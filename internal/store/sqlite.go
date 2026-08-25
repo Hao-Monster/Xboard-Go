@@ -13,6 +13,10 @@ import (
 
 const currentSchemaVersion = 23
 
+func CurrentSchemaVersion() int {
+	return currentSchemaVersion
+}
+
 type Store struct {
 	db      *sql.DB
 	writeMu sync.Mutex

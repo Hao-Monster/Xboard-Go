@@ -92,7 +92,7 @@ func Load() (Config, error) {
 
 	config := Config{
 		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
-		DatabaseDSN:            envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db"),
+		DatabaseDSN:            DatabaseDSN(),
 		PanelURL:               panelURL,
 		CookieSecure:           cookieSecure,
 		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
@@ -173,6 +173,10 @@ func Load() (Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func DatabaseDSN() string {
+	return envOrDefault("XBOARD_DATABASE_DSN", "file:./data/xboard.db")
 }
 
 func readSecretEnv(name string) (string, error) {

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -26,6 +27,30 @@ func TestPrepareSQLiteDirectory(t *testing.T) {
 	}
 	if err := prepareSQLiteDirectory("file:memory?mode=memory&cache=shared"); err != nil {
 		t.Fatalf("memory DSN should be a no-op: %v", err)
+	}
+	if err := os.WriteFile(databasePath, []byte("database"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(databasePath+"-wal", []byte("wal"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureSQLiteFiles("file:" + databasePath); err != nil {
+		t.Fatalf("secureSQLiteFiles() error = %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		for _, path := range []string{filepath.Dir(databasePath), databasePath, databasePath + "-wal"} {
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := os.FileMode(0o600)
+			if info.IsDir() {
+				want = 0o700
+			}
+			if info.Mode().Perm() != want {
+				t.Fatalf("%s permissions = %o, want %o", path, info.Mode().Perm(), want)
+			}
+		}
 	}
 }
 
