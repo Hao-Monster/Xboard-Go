@@ -106,6 +106,8 @@ func TestInitializeLoginLinkProtectorFailsClosedForQueuedMail(t *testing.T) {
 	if _, err := database.UpdateSiteSettings(ctx, owner.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
 		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		PasswordLimitEnabled: siteSettings.PasswordLimitEnabled, PasswordLimitCount: siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:  siteSettings.PasswordLimitMinutes,
 		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
 	}, now); err != nil {
 		t.Fatal(err)

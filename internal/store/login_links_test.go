@@ -273,6 +273,8 @@ func siteSettingsInput(settings SiteSettings) SaveSiteSettingsInput {
 		EmailWhitelistEnabled: settings.EmailWhitelistEnabled, EmailWhitelistSuffixes: settings.EmailWhitelistSuffixes,
 		GmailAliasLimitEnabled: settings.GmailAliasLimitEnabled, RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount: settings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes:   settings.PasswordLimitMinutes,
 		InvitationForceEnabled: settings.InvitationForceEnabled, InvitationCodeLimit: settings.InvitationCodeLimit,
 		InvitationNeverExpire: settings.InvitationNeverExpire, MailLoginEnabled: settings.MailLoginEnabled,
 	}

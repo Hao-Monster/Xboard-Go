@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 21
+const currentSchemaVersion = 22
 
 type Store struct {
 	db      *sql.DB
@@ -194,6 +194,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v21: %w", err)
 		}
 		version = 21
+	}
+	if version < 22 {
+		if _, err := tx.ExecContext(ctx, schemaV22); err != nil {
+			return fmt.Errorf("apply schema v22: %w", err)
+		}
+		version = 22
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -917,4 +923,23 @@ CREATE INDEX idx_access_tokens_user_active ON access_tokens(user_id, created_at 
     WHERE revoked_at IS NULL;
 CREATE INDEX idx_access_tokens_expiry ON access_tokens(expires_at, id)
     WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
+`
+
+const schemaV22 = `
+ALTER TABLE app_settings ADD COLUMN password_limit_enable INTEGER NOT NULL DEFAULT 1
+    CHECK (password_limit_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN password_limit_count INTEGER NOT NULL DEFAULT 5
+    CHECK (password_limit_count BETWEEN 1 AND 20);
+ALTER TABLE app_settings ADD COLUMN password_limit_expire INTEGER NOT NULL DEFAULT 60
+    CHECK (password_limit_expire BETWEEN 1 AND 1440);
+
+CREATE TABLE login_failure_limits (
+    credential_digest BLOB PRIMARY KEY CHECK (length(credential_digest) = 32),
+    failure_count INTEGER NOT NULL CHECK (failure_count BETWEEN 1 AND 1000000),
+    expires_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    CHECK (expires_at > updated_at)
+);
+CREATE INDEX idx_login_failure_limits_expiry
+    ON login_failure_limits(expires_at, credential_digest);
 `

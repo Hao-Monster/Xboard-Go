@@ -186,6 +186,9 @@ func TestSystemQueueStatsAndFailedMailPaginationExcludeMessageBodies(t *testing.
 		EmailWhitelistSuffixes:     siteSettings.EmailWhitelistSuffixes,
 		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       siteSettings.PasswordLimitEnabled,
+		PasswordLimitCount:         siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:       siteSettings.PasswordLimitMinutes,
 	}, now.Add(11*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +334,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	}
 	for _, table := range []string{
 		"access_tokens",
+		"login_failure_limits",
 		"login_link_mail_outbox", "login_link_tokens", "mail_login_request_limits",
 		"registration_email_mail_outbox", "registration_email_challenges",
 		"password_reset_mail_outbox", "password_reset_challenges",
@@ -345,6 +349,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 		"email_verify",
 		"email_whitelist_enable", "email_whitelist_suffix", "email_gmail_limit_enable",
 		"register_limit_by_ip_enable", "register_limit_count", "register_limit_expire",
+		"password_limit_enable", "password_limit_count", "password_limit_expire",
 	} {
 		if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN `+column); err != nil {
 			t.Fatal(err)

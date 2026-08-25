@@ -171,6 +171,9 @@ type SiteSettings struct {
 	RegistrationIPLimitEnabled bool      `json:"register_limit_by_ip_enable"`
 	RegistrationIPLimitCount   int       `json:"register_limit_count"`
 	RegistrationIPLimitMinutes int       `json:"register_limit_expire"`
+	PasswordLimitEnabled       bool      `json:"password_limit_enable"`
+	PasswordLimitCount         int       `json:"password_limit_count"`
+	PasswordLimitMinutes       int       `json:"password_limit_expire"`
 	InvitationForceEnabled     bool      `json:"invite_force"`
 	InvitationCodeLimit        int       `json:"invite_gen_limit"`
 	InvitationNeverExpire      bool      `json:"invite_never_expire"`
@@ -192,10 +195,22 @@ type SaveSiteSettingsInput struct {
 	RegistrationIPLimitEnabled bool
 	RegistrationIPLimitCount   int
 	RegistrationIPLimitMinutes int
+	PasswordLimitEnabled       bool
+	PasswordLimitCount         int
+	PasswordLimitMinutes       int
 	InvitationForceEnabled     bool
 	InvitationCodeLimit        int
 	InvitationNeverExpire      bool
 	MailLoginEnabled           bool
+}
+
+type LoginFailureStatus struct {
+	Enabled  bool
+	Failures int
+	Maximum  int
+	Window   time.Duration
+	Limited  bool
+	ResetAt  *time.Time
 }
 
 type CreateInvitationCodeInput struct {

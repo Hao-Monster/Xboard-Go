@@ -291,6 +291,8 @@ func setInvitationPolicy(t testing.TB, database *Store, administratorID int64, f
 		GmailAliasLimitEnabled:     settings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes:   settings.PasswordLimitMinutes,
 		InvitationForceEnabled: force, InvitationCodeLimit: limit, InvitationNeverExpire: neverExpire,
 	}, now)
 	if err != nil {

@@ -19,6 +19,9 @@ interface SiteSettings {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  password_limit_enable: boolean;
+  password_limit_count: number;
+  password_limit_expire: number;
 }
 
 interface TicketSettings {
@@ -166,7 +169,10 @@ async function saveSiteSettings(page: Page, settings: SiteSettings): Promise<Sit
     email_gmail_limit_enable: settings.email_gmail_limit_enable,
     register_limit_by_ip_enable: settings.register_limit_by_ip_enable,
     register_limit_count: settings.register_limit_count,
-    register_limit_expire: settings.register_limit_expire
+    register_limit_expire: settings.register_limit_expire,
+    password_limit_enable: settings.password_limit_enable,
+    password_limit_count: settings.password_limit_count,
+    password_limit_expire: settings.password_limit_expire
   }));
 }
 

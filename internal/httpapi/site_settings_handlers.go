@@ -70,6 +70,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationIPLimitEnabled *bool     `json:"register_limit_by_ip_enable"`
 		RegistrationIPLimitCount   *int      `json:"register_limit_count"`
 		RegistrationIPLimitMinutes *int      `json:"register_limit_expire"`
+		PasswordLimitEnabled       *bool     `json:"password_limit_enable"`
+		PasswordLimitCount         *int      `json:"password_limit_count"`
+		PasswordLimitMinutes       *int      `json:"password_limit_expire"`
 		InvitationForceEnabled     *bool     `json:"invite_force"`
 		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
@@ -91,6 +94,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		RegistrationIPLimitEnabled: current.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   current.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: current.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       current.PasswordLimitEnabled,
+		PasswordLimitCount:         current.PasswordLimitCount,
+		PasswordLimitMinutes:       current.PasswordLimitMinutes,
 		InvitationForceEnabled:     current.InvitationForceEnabled,
 		InvitationCodeLimit:        current.InvitationCodeLimit,
 		InvitationNeverExpire:      current.InvitationNeverExpire,
@@ -119,6 +125,15 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.RegistrationIPLimitMinutes != nil {
 		next.RegistrationIPLimitMinutes = *input.RegistrationIPLimitMinutes
+	}
+	if input.PasswordLimitEnabled != nil {
+		next.PasswordLimitEnabled = *input.PasswordLimitEnabled
+	}
+	if input.PasswordLimitCount != nil {
+		next.PasswordLimitCount = *input.PasswordLimitCount
+	}
+	if input.PasswordLimitMinutes != nil {
+		next.PasswordLimitMinutes = *input.PasswordLimitMinutes
 	}
 	if input.InvitationForceEnabled != nil {
 		next.InvitationForceEnabled = *input.InvitationForceEnabled

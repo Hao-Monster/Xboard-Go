@@ -210,7 +210,9 @@ func enableMailLogin(t *testing.T, database *store.Store) {
 		EmailWhitelistSuffixes: settings.EmailWhitelistSuffixes, GmailAliasLimitEnabled: settings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled, RegistrationIPLimitCount: settings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes, InvitationForceEnabled: settings.InvitationForceEnabled,
-		InvitationCodeLimit: settings.InvitationCodeLimit, InvitationNeverExpire: settings.InvitationNeverExpire, MailLoginEnabled: true,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes: settings.PasswordLimitMinutes,
+		InvitationCodeLimit:  settings.InvitationCodeLimit, InvitationNeverExpire: settings.InvitationNeverExpire, MailLoginEnabled: true,
 	}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}
