@@ -23,6 +23,8 @@ test("administrator manages knowledge while active, inactive, and public readers
 
   await page.getByRole("button", { name: "知识库管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "知识库管理" })).toBeVisible();
+  const originalKnowledge = await readAdminKnowledge(page);
+  for (const article of originalKnowledge) await expect(page.getByText(article.title, { exact: true })).toBeVisible();
   await createKnowledge(page, visibleTitle, `# Setup\n\n{{siteName}}\n\n[Subscription]({{subscribeUrl}})\n\n<!--access start-->${privateText}<!--access end-->\n\n<script>alert(1)</script>`, true);
   await createKnowledge(page, hiddenTitle, "hidden content", false);
 
@@ -76,6 +78,7 @@ test("administrator manages knowledge while active, inactive, and public readers
     await dialog.getByRole("button", { name: "确认删除" }).click();
     await expect(page.getByText(title, { exact: true })).toHaveCount(0);
   }
+  expect(await readAdminKnowledge(page)).toEqual(originalKnowledge);
 
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
@@ -87,6 +90,45 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();
+}
+
+type KnowledgeSnapshotItem = {
+  id: number;
+  language: string;
+  category: string;
+  title: string;
+  body: string;
+  sort: number;
+  show: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  share_url: string;
+};
+
+async function readAdminKnowledge(page: Page): Promise<KnowledgeSnapshotItem[]> {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/v1/admin/knowledge", { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`knowledge snapshot failed with ${response.status}`);
+    const payload = await response.json() as { data?: Omit<KnowledgeSnapshotItem, "body">[] };
+    if (!Array.isArray(payload.data)) throw new Error("knowledge snapshot data must be an array");
+    const result: KnowledgeSnapshotItem[] = [];
+    for (const summary of payload.data) {
+      const detailResponse = await fetch(`/api/v1/admin/knowledge/${summary.id}`, { credentials: "same-origin" });
+      if (!detailResponse.ok) throw new Error(`knowledge detail snapshot failed with ${detailResponse.status}`);
+      const detailPayload = await detailResponse.json() as { data?: KnowledgeSnapshotItem };
+      const article = detailPayload.data;
+      if (!article) throw new Error("knowledge detail snapshot data is required");
+      if (!Number.isSafeInteger(article.id) || !Number.isSafeInteger(article.sort) || !Number.isSafeInteger(article.revision) ||
+          typeof article.language !== "string" || typeof article.category !== "string" || typeof article.title !== "string" || typeof article.body !== "string" ||
+          typeof article.show !== "boolean" || typeof article.created_at !== "string" || typeof article.updated_at !== "string" ||
+          typeof article.share_url !== "string") {
+        throw new Error("knowledge snapshot item has an invalid contract");
+      }
+      result.push(article);
+    }
+    return result;
+  });
 }
 
 async function createUser(page: Page, email: string, password: string, transfer: string) {
