@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -168,7 +169,50 @@ func TestSchemaV24AddsLegacyMigrationLedgerWithoutChangingBusinessData(t *testin
 	}
 }
 
-func validLegacyContentImport(t *testing.T) LegacyContentImport {
+func BenchmarkImportLegacyContentTenThousandNotices(b *testing.B) {
+	root := b.TempDir()
+	input := validLegacyContentImport(b)
+	input.Notices = make([]LegacyNotice, 10_000)
+	for index := range input.Notices {
+		identity := int64(index + 1)
+		input.Notices[index] = LegacyNotice{
+			ID: identity, SortPosition: index, Title: "Notice " + strconv.Itoa(index+1),
+			Content: strings.Repeat("x", 256), Tags: []string{}, Visible: true,
+			CreatedAt: identity, UpdatedAt: identity,
+		}
+	}
+	input.Checksums.Notices = LegacyNoticesChecksum(input.Notices)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		b.StopTimer()
+		database, err := OpenSQLite("file:" + filepath.ToSlash(filepath.Join(root, strconv.Itoa(index)+".db")))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := database.Migrate(context.Background()); err != nil {
+			_ = database.Close()
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		report, err := database.ImportLegacyContent(context.Background(), input, time.Unix(1_800_000_000, 0))
+		b.StopTimer()
+		if err != nil {
+			_ = database.Close()
+			b.Fatal(err)
+		}
+		if report.Notices.TargetRows != 10_000 {
+			_ = database.Close()
+			b.Fatalf("target notices = %d, want 10000", report.Notices.TargetRows)
+		}
+		if err := database.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(10_000, "notices/op")
+}
+
+func validLegacyContentImport(t interface{ Helper() }) LegacyContentImport {
 	t.Helper()
 	input := LegacyContentImport{
 		Slice: LegacyContentSlice, SourceSHA256: strings.Repeat("a", 64), SourceSize: 4096,

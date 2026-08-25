@@ -408,6 +408,9 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 		if digest != existing.RollbackBackupSHA256 {
 			return true, errors.New("recorded legacy migration rollback backup digest does not match")
 		}
+		if err := secureSQLiteFiles(targetDSN); err != nil {
+			return true, fmt.Errorf("secure imported Xboard-Go database: %w", err)
+		}
 		return true, encodeLegacyMigrationResult(stdout, snapshot, legacyMigrationBackupResult{
 			Path: existing.RollbackBackupPath, SHA256: digest, Manifest: manifest,
 		}, existing)

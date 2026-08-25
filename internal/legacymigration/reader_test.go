@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -69,6 +70,17 @@ func TestReadContentSnapshotRejectsMutableOrUntrustedSources(t *testing.T) {
 		}
 	})
 
+	t.Run("symbolic link", func(t *testing.T) {
+		target := createLegacyContentSnapshot(t, `{}`)
+		link := filepath.Join(t.TempDir(), "legacy-link.db")
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symbolic links unavailable: %v", err)
+		}
+		if _, err := ReadContentSnapshot(context.Background(), link); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("ReadContentSnapshot() error = %v, want symbolic-link rejection", err)
+		}
+	})
+
 	t.Run("unsafe client URL", func(t *testing.T) {
 		path := createLegacyContentSnapshot(t, `{"karing":{"android":{"direct":"http://downloads.example.test/app.apk"}}}`)
 		if _, err := ReadContentSnapshot(context.Background(), path); err == nil || !strings.Contains(err.Error(), "client_catalog_links") {
@@ -119,6 +131,101 @@ func TestReadContentSnapshotRejectsMutableOrUntrustedSources(t *testing.T) {
 			t.Fatalf("ReadContentSnapshot() error = %v, want required column rejection", err)
 		}
 	})
+
+	t.Run("duplicate public setting", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "legacy-duplicate-setting.db")
+		database, err := sql.Open("sqlite", "file:"+path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Exec(`
+			CREATE TABLE v2_settings (name TEXT NOT NULL, value TEXT);
+			CREATE TABLE v2_notice (
+				id INTEGER, sort INTEGER, title TEXT, content TEXT, img_url TEXT,
+				tags TEXT, show INTEGER, created_at INTEGER, updated_at INTEGER
+			);
+			INSERT INTO v2_settings (name, value) VALUES ('app_name', 'first'), ('app_name', 'second');
+		`); err != nil {
+			_ = database.Close()
+			t.Fatal(err)
+		}
+		if err := database.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReadContentSnapshot(context.Background(), path); err == nil || !strings.Contains(err.Error(), "duplicate") {
+			t.Fatalf("ReadContentSnapshot() error = %v, want duplicate-setting rejection", err)
+		}
+	})
+}
+
+func BenchmarkReadContentSnapshotTenThousandNotices(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "legacy-benchmark.db")
+	database, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		CREATE TABLE v2_settings (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, value TEXT);
+		CREATE TABLE v2_notice (
+			id INTEGER PRIMARY KEY, sort INTEGER, title TEXT NOT NULL, content TEXT NOT NULL,
+			img_url TEXT, tags TEXT, show INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+		);
+		INSERT INTO v2_settings (name, value) VALUES ('app_name', 'Migration benchmark');
+	`); err != nil {
+		_ = database.Close()
+		b.Fatal(err)
+	}
+	tx, err := database.Begin()
+	if err != nil {
+		_ = database.Close()
+		b.Fatal(err)
+	}
+	statement, err := tx.Prepare(`
+		INSERT INTO v2_notice (id, sort, title, content, img_url, tags, show, created_at, updated_at)
+		VALUES (?, ?, ?, ?, NULL, '[]', 1, ?, ?)
+	`)
+	if err != nil {
+		_ = tx.Rollback()
+		_ = database.Close()
+		b.Fatal(err)
+	}
+	for index := 1; index <= 10_000; index++ {
+		if _, err := statement.Exec(index, index, "Notice "+strconv.Itoa(index), strings.Repeat("x", 256), index, index); err != nil {
+			_ = statement.Close()
+			_ = tx.Rollback()
+			_ = database.Close()
+			b.Fatal(err)
+		}
+	}
+	if err := statement.Close(); err != nil {
+		_ = tx.Rollback()
+		_ = database.Close()
+		b.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		_ = database.Close()
+		b.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		b.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		snapshot, err := ReadContentSnapshot(context.Background(), path)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(snapshot.Notices) != 10_000 {
+			b.Fatalf("notices = %d, want 10000", len(snapshot.Notices))
+		}
+	}
+	b.ReportMetric(float64(info.Size()), "snapshot-bytes")
+	b.ReportMetric(10_000, "notices/op")
 }
 
 func createLegacyContentSnapshot(t *testing.T, clientCatalogJSON string) string {

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectAuthPage, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -79,7 +79,7 @@ test("visitor registers with the legacy one-time email code through Mailpit", as
     await logoutAndWait(page);
 
     await page.goto("/#/register");
-    await expect(page.getByRole("heading", { name: "注册 Xboard-Go" })).toBeVisible();
+    await expectAuthPage(page, "注册");
     await expect(page.getByLabel("邮箱验证码", { exact: true })).toBeVisible();
     await page.getByLabel("邮箱", { exact: true }).fill(email);
     const sendResponse = page.waitForResponse((response) => response.url().endsWith("/api/v1/auth/registration-email/request"));

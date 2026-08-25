@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator configures client actions and a user browses secure platform downloads", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -59,7 +59,7 @@ test("administrator configures client actions and a user browses secure platform
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+  await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();

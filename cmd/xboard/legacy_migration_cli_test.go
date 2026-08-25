@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -81,11 +82,25 @@ func TestRunCommandImportsLegacyContentWithVerifiedRollbackAndIdempotency(t *tes
 		t.Fatalf("target settings=%#v notices=%#v catalog=%#v errors=(%v,%v,%v)", settings, notices, catalog, settingsErr, noticesErr, catalogErr)
 	}
 
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(targetPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	repeated := runLegacyMigrationCommand(t, []string{
 		"migration", "import-legacy-content", "--source", sourcePath, "--confirm-offline",
 	}, now.Add(time.Minute))
 	if !repeated.Result.AlreadyApplied || repeated.Result.AppliedAt != now || repeated.RollbackBackup.SHA256 != result.RollbackBackup.SHA256 {
 		t.Fatalf("idempotent output = %#v", repeated)
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(targetPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("idempotent rerun target permissions = %o, want 600", info.Mode().Perm())
+		}
 	}
 
 	restoredPath := filepath.Join(directory, "restored-pre-import.db")

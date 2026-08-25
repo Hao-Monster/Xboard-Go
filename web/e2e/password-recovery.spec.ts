@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectAuthPage, expectLoginPage, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -74,7 +74,7 @@ test("visitor completes modern and Passport-compatible password recovery through
     await logoutAndWait(page);
 
     await page.goto("/#/forgetpassword");
-    await expect(page.getByRole("heading", { name: "重置密码 Xboard-Go" })).toBeVisible();
+    await expectAuthPage(page, "重置密码");
     await page.getByLabel("邮箱", { exact: true }).fill(email);
     const sent = page.waitForResponse((response) => response.url().endsWith("/api/v1/auth/password-reset/request"));
     await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -90,7 +90,7 @@ test("visitor completes modern and Passport-compatible password recovery through
     await page.getByRole("button", { name: "重置密码", exact: true }).click();
     expect((await reset).status()).toBe(200);
     await expect(page.getByRole("status")).toHaveText("重置密码成功,正在返回登录");
-    await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+    await expectLoginPage(page);
 
     await page.getByLabel("邮箱", { exact: true }).fill(email);
     await page.getByLabel("密码").fill(oldPassword);
@@ -187,7 +187,7 @@ async function waitForPasswordResetCode(request: APIRequestContext, recipient: s
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+  await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();

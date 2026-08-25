@@ -192,6 +192,7 @@ func readLegacySettings(ctx context.Context, database *sql.DB) (store.LegacySite
 	clientPresent := false
 	clientRaw := ""
 	var bytesRead int64
+	seen := make(map[string]struct{}, 6)
 	for rows.Next() {
 		var name string
 		var value sql.NullString
@@ -206,6 +207,10 @@ func readLegacySettings(ctx context.Context, database *sql.DB) (store.LegacySite
 		if bytesRead > maxLegacyRelevantDataBytes {
 			return store.LegacySiteSettings{}, false, nil, 0, errors.New("legacy public settings exceed the migration data limit")
 		}
+		if _, exists := seen[name]; exists {
+			return store.LegacySiteSettings{}, false, nil, 0, fmt.Errorf("legacy public settings contain duplicate %q rows", name)
+		}
+		seen[name] = struct{}{}
 		switch name {
 		case "app_name":
 			settings.AppName = stringPointer(text)
