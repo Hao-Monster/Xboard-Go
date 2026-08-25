@@ -45,6 +45,14 @@ func TestReadNodesSnapshotPreservesOperationalNodeDomainWithoutPlaintextSecrets(
 	if runtime["protocol"] != "vless" || runtime["server_port"] != float64(8443) || runtime["custom_outbounds"] == nil || runtime["cert_config"] == nil {
 		t.Fatalf("runtime config = %#v", runtime)
 	}
+	wantOutbounds := []any{map[string]any{
+		"tag": "upstream", "protocol": "socks",
+		"settings": map[string]any{"server": "192.0.2.1", "server_port": float64(1080)},
+	}}
+	wantRoutes := []any{map[string]any{"type": "field", "outboundTag": "direct"}}
+	if !reflect.DeepEqual(runtime["custom_outbounds"], wantOutbounds) || !reflect.DeepEqual(runtime["custom_routes"], wantRoutes) {
+		t.Fatalf("custom runtime config aliases backing arrays: %#v", runtime)
+	}
 	if snapshot.Traffic[0].Upload != 15 || snapshot.Traffic[0].Download != 27 {
 		t.Fatalf("aggregated traffic = %#v", snapshot.Traffic)
 	}
@@ -235,7 +243,7 @@ func createLegacyNodesSnapshot(t testing.TB) string {
 		CREATE TABLE v2_server_report_receipt (id INTEGER PRIMARY KEY,server_id INTEGER NOT NULL,report_id TEXT NOT NULL,job_type TEXT NOT NULL,chunk_index INTEGER NOT NULL,created_at INTEGER NOT NULL);
 		CREATE TABLE v2_stat_server (id INTEGER PRIMARY KEY,server_id INTEGER NOT NULL,server_type TEXT NOT NULL,u INTEGER NOT NULL,d INTEGER NOT NULL,record_type TEXT NOT NULL,record_at INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 		INSERT INTO v2_server_machine VALUES (7,'machine-a','legacy-machine-token','edge',1,1700000200,'{"cpu":12}', '2023-11-14 22:13:20','2023-11-14 22:15:00');
-		INSERT INTO v2_server VALUES (41,'vless','edge-code',NULL,'["9","3"]','[12]','VLESS edge',1.25,'["premium"]','edge.example.test','443-449',8443,'{"tls":1,"flow":"xtls-rprx-vision","encryption":{"enabled":false},"tls_settings":{"server_name":"edge.example.test"}}',1,2,'2023-11-14 22:13:20','2023-11-14 22:15:00',1,'[{"start":"08:00","end":"09:00","rate":2}]','[{"tag":"direct"}]','[{"type":"field"}]','{"mode":"file","certificate":"/cert.pem","key":"/key.pem"}',1000000,5,7,7,1);
+		INSERT INTO v2_server VALUES (41,'vless','edge-code',NULL,'["9","3"]','[12]','VLESS edge',1.25,'["premium"]','edge.example.test','443-449',8443,'{"tls":1,"flow":"xtls-rprx-vision","encryption":{"enabled":false},"tls_settings":{"server_name":"edge.example.test"}}',1,2,'2023-11-14 22:13:20','2023-11-14 22:15:00',1,'[{"start":"08:00","end":"09:00","rate":2}]','[{"tag":"upstream","protocol":"socks","settings":{"server":"192.0.2.1","server_port":1080}}]','[{"type":"field","outboundTag":"direct"}]','{"mode":"file","certificate":"/cert.pem","key":"/key.pem"}',1000000,5,7,7,1);
 		INSERT INTO v2_server_activation_schedule VALUES (1,41,0,0,'schedule-revision',1700000000,NULL,'2023-11-14 22:13:20','2023-11-14 22:15:00','daily','Asia/Singapore',28800,72000,1700003600,0);
 		INSERT INTO v2_stat_server VALUES (1,41,'vless',10,20,'d',1699920000,1700000000,1700000100);
 		INSERT INTO v2_stat_server VALUES (2,41,'vless',5,7,'d',1699920000,1700000200,1700000300);

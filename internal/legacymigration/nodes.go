@@ -614,18 +614,19 @@ func buildLegacyRuntimeConfig(node store.LegacyNode) (json.RawMessage, error) {
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", node.Type)
 	}
-	var custom []any
-	if err := json.Unmarshal(node.CustomOutbounds, &custom); err != nil {
+	var customOutbounds []any
+	if err := json.Unmarshal(node.CustomOutbounds, &customOutbounds); err != nil {
 		return nil, err
 	}
-	if len(custom) > 0 {
-		config["custom_outbounds"] = custom
+	if len(customOutbounds) > 0 {
+		config["custom_outbounds"] = customOutbounds
 	}
-	if err := json.Unmarshal(node.CustomRoutes, &custom); err != nil {
+	var customRoutes []any
+	if err := json.Unmarshal(node.CustomRoutes, &customRoutes); err != nil {
 		return nil, err
 	}
-	if len(custom) > 0 {
-		config["custom_routes"] = custom
+	if len(customRoutes) > 0 {
+		config["custom_routes"] = customRoutes
 	}
 	var cert map[string]any
 	if err := json.Unmarshal(node.CertConfig, &cert); err != nil {
