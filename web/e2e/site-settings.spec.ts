@@ -17,6 +17,9 @@ interface SiteSettings {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  password_limit_enable: boolean;
+  password_limit_count: number;
+  password_limit_expire: number;
 }
 
 test("administrator site identity persists into the public shell and can be restored", async ({ page, request }) => {
@@ -99,6 +102,9 @@ test("administrator site identity persists into the public shell and can be rest
     expect(publicPayload.data).not.toHaveProperty("register_limit_by_ip_enable");
     expect(publicPayload.data).not.toHaveProperty("register_limit_count");
     expect(publicPayload.data).not.toHaveProperty("register_limit_expire");
+    expect(publicPayload.data).not.toHaveProperty("password_limit_enable");
+    expect(publicPayload.data).not.toHaveProperty("password_limit_count");
+    expect(publicPayload.data).not.toHaveProperty("password_limit_expire");
 
     const knowledgeResponse = await adminRequest(page, "/api/v1/admin/knowledge", "POST", {
       language: "zh-CN", category: "Brand parity", title: `Brand guide ${unique}`,
@@ -161,7 +167,10 @@ test("administrator site identity persists into the public shell and can be rest
         email_gmail_limit_enable: original.email_gmail_limit_enable,
         register_limit_by_ip_enable: original.register_limit_by_ip_enable,
         register_limit_count: original.register_limit_count,
-        register_limit_expire: original.register_limit_expire
+        register_limit_expire: original.register_limit_expire,
+        password_limit_enable: original.password_limit_enable,
+        password_limit_count: original.password_limit_count,
+        password_limit_expire: original.password_limit_expire
       });
       expect(restored.status, restored.body).toBe(200);
       await page.reload();

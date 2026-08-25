@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -47,15 +48,28 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &input) {
 		return store.User{}, false
 	}
-	input.Email = strings.TrimSpace(input.Email)
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+	now := s.now()
 	attemptKey := requestIP(r)
-	if !s.loginAttempts.allowed(attemptKey, s.now()) {
-		w.Header().Set("Retry-After", "900")
+	if !s.loginAttempts.allowed(attemptKey, now) {
+		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "login_rate_limited", "登录尝试过多，请稍后重试", nil)
 		return store.User{}, false
 	}
+	identityDigest := security.LoginIdentityDigest(input.Email)
+	status, err := s.store.GetLoginFailureStatus(r.Context(), identityDigest[:], now)
+	if err != nil {
+		handleStoreError(w, err)
+		return store.User{}, false
+	}
+	if status.Limited {
+		writePasswordLoginLimited(w, status, now)
+		return store.User{}, false
+	}
 	if input.Email == "" || len(input.Email) > 320 || input.Password == "" || len(input.Password) > 1024 {
-		s.loginAttempts.failed(attemptKey, s.now())
+		if !s.recordPasswordLoginFailure(w, r, identityDigest[:], attemptKey, now) {
+			return store.User{}, false
+		}
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
 		return store.User{}, false
 	}
@@ -67,12 +81,34 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 	}
 	passwordValid := s.passwordHasher.Verify(input.Password, passwordHash)
 	if err != nil || !passwordValid || user.Banned || user.AccountKind != store.AccountKindHuman {
-		s.loginAttempts.failed(attemptKey, s.now())
+		if !s.recordPasswordLoginFailure(w, r, identityDigest[:], attemptKey, now) {
+			return store.User{}, false
+		}
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
 		return store.User{}, false
 	}
 	s.loginAttempts.reset(attemptKey)
 	return user, true
+}
+
+func (s *server) recordPasswordLoginFailure(w http.ResponseWriter, r *http.Request, identityDigest []byte, attemptKey string, now time.Time) bool {
+	if _, err := s.store.RecordLoginFailure(r.Context(), identityDigest, now); err != nil {
+		handleStoreError(w, err)
+		return false
+	}
+	s.loginAttempts.failed(attemptKey, now)
+	return true
+}
+
+func writePasswordLoginLimited(w http.ResponseWriter, status store.LoginFailureStatus, now time.Time) {
+	remaining := time.Second
+	if status.ResetAt != nil && status.ResetAt.After(now) {
+		remaining = status.ResetAt.Sub(now)
+	}
+	retrySeconds := max(1, int((remaining+time.Second-1)/time.Second))
+	remainingMinutes := max(1, int((remaining+time.Minute-1)/time.Minute))
+	w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySeconds))
+	writeAPIError(w, http.StatusTooManyRequests, "login_rate_limited", fmt.Sprintf("密码错误次数过多，请 %d 分钟后再试", remainingMinutes), nil)
 }
 
 func (s *server) issueSession(w http.ResponseWriter, r *http.Request, user store.User) bool {

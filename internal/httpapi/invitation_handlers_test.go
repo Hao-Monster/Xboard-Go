@@ -217,6 +217,8 @@ func updateInvitationPolicyHTTP(t testing.TB, database *store.Store, administrat
 		GmailAliasLimitEnabled:     settings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes:   settings.PasswordLimitMinutes,
 		InvitationForceEnabled: force, InvitationCodeLimit: limit, InvitationNeverExpire: neverExpire,
 	}, now)
 	if err != nil {

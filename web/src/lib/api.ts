@@ -357,6 +357,9 @@ export interface SiteSettings {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  password_limit_enable: boolean;
+  password_limit_count: number;
+  password_limit_expire: number;
   invite_force: boolean;
   invite_gen_limit: number;
   invite_never_expire: boolean;
@@ -379,6 +382,9 @@ export interface SiteSettingsInput {
   register_limit_by_ip_enable: boolean;
   register_limit_count: number;
   register_limit_expire: number;
+  password_limit_enable: boolean;
+  password_limit_count: number;
+  password_limit_expire: number;
   invite_force: boolean;
   invite_gen_limit: number;
   invite_never_expire: boolean;

@@ -20,6 +20,9 @@ const initial: SiteSettings = {
   register_limit_by_ip_enable: false,
   register_limit_count: 3,
   register_limit_expire: 60,
+  password_limit_enable: true,
+  password_limit_count: 5,
+  password_limit_expire: 60,
   invite_force: false,
   invite_gen_limit: 5,
   invite_never_expire: false,
@@ -37,6 +40,7 @@ describe("SiteSettingsPage", () => {
       email_whitelist_enable: true, email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true, register_limit_by_ip_enable: true,
       register_limit_count: 2, register_limit_expire: 30,
+      password_limit_enable: true, password_limit_count: 2, password_limit_expire: 30,
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
       login_with_mail_link_enable: true
     };
@@ -65,6 +69,9 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("邀请码生成上限")).toHaveValue(5);
     expect(screen.getByRole("checkbox", { name: "邀请码永不过期" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "邮件链接登录" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "密码错误次数限制" })).toBeChecked();
+    expect(screen.getByLabelText("密码错误次数")).toHaveValue(5);
+    expect(screen.getByLabelText("登录锁定时长（分钟）")).toHaveValue(60);
 
     await user.clear(screen.getByLabelText("站点名称"));
     await user.type(screen.getByLabelText("站点名称"), updated.app_name);
@@ -91,6 +98,10 @@ describe("SiteSettingsPage", () => {
     await user.type(screen.getByLabelText("邀请码生成上限"), "7");
     await user.click(screen.getByRole("checkbox", { name: "邀请码永不过期" }));
     await user.click(screen.getByRole("checkbox", { name: "邮件链接登录" }));
+    await user.clear(screen.getByLabelText("密码错误次数"));
+    await user.type(screen.getByLabelText("密码错误次数"), "2");
+    await user.clear(screen.getByLabelText("登录锁定时长（分钟）"));
+    await user.type(screen.getByLabelText("登录锁定时长（分钟）"), "30");
     await user.click(screen.getByRole("button", { name: "保存站点设置" }));
 
     await waitFor(() => expect(api.updateSiteSettings).toHaveBeenCalledWith({
@@ -108,6 +119,9 @@ describe("SiteSettingsPage", () => {
       register_limit_by_ip_enable: true,
       register_limit_count: 2,
       register_limit_expire: 30,
+      password_limit_enable: true,
+      password_limit_count: 2,
+      password_limit_expire: 30,
       invite_force: true,
       invite_gen_limit: 7,
       invite_never_expire: true,

@@ -46,6 +46,9 @@ func TestRegisterUserNormalizesIdentityAndHonorsStopPolicy(t *testing.T) {
 		EmailWhitelistSuffixes:     settings.EmailWhitelistSuffixes,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       settings.PasswordLimitEnabled,
+		PasswordLimitCount:         settings.PasswordLimitCount,
+		PasswordLimitMinutes:       settings.PasswordLimitMinutes,
 	}, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -308,6 +311,9 @@ func updateRegistrationPolicy(t *testing.T, database *Store, administratorID int
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       settings.PasswordLimitEnabled,
+		PasswordLimitCount:         settings.PasswordLimitCount,
+		PasswordLimitMinutes:       settings.PasswordLimitMinutes,
 	}
 	mutate(&input)
 	updated, err := database.UpdateSiteSettings(t.Context(), administratorID, settings.Revision, input, time.Now())

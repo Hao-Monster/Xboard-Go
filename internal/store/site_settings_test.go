@@ -28,6 +28,9 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 	if initial.InvitationForceEnabled || initial.InvitationCodeLimit != 5 || initial.InvitationNeverExpire {
 		t.Fatalf("initial invitation settings = %#v", initial)
 	}
+	if !initial.PasswordLimitEnabled || initial.PasswordLimitCount != 5 || initial.PasswordLimitMinutes != 60 {
+		t.Fatalf("initial password limit settings = %#v", initial)
+	}
 
 	updated, err := database.UpdateSiteSettings(ctx, administrator.ID, initial.Revision, SaveSiteSettingsInput{
 		AppName: "  Example Board  ", AppDescription: "  First line\nSecond line  ",
@@ -36,6 +39,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		EmailWhitelistEnabled: true, EmailWhitelistSuffixes: []string{" Allowed.Test ", "allowed.test", "GMAIL.COM"},
 		GmailAliasLimitEnabled: true, RegistrationIPLimitEnabled: true,
 		RegistrationIPLimitCount: 2, RegistrationIPLimitMinutes: 30,
+		PasswordLimitEnabled: true, PasswordLimitCount: 2, PasswordLimitMinutes: 30,
 		InvitationForceEnabled: true, InvitationCodeLimit: 7, InvitationNeverExpire: true,
 	}, now)
 	if err != nil {
@@ -46,6 +50,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		updated.Logo != "https://images.example.test/brand.svg?version=1#logo" || !updated.StopRegister ||
 		!updated.EmailWhitelistEnabled || !updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled ||
 		updated.RegistrationIPLimitCount != 2 || updated.RegistrationIPLimitMinutes != 30 ||
+		!updated.PasswordLimitEnabled || updated.PasswordLimitCount != 2 || updated.PasswordLimitMinutes != 30 ||
 		!updated.InvitationForceEnabled || updated.InvitationCodeLimit != 7 || !updated.InvitationNeverExpire ||
 		!slices.Equal(updated.EmailWhitelistSuffixes, []string{"allowed.test", "gmail.com"}) {
 		t.Fatalf("normalized site settings = %#v", updated)
@@ -79,6 +84,7 @@ func TestSiteSettingsShareOptimisticRevisionWithoutLosingFields(t *testing.T) {
 		afterTicketUpdate.TOSURL != updated.TOSURL || afterTicketUpdate.Logo != updated.Logo || !afterTicketUpdate.StopRegister ||
 		!afterTicketUpdate.EmailWhitelistEnabled || !afterTicketUpdate.GmailAliasLimitEnabled ||
 		!afterTicketUpdate.RegistrationIPLimitEnabled || afterTicketUpdate.RegistrationIPLimitCount != 2 ||
+		!afterTicketUpdate.PasswordLimitEnabled || afterTicketUpdate.PasswordLimitCount != 2 || afterTicketUpdate.PasswordLimitMinutes != 30 ||
 		!afterTicketUpdate.InvitationForceEnabled || afterTicketUpdate.InvitationCodeLimit != 7 || !afterTicketUpdate.InvitationNeverExpire {
 		t.Fatalf("ticket settings update lost site-only fields: %#v", afterTicketUpdate)
 	}
@@ -94,6 +100,7 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 		AppName: "Example", AppDescription: "Description", AppURL: "https://panel.example.test",
 		TOSURL: "https://panel.example.test/terms", Logo: "https://images.example.test/logo.png",
 		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
+		PasswordLimitEnabled: true, PasswordLimitCount: 5, PasswordLimitMinutes: 60,
 		InvitationCodeLimit: 5,
 	}
 	for name, mutate := range map[string]func(*SaveSiteSettingsInput){
@@ -125,10 +132,14 @@ func TestSiteSettingsRejectInvalidInputsAndResolveConcurrentRevision(t *testing.
 				input.EmailWhitelistSuffixes[index] = fmt.Sprintf("d%d.example.test", index)
 			}
 		},
-		"zero IP count":   func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 0 },
-		"large IP count":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 101 },
-		"zero IP window":  func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 0 },
-		"large IP window": func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 10_081 },
+		"zero IP count":             func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 0 },
+		"large IP count":            func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitCount = 101 },
+		"zero IP window":            func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 0 },
+		"large IP window":           func(input *SaveSiteSettingsInput) { input.RegistrationIPLimitMinutes = 10_081 },
+		"zero password count":       func(input *SaveSiteSettingsInput) { input.PasswordLimitCount = 0 },
+		"large password count":      func(input *SaveSiteSettingsInput) { input.PasswordLimitCount = 21 },
+		"zero password window":      func(input *SaveSiteSettingsInput) { input.PasswordLimitMinutes = 0 },
+		"large password window":     func(input *SaveSiteSettingsInput) { input.PasswordLimitMinutes = 1_441 },
 		"negative invitation limit": func(input *SaveSiteSettingsInput) { input.InvitationCodeLimit = -1 },
 		"large invitation limit":    func(input *SaveSiteSettingsInput) { input.InvitationCodeLimit = 101 },
 	} {
@@ -178,6 +189,7 @@ func TestSiteURLNormalizationPreservesLegacyURLSemantics(t *testing.T) {
 		AppURL:                 " https://panel.example.test/root/?next=/ ",
 		TOSURL:                 "https://panel.example.test/terms/#section/",
 		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
+		PasswordLimitEnabled: true, PasswordLimitCount: 5, PasswordLimitMinutes: 60,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -379,6 +391,67 @@ func TestSchemaV13MigrationPreservesV12SettingsAndOperationsData(t *testing.T) {
 	}
 }
 
+func TestSchemaV22MigrationPreservesV21DataAndAddsPasswordLimits(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "schema-v21.db")
+	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	for step, schema := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV7Constraints,
+		schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15,
+		schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21,
+	} {
+		if _, err := database.db.ExecContext(ctx, schema); err != nil {
+			t.Fatalf("apply pre-v22 schema step %d: %v", step+1, err)
+		}
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO users (email, password_hash, subscription_token, created_at, updated_at)
+		VALUES ('preserved-v21@example.test', 'hash', '0123456789abcdef0123456789abcdef', 1, 1);
+		UPDATE app_settings SET app_name = 'V21 Board', revision = 31;
+		PRAGMA user_version = 21;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(v21 to v22) error = %v", err)
+	}
+	settings, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version, users, tables, indexes int
+	for query, destination := range map[string]*int{
+		`PRAGMA user_version`: &version,
+		`SELECT COUNT(*) FROM users WHERE email = 'preserved-v21@example.test'`:                                &users,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'login_failure_limits'`:            &tables,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_login_failure_limits_expiry'`: &indexes,
+	} {
+		if err := database.db.QueryRowContext(ctx, query).Scan(destination); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if version != currentSchemaVersion || users != 1 || tables != 1 || indexes != 1 ||
+		settings.AppName != "V21 Board" || settings.Revision != 31 || !settings.PasswordLimitEnabled ||
+		settings.PasswordLimitCount != 5 || settings.PasswordLimitMinutes != 60 {
+		t.Fatalf("v21 to v22 migration: version=%d users=%d tables=%d indexes=%d settings=%#v", version, users, tables, indexes, settings)
+	}
+	for _, statement := range []string{
+		`UPDATE app_settings SET password_limit_enable = 2 WHERE id = 1`,
+		`UPDATE app_settings SET password_limit_count = 0 WHERE id = 1`,
+		`UPDATE app_settings SET password_limit_count = 21 WHERE id = 1`,
+		`UPDATE app_settings SET password_limit_expire = 0 WHERE id = 1`,
+		`UPDATE app_settings SET password_limit_expire = 1441 WHERE id = 1`,
+	} {
+		if _, err := database.db.ExecContext(ctx, statement); err == nil {
+			t.Fatalf("database accepted invalid v22 statement %q", statement)
+		}
+	}
+}
+
 func BenchmarkSiteSettingsRead(b *testing.B) {
 	database, administratorID := newSiteSettingsBenchmarkStore(b)
 	_ = administratorID
@@ -400,6 +473,7 @@ func BenchmarkSiteSettingsUpdate(b *testing.B) {
 		AppName: "Benchmark Board", AppDescription: "Benchmark description",
 		AppURL: "https://benchmark.example.test", TOSURL: "https://benchmark.example.test/terms",
 		EmailWhitelistSuffixes: []string{"gmail.com"}, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 60,
+		PasswordLimitEnabled: true, PasswordLimitCount: 5, PasswordLimitMinutes: 60,
 	}
 	b.ReportAllocs()
 	b.ResetTimer()

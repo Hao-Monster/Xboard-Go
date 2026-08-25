@@ -157,6 +157,8 @@ func enableRegistrationEmailVerification(t *testing.T, database *store.Store) {
 		EmailWhitelistSuffixes: settings.EmailWhitelistSuffixes, GmailAliasLimitEnabled: settings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes: settings.PasswordLimitMinutes,
 	}, fixedNow())
 	if err != nil {
 		t.Fatal(err)

@@ -151,7 +151,7 @@ func New(dependencies Dependencies) http.Handler {
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,
 		logger:                     dependencies.Logger,
-		loginAttempts:              newAttemptLimiter(5, 15*time.Minute),
+		loginAttempts:              newAttemptLimiter(100, time.Minute),
 		registrationRequests:       newRequestLimiter(20, 15*time.Minute),
 		passwordResetRequests:      newRequestLimiter(10, 15*time.Minute),
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute),

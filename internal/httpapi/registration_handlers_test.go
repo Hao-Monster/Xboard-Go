@@ -186,6 +186,8 @@ func TestRegistrationPolicyRejectionSkipsPasswordHash(t *testing.T) {
 		TOSURL: settings.TOSURL, Logo: settings.Logo, StopRegister: false,
 		EmailWhitelistSuffixes:     settings.EmailWhitelistSuffixes,
 		RegistrationIPLimitEnabled: true, RegistrationIPLimitCount: 2, RegistrationIPLimitMinutes: 60,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes: settings.PasswordLimitMinutes,
 	}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}
@@ -323,6 +325,9 @@ func TestRegistrationRechecksClosureAfterPasswordHash(t *testing.T) {
 		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   settings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       settings.PasswordLimitEnabled,
+		PasswordLimitCount:         settings.PasswordLimitCount,
+		PasswordLimitMinutes:       settings.PasswordLimitMinutes,
 	}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}

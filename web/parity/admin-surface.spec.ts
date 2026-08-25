@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, request as playwrightRequest, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 
 const legacyURL = requiredEnv("LEGACY_ADMIN_URL");
@@ -707,6 +707,171 @@ test("legacy password recovery preserves fields, cooldown, lockout, one-time cod
       data: { email: legacyEmail, password: legacyPassword }
     });
     expect(restoredLogin.status()).toBe(200);
+  }
+});
+
+test("legacy password error limit exposes its configurable threshold, expiry, and historical bypasses", async ({ page }) => {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const safe = readObjectProperty(readProperty(await fetched.json() as unknown, "data"), "safe");
+  const original = {
+    password_limit_enable: readProperty(safe, "password_limit_enable"),
+    password_limit_count: readProperty(safe, "password_limit_count"),
+    password_limit_expire: readProperty(safe, "password_limit_expire")
+  };
+  const unique = Date.now();
+  const emailPrefix = `login-limit-${unique}`;
+  const email = `${emailPrefix}@legacy.local`;
+  const uppercaseEmail = email.toUpperCase();
+  const unknownEmail = `unknown-${unique}@legacy.local`;
+  const password = `login-limit-password-${unique}`;
+  const loginURL = new URL("/api/v1/passport/auth/login", legacyURL).toString();
+  const login = (candidateEmail: string, candidatePassword: string) => page.request.post(loginURL, {
+    data: { email: candidateEmail, password: candidatePassword }
+  });
+
+  try {
+    const generated = await page.request.post(legacyAdminAPI("/user/generate"), {
+      headers,
+      data: { email_prefix: emailPrefix, email_suffix: "legacy.local", password }
+    });
+    expect(generated.status()).toBe(200);
+    const configured = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: { password_limit_enable: 1, password_limit_count: 2, password_limit_expire: 1 }
+    });
+    expect(configured.status()).toBe(200);
+    clearLegacyPasswordErrorLimit(email);
+    clearLegacyPasswordErrorLimit(uppercaseEmail);
+
+    const firstWrong = await login(email, `${password}-wrong-1`);
+    expect(firstWrong.status()).toBe(400);
+    expect(readStringProperty(await firstWrong.json() as unknown, "message")).toBe("邮箱或密码错误");
+    expect((await login(email, password)).status()).toBe(200);
+    const secondWrong = await login(email, `${password}-wrong-2`);
+    expect(secondWrong.status()).toBe(400);
+
+    const locked = await login(email, password);
+    expect(locked.status()).toBe(429);
+    expect(readStringProperty(await locked.json() as unknown, "message")).toBe("密码错误次数过多，请 1 分钟后再试");
+
+    const legacyCaseBypass = await login(uppercaseEmail, password);
+    expect(legacyCaseBypass.status()).toBe(200);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const unknown = await login(unknownEmail, `${password}-unknown-${attempt}`);
+      expect(unknown.status()).toBe(400);
+      expect(readStringProperty(await unknown.json() as unknown, "message")).toBe("邮箱或密码错误");
+    }
+
+    const disabled = await page.request.post(legacyAdminAPI("/config/save"), {
+      headers,
+      data: { password_limit_enable: 0 }
+    });
+    expect(disabled.status()).toBe(200);
+    expect((await login(email, password)).status()).toBe(200);
+  } finally {
+    await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    clearLegacyPasswordErrorLimit(email);
+    clearLegacyPasswordErrorLimit(uppercaseEmail);
+    clearLegacyPasswordErrorLimit(unknownEmail);
+    legacyTinker(`App\\Models\\User::where("email","${email}")->delete();`);
+  }
+});
+
+test("Go password error limit preserves Xboard semantics and closes observed bypasses", async ({ page }) => {
+  await loginGo(page);
+  const originalResponse = await goAdminRequest(page, "/api/v1/admin/site-settings", "GET");
+  expect(originalResponse.status, originalResponse.body).toBe(200);
+  const original = readObjectProperty(JSON.parse(originalResponse.body) as unknown, "data");
+  const unique = Date.now();
+  const email = `go-login-limit-${unique}@example.test`;
+  const unknownEmail = `go-unknown-login-limit-${unique}@example.test`;
+  const password = `go-login-limit-password-${unique}`;
+  let created: Record<string, unknown> | null = null;
+  const loginContext = await playwrightRequest.newContext({ baseURL: goURL });
+  const login = (candidateEmail: string, candidatePassword: string) => loginContext.post("/api/v1/passport/auth/login", {
+    data: { email: candidateEmail, password: candidatePassword }
+  });
+
+  try {
+    const configured = await goAdminRequest(page, "/api/v1/admin/site-settings", "PUT", {
+      revision: Number(readProperty(original, "revision")),
+      app_name: readStringProperty(original, "app_name"), app_description: readStringProperty(original, "app_description"),
+      app_url: readStringProperty(original, "app_url"), tos_url: readStringProperty(original, "tos_url"),
+      logo: readStringProperty(original, "logo"), password_limit_enable: true,
+      password_limit_count: 2, password_limit_expire: 1
+    });
+    expect(configured.status, configured.body).toBe(200);
+    const generated = await goAdminRequest(page, "/api/v1/admin/users", "POST", {
+      email, password, group_id: null, transfer_enable: 1_073_741_824, expired_at: null,
+      speed_limit: 0, device_limit: 0, banned: false
+    });
+    expect(generated.status, generated.body).toBe(201);
+    created = readObjectProperty(JSON.parse(generated.body) as unknown, "data");
+
+    const firstWrong = await login(email, `${password}-wrong-1`);
+    expect(firstWrong.status()).toBe(401);
+    const firstError = readObjectProperty(await firstWrong.json() as unknown, "error");
+    expect(readStringProperty(firstError, "code")).toBe("invalid_credentials");
+    expect(readStringProperty(firstError, "message")).toBe("邮箱或密码错误");
+    expect((await login(email, password)).status()).toBe(200);
+    expect((await login(email, `${password}-wrong-2`)).status()).toBe(401);
+    const locked = await login(email, password);
+    expect(locked.status()).toBe(429);
+    const lockedError = readObjectProperty(await locked.json() as unknown, "error");
+    expect(readStringProperty(lockedError, "code")).toBe("login_rate_limited");
+    expect(readStringProperty(lockedError, "message")).toBe("密码错误次数过多，请 1 分钟后再试");
+    expect(locked.headers()["retry-after"]).toMatch(/^(?:[1-9]|[1-5]\d|60)$/);
+    expect((await login(`  ${email.toUpperCase()}  `, password)).status()).toBe(429);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const unknown = await login(unknownEmail, `${password}-unknown-${attempt}`);
+      expect(unknown.status()).toBe(401);
+      const error = readObjectProperty(await unknown.json() as unknown, "error");
+      expect(readStringProperty(error, "code")).toBe("invalid_credentials");
+      expect(readStringProperty(error, "message")).toBe("邮箱或密码错误");
+    }
+    expect((await login(unknownEmail.toUpperCase(), `${password}-unknown-locked`)).status()).toBe(429);
+
+    const current = readObjectProperty(JSON.parse(configured.body) as unknown, "data");
+    const disabled = await goAdminRequest(page, "/api/v1/admin/site-settings", "PUT", {
+      revision: Number(readProperty(current, "revision")),
+      app_name: readStringProperty(current, "app_name"), app_description: readStringProperty(current, "app_description"),
+      app_url: readStringProperty(current, "app_url"), tos_url: readStringProperty(current, "tos_url"),
+      logo: readStringProperty(current, "logo"), password_limit_enable: false
+    });
+    expect(disabled.status, disabled.body).toBe(200);
+    expect((await login(email, password)).status()).toBe(200);
+  } finally {
+    if (created !== null) {
+      const banned = await goAdminRequest(page, `/api/v1/admin/users/${Number(readProperty(created, "id"))}`, "PATCH", {
+        revision: Number(readProperty(created, "revision")), email: readStringProperty(created, "email"),
+        group_id: readProperty(created, "group_id"), transfer_enable: Number(readProperty(created, "transfer_enable")),
+        expired_at: readProperty(created, "expired_at"), speed_limit: Number(readProperty(created, "speed_limit")),
+        device_limit: Number(readProperty(created, "device_limit")), banned: true
+      });
+      expect(banned.status, banned.body).toBe(200);
+    }
+    const latestResponse = await goAdminRequest(page, "/api/v1/admin/site-settings", "GET");
+    const latest = readObjectProperty(JSON.parse(latestResponse.body) as unknown, "data");
+    const restored = await goAdminRequest(page, "/api/v1/admin/site-settings", "PUT", {
+      revision: Number(readProperty(latest, "revision")),
+      app_name: readStringProperty(original, "app_name"), app_description: readStringProperty(original, "app_description"),
+      app_url: readStringProperty(original, "app_url"), tos_url: readStringProperty(original, "tos_url"),
+      logo: readStringProperty(original, "logo"), password_limit_enable: readProperty(original, "password_limit_enable"),
+      password_limit_count: readProperty(original, "password_limit_count"),
+      password_limit_expire: readProperty(original, "password_limit_expire")
+    });
+    expect(restored.status, restored.body).toBe(200);
+    await loginContext.dispose();
   }
 });
 
@@ -1509,6 +1674,20 @@ async function loginGo(page: Page) {
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
 }
 
+async function goAdminRequest(page: Page, path: string, method: string, body?: unknown) {
+  return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
+    const encoded = document.cookie.split("; ").find((item) => item.startsWith("xboard_csrf="))?.slice("xboard_csrf=".length) ?? "";
+    const response = await fetch(requestPath, {
+      method: requestMethod, credentials: "same-origin",
+      headers: requestBody === undefined ? { "X-CSRF-Token": decodeURIComponent(encoded) } : {
+        "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded)
+      },
+      body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
+    });
+    return { status: response.status, body: await response.text() };
+  }, { path, method, body });
+}
+
 async function loginLegacyUser(page: Page) {
   await page.goto(new URL("/", legacyURL).toString(), { waitUntil: "domcontentloaded" });
   const fields = page.locator("input:visible");
@@ -1555,6 +1734,11 @@ function clearLegacyPasswordResetCache(email: string): void {
       ], { stdio: "ignore" });
     }
   }
+}
+
+function clearLegacyPasswordErrorLimit(email: string): void {
+  const encodedEmail = Buffer.from(email, "utf8").toString("base64");
+  legacyTinker(`$email=base64_decode("${encodedEmail}"); Illuminate\\Support\\Facades\\Cache::forget(App\\Utils\\CacheKey::get("PASSWORD_ERROR_LIMIT",$email));`);
 }
 
 function legacyRedisKeys(pattern: string): string[] {

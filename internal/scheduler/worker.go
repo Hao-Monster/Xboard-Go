@@ -19,6 +19,7 @@ type Worker struct {
 	lastPasswordResetSweep     time.Time
 	lastRegistrationEmailSweep time.Time
 	lastLoginLinkSweep         time.Time
+	lastLoginFailureSweep      time.Time
 	tracker                    *operations.Tracker
 }
 
@@ -60,6 +61,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.prunePasswordResets(ctx, now)
 	w.pruneRegistrationEmailVerifications(ctx, now)
 	w.pruneLoginLinks(ctx, now)
+	w.pruneLoginFailures(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -76,6 +78,23 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) pruneLoginFailures(ctx context.Context, now time.Time) {
+	if !w.lastLoginFailureSweep.IsZero() && now.Sub(w.lastLoginFailureSweep) < time.Minute {
+		return
+	}
+	w.lastLoginFailureSweep = now
+	removed, err := w.store.PruneExpiredLoginFailureLimits(ctx, now, 1_000)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("prune expired login failures", "error", err)
+		}
+		return
+	}
+	if removed > 0 {
+		w.logger.Info("expired login failures pruned", "count", removed)
 	}
 }
 

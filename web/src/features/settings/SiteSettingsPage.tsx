@@ -111,6 +111,12 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         </fieldset>
         <fieldset className="settings-fieldset">
           <legend>登录安全策略</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.password_limit_enable} onChange={(event) => updateDraft("password_limit_enable", event.target.checked)} />密码错误次数限制</label>
+          {draft.password_limit_enable && <div className="registration-policy-grid">
+            <label>密码错误次数<input type="number" required min={1} max={20} value={draft.password_limit_count} onChange={(event) => updateDraft("password_limit_count", Number(event.target.value))} /></label>
+            <label>登录锁定时长（分钟）<input type="number" required min={1} max={1440} value={draft.password_limit_expire} onChange={(event) => updateDraft("password_limit_expire", Number(event.target.value))} /></label>
+          </div>}
+          <p className="small muted">达到错误次数后，从下一次登录开始锁定该邮箱；成功登录不会清空当前计数。邮箱大小写和首尾空格按同一账号统计，未知账号使用相同失败提示，并始终保留独立的来源 IP 防护。</p>
           <label className="switch-label"><input type="checkbox" checked={draft.login_with_mail_link_enable} onChange={(event) => updateDraft("login_with_mail_link_enable", event.target.checked)} />邮件链接登录</label>
           <p className="small muted">启用后，已有用户可通过 5 分钟有效、仅能使用一次的邮件链接登录；请先在邮件设置中启用 SMTP。</p>
         </fieldset>
@@ -139,6 +145,9 @@ function toDraft(settings: SiteSettings): SiteDraft {
     register_limit_by_ip_enable: settings.register_limit_by_ip_enable,
     register_limit_count: settings.register_limit_count,
     register_limit_expire: settings.register_limit_expire,
+    password_limit_enable: settings.password_limit_enable,
+    password_limit_count: settings.password_limit_count,
+    password_limit_expire: settings.password_limit_expire,
     invite_force: settings.invite_force,
     invite_gen_limit: settings.invite_gen_limit,
     invite_never_expire: settings.invite_never_expire,

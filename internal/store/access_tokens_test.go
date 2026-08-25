@@ -117,6 +117,14 @@ func TestSchemaV21PreservesV20SessionsAndAddsAccessTokenIndexes(t *testing.T) {
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE access_tokens`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `DROP TABLE login_failure_limits`); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"password_limit_enable", "password_limit_count", "password_limit_expire"} {
+		if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN `+column); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 20`); err != nil {
 		t.Fatal(err)
 	}

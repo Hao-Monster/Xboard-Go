@@ -38,7 +38,8 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		t.Fatalf("initial admin settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
 	initial := decodeSiteSettingsEnvelope(t, initialResponse)
-	if initial.Revision != 1 || initial.AppName != "Xboard-Go" {
+	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || !initial.PasswordLimitEnabled ||
+		initial.PasswordLimitCount != 5 || initial.PasswordLimitMinutes != 60 {
 		t.Fatalf("initial admin site settings = %#v", initial)
 	}
 	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
@@ -60,7 +61,8 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		"logo":"https://images.example.test/brand.svg","stop_register":true,
 		"email_whitelist_enable":true,"email_whitelist_suffix":[" Allowed.Test ","allowed.test","GMAIL.COM"],
 		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":true,
-		"register_limit_count":2,"register_limit_expire":30
+		"register_limit_count":2,"register_limit_expire":30,
+		"password_limit_enable":true,"password_limit_count":2,"password_limit_expire":30
 	}`)
 	if updatedResponse.Code != http.StatusOK {
 		t.Fatalf("update admin settings status=%d body=%s", updatedResponse.Code, updatedResponse.Body)
@@ -71,7 +73,8 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		updated.Logo != "https://images.example.test/brand.svg" || !updated.StopRegister || !updated.EmailWhitelistEnabled ||
 		len(updated.EmailWhitelistSuffixes) != 2 || updated.EmailWhitelistSuffixes[0] != "allowed.test" || updated.EmailWhitelistSuffixes[1] != "gmail.com" ||
 		!updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled || updated.RegistrationIPLimitCount != 2 ||
-		updated.RegistrationIPLimitMinutes != 30 {
+		updated.RegistrationIPLimitMinutes != 30 || !updated.PasswordLimitEnabled || updated.PasswordLimitCount != 2 ||
+		updated.PasswordLimitMinutes != 30 {
 		t.Fatalf("updated admin settings = %#v", updated)
 	}
 
@@ -86,7 +89,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	if err := json.Unmarshal(guest.EmailWhitelistSuffix, &publicSuffixes); err != nil || len(publicSuffixes) != 2 || publicSuffixes[0] != "allowed.test" || publicSuffixes[1] != "gmail.com" {
 		t.Fatalf("public whitelist suffixes = %q, decoded=%#v err=%v", guest.EmailWhitelistSuffix, publicSuffixes, err)
 	}
-	for _, internalKey := range []string{"email_whitelist_enable", "email_gmail_limit_enable", "register_limit_by_ip_enable", "register_limit_count", "register_limit_expire", "login_with_mail_link_enable"} {
+	for _, internalKey := range []string{"email_whitelist_enable", "email_gmail_limit_enable", "register_limit_by_ip_enable", "register_limit_count", "register_limit_expire", "password_limit_enable", "password_limit_count", "password_limit_expire", "login_with_mail_link_enable"} {
 		if strings.Contains(publicUpdated.Body.String(), internalKey) {
 			t.Fatalf("public config disclosed internal policy %q: %s", internalKey, publicUpdated.Body)
 		}
@@ -102,7 +105,8 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	preserved := decodeSiteSettingsEnvelope(t, preservedResponse)
 	if preserved.Revision != 3 || !preserved.StopRegister || !preserved.EmailWhitelistEnabled ||
 		len(preserved.EmailWhitelistSuffixes) != 2 || !preserved.GmailAliasLimitEnabled || !preserved.RegistrationIPLimitEnabled ||
-		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 {
+		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 ||
+		!preserved.PasswordLimitEnabled || preserved.PasswordLimitCount != 2 || preserved.PasswordLimitMinutes != 30 {
 		t.Fatalf("legacy-shape settings update lost registration policy fields: %#v", preserved)
 	}
 
@@ -125,6 +129,11 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		"register_limit_count":0
 	}`)
 	expectAPIError(t, invalidIPLimit, http.StatusUnprocessableEntity, "validation_failed")
+	invalidPasswordLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
+		"password_limit_count":0
+	}`)
+	expectAPIError(t, invalidPasswordLimit, http.StatusUnprocessableEntity, "validation_failed")
 	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","smtp_password":"secret"
 	}`)

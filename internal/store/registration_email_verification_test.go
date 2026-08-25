@@ -173,6 +173,8 @@ func TestRegistrationEmailVerificationRequiresSMTPAndBlocksDisablingIt(t *testin
 		EmailWhitelistSuffixes: siteSettings.EmailWhitelistSuffixes, GmailAliasLimitEnabled: siteSettings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: siteSettings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: siteSettings.PasswordLimitEnabled, PasswordLimitCount: siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes: siteSettings.PasswordLimitMinutes,
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -326,6 +328,8 @@ func newRegistrationEmailStore(t testing.TB) (*Store, *security.RegistrationEmai
 		EmailWhitelistSuffixes: siteSettings.EmailWhitelistSuffixes, GmailAliasLimitEnabled: siteSettings.GmailAliasLimitEnabled,
 		RegistrationIPLimitEnabled: siteSettings.RegistrationIPLimitEnabled,
 		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: siteSettings.PasswordLimitEnabled, PasswordLimitCount: siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes: siteSettings.PasswordLimitMinutes,
 	}, now); err != nil {
 		t.Fatal(err)
 	}

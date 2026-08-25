@@ -109,6 +109,9 @@ func TestWorkerDecryptsAndDeliversRegistrationEmailCode(t *testing.T) {
 		EmailWhitelistSuffixes:     siteSettings.EmailWhitelistSuffixes,
 		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       siteSettings.PasswordLimitEnabled,
+		PasswordLimitCount:         siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:       siteSettings.PasswordLimitMinutes,
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +171,8 @@ func TestWorkerDecryptsAndDeliversOneTimeLoginLink(t *testing.T) {
 	if _, err := database.UpdateSiteSettings(ctx, user.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
 		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		PasswordLimitEnabled: siteSettings.PasswordLimitEnabled, PasswordLimitCount: siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:  siteSettings.PasswordLimitMinutes,
 		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
 	}, now); err != nil {
 		t.Fatal(err)

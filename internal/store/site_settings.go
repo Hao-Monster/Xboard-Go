@@ -17,6 +17,8 @@ const (
 	maxRegistrationIPCount  = 100
 	maxRegistrationIPWindow = 10_080
 	maxInvitationCodeLimit  = 100
+	maxPasswordLimitCount   = 20
+	maxPasswordLimitWindow  = 1_440
 )
 
 const defaultEmailWhitelistStorage = "gmail.com,qq.com,163.com,yahoo.com,sina.com,126.com,outlook.com,yeah.net,foxmail.com"
@@ -26,6 +28,7 @@ func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       password_limit_enable, password_limit_count, password_limit_expire,
 		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, updated_at
 		FROM app_settings WHERE id = 1
 	`))
@@ -66,6 +69,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
+		    password_limit_enable = ?, password_limit_count = ?, password_limit_expire = ?,
 		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?, login_with_mail_link_enable = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
@@ -73,6 +77,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
+		normalized.PasswordLimitEnabled, normalized.PasswordLimitCount, normalized.PasswordLimitMinutes,
 		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire, normalized.MailLoginEnabled,
 		administratorID, now.Unix(), revision)
 	if err != nil {
@@ -124,6 +129,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       password_limit_enable, password_limit_count, password_limit_expire,
 		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, updated_at
 		FROM app_settings WHERE id = 1
 	`))
@@ -156,7 +162,9 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 		len(input.EmailWhitelistSuffixes) > maxEmailWhitelistItems ||
 		len(strings.Join(input.EmailWhitelistSuffixes, ",")) > maxEmailWhitelistBytes ||
 		input.RegistrationIPLimitCount < 1 || input.RegistrationIPLimitCount > maxRegistrationIPCount ||
-		input.RegistrationIPLimitMinutes < 1 || input.RegistrationIPLimitMinutes > maxRegistrationIPWindow {
+		input.RegistrationIPLimitMinutes < 1 || input.RegistrationIPLimitMinutes > maxRegistrationIPWindow ||
+		input.PasswordLimitCount < 1 || input.PasswordLimitCount > maxPasswordLimitCount ||
+		input.PasswordLimitMinutes < 1 || input.PasswordLimitMinutes > maxPasswordLimitWindow {
 		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
 	}
 	if input.InvitationCodeLimit < 0 || input.InvitationCodeLimit > maxInvitationCodeLimit {
@@ -212,6 +220,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo,
 		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
+		&settings.PasswordLimitEnabled, &settings.PasswordLimitCount, &settings.PasswordLimitMinutes,
 		&settings.InvitationForceEnabled, &settings.InvitationCodeLimit, &settings.InvitationNeverExpire,
 		&settings.MailLoginEnabled,
 		&updatedAt,

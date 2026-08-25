@@ -121,6 +121,8 @@ func TestWorkerPrunesExpiredRegistrationIPState(t *testing.T) {
 		TOSURL: settings.TOSURL, Logo: settings.Logo, StopRegister: settings.StopRegister,
 		EmailWhitelistSuffixes:     settings.EmailWhitelistSuffixes,
 		RegistrationIPLimitEnabled: true, RegistrationIPLimitCount: 3, RegistrationIPLimitMinutes: 1,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount,
+		PasswordLimitMinutes: settings.PasswordLimitMinutes,
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +137,31 @@ func TestWorkerPrunesExpiredRegistrationIPState(t *testing.T) {
 	worker.applyDue(ctx)
 	if removed, err := database.PruneExpiredRegistrationIPLimits(ctx, now.Add(time.Minute), 100); err != nil || removed != 0 {
 		t.Fatalf("worker left expired registration IP state: removed=%d err=%v", removed, err)
+	}
+}
+
+func TestWorkerPrunesExpiredLoginFailureState(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-login-failure-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 1, 0, 0, 0, time.UTC)
+	digest := make([]byte, 32)
+	digest[0] = 0x7f
+	if _, err := database.RecordLoginFailure(ctx, digest, now); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now.Add(61 * time.Minute) }
+	worker.applyDue(ctx)
+	if removed, err := database.PruneExpiredLoginFailureLimits(ctx, now.Add(61*time.Minute), 100); err != nil || removed != 0 {
+		t.Fatalf("worker left expired login failure state: removed=%d err=%v", removed, err)
 	}
 }
 
@@ -212,6 +239,9 @@ func TestWorkerPrunesExpiredRegistrationEmailChallengesAndEncryptedMail(t *testi
 		EmailWhitelistSuffixes:     siteSettings.EmailWhitelistSuffixes,
 		RegistrationIPLimitCount:   siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled:       siteSettings.PasswordLimitEnabled,
+		PasswordLimitCount:         siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:       siteSettings.PasswordLimitMinutes,
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +293,8 @@ func TestWorkerPrunesExpiredLoginLinksAndEncryptedMail(t *testing.T) {
 	if _, err := database.UpdateSiteSettings(ctx, user.ID, siteSettings.Revision, store.SaveSiteSettingsInput{
 		AppName: siteSettings.AppName, RegistrationIPLimitCount: siteSettings.RegistrationIPLimitCount,
 		RegistrationIPLimitMinutes: siteSettings.RegistrationIPLimitMinutes, InvitationCodeLimit: siteSettings.InvitationCodeLimit,
+		PasswordLimitEnabled: siteSettings.PasswordLimitEnabled, PasswordLimitCount: siteSettings.PasswordLimitCount,
+		PasswordLimitMinutes:  siteSettings.PasswordLimitMinutes,
 		InvitationNeverExpire: siteSettings.InvitationNeverExpire, MailLoginEnabled: true,
 	}, now); err != nil {
 		t.Fatal(err)
