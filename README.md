@@ -76,3 +76,20 @@ that secret independently for as long as encrypted settings or pending tokens
 exist. Copy verified archives to independently protected storage when testing
 a real disaster-recovery plan. These commands are currently intended only for
 local and isolated test environments.
+
+## Local bounded maintenance
+
+The running scheduler removes expired authentication challenges and abuse
+limits and closes administrator-answered tickets after the verified 24-hour
+window. The same state-machine cleanup can be run explicitly against the local
+database; each category is independently bounded to at most 1,000 rows and the
+command returns machine-readable counts. It validates the current Xboard schema
+before the first write and can be repeated until every count is zero.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance cleanup-expired --limit 1000
+```
+
+This operation deliberately does not invent retention rules for user records,
+attachments, audit history, traffic statistics, or other business data.

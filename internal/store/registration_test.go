@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -294,6 +295,31 @@ func TestExpiredRegistrationIPCountersArePrunedAndDisabledPolicyClearsState(t *t
 		if _, err := database.PruneExpiredRegistrationIPLimits(ctx, now, limit); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("prune limit %d error=%v, want ErrInvalidInput", limit, err)
 		}
+	}
+}
+
+func TestRegistrationIPPrunePlanAvoidsUnboundedTemporarySort(t *testing.T) {
+	database := newTestStore(t)
+	rows, err := database.db.QueryContext(t.Context(), `EXPLAIN QUERY PLAN `+pruneExpiredRegistrationIPLimitsSQL, time.Now().Unix(), 1_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan strings.Builder
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan.WriteString(detail)
+		plan.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.String(), "idx_registration_ip_limits_reset_at") || strings.Contains(plan.String(), "USE TEMP B-TREE") {
+		t.Fatalf("registration IP prune plan is not bounded by the expiry index: %s", plan.String())
 	}
 }
 
