@@ -173,6 +173,13 @@ match array and action against the current bounded runtime contract. User,
 plan, and node relationships are intentionally left for later atomic slices;
 the preserved IDs make those relationship migrations composable.
 
+The third slice covers knowledge articles while preserving IDs, content,
+visibility, ordering values, and timestamps. A legacy nullable sort value maps
+to the current explicit unsorted value `0`, and imported articles start at
+optimistic revision `1`. Because knowledge attachments are not implemented yet,
+this slice fails closed if the source has attachment rows, upload sessions, or
+attachment URI references instead of creating broken articles.
+
 Never bind-mount a running Xboard database file directly. First use SQLite's
 online backup API to create a standalone snapshot; a filesystem copy of a WAL
 database is not a valid migration input. The migration reader refuses
@@ -221,7 +228,25 @@ normalization, malformed JSON, unsupported actions, invalid timestamps,
 oversized data, a different snapshot after completion, or any pre-existing
 group/route data instead of attempting an ambiguous merge.
 
+Still offline, knowledge can be imported with its own rollback point:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-knowledge \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-knowledge.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The knowledge target must be empty. Unsupported languages, attachment data,
+lossy text normalization, invalid visibility/sort/timestamps, oversized data,
+and conflicting snapshots are rejected. Restoring this third backup removes
+only the knowledge slice while retaining the first two completed slices.
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
-checksums but no setting values, URLs, notice bodies, email addresses, or
-credentials. This remains a local/isolated-test workflow; later legacy data
-domains and relationships require separate mappings and migration evidence.
+checksums but no setting values, URLs, notice or knowledge bodies, article
+titles, email addresses, or credentials. This remains a local/isolated-test
+workflow; later legacy data domains and relationships require separate mappings
+and migration evidence.
