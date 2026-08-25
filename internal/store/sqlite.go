@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 27
+const currentSchemaVersion = 28
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -234,6 +234,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v27: %w", err)
 		}
 		version = 27
+	}
+	if version < 28 {
+		if _, err := tx.ExecContext(ctx, schemaV28); err != nil {
+			return fmt.Errorf("apply schema v28: %w", err)
+		}
+		version = 28
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1096,4 +1102,26 @@ CREATE TABLE traffic_reset_logs (
     UNIQUE (user_id, scheduled_for)
 );
 CREATE INDEX idx_traffic_reset_logs_user ON traffic_reset_logs(user_id, reset_at DESC, id DESC);
+`
+
+const schemaV28 = `
+CREATE TABLE subscription_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    path TEXT NOT NULL DEFAULT 's'
+        CHECK (length(path) BETWEEN 1 AND 64 AND path NOT GLOB '*[^A-Za-z0-9_-]*'),
+    show_info INTEGER NOT NULL DEFAULT 0 CHECK (show_info IN (0, 1)),
+    show_protocol INTEGER NOT NULL DEFAULT 0 CHECK (show_protocol IN (0, 1)),
+    updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+);
+INSERT INTO subscription_settings (id) VALUES (1);
+
+CREATE TABLE subscription_templates (
+    name TEXT PRIMARY KEY CHECK (name IN ('singbox','clash','clashmeta','stash','surge','surfboard')),
+    content TEXT NOT NULL DEFAULT '' CHECK (length(CAST(content AS BLOB)) <= 1048576),
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+);
+INSERT INTO subscription_templates (name) VALUES
+    ('singbox'),('clash'),('clashmeta'),('stash'),('surge'),('surfboard');
 `

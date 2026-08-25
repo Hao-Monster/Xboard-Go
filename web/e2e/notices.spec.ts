@@ -51,12 +51,14 @@ test("administrator manages ordered notices and a user reads only visible safe m
 
   await logoutAndWait(page);
   await login(page, userEmail, userPassword);
+  await page.getByRole("button", { name: "公告", exact: true }).click();
   await expect(page.getByRole("heading", { name: "公告", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: revisedTitle })).toBeVisible();
-  await expect(page.getByText("Available now", { exact: true })).toBeVisible();
+  const visibleNotice = page.getByRole("article").filter({ has: page.getByRole("heading", { name: revisedTitle }) });
+  await expect(visibleNotice).toBeVisible();
+  await expect(visibleNotice.getByText("Available now", { exact: true })).toBeVisible();
   await expect(page.getByText(hiddenTitle, { exact: true })).toHaveCount(0);
-  await expect(page.locator(".markdown-body img")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "unsafe" })).not.toHaveAttribute("href", /^javascript:/i);
+  await expect(visibleNotice.locator(".markdown-body img")).toHaveCount(0);
+  await expect(visibleNotice.getByRole("link", { name: "unsafe" })).not.toHaveAttribute("href", /^javascript:/i);
   await expectLayoutWithinViewport(page);
 
   await logoutAndWait(page);

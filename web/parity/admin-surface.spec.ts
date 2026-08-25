@@ -1754,6 +1754,71 @@ test("implemented Go administrator concepts map to the legacy navigation", async
   }
 });
 
+test("legacy subscription settings remain observable and map to Go output controls", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    const legacyConfigResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    const fetchedLegacyConfig = await legacyConfigResponse;
+    const authorization = fetchedLegacyConfig.request().headers().authorization;
+    expect(authorization).toBeTruthy();
+    if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+    await legacyPage.getByRole("link", { name: "订阅设置", exact: true }).filter({ visible: true }).click();
+    for (const field of [
+      "允许用户更改订阅", "月流量重置方式", "开启折抵方案", "订阅路径",
+      "在订阅中展示订阅信息", "在订阅中线路名称中显示协议名称"
+    ]) {
+      await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), field).toBeVisible();
+    }
+    const legacyPayload = readProperty(await (await legacyPage.request.get(legacyAdminAPI("/config/fetch"), {
+      headers: { authorization }
+    })).json() as unknown, "data");
+    const legacySubscribe = readObjectProperty(legacyPayload, "subscribe");
+    expect(Object.keys(legacySubscribe)).toEqual(expect.arrayContaining([
+      "plan_change_enable", "reset_traffic_method", "surplus_enable", "new_order_event_id",
+      "renew_order_event_id", "change_order_event_id", "show_info_to_server_enable",
+      "show_protocol_to_server_enable", "default_remind_expire", "default_remind_traffic", "subscribe_path"
+    ]));
+
+    await legacyPage.getByRole("link", { name: "订阅模板", exact: true }).filter({ visible: true }).click();
+    for (const template of ["Sing-box", "Clash", "Clash Meta", "Stash", "Surge", "Surfboard"]) {
+      await expect(legacyPage.getByRole("tab", { name: template, exact: true }).filter({ visible: true })).toBeVisible();
+    }
+
+    await goPage.getByRole("button", { name: "订阅设置", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "订阅设置" })).toBeVisible();
+    await expect(goPage.getByLabel("订阅路径")).toBeVisible();
+    await expect(goPage.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).toBeVisible();
+    await expect(goPage.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeVisible();
+    for (const template of ["Sing-box", "Clash", "Clash Meta", "Stash", "Surge", "Surfboard"]) {
+      await expect(goPage.getByRole("button", { name: template, exact: true })).toBeVisible();
+    }
+    const goResponse = await goAdminRequest(goPage, "/api/v1/admin/subscription-settings", "GET");
+    expect(goResponse.status, goResponse.body).toBe(200);
+    const goSettings = readObjectProperty(JSON.parse(goResponse.body) as unknown, "data");
+    expect(typeof readProperty(goSettings, "path")).toBe("string");
+    expect(typeof readProperty(goSettings, "show_info")).toBe("boolean");
+    expect(typeof readProperty(goSettings, "show_protocol")).toBe("boolean");
+    expect(Object.keys(readObjectProperty(goSettings, "templates")).sort()).toEqual([
+      "clash", "clashmeta", "singbox", "stash", "surfboard", "surge"
+    ]);
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 async function exerciseLegacyCaptchaContract(page: Page) {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));

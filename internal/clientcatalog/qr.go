@@ -13,9 +13,22 @@ func (s *Service) QRData(clientID, platform string) (string, string, error) {
 		return "", "", ErrNotFound
 	}
 	downloadURL := s.stableURL("client-link", clientID, platform, "qr")
-	code, err := qr.Encode(downloadURL, qr.M)
+	dataURL, err := QRDataURL(downloadURL)
 	if err != nil {
 		return "", "", fmt.Errorf("encode client download QR: %w", err)
+	}
+	return downloadURL, dataURL, nil
+}
+
+// QRDataURL encodes a bounded application URL as a self-contained SVG data URL.
+// Callers remain responsible for authenticating access to sensitive payloads.
+func QRDataURL(value string) (string, error) {
+	if value == "" || len(value) > 4096 {
+		return "", fmt.Errorf("QR value length is invalid")
+	}
+	code, err := qr.Encode(value, qr.M)
+	if err != nil {
+		return "", err
 	}
 	const quietZone = 4
 	viewSize := code.Size + 2*quietZone
@@ -31,5 +44,5 @@ func (s *Service) QRData(clientID, platform string) (string, string, error) {
 	}
 	svg.WriteString(`"/></svg>`)
 	dataURL := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(svg.String()))
-	return downloadURL, dataURL, nil
+	return dataURL, nil
 }

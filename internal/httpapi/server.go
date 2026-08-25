@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -77,6 +76,8 @@ type server struct {
 	passportEmailRequests      *requestLimiter
 	invitationViewRequests     *requestLimiter
 	mailLoginRequests          *requestLimiter
+	subscriptionFailures       *attemptLimiter
+	subscriptionResetRequests  *requestLimitGroup
 	passwordHashSlots          chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
@@ -167,6 +168,8 @@ func New(dependencies Dependencies) http.Handler {
 		passportEmailRequests:      newRequestLimiter(10, 15*time.Minute),
 		invitationViewRequests:     newRequestLimiter(60, 15*time.Minute),
 		mailLoginRequests:          newRequestLimiter(10, 15*time.Minute),
+		subscriptionFailures:       newAttemptLimiter(1_200, 15*time.Minute),
+		subscriptionResetRequests:  newRequestLimitGroup(60, 6),
 		passwordHashSlots:          make(chan struct{}, 2),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
@@ -201,6 +204,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("GET /api/v1/guest/plans", api.listGuestPlans)
+	root.HandleFunc("GET /api/v1/client/subscribe", api.clientSubscription)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
 	root.Handle("POST /api/v1/passport/auth/login", api.requireTrustedOrigin(http.HandlerFunc(api.legacyLogin)))
 	root.Handle("POST /api/v2/passport/auth/login", api.requireTrustedOrigin(http.HandlerFunc(api.legacyLogin)))
@@ -238,6 +242,11 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v1/user/logout", api.requireLegacyBearer(http.HandlerFunc(api.legacyLogout)))
 	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
 	root.Handle("GET /api/v1/plans", api.requireSession(http.HandlerFunc(api.listUserPlans)))
+	root.Handle("GET /api/v1/subscription", api.requireSession(http.HandlerFunc(api.getUserSubscription)))
+	root.Handle("GET /api/v1/subscription/qr", api.requireSession(http.HandlerFunc(api.getUserSubscriptionQR)))
+	root.Handle("POST /api/v1/subscription/security/reset", api.requireSession(api.requireCSRF(http.HandlerFunc(api.resetUserSubscriptionSecurity))))
+	root.Handle("GET /api/v1/user/getSubscribe", api.requireLegacyBearer(http.HandlerFunc(api.legacyGetUserSubscription)))
+	root.Handle("GET /api/v1/user/resetSecurity", api.requireLegacyBearer(http.HandlerFunc(api.legacyResetUserSubscriptionSecurity)))
 	root.Handle("POST /api/v1/invitations", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createInvitation))))
 	root.Handle("POST /api/v1/invitations/view", api.requireTrustedOrigin(http.HandlerFunc(api.recordInvitationView)))
 	root.Handle("POST /api/v1/passport/comm/pv", api.requireTrustedOrigin(http.HandlerFunc(api.legacyRecordInvitationView)))
@@ -266,6 +275,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v2/server/config", api.xboardNodeConfig)
 	root.HandleFunc("GET /api/v2/server/user", api.xboardNodeUsers)
 	root.HandleFunc("POST /api/v2/server/report", api.xboardNodeReport)
+	root.HandleFunc("GET /{subscriptionPath}/{subscriptionToken}", api.dynamicClientSubscription)
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -317,6 +327,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
+	admin.HandleFunc("GET /api/v1/admin/subscription-settings", api.getSubscriptionSettings)
+	admin.HandleFunc("PUT /api/v1/admin/subscription-settings", api.updateSubscriptionSettings)
 	admin.HandleFunc("GET /api/v1/admin/tickets/{ticketID}", api.getAdminTicket)
 	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/messages", api.replyAdminTicket)
 	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/close", api.closeAdminTicket)
@@ -553,33 +565,7 @@ func sessionFromContext(ctx context.Context) (store.SessionUser, bool) {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
-	if contentType := r.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
-		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
-		return false
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
-			return false
-		}
-		writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求格式无效", nil)
-		return false
-	}
-	if err := decoder.Decode(&struct{}{}); errors.Is(err, io.EOF) {
-		return true
-	} else {
-		var maxBytesError *http.MaxBytesError
-		if errors.As(err, &maxBytesError) {
-			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
-			return false
-		}
-	}
-	writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求只能包含一个 JSON 对象", nil)
-	return false
+	return decodeJSONLimit(w, r, target, maxJSONBody)
 }
 
 func pathID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
@@ -599,6 +585,8 @@ func handleStoreError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusConflict, "node_not_linked", "节点尚未关联服务器", nil)
 	case errors.Is(err, store.ErrRuntimeNotConfigured):
 		writeAPIError(w, http.StatusConflict, "runtime_not_configured", "节点运行时配置尚未建立", nil)
+	case errors.Is(err, store.ErrRevisionConflict):
+		writeAPIError(w, http.StatusConflict, "revision_conflict", "资源已被其他管理员修改，请刷新后重试", nil)
 	case errors.Is(err, store.ErrConflict):
 		writeAPIError(w, http.StatusConflict, "conflict", "资源状态冲突", nil)
 	case errors.Is(err, store.ErrInvalidInput):

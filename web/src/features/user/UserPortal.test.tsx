@@ -19,6 +19,8 @@ describe("UserPortal", () => {
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
       listPlanOffers: vi.fn().mockResolvedValue([]),
+      getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
+      getSubscriptionQR: vi.fn(), resetSubscriptionSecurity: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined)
     };
     const onSignedOut = vi.fn();
@@ -28,6 +30,8 @@ describe("UserPortal", () => {
     expect(screen.getByText("Tenant Board", { exact: true })).toBeVisible();
     expect(screen.getByRole("img", { name: "Tenant Board LOGO" })).toHaveAttribute("src", "https://images.example.test/tenant.svg");
 
+    expect(await screen.findByRole("heading", { name: "我的订阅" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "公告" }));
     expect(await screen.findByRole("heading", { name: "公告" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "客户端下载" }));
     expect(await screen.findByRole("heading", { name: "客户端下载" })).toBeVisible();
@@ -57,6 +61,8 @@ describe("UserPortal", () => {
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
       listPlanOffers: vi.fn().mockResolvedValue([]),
+      getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
+      getSubscriptionQR: vi.fn(), resetSubscriptionSecurity: vi.fn(),
       logout: vi.fn().mockRejectedValue(new Error("会话注销失败"))
     };
     const onSignedOut = vi.fn();

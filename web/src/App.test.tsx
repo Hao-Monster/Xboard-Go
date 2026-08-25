@@ -251,6 +251,7 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/notices?page=1")) {
         return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
       }
+      if (path.endsWith("/api/v1/subscription")) return Promise.resolve(subscriptionResponse("new@example.test"));
       return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
     }));
     const user = userEvent.setup();
@@ -290,6 +291,7 @@ describe("App public identity bootstrap", () => {
         return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 88, email: "invited@example.test", is_admin: false } }));
       }
       if (path.endsWith("/api/v1/notices?page=1")) return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
+      if (path.endsWith("/api/v1/subscription")) return Promise.resolve(subscriptionResponse("invited@example.test"));
       return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
     }));
     const user = userEvent.setup();
@@ -357,6 +359,7 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/notices?page=1")) {
         return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
       }
+      if (path.endsWith("/api/v1/subscription")) return Promise.resolve(subscriptionResponse("verified@example.test"));
       return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
     }));
     const user = userEvent.setup();
@@ -385,4 +388,12 @@ describe("App public identity bootstrap", () => {
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+function subscriptionResponse(email: string): Response {
+  return jsonResponse(200, { status: "success", data: {
+    plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email,
+    uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null,
+    plan: null, subscribe_url: `https://panel.example.test/s/${"1".repeat(32)}`, reset_day: null, subscription_valid: false
+  } });
 }

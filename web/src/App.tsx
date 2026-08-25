@@ -12,6 +12,7 @@ import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagemen
 import { TicketManagementPage } from "./features/tickets/TicketManagementPage";
 import { SystemOperationsPage } from "./features/system/SystemOperationsPage";
 import { SiteSettingsPage } from "./features/settings/SiteSettingsPage";
+import { SubscriptionSettingsPage } from "./features/settings/SubscriptionSettingsPage";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 
@@ -34,7 +35,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "servers" | "plans" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -163,6 +164,7 @@ export function App() {
         <div className="admin-nav">
           <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => setPage("system")}>系统状态</button>
           <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}>系统设置</button>
+          <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => setPage("subscriptions")}>订阅设置</button>
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>套餐管理</button>
           <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => setPage("users")}>用户管理</button>
@@ -181,6 +183,7 @@ export function App() {
       </nav>
       {page === "system" && <SystemOperationsPage api={api} />}
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
+      {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
