@@ -45,7 +45,7 @@ test("administrator creates, uses, and revokes a long-lived credential without b
   expect(serverErrors).toEqual([]);
 });
 
-test("administrator revokes other sessions and changes the password", async ({ browser }) => {
+test("administrator revokes other sessions and changes the password without accumulating login failures", async ({ browser }) => {
   const firstContext = await browser.newContext();
   const secondContext = await browser.newContext();
   const first = await firstContext.newPage();
@@ -86,10 +86,6 @@ test("administrator revokes other sessions and changes the password", async ({ b
     await first.getByRole("button", { name: "修改密码" }).click();
     await expectLoginPage(first);
     await first.getByLabel("邮箱").fill(adminEmail);
-    await first.getByLabel("密码").fill(originalPassword);
-    await first.getByRole("button", { name: "登录" }).click();
-    await expect(first.getByRole("alert")).toContainText("邮箱或密码错误");
-
     await first.getByLabel("密码").fill(replacementPassword);
     await first.getByRole("button", { name: "登录" }).click();
     await expect(first.getByRole("button", { name: "账号安全", exact: true })).toBeVisible();

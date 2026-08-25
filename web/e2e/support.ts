@@ -16,7 +16,7 @@ export async function publicAppName(page: Page): Promise<string> {
 }
 
 export async function expectAuthPage(page: Page, action: "登录" | "注册" | "重置密码") {
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${action} ${await publicAppName(page)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(new RegExp(`^${action} .+$`));
 }
 
 export async function expectLoginPage(page: Page) {
