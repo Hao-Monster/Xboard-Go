@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 23
+const currentSchemaVersion = 24
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -210,6 +210,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v23: %w", err)
 		}
 		version = 23
+	}
+	if version < 24 {
+		if _, err := tx.ExecContext(ctx, schemaV24); err != nil {
+			return fmt.Errorf("apply schema v24: %w", err)
+		}
+		version = 24
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -973,4 +979,20 @@ ALTER TABLE app_settings ADD COLUMN turnstile_site_key TEXT NOT NULL DEFAULT ''
     CHECK (length(turnstile_site_key) <= 512);
 ALTER TABLE app_settings ADD COLUMN turnstile_secret_cipher BLOB
     CHECK (turnstile_secret_cipher IS NULL OR length(turnstile_secret_cipher) BETWEEN 33 AND 8192);
+`
+
+const schemaV24 = `
+CREATE TABLE legacy_migration_runs (
+    slice TEXT NOT NULL CHECK (length(slice) BETWEEN 1 AND 64),
+    source_sha256 TEXT NOT NULL
+        CHECK (length(source_sha256) = 64 AND source_sha256 NOT GLOB '*[^0-9a-f]*'),
+    source_size INTEGER NOT NULL CHECK (source_size > 0),
+    rollback_backup_path TEXT NOT NULL CHECK (length(rollback_backup_path) BETWEEN 1 AND 4096),
+    rollback_backup_sha256 TEXT NOT NULL
+        CHECK (length(rollback_backup_sha256) = 64 AND rollback_backup_sha256 NOT GLOB '*[^0-9a-f]*'),
+    report_json TEXT NOT NULL CHECK (json_valid(report_json) AND json_type(report_json) = 'object'),
+    applied_at INTEGER NOT NULL,
+    PRIMARY KEY (slice, source_sha256)
+);
+CREATE UNIQUE INDEX idx_legacy_migration_runs_slice ON legacy_migration_runs(slice);
 `

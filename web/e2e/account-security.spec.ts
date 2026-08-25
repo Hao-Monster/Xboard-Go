@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, expectLoginPage } from "./support";
 
 const originalPassword = adminPassword;
 const replacementPassword = "e2e-replacement-password-456";
@@ -45,7 +45,7 @@ test("administrator creates, uses, and revokes a long-lived credential without b
   expect(serverErrors).toEqual([]);
 });
 
-test("administrator revokes other sessions and changes the password", async ({ browser }) => {
+test("administrator revokes other sessions and changes the password without accumulating login failures", async ({ browser }) => {
   const firstContext = await browser.newContext();
   const secondContext = await browser.newContext();
   const first = await firstContext.newPage();
@@ -73,7 +73,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     }
     await expect(first.locator("[data-testid^='account-session-']")).toHaveCount(1);
     await second.reload();
-    await expect(second.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+    await expectLoginPage(second);
 
     await first.getByLabel("当前密码").fill(originalPassword);
     await first.getByLabel("新密码", { exact: true }).fill(replacementPassword);
@@ -84,12 +84,8 @@ test("administrator revokes other sessions and changes the password", async ({ b
     await first.getByLabel("确认新密码").fill(replacementPassword);
     passwordMayNeedRestore = true;
     await first.getByRole("button", { name: "修改密码" }).click();
-    await expect(first.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+    await expectLoginPage(first);
     await first.getByLabel("邮箱").fill(adminEmail);
-    await first.getByLabel("密码").fill(originalPassword);
-    await first.getByRole("button", { name: "登录" }).click();
-    await expect(first.getByRole("alert")).toContainText("邮箱或密码错误");
-
     await first.getByLabel("密码").fill(replacementPassword);
     await first.getByRole("button", { name: "登录" }).click();
     await expect(first.getByRole("button", { name: "账号安全", exact: true })).toBeVisible();
@@ -98,7 +94,7 @@ test("administrator revokes other sessions and changes the password", async ({ b
     await first.getByLabel("新密码", { exact: true }).fill(originalPassword);
     await first.getByLabel("确认新密码").fill(originalPassword);
     await first.getByRole("button", { name: "修改密码" }).click();
-    await expect(first.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+    await expectLoginPage(first);
     passwordMayNeedRestore = false;
     await login(first, originalPassword);
 
@@ -135,7 +131,7 @@ async function restoreOriginalPassword(browser: Browser) {
     await page.getByLabel("新密码", { exact: true }).fill(originalPassword);
     await page.getByLabel("确认新密码").fill(originalPassword);
     await page.getByRole("button", { name: "修改密码" }).click();
-    await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+    await expectLoginPage(page);
   } finally {
     await context.close();
   }

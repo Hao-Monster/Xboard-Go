@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
 
 test("user and administrator complete the legacy ticket lifecycle", async ({ page }) => {
   test.setTimeout(60_000);
@@ -92,7 +92,7 @@ test("user and administrator complete the legacy ticket lifecycle", async ({ pag
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+  await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();

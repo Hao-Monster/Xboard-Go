@@ -44,7 +44,7 @@ func TestMigrateV22ToV23AddsDisabledConstrainedCaptchaSettings(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE email = 'preserved-v22@example.test'`).Scan(&users); err != nil {
 		t.Fatal(err)
 	}
-	if version != 23 || users != 1 || settings.AppName != "V22 Board" || settings.Revision != 41 || settings.CaptchaEnabled || settings.CaptchaType != "recaptcha" || settings.RecaptchaV3ScoreThreshold != 0.5 {
+	if version != currentSchemaVersion || users != 1 || settings.AppName != "V22 Board" || settings.Revision != 41 || settings.CaptchaEnabled || settings.CaptchaType != "recaptcha" || settings.RecaptchaV3ScoreThreshold != 0.5 {
 		t.Fatalf("v22 to v23 migration version=%d users=%d settings=%#v", version, users, settings)
 	}
 	for _, statement := range []string{

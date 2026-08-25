@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectLoginPage, logoutAndWait, publicAppName } from "./support";
 
 test("administrator manages knowledge while active, inactive, and public readers receive the correct content", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -40,7 +40,7 @@ test("administrator manages knowledge while active, inactive, and public readers
   expect(publicResponse.status()).toBe(200);
   const publicHTML = await publicResponse.text();
   expect(publicHTML).toContain(editedTitle);
-  expect(publicHTML).toContain("Xboard-Go");
+  expect(publicHTML).toContain(await publicAppName(page));
   expect(publicHTML).toContain("/#/login");
   expect(publicHTML).not.toContain("{{subscribeUrl}}");
   expect(publicHTML).not.toContain("/api/v1/client/subscribe?token=");
@@ -83,7 +83,7 @@ test("administrator manages knowledge while active, inactive, and public readers
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+  await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();

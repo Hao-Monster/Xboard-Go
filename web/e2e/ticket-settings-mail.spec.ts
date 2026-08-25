@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -136,7 +136,7 @@ async function waitForCapturedMail(request: APIRequestContext, recipient: string
 
 async function login(page: Page, email: string, password: string) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "登录 Xboard-Go" })).toBeVisible();
+  await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();

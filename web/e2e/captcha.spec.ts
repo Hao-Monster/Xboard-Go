@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("all legacy CAPTCHA providers protect registration and admin secrets never reappear", async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
@@ -48,7 +48,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
         expect(update.body).not.toContain("_cipher");
       }
 
-      await page.getByRole("button", { name: "退出" }).click();
+      await logoutAndWait(page);
       await page.goto("/#/forgetpassword");
       await page.reload();
       await page.getByLabel("邮箱", { exact: true }).fill(`captcha-code-${Date.now()}-${index}@example.test`);
@@ -78,7 +78,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
       }
       expect((await registration).status()).toBe(200);
       await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
-      await page.getByRole("button", { name: "退出" }).click();
+      await logoutAndWait(page);
       await loginAdmin(page);
 
       const persisted = await getSettings(page);
