@@ -6,7 +6,7 @@ The project preserves verified business behavior while replacing inaccessible le
 
 The implemented vertical slices cover administrator authentication and account-session security, atomic public email/password registration with administrator-controlled registration policies and optional email verification, invitation-code registration and referral relationship tracking, email-code password recovery, a cursor-paginated user directory and access-state editor, server-machine and node association management, one-time hashed machine enrollment credentials, load reporting, revision-safe daily activation schedules, server permission groups, panel routing rules, notices, multilingual knowledge management and public sharing, a validated cross-platform client download catalog, user and administrator ticket lifecycles, system runtime status and administrator audit, and the Xboard-Node runtime control-plane contract. Password authentication has administrator-configurable persistent error thresholds and expiry windows, normalized identity keys that cannot be bypassed with case or whitespace changes, account-enumeration-resistant failures, and an independent bounded source-IP safeguard. Account holders can list and revoke their active sessions; password and other security-sensitive account changes atomically revoke every session. Registration applies bounded Argon2id concurrency, per-address resource limits, strict origin checks for browsers, normalized email-domain whitelists, scoped Gmail-alias protection, a persistent successful-registration IP quota, Google reCAPTCHA v2/v3 or Cloudflare Turnstile server verification, purpose-isolated six-digit verification codes with durable cooldown, lockout, encrypted outbox delivery and transactional one-time consumption, and CSPRNG invitation codes protected by keyed digests and authenticated encryption at rest. CAPTCHA server credentials are purpose-isolated under authenticated encryption, never returned by the administration API, and enforced on direct registration plus registration and recovery email-code requests; v3 score and action are verified server-side and provider failures fail closed. Invitation relationships and single-use code consumption commit atomically with the user and initial session; reusable codes preserve the verified legacy behavior. Password recovery uses cryptographically generated six-digit codes, persistent cooldown and lockout state, account-enumeration-resistant responses, authenticated encryption at rest, a durable mail outbox, one-time transactional consumption, and bounded password hashing; a successful reset revokes every existing session. The verified Xboard `/api/v1` and `/api/v2` Passport surface remains available for password login and registration, email verification and recovery, mail and quick login links, one-time token exchange, and invitation-view tracking with its legacy validation and response contracts. Internally these compatibility routes preserve purpose isolation, enumeration resistance, bounded abuse controls, transactional credential handling, trusted browser origins, and a redirect allowlist instead of reproducing the legacy open-redirect behavior. Policy checks are repeated transactionally so account, initial session, verification-code consumption, invitation consumption and relationship creation, and IP counter changes cannot bypass concurrent configuration changes or commit partially; expired IP, login-failure, and email-challenge state is removed by bounded background maintenance. Node configuration, selected routing rules, and user snapshots are available over authenticated HTTP and WebSocket transports; user access changes use bounded per-user deltas while traffic reports are transactionally persisted with durable idempotency, node-group authorization, bounded inputs, and cross-node device-state synchronization. Referenced groups and routes are protected by transactional integrity checks so administrative changes cannot leave dangling node configuration. Knowledge articles support categories, languages, optimistic editing, visibility and ordering, subscriber-only regions, user-specific placeholders, and server-rendered public pages with strict HTML sanitization and content-security headers. Client downloads use stable panel routes, strict HTTPS validation, repository-pinned GitHub release resolution, bounded caching, and administrator-configurable action links. Tickets enforce ownership, one-open-ticket-per-user, bounded threads and inputs, role-specific reply rules, automatic stale closure, durable rate-limited reply notifications, encrypted SMTP credentials, and bounded delivery retries. The operations page reports scheduler and mail-worker heartbeats, database schema and combined mail-queue health, failed-delivery metadata, and an append-only mutation audit that deliberately excludes request bodies, verification codes, and credentials.
 
-The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database.
+The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database. A separate host-side lifecycle command composes those primitives into conservative local install, upgrade, failed-health recovery, and explicit rollback flows without exposing the Docker socket to the application container.
 
 The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
 
@@ -42,6 +42,71 @@ registration-verification mail. The application intentionally refuses to start
 if the key is missing or cannot authenticate a stored SMTP/CAPTCHA credential or
 invitation code; protected email and invitation operations remain unavailable
 without the key.
+
+## Local image lifecycle
+
+The host-side lifecycle tool only accepts an Xboard-Go image that already
+exists in the local Docker image store and carries an immutable 40-character
+revision label. It never pulls an image, selects `latest`, reads application
+secrets, mounts the Docker socket into the application, or deletes an unknown
+container or data volume.
+
+For a fresh Compose project, create the file-backed secrets shown above, build
+an exact-revision image, and install it:
+
+```bash
+revision="$(git rev-parse HEAD)"
+docker build --build-arg "APP_REVISION=${revision}" -t "xboard-go:${revision}" .
+go run ./cmd/xboard-lifecycle install \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml \
+  --image "xboard-go:${revision}"
+```
+
+An upgrade requires the active container to be healthy. Before stopping it,
+the tool creates and verifies an online `.xbbackup`, records the exact current
+and target image IDs plus the verified backup manifest, then starts the target
+and verifies its health, revision, database DSN, and image ID. A failed target
+health check automatically starts the previous image against a newly restored
+database file; the failed upgraded database is retained for diagnosis rather
+than overwritten. `status` remains usable when the container is stopped or
+unhealthy so that the recorded state can be inspected.
+
+```bash
+go run ./cmd/xboard-lifecycle upgrade \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml \
+  --image xboard-go:next-revision
+
+go run ./cmd/xboard-lifecycle status \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml
+
+go run ./cmd/xboard-lifecycle rollback \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml
+```
+
+Explicit rollback restores the snapshot taken immediately before the last
+successful upgrade. Writes accepted after that snapshot are not part of the
+restored active database; they remain in the non-overwritten upgraded database
+for diagnosis or deliberate reconciliation. A failed fresh install likewise
+leaves its project container, volume, and audit state in place for inspection,
+and a repeated install is refused until the operator explicitly removes those
+project-scoped resources.
+
+Lifecycle state is an append-only, Git-ignored journal under
+`.local/lifecycle`; it contains image IDs, revisions, database paths, backup
+paths and manifests, timestamps, and outcomes, but no credentials or business
+rows. On POSIX hosts the tool restricts its state directories to `0700` and
+files to `0600`; on Windows it retains the inherited ACL of the operator-owned
+state directory. Use an operator-owned `--env-file` for non-default local ports
+or Compose settings.
+
+Each Compose project receives its own runtime image tag, so isolated local
+lifecycle operations cannot retag another project's pending container image.
+The tool is currently a local test workflow, not a production updater or a
+remote image trust/signing system.
 
 ## Local database backup and recovery
 

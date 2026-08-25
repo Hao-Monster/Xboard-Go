@@ -1,6 +1,6 @@
 services:
   xboard-go:
-    image: xboard-go:local
+    image: ${XBOARD_GO_IMAGE:-xboard-go:local}
     build:
       context: .
       args:
@@ -42,7 +42,7 @@ services:
 
   maintenance:
     profiles: [maintenance]
-    image: xboard-go:local
+    image: ${XBOARD_GO_IMAGE:-xboard-go:local}
     build:
       context: .
       args:
