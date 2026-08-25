@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -483,18 +484,22 @@ func loginAs(t *testing.T, api http.Handler, email, password string) testClient 
 }
 
 func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
-	return newTestAPIWithCatalogHTTP(t, nil)
+	return newTestAPIWithOptions(t, nil, true, nil)
 }
 
 func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http.Response, error)) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, function, true)
+	return newTestAPIWithOptions(t, function, true, nil)
 }
 
 func newTestAPIWithoutInvitationProtection(t *testing.T) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, nil, false)
+	return newTestAPIWithOptions(t, nil, false, nil)
 }
 
-func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool) (http.Handler, *store.Store) {
+func newTestAPIWithCaptcha(t *testing.T, verifier captcha.Verifier) (http.Handler, *store.Store) {
+	return newTestAPIWithOptions(t, nil, true, verifier)
+}
+
+func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier) (http.Handler, *store.Store) {
 	t.Helper()
 	database, err := store.OpenSQLite(fmt.Sprintf("file:http-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
@@ -564,6 +569,7 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 		InvitationProtector:        invitationProtector,
 		LoginLinkProtector:         loginLinkProtector,
 		RuntimeTracker:             runtimeTracker,
+		CaptchaVerifier:            captchaVerifier,
 	})
 	return handler, database
 }

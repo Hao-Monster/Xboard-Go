@@ -56,3 +56,35 @@ func TestCipherRejectsInvalidKeysAndPayloads(t *testing.T) {
 		t.Fatal("Decrypt() accepted a malformed payload")
 	}
 }
+
+func TestCipherSeparatesSecretPurposesWithoutBreakingSMTPCompatibility(t *testing.T) {
+	box, err := NewCipher(bytes.Repeat([]byte{0x51}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	smtpCiphertext, err := box.Encrypt([]byte("existing-smtp-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	smtpPlaintext, err := box.DecryptFor(SMTPPasswordPurpose, smtpCiphertext)
+	if err != nil || string(smtpPlaintext) != "existing-smtp-secret" {
+		t.Fatalf("DecryptFor(SMTP) = (%q, %v)", smtpPlaintext, err)
+	}
+
+	recaptchaCiphertext, err := box.EncryptFor(RecaptchaSecretPurpose, []byte("recaptcha-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recaptchaPlaintext, err := box.DecryptFor(RecaptchaSecretPurpose, recaptchaCiphertext)
+	if err != nil || string(recaptchaPlaintext) != "recaptcha-secret" {
+		t.Fatalf("DecryptFor(recaptcha) = (%q, %v)", recaptchaPlaintext, err)
+	}
+	for _, purpose := range []SecretPurpose{SMTPPasswordPurpose, RecaptchaV3SecretPurpose, TurnstileSecretPurpose} {
+		if _, err := box.DecryptFor(purpose, recaptchaCiphertext); err == nil {
+			t.Fatalf("DecryptFor(%q) accepted a reCAPTCHA v2 secret", purpose)
+		}
+	}
+	if _, err := box.EncryptFor(SecretPurpose("attacker-controlled"), []byte("secret")); err == nil {
+		t.Fatal("EncryptFor() accepted an unknown purpose")
+	}
+}

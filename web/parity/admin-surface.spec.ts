@@ -169,6 +169,20 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go CAPTCHA policies preserve the three observable provider contracts", async ({ browser }) => {
+  const legacyContext = await browser.newContext();
+  const goContext = await browser.newContext();
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    await exerciseLegacyCaptchaContract(legacyPage);
+    await exerciseGoCaptchaContract(goPage);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy basic registration follows the public form and stop-register policy", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
@@ -1657,6 +1671,138 @@ test("implemented Go administrator concepts map to the legacy navigation", async
     await goContext.close();
   }
 });
+
+async function exerciseLegacyCaptchaContract(page: Page) {
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+  const headers = { authorization };
+  const fetched = await page.request.get(legacyAdminAPI("/config/fetch"), { headers });
+  expect(fetched.status()).toBe(200);
+  const safe = readObjectProperty(readProperty(await fetched.json() as unknown, "data"), "safe");
+  const original = {
+    captcha_enable: readProperty(safe, "captcha_enable"), captcha_type: readProperty(safe, "captcha_type"),
+    recaptcha_key: readProperty(safe, "recaptcha_key"), recaptcha_site_key: readProperty(safe, "recaptcha_site_key"),
+    recaptcha_v3_secret_key: readProperty(safe, "recaptcha_v3_secret_key"), recaptcha_v3_site_key: readProperty(safe, "recaptcha_v3_site_key"),
+    recaptcha_v3_score_threshold: readProperty(safe, "recaptcha_v3_score_threshold"),
+    turnstile_secret_key: readProperty(safe, "turnstile_secret_key"), turnstile_site_key: readProperty(safe, "turnstile_site_key")
+  };
+  const providers = [
+    { type: "recaptcha", siteField: "recaptcha_site_key", site: "parity-v2-site", secretField: "recaptcha_key", secret: "parity-v2-secret" },
+    { type: "recaptcha-v3", siteField: "recaptcha_v3_site_key", site: "parity-v3-site", secretField: "recaptcha_v3_secret_key", secret: "parity-v3-secret" },
+    { type: "turnstile", siteField: "turnstile_site_key", site: "parity-turnstile-site", secretField: "turnstile_secret_key", secret: "parity-turnstile-secret" }
+  ] as const;
+  try {
+    for (const [index, provider] of providers.entries()) {
+      const saved = await page.request.post(legacyAdminAPI("/config/save"), {
+        headers, data: {
+          captcha_enable: 1, captcha_type: provider.type, [provider.siteField]: provider.site,
+          [provider.secretField]: provider.secret, recaptcha_v3_score_threshold: 0.7
+        }
+      });
+      expect(saved.status()).toBe(200);
+      const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
+      expect(guest.status()).toBe(200);
+      const config = readProperty(await guest.json() as unknown, "data");
+      expect(readProperty(config, "is_captcha")).toBe(1);
+      expect(readProperty(config, "is_recaptcha")).toBe(1);
+      expect(readProperty(config, "captcha_type")).toBe(provider.type);
+      expect(readProperty(config, provider.siteField)).toBe(provider.site);
+      expect(JSON.stringify(config)).not.toContain(provider.secret);
+
+      const unique = `${Date.now()}-${index}`;
+      const registration = await page.request.post(new URL("/api/v1/passport/auth/register", legacyURL).toString(), {
+        data: { email: `captcha-parity-${unique}@legacy.local`, password: `captcha-parity-password-${unique}` }
+      });
+      expect(registration.status()).toBe(400);
+      expect(readStringProperty(await registration.json() as unknown, "message")).toBe("验证码有误");
+      const emailCode = await page.request.post(new URL("/api/v1/passport/comm/sendEmailVerify", legacyURL).toString(), {
+        data: { email: `captcha-code-${unique}@legacy.local` }
+      });
+      expect(emailCode.status()).toBe(400);
+      expect(readStringProperty(await emailCode.json() as unknown, "message")).toBe("验证码有误");
+    }
+  } finally {
+    const restored = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+    expect(restored.status()).toBe(200);
+  }
+}
+
+async function exerciseGoCaptchaContract(page: Page) {
+  await loginGo(page);
+  const fetched = await goAdminRequest(page, "/api/v1/admin/site-settings", "GET");
+  expect(fetched.status, fetched.body).toBe(200);
+  const original = readObjectProperty(JSON.parse(fetched.body) as unknown, "data");
+  expect(readProperty(original, "recaptcha_secret_configured")).toBe(false);
+  expect(readProperty(original, "recaptcha_v3_secret_configured")).toBe(false);
+  expect(readProperty(original, "turnstile_secret_configured")).toBe(false);
+  const providers = [
+    { type: "recaptcha", siteField: "recaptcha_site_key", site: "parity-v2-site", secretField: "recaptcha_secret", secret: "parity-v2-secret", configuredField: "recaptcha_secret_configured" },
+    { type: "recaptcha-v3", siteField: "recaptcha_v3_site_key", site: "parity-v3-site", secretField: "recaptcha_v3_secret", secret: "parity-v3-secret", configuredField: "recaptcha_v3_secret_configured" },
+    { type: "turnstile", siteField: "turnstile_site_key", site: "parity-turnstile-site", secretField: "turnstile_secret", secret: "parity-turnstile-secret", configuredField: "turnstile_secret_configured" }
+  ] as const;
+  try {
+    for (const [index, provider] of providers.entries()) {
+      const currentResponse = await goAdminRequest(page, "/api/v1/admin/site-settings", "GET");
+      expect(currentResponse.status, currentResponse.body).toBe(200);
+      const current = readObjectProperty(JSON.parse(currentResponse.body) as unknown, "data");
+      const saved = await goAdminRequest(page, "/api/v1/admin/site-settings", "PUT", {
+        revision: readProperty(current, "revision"), ...goSiteIdentityInput(current),
+        captcha_enable: true, captcha_type: provider.type,
+        [provider.siteField]: provider.site, [provider.secretField]: provider.secret, recaptcha_v3_score_threshold: 0.7
+      });
+      expect(saved.status, saved.body).toBe(200);
+      expect(saved.body).not.toContain(provider.secret);
+      expect(saved.body).not.toContain("_cipher");
+      expect(readProperty(readObjectProperty(JSON.parse(saved.body) as unknown, "data"), provider.configuredField)).toBe(true);
+      const guest = await page.request.get(new URL("/api/v1/guest/comm/config", goURL).toString());
+      expect(guest.status()).toBe(200);
+      const config = readProperty(await guest.json() as unknown, "data");
+      expect(readProperty(config, "is_captcha")).toBe(1);
+      expect(readProperty(config, "is_recaptcha")).toBe(1);
+      expect(readProperty(config, "captcha_type")).toBe(provider.type);
+      expect(readProperty(config, provider.siteField)).toBe(provider.site);
+      expect(JSON.stringify(config)).not.toContain(provider.secret);
+
+      const unique = `${Date.now()}-${index}`;
+      for (const [path, data] of [
+        ["/api/v1/passport/auth/register", { email: `captcha-parity-${unique}@go.local`, password: `captcha-parity-password-${unique}` }],
+        ["/api/v1/auth/registration-email/request", { email: `captcha-register-code-${unique}@go.local` }],
+        ["/api/v1/auth/password-reset/request", { email: `captcha-reset-code-${unique}@go.local` }]
+      ] as const) {
+        const response = await page.request.post(new URL(path, goURL).toString(), { data });
+        expect(response.status()).toBe(400);
+        const error = readProperty(await response.json() as unknown, "error");
+        expect(readProperty(error, "code")).toBe("captcha_invalid");
+        expect(readProperty(error, "message")).toBe("验证码有误");
+      }
+    }
+  } finally {
+    const currentResponse = await goAdminRequest(page, "/api/v1/admin/site-settings", "GET");
+    expect(currentResponse.status, currentResponse.body).toBe(200);
+    const current = readObjectProperty(JSON.parse(currentResponse.body) as unknown, "data");
+    const restored = await goAdminRequest(page, "/api/v1/admin/site-settings", "PUT", {
+      revision: readProperty(current, "revision"), ...goSiteIdentityInput(current),
+      captcha_enable: readProperty(original, "captcha_enable"),
+      captcha_type: readProperty(original, "captcha_type"), recaptcha_site_key: readProperty(original, "recaptcha_site_key"),
+      recaptcha_v3_site_key: readProperty(original, "recaptcha_v3_site_key"),
+      recaptcha_v3_score_threshold: readProperty(original, "recaptcha_v3_score_threshold"),
+      turnstile_site_key: readProperty(original, "turnstile_site_key"), clear_recaptcha_secret: true,
+      clear_recaptcha_v3_secret: true, clear_turnstile_secret: true
+    });
+    expect(restored.status, restored.body).toBe(200);
+  }
+}
+
+function goSiteIdentityInput(settings: Record<string, unknown>) {
+  return {
+    app_name: readProperty(settings, "app_name"), app_description: readProperty(settings, "app_description"),
+    app_url: readProperty(settings, "app_url"), tos_url: readProperty(settings, "tos_url"), logo: readProperty(settings, "logo")
+  };
+}
 
 async function loginLegacy(page: Page) {
   await page.goto(legacyURL, { waitUntil: "domcontentloaded" });

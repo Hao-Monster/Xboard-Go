@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 22
+const currentSchemaVersion = 23
 
 type Store struct {
 	db      *sql.DB
@@ -200,6 +200,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v22: %w", err)
 		}
 		version = 22
+	}
+	if version < 23 {
+		if _, err := tx.ExecContext(ctx, schemaV23); err != nil {
+			return fmt.Errorf("apply schema v23: %w", err)
+		}
+		version = 23
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -942,4 +948,25 @@ CREATE TABLE login_failure_limits (
 );
 CREATE INDEX idx_login_failure_limits_expiry
     ON login_failure_limits(expires_at, credential_digest);
+`
+
+const schemaV23 = `
+ALTER TABLE app_settings ADD COLUMN captcha_enable INTEGER NOT NULL DEFAULT 0
+    CHECK (captcha_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN captcha_type TEXT NOT NULL DEFAULT 'recaptcha'
+    CHECK (captcha_type IN ('recaptcha', 'recaptcha-v3', 'turnstile'));
+ALTER TABLE app_settings ADD COLUMN recaptcha_site_key TEXT NOT NULL DEFAULT ''
+    CHECK (length(recaptcha_site_key) <= 512);
+ALTER TABLE app_settings ADD COLUMN recaptcha_secret_cipher BLOB
+    CHECK (recaptcha_secret_cipher IS NULL OR length(recaptcha_secret_cipher) BETWEEN 33 AND 8192);
+ALTER TABLE app_settings ADD COLUMN recaptcha_v3_site_key TEXT NOT NULL DEFAULT ''
+    CHECK (length(recaptcha_v3_site_key) <= 512);
+ALTER TABLE app_settings ADD COLUMN recaptcha_v3_score_threshold REAL NOT NULL DEFAULT 0.5
+    CHECK (recaptcha_v3_score_threshold > 0 AND recaptcha_v3_score_threshold <= 1);
+ALTER TABLE app_settings ADD COLUMN recaptcha_v3_secret_cipher BLOB
+    CHECK (recaptcha_v3_secret_cipher IS NULL OR length(recaptcha_v3_secret_cipher) BETWEEN 33 AND 8192);
+ALTER TABLE app_settings ADD COLUMN turnstile_site_key TEXT NOT NULL DEFAULT ''
+    CHECK (length(turnstile_site_key) <= 512);
+ALTER TABLE app_settings ADD COLUMN turnstile_secret_cipher BLOB
+    CHECK (turnstile_secret_cipher IS NULL OR length(turnstile_secret_cipher) BETWEEN 33 AND 8192);
 `

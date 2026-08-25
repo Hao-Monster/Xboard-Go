@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -49,6 +50,7 @@ type Dependencies struct {
 	LoginLinkProtector         *security.LoginLinkProtector
 	SMTPAllowInsecure          bool
 	RuntimeTracker             *operations.Tracker
+	CaptchaVerifier            captcha.Verifier
 }
 
 type passwordService interface {
@@ -62,6 +64,7 @@ type server struct {
 	dummyHash                  string
 	now                        func() time.Time
 	panelURL                   string
+	panelHostname              string
 	nodeRelease                string
 	cookieSecure               bool
 	allowedOrigins             map[string]struct{}
@@ -94,6 +97,7 @@ type server struct {
 	loginLinkProtector         *security.LoginLinkProtector
 	smtpAllowInsecure          bool
 	runtimeTracker             *operations.Tracker
+	captchaVerifier            captcha.Verifier
 }
 
 type contextKey int
@@ -137,8 +141,10 @@ func New(dependencies Dependencies) http.Handler {
 	for _, origin := range dependencies.AllowedOrigins {
 		allowedOrigins[strings.TrimRight(origin, "/")] = struct{}{}
 	}
+	panelHostname := ""
 	if parsed, err := url.Parse(dependencies.PanelURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
 		allowedOrigins[parsed.Scheme+"://"+parsed.Host] = struct{}{}
+		panelHostname = parsed.Hostname()
 	}
 
 	api := &server{
@@ -147,6 +153,7 @@ func New(dependencies Dependencies) http.Handler {
 		dummyHash:                  dummyHash,
 		now:                        dependencies.Now,
 		panelURL:                   strings.TrimRight(dependencies.PanelURL, "/"),
+		panelHostname:              panelHostname,
 		nodeRelease:                dependencies.NodeRelease,
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,
@@ -180,6 +187,7 @@ func New(dependencies Dependencies) http.Handler {
 		loginLinkProtector:         dependencies.LoginLinkProtector,
 		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
 		runtimeTracker:             dependencies.RuntimeTracker,
+		captchaVerifier:            dependencies.CaptchaVerifier,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)

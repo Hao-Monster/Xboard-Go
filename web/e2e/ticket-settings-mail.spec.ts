@@ -21,6 +21,7 @@ test("ticket wait policy and administrator reply email work through the local Do
 
   try {
     await login(page, adminEmail, adminPassword);
+    const panelOrigin = new URL(page.url()).origin;
     await configureTicketSettings(page, true, true);
 
     await page.getByRole("button", { name: "用户管理", exact: true }).click();
@@ -64,7 +65,7 @@ test("ticket wait policy and administrator reply email work through the local Do
     expect(captured).toContain(userEmail);
     expect(captured).toContain(subject);
     expect(captured).toContain(administratorReply);
-    expect(captured).toContain("http://127.0.0.1:7080");
+    expect(captured).toContain(panelOrigin);
 
     await dialog.getByRole("button", { name: "关闭工单详情" }).click();
     await logoutAndWait(page);
@@ -93,7 +94,7 @@ async function configureTicketSettings(page: Page, waitForAdministrator: boolean
   const emailSetting = dialog.getByLabel("启用工单回复邮件");
   if (await emailSetting.isChecked() !== emailEnabled) await emailSetting.click();
   await dialog.getByLabel("站点名称").fill("Xboard-Go");
-  await dialog.getByLabel("站点地址").fill("http://127.0.0.1:7080");
+  await dialog.getByLabel("站点地址").fill(new URL(page.url()).origin);
   await dialog.getByLabel("SMTP 主机").fill("mailpit");
   await dialog.getByLabel("SMTP 端口").fill("1025");
   await dialog.getByLabel("传输加密").selectOption("none");

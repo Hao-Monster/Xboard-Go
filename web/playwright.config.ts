@@ -27,6 +27,13 @@ export default defineConfig({
   ],
   webServer: externalServer ? undefined : [
     {
+      command: "node e2e/captcha-stub.mjs",
+      cwd: ".",
+      url: "http://127.0.0.1:4199/healthz",
+      timeout: 30_000,
+      reuseExistingServer: false
+    },
+    {
       command: "go run ./cmd/xboard",
       cwd: "..",
       url: "http://127.0.0.1:8080/healthz",
@@ -40,7 +47,11 @@ export default defineConfig({
         XBOARD_COOKIE_SECURE: "false",
         XBOARD_BOOTSTRAP_ADMIN_EMAIL: "admin@e2e.test",
         XBOARD_BOOTSTRAP_ADMIN_PASSWORD: "e2e-admin-password-123",
-        XBOARD_SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        XBOARD_SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        XBOARD_CAPTCHA_ALLOW_INSECURE: "true",
+        XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: "http://127.0.0.1:4199/recaptcha",
+        XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: "http://127.0.0.1:4199/recaptcha-v3",
+        XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: "http://127.0.0.1:4199/turnstile"
       }
     },
     {

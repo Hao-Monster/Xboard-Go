@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const contentSecurityPolicy = "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: https: http:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+const contentSecurityPolicy = "default-src 'self'; connect-src 'self' ws: wss: https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/ https://challenges.cloudflare.com/turnstile/; img-src 'self' data: https: http:; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://www.recaptcha.net/recaptcha/ https://challenges.cloudflare.com/turnstile/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/ https://challenges.cloudflare.com/turnstile/; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 
 type staticFile struct {
 	fullPath string

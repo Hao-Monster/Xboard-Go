@@ -27,6 +27,10 @@ type Config struct {
 	SchedulerInterval      time.Duration
 	MailPollInterval       time.Duration
 	SMTPAllowInsecure      bool
+	CaptchaAllowInsecure   bool
+	CaptchaRecaptchaURL    string
+	CaptchaRecaptchaV3URL  string
+	CaptchaTurnstileURL    string
 	SettingsEncryptionKey  []byte
 	WebSocketEnabled       bool
 	WebSocketURL           string
@@ -50,6 +54,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	smtpAllowInsecure, err := parseBoolEnv("XBOARD_SMTP_ALLOW_INSECURE", false)
+	if err != nil {
+		return Config{}, err
+	}
+	captchaAllowInsecure, err := parseBoolEnv("XBOARD_CAPTCHA_ALLOW_INSECURE", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -93,6 +101,10 @@ func Load() (Config, error) {
 		SchedulerInterval:      interval,
 		MailPollInterval:       mailPollInterval,
 		SMTPAllowInsecure:      smtpAllowInsecure,
+		CaptchaAllowInsecure:   captchaAllowInsecure,
+		CaptchaRecaptchaURL:    strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
+		CaptchaRecaptchaV3URL:  strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL")),
+		CaptchaTurnstileURL:    strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL")),
 		SettingsEncryptionKey:  append([]byte(nil), settingsEncryptionKey...),
 		WebSocketEnabled:       webSocketEnabled,
 		WebSocketURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
@@ -142,6 +154,22 @@ func Load() (Config, error) {
 		parsedWebSocketURL, err := url.Parse(config.WebSocketURL)
 		if err != nil || parsedWebSocketURL.Host == "" || (parsedWebSocketURL.Scheme != "ws" && parsedWebSocketURL.Scheme != "wss") {
 			return Config{}, errors.New("XBOARD_WEBSOCKET_URL must be an absolute ws or wss URL")
+		}
+	}
+	for name, endpoint := range map[string]string{
+		"XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL":    config.CaptchaRecaptchaURL,
+		"XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL": config.CaptchaRecaptchaV3URL,
+		"XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL":    config.CaptchaTurnstileURL,
+	} {
+		if endpoint == "" {
+			continue
+		}
+		if !config.CaptchaAllowInsecure {
+			return Config{}, fmt.Errorf("%s is test-only and requires XBOARD_CAPTCHA_ALLOW_INSECURE=true", name)
+		}
+		parsed, err := url.Parse(endpoint)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+			return Config{}, fmt.Errorf("%s must be an absolute http or https URL without userinfo", name)
 		}
 	}
 	return config, nil

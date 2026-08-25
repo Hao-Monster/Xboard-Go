@@ -125,6 +125,15 @@ func TestSchemaV21PreservesV20SessionsAndAddsAccessTokenIndexes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, column := range []string{
+		"captcha_enable", "captcha_type", "recaptcha_site_key", "recaptcha_secret_cipher",
+		"recaptcha_v3_site_key", "recaptcha_v3_score_threshold", "recaptcha_v3_secret_cipher",
+		"turnstile_site_key", "turnstile_secret_cipher",
+	} {
+		if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN `+column); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 20`); err != nil {
 		t.Fatal(err)
 	}

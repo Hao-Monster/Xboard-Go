@@ -3,7 +3,10 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
+	"unicode"
 
+	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -36,9 +39,14 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		emailWhitelistSuffix = append([]string(nil), settings.EmailWhitelistSuffixes...)
 	}
 	writeSuccess(w, http.StatusOK, guestConfigResponse{
-		TOSURL: nullablePublicString(settings.TOSURL), CaptchaType: "recaptcha",
+		TOSURL: nullablePublicString(settings.TOSURL), CaptchaType: settings.CaptchaType,
 		IsEmailVerify:             boolToInt(settings.EmailVerificationEnabled),
-		RecaptchaV3ScoreThreshold: 0.5, AppName: settings.AppName,
+		IsCaptcha:                 boolToInt(settings.CaptchaEnabled),
+		IsRecaptcha:               boolToInt(settings.CaptchaEnabled),
+		RecaptchaSiteKey:          nullablePublicString(settings.RecaptchaSiteKey),
+		RecaptchaV3SiteKey:        nullablePublicString(settings.RecaptchaV3SiteKey),
+		RecaptchaV3ScoreThreshold: settings.RecaptchaV3ScoreThreshold,
+		TurnstileSiteKey:          nullablePublicString(settings.TurnstileSiteKey), AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
 		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
 		IsInviteForce: boolToInt(settings.InvitationForceEnabled),
@@ -77,6 +85,18 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
 		MailLoginEnabled           *bool     `json:"login_with_mail_link_enable"`
+		CaptchaEnabled             *bool     `json:"captcha_enable"`
+		CaptchaType                *string   `json:"captcha_type"`
+		RecaptchaSiteKey           *string   `json:"recaptcha_site_key"`
+		RecaptchaSecret            *string   `json:"recaptcha_secret"`
+		ClearRecaptchaSecret       *bool     `json:"clear_recaptcha_secret"`
+		RecaptchaV3SiteKey         *string   `json:"recaptcha_v3_site_key"`
+		RecaptchaV3ScoreThreshold  *float64  `json:"recaptcha_v3_score_threshold"`
+		RecaptchaV3Secret          *string   `json:"recaptcha_v3_secret"`
+		ClearRecaptchaV3Secret     *bool     `json:"clear_recaptcha_v3_secret"`
+		TurnstileSiteKey           *string   `json:"turnstile_site_key"`
+		TurnstileSecret            *string   `json:"turnstile_secret"`
+		ClearTurnstileSecret       *bool     `json:"clear_turnstile_secret"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -101,6 +121,12 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit:        current.InvitationCodeLimit,
 		InvitationNeverExpire:      current.InvitationNeverExpire,
 		MailLoginEnabled:           current.MailLoginEnabled,
+		CaptchaEnabled:             current.CaptchaEnabled,
+		CaptchaType:                current.CaptchaType,
+		RecaptchaSiteKey:           current.RecaptchaSiteKey,
+		RecaptchaV3SiteKey:         current.RecaptchaV3SiteKey,
+		RecaptchaV3ScoreThreshold:  current.RecaptchaV3ScoreThreshold,
+		TurnstileSiteKey:           current.TurnstileSiteKey,
 	}
 	if input.StopRegister != nil {
 		next.StopRegister = *input.StopRegister
@@ -147,6 +173,33 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	if input.MailLoginEnabled != nil {
 		next.MailLoginEnabled = *input.MailLoginEnabled
 	}
+	if input.CaptchaEnabled != nil {
+		next.CaptchaEnabled = *input.CaptchaEnabled
+	}
+	if input.CaptchaType != nil {
+		next.CaptchaType = *input.CaptchaType
+	}
+	if input.RecaptchaSiteKey != nil {
+		next.RecaptchaSiteKey = *input.RecaptchaSiteKey
+	}
+	if input.RecaptchaV3SiteKey != nil {
+		next.RecaptchaV3SiteKey = *input.RecaptchaV3SiteKey
+	}
+	if input.RecaptchaV3ScoreThreshold != nil {
+		if *input.RecaptchaV3ScoreThreshold <= 0 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查验证码设置", nil)
+			return
+		}
+		next.RecaptchaV3ScoreThreshold = *input.RecaptchaV3ScoreThreshold
+	}
+	if input.TurnstileSiteKey != nil {
+		next.TurnstileSiteKey = *input.TurnstileSiteKey
+	}
+	if !s.applyCaptchaSecretInput(w, input.RecaptchaSecret, input.ClearRecaptchaSecret, appsettings.RecaptchaSecretPurpose, &next.ReplaceRecaptchaSecret, &next.RecaptchaSecretCipher) ||
+		!s.applyCaptchaSecretInput(w, input.RecaptchaV3Secret, input.ClearRecaptchaV3Secret, appsettings.RecaptchaV3SecretPurpose, &next.ReplaceRecaptchaV3Secret, &next.RecaptchaV3SecretCipher) ||
+		!s.applyCaptchaSecretInput(w, input.TurnstileSecret, input.ClearTurnstileSecret, appsettings.TurnstileSecretPurpose, &next.ReplaceTurnstileSecret, &next.TurnstileSecretCipher) {
+		return
+	}
 	if next.EmailVerificationEnabled && s.registrationEmailProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置注册验证码加密密钥", nil)
 		return
@@ -178,6 +231,42 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, updated)
+}
+
+func (s *server) applyCaptchaSecretInput(w http.ResponseWriter, secret *string, clear *bool, purpose appsettings.SecretPurpose, replace *bool, ciphertext *[]byte) bool {
+	clearRequested := clear != nil && *clear
+	value := ""
+	if secret != nil {
+		value = strings.TrimSpace(*secret)
+	}
+	if clearRequested && value != "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "验证码密钥不能同时替换和清除", nil)
+		return false
+	}
+	if clearRequested {
+		*replace = true
+		*ciphertext = nil
+		return true
+	}
+	if value == "" {
+		return true
+	}
+	if len(value) > 4<<10 || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "验证码密钥格式无效", nil)
+		return false
+	}
+	if s.settingsCipher == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置设置加密密钥", nil)
+		return false
+	}
+	encrypted, err := s.settingsCipher.EncryptFor(purpose, []byte(value))
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return false
+	}
+	*replace = true
+	*ciphertext = encrypted
+	return true
 }
 
 func boolToInt(value bool) int {

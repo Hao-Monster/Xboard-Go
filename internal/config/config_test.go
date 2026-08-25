@@ -119,6 +119,24 @@ func TestLoadRejectsInvalidWebSocketAndNodeIntervals(t *testing.T) {
 	}
 }
 
+func TestLoadGatesCaptchaVerificationEndpointOverrides(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL", "http://captcha-stub.test/verify")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a CAPTCHA endpoint override without the explicit test gate")
+	}
+	t.Setenv("XBOARD_CAPTCHA_ALLOW_INSECURE", "true")
+	settings, err := Load()
+	if err != nil || settings.CaptchaRecaptchaURL != "http://captcha-stub.test/verify" || !settings.CaptchaAllowInsecure {
+		t.Fatalf("Load() test CAPTCHA endpoint = %#v err=%v", settings, err)
+	}
+	t.Setenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL", "http://user:password@captcha-stub.test/verify")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a CAPTCHA endpoint with userinfo")
+	}
+}
+
 func TestLoadDefaultsToSecureCookiesForHTTPSPanel(t *testing.T) {
 	t.Setenv("XBOARD_PANEL_URL", "https://panel.example.test")
 	t.Setenv("XBOARD_COOKIE_SECURE", "")

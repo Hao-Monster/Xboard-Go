@@ -38,7 +38,7 @@ test("visitor completes the legacy password recovery flow through Mailpit", asyn
     await saveTicketSettings(page, {
       ...original,
       app_name: "Xboard-Go",
-      app_url: "http://127.0.0.1:7080",
+      app_url: new URL(page.url()).origin,
       smtp_enabled: true,
       smtp_host: "mailpit",
       smtp_port: 1025,

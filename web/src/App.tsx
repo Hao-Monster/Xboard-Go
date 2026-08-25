@@ -12,6 +12,7 @@ import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagemen
 import { TicketManagementPage } from "./features/tickets/TicketManagementPage";
 import { SystemOperationsPage } from "./features/system/SystemOperationsPage";
 import { SiteSettingsPage } from "./features/settings/SiteSettingsPage";
+import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 
 const api = new APIClient();
@@ -128,12 +129,20 @@ export function App() {
   };
 
   const identityChanged = (settings: SiteSettings) => {
+    resetCaptchaProviderScripts();
     setGuestConfig((current) => ({
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
       app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
       is_email_verify: settings.email_verify ? 1 : 0,
       is_invite_force: settings.invite_force ? 1 : 0,
-      email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0
+      email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0,
+      is_captcha: settings.captcha_enable ? 1 : 0,
+      is_recaptcha: settings.captcha_enable ? 1 : 0,
+      captcha_type: settings.captcha_type,
+      recaptcha_site_key: settings.recaptcha_site_key || null,
+      recaptcha_v3_site_key: settings.recaptcha_v3_site_key || null,
+      recaptcha_v3_score_threshold: settings.recaptcha_v3_score_threshold,
+      turnstile_site_key: settings.turnstile_site_key || null
     }));
   };
 
@@ -204,6 +213,7 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
   const [resetComplete, setResetComplete] = useState(false);
   const [error, setError] = useState("");
   const visibleError = initialError !== "" ? initialError : error;
+  const { requestCaptcha, challenge } = useCaptchaChallenge(config);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -233,10 +243,11 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
     }
     setSendingCode(true);
     try {
+      const captchaToken = await requestCaptcha("sendEmailVerify");
       if (mode === "register") {
-        await api.requestRegistrationEmailVerification(email);
+        await api.requestRegistrationEmailVerification(email, captchaToken);
       } else {
-        await api.requestPasswordReset(email);
+        await api.requestPasswordReset(email, captchaToken);
       }
       setCooldown(60);
       setMessage("验证码已发送，请检查邮箱");
@@ -260,7 +271,8 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
         }
       }
       if (mode === "register") {
-        onAuthenticated(await api.register(email, password, confirmation, emailCode, effectiveInvitationCode));
+        const captchaToken = await requestCaptcha("register");
+        onAuthenticated(await api.register(email, password, confirmation, emailCode, effectiveInvitationCode, captchaToken));
       } else if (mode === "recover") {
         await api.resetPassword(email, emailCode, password);
         setMessage("重置密码成功,正在返回登录");
@@ -275,7 +287,7 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
     }
   };
 
-  return (
+  return <>
     <main className="login-shell">
       <section className="login-card">
         <div className="brand large"><BrandMark appName={config.app_name} logo={config.logo} /><span>{config.app_name}</span></div>
@@ -291,7 +303,7 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
           {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {visibleError !== "" && <div className="alert error" role="alert">{visibleError}</div>}
           {message !== "" && <div className="alert success" role="status">{message}</div>}
-          <button className="button primary full" type="submit" disabled={submitting || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
+          <button className="button primary full" type="submit" disabled={submitting || sendingCode || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
         </form>
         {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
           setError(""); setMessage(""); setEmailCode(""); setInvitationCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");
@@ -308,7 +320,8 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
         {config.tos_url !== null && <p className="login-terms"><a href={config.tos_url} target="_blank" rel="noreferrer noopener">用户条款</a></p>}
       </section>
     </main>
-  );
+    {challenge}
+  </>;
 }
 
 function authModeFromHash(hash = window.location.hash): AuthMode {
