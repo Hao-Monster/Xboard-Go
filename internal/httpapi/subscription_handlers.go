@@ -130,17 +130,13 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	w.Header().Set("Content-Type", response.ContentType)
-	// Surfboard's legacy contract declares its downloadable configuration as
-	// text/html. Keep that client-facing contract while preventing any browser
-	// navigation from executing administrator-controlled template content.
+	// Subscription templates are administrator-controlled downloads. A sandbox
+	// remains defense in depth in addition to non-HTML media types and nosniff.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox")
 	for name, value := range response.Headers {
 		w.Header().Set(name, value)
 	}
 	w.WriteHeader(http.StatusOK)
-	// CodeQL does not model the attachment, nosniff, and sandbox CSP controls
-	// established above for the legacy Surfboard text/html contract.
-	// codeql[go/reflected-xss]
 	if _, err := io.Copy(w, bytes.NewReader(response.Body)); err != nil {
 		s.logger.Debug("write subscription response", "user_id", account.ID, "client", client.Kind.String(), "error", err)
 	}

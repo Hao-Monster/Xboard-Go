@@ -29,7 +29,7 @@ func TestOracleRepresentativeOutputMatrix(t *testing.T) {
 		{name: "stash", client: ClientInfo{Kind: KindStash, Name: "stash"}, contentType: "text/yaml; charset=utf-8", wantUserInfo: true, wantDisposition: true, validate: validateMihomo(KindStash, 5)},
 		{name: "singbox", client: ClientInfo{Kind: KindSingBox, Name: "sing-box", Version: "1.12.0"}, contentType: "application/json", wantUserInfo: true, validate: validateSingBox(8)},
 		{name: "surge", client: ClientInfo{Kind: KindSurge, Name: "surge", Version: "2398"}, contentType: "application/octet-stream", wantDisposition: true, validate: validateManagedLines(7)},
-		{name: "surfboard", client: ClientInfo{Kind: KindSurfboard, Name: "surfboard"}, contentType: "text/html; charset=utf-8", wantDisposition: true, validate: validateManagedLines(4)},
+		{name: "surfboard", client: ClientInfo{Kind: KindSurfboard, Name: "surfboard"}, contentType: "application/octet-stream", wantDisposition: true, validate: validateManagedLines(4)},
 		{name: "shadowrocket", client: ClientInfo{Kind: KindShadowrocket, Name: "shadowrocket", Version: "2592"}, contentType: "text/plain; charset=utf-8", validate: validateShadowrocketOracle},
 		{name: "quantumultx", client: ClientInfo{Kind: KindQuantumultX, Name: "quantumult-x"}, contentType: "text/plain; charset=utf-8", wantUserInfo: true, validate: validateQuantumultXOracle},
 		{name: "loon", client: ClientInfo{Kind: KindLoon, Name: "loon", Version: "637"}, contentType: "text/plain; charset=utf-8", wantUserInfo: true, validate: validateLoonOracle},

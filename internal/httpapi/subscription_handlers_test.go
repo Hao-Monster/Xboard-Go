@@ -109,7 +109,7 @@ func TestValidSubscriptionDoesNotEraseFailedTokenRateLimit(t *testing.T) {
 	}
 }
 
-func TestSurfboardLegacyHTMLContractIsDownloadSandboxed(t *testing.T) {
+func TestSurfboardConfigurationIsNonHTMLDownloadSandboxed(t *testing.T) {
 	api, database := newTestAPI(t)
 	account := createSubscriptionTestAccount(t, database, "surfboard-sandbox@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
 	settings, err := database.GetSubscriptionSettings(t.Context())
@@ -124,7 +124,7 @@ func TestSurfboardLegacyHTMLContractIsDownloadSandboxed(t *testing.T) {
 	}
 
 	response := requestSubscription(api, "/s/"+account.SubscriptionToken+"?flag=surfboard")
-	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "text/html; charset=utf-8" ||
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/octet-stream" ||
 		!strings.HasPrefix(response.Header().Get("Content-Disposition"), "attachment;") ||
 		response.Header().Get("Content-Security-Policy") != "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox" ||
 		response.Body.String() != templates["surfboard"] {

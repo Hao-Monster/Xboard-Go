@@ -49,12 +49,8 @@ func renderManagedConfig(input RenderInput) (Response, error) {
 	for token, value := range replacements {
 		config = strings.ReplaceAll(config, token, value)
 	}
-	contentType := "application/octet-stream"
-	if input.Client.Kind == KindSurfboard {
-		contentType = "text/html; charset=utf-8"
-	}
 	return Response{
-		Body: []byte(config), ContentType: contentType,
+		Body: []byte(config), ContentType: "application/octet-stream",
 		Headers: map[string]string{"content-disposition": "attachment; filename*=UTF-8''" + rawURLEncode(input.AppName) + ".conf"},
 	}, nil
 }
