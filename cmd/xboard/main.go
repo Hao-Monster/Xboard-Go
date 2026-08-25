@@ -14,6 +14,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
@@ -85,6 +86,14 @@ func main() {
 		logger.Error("initialize login link encryption", "error", err)
 		os.Exit(1)
 	}
+	captchaVerifier, err := captcha.New(captcha.Options{
+		RecaptchaEndpoint: settings.CaptchaRecaptchaURL, RecaptchaV3Endpoint: settings.CaptchaRecaptchaV3URL,
+		TurnstileEndpoint: settings.CaptchaTurnstileURL,
+	})
+	if err != nil {
+		logger.Error("initialize CAPTCHA verifier", "error", err)
+		os.Exit(1)
+	}
 	for index := range settings.SettingsEncryptionKey {
 		settings.SettingsEncryptionKey[index] = 0
 	}
@@ -132,6 +141,7 @@ func main() {
 		LoginLinkProtector:         loginLinkProtector,
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
 		RuntimeTracker:             runtimeTracker,
+		CaptchaVerifier:            captchaVerifier,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)
@@ -235,9 +245,14 @@ func initializeSettingsCipher(ctx context.Context, database *store.Store, key []
 	if err != nil {
 		return nil, err
 	}
+	captchaSecrets, err := database.GetCaptchaSecretCiphers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settingsSecretsExist := len(ciphertext) > 0 || len(captchaSecrets.Recaptcha) > 0 || len(captchaSecrets.RecaptchaV3) > 0 || len(captchaSecrets.Turnstile) > 0
 	if len(key) == 0 {
-		if len(ciphertext) > 0 {
-			return nil, errors.New("settings encryption key is required for the stored SMTP credential")
+		if settingsSecretsExist {
+			return nil, errors.New("settings encryption key is required for stored credentials")
 		}
 		return nil, nil
 	}
@@ -249,6 +264,22 @@ func initializeSettingsCipher(ctx context.Context, database *store.Store, key []
 		plaintext, err := cipherBox.Decrypt(ciphertext)
 		if err != nil {
 			return nil, errors.New("settings encryption key cannot decrypt the stored SMTP credential")
+		}
+		for index := range plaintext {
+			plaintext[index] = 0
+		}
+	}
+	for purpose, secretCiphertext := range map[appsettings.SecretPurpose][]byte{
+		appsettings.RecaptchaSecretPurpose:   captchaSecrets.Recaptcha,
+		appsettings.RecaptchaV3SecretPurpose: captchaSecrets.RecaptchaV3,
+		appsettings.TurnstileSecretPurpose:   captchaSecrets.Turnstile,
+	} {
+		if len(secretCiphertext) == 0 {
+			continue
+		}
+		plaintext, err := cipherBox.DecryptFor(purpose, secretCiphertext)
+		if err != nil {
+			return nil, errors.New("settings encryption key cannot decrypt a stored CAPTCHA credential")
 		}
 		for index := range plaintext {
 			plaintext[index] = 0

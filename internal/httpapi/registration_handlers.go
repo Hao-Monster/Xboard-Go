@@ -34,6 +34,9 @@ func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy 
 		Password             string `json:"password"`
 		PasswordConfirmation string `json:"password_confirmation"`
 		InvitationCode       string `json:"invite_code"`
+		RecaptchaData        string `json:"recaptcha_data"`
+		RecaptchaV3Token     string `json:"recaptcha_v3_token"`
+		TurnstileToken       string `json:"turnstile_token"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -58,6 +61,9 @@ func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy 
 			return
 		}
 		handleStoreError(w, err)
+		return
+	}
+	if !s.verifyCaptcha(w, r, settings, captchaTokens{Recaptcha: input.RecaptchaData, RecaptchaV3: input.RecaptchaV3Token, Turnstile: input.TurnstileToken}, "register") {
 		return
 	}
 	if err := store.CheckRegistrationEmailPolicy(settings, input.Email); err != nil {

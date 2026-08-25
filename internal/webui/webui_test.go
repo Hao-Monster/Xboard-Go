@@ -79,6 +79,18 @@ func TestHandlerRejectsUnsafeMethodsAndMissingBuild(t *testing.T) {
 	if !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "img-src 'self' data: https: http:") {
 		t.Fatal("frontend policy blocks administrator-configured notice images")
 	}
+	csp := recorder.Header().Get("Content-Security-Policy")
+	for _, required := range []string{
+		"script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://www.recaptcha.net/recaptcha/ https://challenges.cloudflare.com/turnstile/",
+		"frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/ https://challenges.cloudflare.com/turnstile/",
+	} {
+		if !strings.Contains(csp, required) {
+			t.Fatalf("frontend CSP is missing fixed CAPTCHA allowlist %q: %s", required, csp)
+		}
+	}
+	if strings.Contains(csp, "script-src 'self' https:;") || strings.Contains(csp, "frame-src https:;") {
+		t.Fatalf("frontend CSP has an overbroad CAPTCHA source: %s", csp)
+	}
 }
 
 func writeTestFile(t *testing.T, root, name, content string) {

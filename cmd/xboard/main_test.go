@@ -187,6 +187,68 @@ func TestInitializeSettingsCipherFailsClosedForStoredCredentials(t *testing.T) {
 	}
 }
 
+func TestInitializeSettingsCipherFailsClosedForStoredCaptchaCredentials(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "captcha-settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "captcha-main@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x63}, 32)
+	cipherBox, err := appsettings.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := cipherBox.EncryptFor(appsettings.TurnstileSecretPurpose, []byte("turnstile-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := database.GetSiteSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := saveSiteSettingsForMainTest(current)
+	input.CaptchaEnabled = true
+	input.CaptchaType = "turnstile"
+	input.TurnstileSiteKey = "turnstile-site-key"
+	input.ReplaceTurnstileSecret = true
+	input.TurnstileSecretCipher = ciphertext
+	if _, err := database.UpdateSiteSettings(ctx, administrator.ID, current.Revision, input, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initializeSettingsCipher(ctx, database, nil); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted a missing key for CAPTCHA credentials")
+	}
+	if _, err := initializeSettingsCipher(ctx, database, bytes.Repeat([]byte{0x24}, 32)); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted the wrong key for CAPTCHA credentials")
+	}
+	if initialized, err := initializeSettingsCipher(ctx, database, key); err != nil || initialized == nil {
+		t.Fatalf("initializeSettingsCipher() rejected the CAPTCHA key: cipher=%v err=%v", initialized, err)
+	}
+}
+
+func saveSiteSettingsForMainTest(settings store.SiteSettings) store.SaveSiteSettingsInput {
+	return store.SaveSiteSettingsInput{
+		AppName: settings.AppName, AppDescription: settings.AppDescription, AppURL: settings.AppURL, TOSURL: settings.TOSURL, Logo: settings.Logo,
+		StopRegister: settings.StopRegister, EmailVerificationEnabled: settings.EmailVerificationEnabled,
+		EmailWhitelistEnabled: settings.EmailWhitelistEnabled, EmailWhitelistSuffixes: settings.EmailWhitelistSuffixes, GmailAliasLimitEnabled: settings.GmailAliasLimitEnabled,
+		RegistrationIPLimitEnabled: settings.RegistrationIPLimitEnabled, RegistrationIPLimitCount: settings.RegistrationIPLimitCount, RegistrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
+		PasswordLimitEnabled: settings.PasswordLimitEnabled, PasswordLimitCount: settings.PasswordLimitCount, PasswordLimitMinutes: settings.PasswordLimitMinutes,
+		InvitationForceEnabled: settings.InvitationForceEnabled, InvitationCodeLimit: settings.InvitationCodeLimit, InvitationNeverExpire: settings.InvitationNeverExpire,
+		MailLoginEnabled: settings.MailLoginEnabled, CaptchaEnabled: settings.CaptchaEnabled, CaptchaType: settings.CaptchaType,
+		RecaptchaSiteKey: settings.RecaptchaSiteKey, RecaptchaV3SiteKey: settings.RecaptchaV3SiteKey,
+		RecaptchaV3ScoreThreshold: settings.RecaptchaV3ScoreThreshold, TurnstileSiteKey: settings.TurnstileSiteKey,
+	}
+}
+
 func TestRunHealthcheck(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

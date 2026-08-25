@@ -18,7 +18,10 @@ func (s *server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Email string `json:"email"`
+		Email            string `json:"email"`
+		RecaptchaData    string `json:"recaptcha_data"`
+		RecaptchaV3Token string `json:"recaptcha_v3_token"`
+		TurnstileToken   string `json:"turnstile_token"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -26,6 +29,14 @@ func (s *server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 	if !validPasswordResetEmail(email) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查邮箱输入", map[string]string{"email": "邮箱格式无效"})
+		return
+	}
+	settings, err := s.store.GetSiteSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if !s.verifyCaptcha(w, r, settings, captchaTokens{Recaptcha: input.RecaptchaData, RecaptchaV3: input.RecaptchaV3Token, Turnstile: input.TurnstileToken}, "sendEmailVerify") {
 		return
 	}
 	if s.passwordResetProtector == nil {

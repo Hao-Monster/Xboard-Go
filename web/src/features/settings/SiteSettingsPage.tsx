@@ -89,6 +89,28 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
+          <p className="small muted">保护直接注册、注册邮箱验证码和找回密码验证码请求；密码登录不使用此策略。</p>
+          {draft.captcha_enable && <label>验证码类型<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
+            <option value="recaptcha">Google reCAPTCHA v2</option><option value="recaptcha-v3">Google reCAPTCHA v3</option><option value="turnstile">Cloudflare Turnstile</option>
+          </select></label>}
+          {draft.captcha_enable && draft.captcha_type === "recaptcha" && <div className="captcha-settings-grid">
+            <label>reCAPTCHA v2 站点密钥<input required value={draft.recaptcha_site_key} onChange={(event) => updateDraft("recaptcha_site_key", event.target.value)} /></label>
+            <label>reCAPTCHA v2 服务端密钥<input type="password" autoComplete="off" placeholder={current.recaptcha_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.recaptcha_secret ?? ""} onChange={(event) => setDraft({ ...draft, recaptcha_secret: event.target.value, clear_recaptcha_secret: false })} /></label>
+            {current.recaptcha_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_recaptcha_secret === true} onChange={(event) => updateDraft("clear_recaptcha_secret", event.target.checked)} />清除 reCAPTCHA v2 服务端密钥</label>}
+          </div>}
+          {draft.captcha_enable && draft.captcha_type === "recaptcha-v3" && <div className="captcha-settings-grid">
+            <label>reCAPTCHA v3 站点密钥<input required value={draft.recaptcha_v3_site_key} onChange={(event) => updateDraft("recaptcha_v3_site_key", event.target.value)} /></label>
+            <label>reCAPTCHA v3 服务端密钥<input type="password" autoComplete="off" placeholder={current.recaptcha_v3_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.recaptcha_v3_secret ?? ""} onChange={(event) => setDraft({ ...draft, recaptcha_v3_secret: event.target.value, clear_recaptcha_v3_secret: false })} /></label>
+            <label>reCAPTCHA v3 分数阈值<input type="number" required min={0.01} max={1} step={0.01} value={draft.recaptcha_v3_score_threshold} onChange={(event) => updateDraft("recaptcha_v3_score_threshold", Number(event.target.value))} /></label>
+            {current.recaptcha_v3_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_recaptcha_v3_secret === true} onChange={(event) => updateDraft("clear_recaptcha_v3_secret", event.target.checked)} />清除 reCAPTCHA v3 服务端密钥</label>}
+          </div>}
+          {draft.captcha_enable && draft.captcha_type === "turnstile" && <div className="captcha-settings-grid">
+            <label>Turnstile 站点密钥<input required value={draft.turnstile_site_key} onChange={(event) => updateDraft("turnstile_site_key", event.target.value)} /></label>
+            <label>Turnstile 服务端密钥<input type="password" autoComplete="off" placeholder={current.turnstile_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.turnstile_secret ?? ""} onChange={(event) => setDraft({ ...draft, turnstile_secret: event.target.value, clear_turnstile_secret: false })} /></label>
+            {current.turnstile_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_turnstile_secret === true} onChange={(event) => updateDraft("clear_turnstile_secret", event.target.checked)} />清除 Turnstile 服务端密钥</label>}
+          </div>}
+          {draft.captcha_enable && <p className="small muted">服务端密钥加密保存且不会回显；留空保存会保留现有密钥。只有明确勾选清除后才会删除。</p>}
           <label className="switch-label"><input type="checkbox" checked={draft.email_verify} onChange={(event) => updateDraft("email_verify", event.target.checked)} />邮箱验证</label>
           <p className="small muted">启用后，新用户必须通过 6 位一次性邮箱验证码；请先在邮件设置中启用 SMTP。</p>
           <label className="switch-label"><input type="checkbox" checked={draft.email_whitelist_enable} onChange={(event) => updateDraft("email_whitelist_enable", event.target.checked)} />邮箱后缀白名单</label>
@@ -151,7 +173,19 @@ function toDraft(settings: SiteSettings): SiteDraft {
     invite_force: settings.invite_force,
     invite_gen_limit: settings.invite_gen_limit,
     invite_never_expire: settings.invite_never_expire,
-    login_with_mail_link_enable: settings.login_with_mail_link_enable
+    login_with_mail_link_enable: settings.login_with_mail_link_enable,
+    captcha_enable: settings.captcha_enable,
+    captcha_type: settings.captcha_type,
+    recaptcha_site_key: settings.recaptcha_site_key,
+    recaptcha_secret: "",
+    clear_recaptcha_secret: false,
+    recaptcha_v3_site_key: settings.recaptcha_v3_site_key,
+    recaptcha_v3_score_threshold: settings.recaptcha_v3_score_threshold,
+    recaptcha_v3_secret: "",
+    clear_recaptcha_v3_secret: false,
+    turnstile_site_key: settings.turnstile_site_key,
+    turnstile_secret: "",
+    clear_turnstile_secret: false
   };
 }
 

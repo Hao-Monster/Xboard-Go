@@ -364,7 +364,24 @@ export interface SiteSettings {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  captcha_enable: boolean;
+  captcha_type: CaptchaProvider;
+  recaptcha_site_key: string;
+  recaptcha_secret_configured: boolean;
+  recaptcha_v3_site_key: string;
+  recaptcha_v3_score_threshold: number;
+  recaptcha_v3_secret_configured: boolean;
+  turnstile_site_key: string;
+  turnstile_secret_configured: boolean;
   updated_at: string;
+}
+
+export type CaptchaProvider = "recaptcha" | "recaptcha-v3" | "turnstile";
+
+export interface CaptchaToken {
+  recaptcha_data?: string;
+  recaptcha_v3_token?: string;
+  turnstile_token?: string;
 }
 
 export interface SiteSettingsInput {
@@ -389,6 +406,18 @@ export interface SiteSettingsInput {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  captcha_enable: boolean;
+  captcha_type: CaptchaProvider;
+  recaptcha_site_key: string;
+  recaptcha_secret?: string;
+  clear_recaptcha_secret?: boolean;
+  recaptcha_v3_site_key: string;
+  recaptcha_v3_score_threshold: number;
+  recaptcha_v3_secret?: string;
+  clear_recaptcha_v3_secret?: boolean;
+  turnstile_site_key: string;
+  turnstile_secret?: string;
+  clear_turnstile_secret?: boolean;
 }
 
 export interface GuestConfig {
@@ -619,21 +648,22 @@ export class APIClient implements AdminAPI {
     return this.request<LoginLinkExchange>("/api/v1/auth/login-link/exchange", { method: "POST", body: { token } });
   }
 
-  async register(email: string, password: string, passwordConfirmation: string, emailCode = "", invitationCode = ""): Promise<UserSession> {
+  async register(email: string, password: string, passwordConfirmation: string, emailCode = "", invitationCode = "", captchaToken: CaptchaToken = {}): Promise<UserSession> {
     const body: Record<string, string> = { email, password, password_confirmation: passwordConfirmation };
     if (emailCode !== "") body.email_code = emailCode;
     if (invitationCode !== "") body.invite_code = invitationCode;
+    Object.assign(body, captchaToken);
     return this.request<UserSession>("/api/v1/auth/register", {
       method: "POST", body
     });
   }
 
-  async requestRegistrationEmailVerification(email: string): Promise<void> {
-    await this.request<boolean>("/api/v1/auth/registration-email/request", { method: "POST", body: { email } });
+  async requestRegistrationEmailVerification(email: string, captchaToken: CaptchaToken = {}): Promise<void> {
+    await this.request<boolean>("/api/v1/auth/registration-email/request", { method: "POST", body: { email, ...captchaToken } });
   }
 
-  async requestPasswordReset(email: string): Promise<void> {
-    await this.request<boolean>("/api/v1/auth/password-reset/request", { method: "POST", body: { email } });
+  async requestPasswordReset(email: string, captchaToken: CaptchaToken = {}): Promise<void> {
+    await this.request<boolean>("/api/v1/auth/password-reset/request", { method: "POST", body: { email, ...captchaToken } });
   }
 
   async resetPassword(email: string, emailCode: string, password: string): Promise<void> {

@@ -157,28 +157,37 @@ type SaveTicketSettingsInput struct {
 }
 
 type SiteSettings struct {
-	Revision                   int64     `json:"revision"`
-	AppName                    string    `json:"app_name"`
-	AppDescription             string    `json:"app_description"`
-	AppURL                     string    `json:"app_url"`
-	TOSURL                     string    `json:"tos_url"`
-	Logo                       string    `json:"logo"`
-	StopRegister               bool      `json:"stop_register"`
-	EmailVerificationEnabled   bool      `json:"email_verify"`
-	EmailWhitelistEnabled      bool      `json:"email_whitelist_enable"`
-	EmailWhitelistSuffixes     []string  `json:"email_whitelist_suffix"`
-	GmailAliasLimitEnabled     bool      `json:"email_gmail_limit_enable"`
-	RegistrationIPLimitEnabled bool      `json:"register_limit_by_ip_enable"`
-	RegistrationIPLimitCount   int       `json:"register_limit_count"`
-	RegistrationIPLimitMinutes int       `json:"register_limit_expire"`
-	PasswordLimitEnabled       bool      `json:"password_limit_enable"`
-	PasswordLimitCount         int       `json:"password_limit_count"`
-	PasswordLimitMinutes       int       `json:"password_limit_expire"`
-	InvitationForceEnabled     bool      `json:"invite_force"`
-	InvitationCodeLimit        int       `json:"invite_gen_limit"`
-	InvitationNeverExpire      bool      `json:"invite_never_expire"`
-	MailLoginEnabled           bool      `json:"login_with_mail_link_enable"`
-	UpdatedAt                  time.Time `json:"updated_at"`
+	Revision                    int64     `json:"revision"`
+	AppName                     string    `json:"app_name"`
+	AppDescription              string    `json:"app_description"`
+	AppURL                      string    `json:"app_url"`
+	TOSURL                      string    `json:"tos_url"`
+	Logo                        string    `json:"logo"`
+	StopRegister                bool      `json:"stop_register"`
+	EmailVerificationEnabled    bool      `json:"email_verify"`
+	EmailWhitelistEnabled       bool      `json:"email_whitelist_enable"`
+	EmailWhitelistSuffixes      []string  `json:"email_whitelist_suffix"`
+	GmailAliasLimitEnabled      bool      `json:"email_gmail_limit_enable"`
+	RegistrationIPLimitEnabled  bool      `json:"register_limit_by_ip_enable"`
+	RegistrationIPLimitCount    int       `json:"register_limit_count"`
+	RegistrationIPLimitMinutes  int       `json:"register_limit_expire"`
+	PasswordLimitEnabled        bool      `json:"password_limit_enable"`
+	PasswordLimitCount          int       `json:"password_limit_count"`
+	PasswordLimitMinutes        int       `json:"password_limit_expire"`
+	InvitationForceEnabled      bool      `json:"invite_force"`
+	InvitationCodeLimit         int       `json:"invite_gen_limit"`
+	InvitationNeverExpire       bool      `json:"invite_never_expire"`
+	MailLoginEnabled            bool      `json:"login_with_mail_link_enable"`
+	CaptchaEnabled              bool      `json:"captcha_enable"`
+	CaptchaType                 string    `json:"captcha_type"`
+	RecaptchaSiteKey            string    `json:"recaptcha_site_key"`
+	RecaptchaSecretConfigured   bool      `json:"recaptcha_secret_configured"`
+	RecaptchaV3SiteKey          string    `json:"recaptcha_v3_site_key"`
+	RecaptchaV3ScoreThreshold   float64   `json:"recaptcha_v3_score_threshold"`
+	RecaptchaV3SecretConfigured bool      `json:"recaptcha_v3_secret_configured"`
+	TurnstileSiteKey            string    `json:"turnstile_site_key"`
+	TurnstileSecretConfigured   bool      `json:"turnstile_secret_configured"`
+	UpdatedAt                   time.Time `json:"updated_at"`
 }
 
 type SaveSiteSettingsInput struct {
@@ -202,6 +211,24 @@ type SaveSiteSettingsInput struct {
 	InvitationCodeLimit        int
 	InvitationNeverExpire      bool
 	MailLoginEnabled           bool
+	CaptchaEnabled             bool
+	CaptchaType                string
+	RecaptchaSiteKey           string
+	ReplaceRecaptchaSecret     bool
+	RecaptchaSecretCipher      []byte
+	RecaptchaV3SiteKey         string
+	RecaptchaV3ScoreThreshold  float64
+	ReplaceRecaptchaV3Secret   bool
+	RecaptchaV3SecretCipher    []byte
+	TurnstileSiteKey           string
+	ReplaceTurnstileSecret     bool
+	TurnstileSecretCipher      []byte
+}
+
+type CaptchaSecretCiphers struct {
+	Recaptcha   []byte
+	RecaptchaV3 []byte
+	Turnstile   []byte
 }
 
 type LoginFailureStatus struct {

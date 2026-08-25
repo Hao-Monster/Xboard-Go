@@ -27,6 +27,15 @@ const initial: SiteSettings = {
   invite_gen_limit: 5,
   invite_never_expire: false,
   login_with_mail_link_enable: false,
+  captcha_enable: false,
+  captcha_type: "recaptcha",
+  recaptcha_site_key: "",
+  recaptcha_secret_configured: false,
+  recaptcha_v3_site_key: "",
+  recaptcha_v3_score_threshold: 0.5,
+  recaptcha_v3_secret_configured: false,
+  turnstile_site_key: "",
+  turnstile_secret_configured: false,
   updated_at: "2026-08-24T12:00:00Z"
 };
 
@@ -42,7 +51,9 @@ describe("SiteSettingsPage", () => {
       register_limit_count: 2, register_limit_expire: 30,
       password_limit_enable: true, password_limit_count: 2, password_limit_expire: 30,
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
-      login_with_mail_link_enable: true
+      login_with_mail_link_enable: true,
+      captcha_enable: true, captcha_type: "turnstile", turnstile_site_key: "turnstile-site",
+      turnstile_secret_configured: true
     };
     const api = {
       getSiteSettings: vi.fn().mockResolvedValue(initial),
@@ -72,6 +83,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByRole("checkbox", { name: "密码错误次数限制" })).toBeChecked();
     expect(screen.getByLabelText("密码错误次数")).toHaveValue(5);
     expect(screen.getByLabelText("登录锁定时长（分钟）")).toHaveValue(60);
+    expect(screen.getByRole("checkbox", { name: "验证码" })).not.toBeChecked();
 
     await user.clear(screen.getByLabelText("站点名称"));
     await user.type(screen.getByLabelText("站点名称"), updated.app_name);
@@ -84,6 +96,10 @@ describe("SiteSettingsPage", () => {
     await user.clear(screen.getByLabelText("LOGO"));
     await user.type(screen.getByLabelText("LOGO"), updated.logo);
     await user.click(screen.getByRole("checkbox", { name: "停止新用户注册" }));
+    await user.click(screen.getByRole("checkbox", { name: "验证码" }));
+    await user.selectOptions(screen.getByLabelText("验证码类型"), "turnstile");
+    await user.type(screen.getByLabelText("Turnstile 站点密钥"), "turnstile-site");
+    await user.type(screen.getByLabelText("Turnstile 服务端密钥"), "private-turnstile-secret");
     await user.click(screen.getByRole("checkbox", { name: "邮箱验证" }));
     await user.click(screen.getByRole("checkbox", { name: "邮箱后缀白名单" }));
     fireEvent.change(screen.getByLabelText("邮箱后缀"), { target: { value: "allowed.test\ngmail.com" } });
@@ -125,7 +141,19 @@ describe("SiteSettingsPage", () => {
       invite_force: true,
       invite_gen_limit: 7,
       invite_never_expire: true,
-      login_with_mail_link_enable: true
+      login_with_mail_link_enable: true,
+      captcha_enable: true,
+      captcha_type: "turnstile",
+      recaptcha_site_key: "",
+      recaptcha_secret: "",
+      clear_recaptcha_secret: false,
+      recaptcha_v3_site_key: "",
+      recaptcha_v3_score_threshold: 0.5,
+      recaptcha_v3_secret: "",
+      clear_recaptcha_v3_secret: false,
+      turnstile_site_key: "turnstile-site",
+      turnstile_secret: "private-turnstile-secret",
+      clear_turnstile_secret: false
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("站点设置已保存");
     expect(screen.getByLabelText("站点网址")).toHaveValue(updated.app_url);

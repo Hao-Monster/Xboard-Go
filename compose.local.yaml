@@ -15,6 +15,10 @@ services:
       XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
       XBOARD_MAIL_POLL_INTERVAL: 1s
       XBOARD_SMTP_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_ALLOW_INSECURE: ${XBOARD_CAPTCHA_ALLOW_INSECURE:-false}
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL:-}
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL:-}
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: ${XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL:-}
     secrets:
       - bootstrap_admin_password
       - settings_encryption_key
@@ -59,6 +63,32 @@ services:
     mem_limit: 128m
     cpus: 0.50
     restart: unless-stopped
+
+  captcha-stub:
+    profiles: [e2e]
+    image: node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573
+    user: "65532:65532"
+    command: ["node", "/test/captcha-stub.mjs"]
+    environment:
+      XBOARD_CAPTCHA_STUB_ADDRESS: 0.0.0.0
+    volumes:
+      - ./web/e2e/captcha-stub.mjs:/test/captcha-stub.mjs:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4199/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    restart: "no"
 
 volumes:
   xboard-go-data:

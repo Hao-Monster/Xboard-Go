@@ -72,6 +72,12 @@ jobs:
 
   packaged-browser:
     runs-on: ubuntu-latest
+    env:
+      XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -85,8 +91,6 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - name: Start packaged application
-        env:
-          XBOARD_GO_REVISION: ${{ github.sha }}
         run: |
           mkdir -p .local
           password="$(openssl rand -hex 24)"
@@ -94,7 +98,7 @@ jobs:
           printf '%s' "$password" > .local/bootstrap-password.txt
           printf '%s' "$settings_key" > .local/settings-encryption-key.txt
           printf 'XBOARD_PACKAGED_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
-          docker compose -f compose.local.yaml up --build --wait
+          docker compose -f compose.local.yaml --profile e2e up --build --wait
       - name: Run desktop browser tests against the packaged application
         env:
           XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
@@ -105,8 +109,8 @@ jobs:
         run: pnpm --dir web test:e2e:desktop
       - name: Reset in-memory request limiters before the mobile project
         run: |
-          docker compose -f compose.local.yaml restart xboard-go
-          docker compose -f compose.local.yaml up -d --no-build --wait xboard-go
+          docker compose -f compose.local.yaml --profile e2e restart xboard-go
+          docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
       - name: Run mobile browser tests against the packaged application
         env:
           XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
@@ -117,7 +121,7 @@ jobs:
         run: pnpm --dir web test:e2e:mobile
       - name: Capture container logs on failure
         if: failure()
-        run: docker compose -f compose.local.yaml logs --no-color
+        run: docker compose -f compose.local.yaml --profile e2e logs --no-color
       - name: Stop packaged application
         if: always()
-        run: docker compose -f compose.local.yaml down --volumes
+        run: docker compose -f compose.local.yaml --profile e2e down --volumes
