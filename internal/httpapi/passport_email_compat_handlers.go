@@ -117,6 +117,23 @@ type legacyValidationField struct {
 	message string
 }
 
+func validateLegacyEmailPassword(email, password string) []legacyValidationField {
+	fields := make([]legacyValidationField, 0, 2)
+	if email == "" {
+		fields = append(fields, legacyValidationField{name: "email", message: "邮箱不能为空"})
+	} else if !validPasswordResetEmail(email) {
+		fields = append(fields, legacyValidationField{name: "email", message: "邮箱格式不正确"})
+	}
+	if password == "" {
+		fields = append(fields, legacyValidationField{name: "password", message: "密码不能为空"})
+	} else if utf8.RuneCountInString(password) < 8 {
+		fields = append(fields, legacyValidationField{name: "password", message: "密码必须大于 8 个字符"})
+	} else if len(password) > 1024 {
+		fields = append(fields, legacyValidationField{name: "password", message: "密码不得超过 1024 个字节"})
+	}
+	return fields
+}
+
 func writeLegacyValidationErrors(w http.ResponseWriter, fields []legacyValidationField) {
 	errorsByField := make(map[string][]string, len(fields))
 	for _, field := range fields {
@@ -124,7 +141,12 @@ func writeLegacyValidationErrors(w http.ResponseWriter, fields []legacyValidatio
 	}
 	message := fields[0].message
 	if len(fields) > 1 {
-		message = fmt.Sprintf("%s (and %d more errors)", message, len(fields)-1)
+		remaining := len(fields) - 1
+		noun := "errors"
+		if remaining == 1 {
+			noun = "error"
+		}
+		message = fmt.Sprintf("%s (and %d more %s)", message, remaining, noun)
 	}
 	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 		"message": message,

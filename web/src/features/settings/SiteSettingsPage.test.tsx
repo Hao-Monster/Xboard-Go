@@ -85,39 +85,29 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("登录锁定时长（分钟）")).toHaveValue(60);
     expect(screen.getByRole("checkbox", { name: "验证码" })).not.toBeChecked();
 
-    await user.clear(screen.getByLabelText("站点名称"));
-    await user.type(screen.getByLabelText("站点名称"), updated.app_name);
-    await user.clear(screen.getByLabelText("站点描述"));
-    await user.type(screen.getByLabelText("站点描述"), updated.app_description);
-    await user.clear(screen.getByLabelText("站点网址"));
-    await user.type(screen.getByLabelText("站点网址"), updated.app_url);
-    await user.clear(screen.getByLabelText("用户条款(TOS)URL"));
-    await user.type(screen.getByLabelText("用户条款(TOS)URL"), updated.tos_url);
-    await user.clear(screen.getByLabelText("LOGO"));
-    await user.type(screen.getByLabelText("LOGO"), updated.logo);
+    changeValue("站点名称", updated.app_name);
+    changeValue("站点描述", updated.app_description);
+    changeValue("站点网址", updated.app_url);
+    changeValue("用户条款(TOS)URL", updated.tos_url);
+    changeValue("LOGO", updated.logo);
     await user.click(screen.getByRole("checkbox", { name: "停止新用户注册" }));
     await user.click(screen.getByRole("checkbox", { name: "验证码" }));
     await user.selectOptions(screen.getByLabelText("验证码类型"), "turnstile");
-    await user.type(screen.getByLabelText("Turnstile 站点密钥"), "turnstile-site");
-    await user.type(screen.getByLabelText("Turnstile 服务端密钥"), "private-turnstile-secret");
+    changeValue("Turnstile 站点密钥", "turnstile-site");
+    changeValue("Turnstile 服务端密钥", "private-turnstile-secret");
     await user.click(screen.getByRole("checkbox", { name: "邮箱验证" }));
     await user.click(screen.getByRole("checkbox", { name: "邮箱后缀白名单" }));
     fireEvent.change(screen.getByLabelText("邮箱后缀"), { target: { value: "allowed.test\ngmail.com" } });
     await user.click(screen.getByRole("checkbox", { name: "禁止使用Gmail多别名" }));
     await user.click(screen.getByRole("checkbox", { name: "IP注册限制" }));
-    await user.clear(screen.getByLabelText("注册次数"));
-    await user.type(screen.getByLabelText("注册次数"), "2");
-    await user.clear(screen.getByLabelText("限制时长（分钟）"));
-    await user.type(screen.getByLabelText("限制时长（分钟）"), "30");
+    changeValue("注册次数", "2");
+    changeValue("限制时长（分钟）", "30");
     await user.click(screen.getByRole("checkbox", { name: "强制邀请码" }));
-    await user.clear(screen.getByLabelText("邀请码生成上限"));
-    await user.type(screen.getByLabelText("邀请码生成上限"), "7");
+    changeValue("邀请码生成上限", "7");
     await user.click(screen.getByRole("checkbox", { name: "邀请码永不过期" }));
     await user.click(screen.getByRole("checkbox", { name: "邮件链接登录" }));
-    await user.clear(screen.getByLabelText("密码错误次数"));
-    await user.type(screen.getByLabelText("密码错误次数"), "2");
-    await user.clear(screen.getByLabelText("登录锁定时长（分钟）"));
-    await user.type(screen.getByLabelText("登录锁定时长（分钟）"), "30");
+    changeValue("密码错误次数", "2");
+    changeValue("登录锁定时长（分钟）", "30");
     await user.click(screen.getByRole("button", { name: "保存站点设置" }));
 
     await waitFor(() => expect(api.updateSiteSettings).toHaveBeenCalledWith({
@@ -159,7 +149,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("站点网址")).toHaveValue(updated.app_url);
     expect(screen.getByLabelText("LOGO")).toHaveValue(updated.logo);
     expect(onIdentityChanged).toHaveBeenCalledWith(updated);
-    await user.type(screen.getByLabelText("站点名称"), " draft");
+    changeValue("站点名称", `${updated.app_name} draft`);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
@@ -185,3 +175,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByRole("button", { name: "刷新最新设置" })).toBeVisible();
   });
 });
+
+function changeValue(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}

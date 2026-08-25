@@ -45,10 +45,17 @@ func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy 
 		input.PasswordConfirmation = input.Password
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	fields := validateRegistration(input.Email, input.Password, input.PasswordConfirmation)
-	if len(fields) > 0 {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查注册信息", fields)
-		return
+	if legacy {
+		if fields := validateLegacyEmailPassword(input.Email, input.Password); len(fields) > 0 {
+			writeLegacyValidationErrors(w, fields)
+			return
+		}
+	} else {
+		fields := validateRegistration(input.Email, input.Password, input.PasswordConfirmation)
+		if len(fields) > 0 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查注册信息", fields)
+			return
+		}
 	}
 
 	settings, err := s.store.GetSiteSettings(r.Context())
@@ -210,7 +217,7 @@ func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy 
 	}
 	s.setSessionCookies(w, credentials)
 	if legacy {
-		writeSuccess(w, http.StatusOK, legacyAuthData(user, accessToken.Plaintext))
+		writeLegacySuccess(w, http.StatusOK, legacyAuthData(user, accessToken.Plaintext))
 		return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{

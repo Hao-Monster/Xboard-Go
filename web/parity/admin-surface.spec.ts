@@ -740,6 +740,33 @@ test("Go Passport email compatibility preserves the legacy v1 and v2 validation 
   }
 });
 
+test("Go Passport v1 and v2 preserve the remaining public Xboard contracts", async ({ page }) => {
+  for (const version of ["v1", "v2"]) {
+    for (const [method, path, data] of [
+      ["POST", "passport/auth/login", { email: "invalid", password: "short" }],
+      ["POST", "passport/auth/register", { email: "invalid", password: "short" }],
+      ["POST", "passport/auth/loginWithMailLink", { email: "invalid" }],
+      ["POST", "passport/auth/getQuickLoginUrl", {}],
+      ["POST", "passport/auth/getQuickLoginUrl", { auth_data: "Bearer invalid" }],
+      ["GET", "passport/auth/token2Login", undefined],
+      ["GET", "passport/auth/token2Login?verify=invalid", undefined],
+      ["POST", "passport/comm/pv", { invite_code: "Badc1234" }]
+    ] as const) {
+      const legacyEndpoint = new URL(`/api/${version}/${path}`, legacyURL).toString();
+      const goEndpoint = new URL(`/api/${version}/${path}`, goURL).toString();
+      const legacyResponse = method === "POST"
+        ? await page.request.post(legacyEndpoint, { data })
+        : await page.request.get(legacyEndpoint);
+      const goResponse = method === "POST"
+        ? await page.request.post(goEndpoint, { data })
+        : await page.request.get(goEndpoint);
+
+      expect(goResponse.status(), `${version} ${method} ${path} status`).toBe(legacyResponse.status());
+      expect(await goResponse.json(), `${version} ${method} ${path} response`).toEqual(await legacyResponse.json());
+    }
+  }
+});
+
 test("legacy password error limit exposes its configurable threshold, expiry, and historical bypasses", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));

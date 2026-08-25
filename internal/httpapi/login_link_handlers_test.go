@@ -131,7 +131,7 @@ func TestLegacyPassportQuickLinkAuthenticatesBodyBearerWithoutCookieCSRF(t *test
 	}
 	denied := bearerRequest(api, http.MethodPost, "/api/v1/passport/auth/getQuickLoginUrl", "",
 		`{"auth_data":"Bearer invalid","redirect":"invite"}`)
-	expectAPIError(t, denied, http.StatusUnauthorized, "unauthenticated")
+	assertLegacyJSON(t, denied, http.StatusUnauthorized, `{"message":[401200,"账号信息已过期，请重新登录"]}`)
 }
 
 func TestMailLoginLinkDoesNotEnumerateAccountsAndHonorsPersistentCooldown(t *testing.T) {

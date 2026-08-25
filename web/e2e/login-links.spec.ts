@@ -46,6 +46,7 @@ test("quick and mail login links are safe, one-time, and land on the legacy dest
   test.setTimeout(120_000);
   const unique = `${Date.now()}-${testInfo.project.name.replace(/[^a-z0-9]/gi, "-")}`;
   const email = `login-link-${unique}@example.test`;
+  const passportMailEmail = `login-link-v2-${unique}@example.test`;
   const unknownEmail = `unknown-login-link-${unique}@example.test`;
   const password = `login-link-password-${unique}`;
   const pageErrors: string[] = [];
@@ -75,6 +76,11 @@ test("quick and mail login links are safe, one-time, and land on the legacy dest
       speed_limit: 0, device_limit: 0, banned: false
     });
     expect(created.status, created.body).toBe(201);
+    const passportMailUser = await adminRequest(page, "/api/v1/admin/users", "POST", {
+      email: passportMailEmail, password, group_id: null, transfer_enable: 1_073_741_824, expired_at: null,
+      speed_limit: 0, device_limit: 0, banned: false
+    });
+    expect(passportMailUser.status, passportMailUser.body).toBe(201);
     await logoutAndWait(page);
 
     await login(page, email, password, false);
@@ -113,6 +119,59 @@ test("quick and mail login links are safe, one-time, and land on the legacy dest
     await page.goto(unsafeURL);
     await expect(page.getByRole("button", { name: "公告" })).toHaveAttribute("aria-current", "page");
     expect(page.url()).not.toContain("attacker.example.test");
+    await logoutAndWait(page);
+
+    const passportLogin = await publicPost(page, "/api/v2/passport/auth/login", { email, password });
+    expect(passportLogin.status, passportLogin.body).toBe(200);
+    const passportAuthorization = legacyCredential(passportLogin.body);
+    const passportQuick = await publicPost(page, "/api/v2/passport/auth/getQuickLoginUrl", {
+      redirect: "https://attacker.example.test/steal"
+    }, passportAuthorization);
+    expect(passportQuick.status, passportQuick.body).toBe(200);
+    const passportQuickPayload = JSON.parse(passportQuick.body) as {
+      status: string; message: string; data: string; error: unknown;
+    };
+    expect(passportQuickPayload).toMatchObject({ status: "success", message: "操作成功", error: null });
+    const passportQuickURL = new URL(passportQuickPayload.data);
+    expect(passportQuickURL.hash).toMatch(/^#\/login\?verify=[0-9a-f]{32}&redirect=dashboard$/);
+    const passportToken = new URLSearchParams(passportQuickURL.hash.split("?")[1]).get("verify");
+    expect(passportToken).toMatch(/^[0-9a-f]{32}$/);
+    const passportExchange = await page.evaluate(async (token) => {
+      const response = await fetch(`/api/v2/passport/auth/token2Login?verify=${encodeURIComponent(token ?? "")}`, {
+        credentials: "same-origin"
+      });
+      return {
+        status: response.status, cacheControl: response.headers.get("Cache-Control"),
+        referrerPolicy: response.headers.get("Referrer-Policy"), body: await response.text()
+      };
+    }, passportToken);
+    expect({
+      status: passportExchange.status, cacheControl: passportExchange.cacheControl,
+      referrerPolicy: passportExchange.referrerPolicy
+    }).toEqual({ status: 200, cacheControl: "no-store", referrerPolicy: "no-referrer" });
+    const exchangedPayload = JSON.parse(passportExchange.body) as { data?: { auth_data?: string } };
+    expect(Object.keys(exchangedPayload)).toEqual(["data"]);
+    expect(exchangedPayload.data?.auth_data).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+    await page.goto("/#/");
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
+    const passportReused = await page.request.get(`/api/v2/passport/auth/token2Login?verify=${passportToken ?? ""}`);
+    expect({ status: passportReused.status(), body: await passportReused.json() }).toEqual({
+      status: 400, body: { message: "令牌有误" }
+    });
+    await logoutAndWait(page);
+
+    const passportMail = await publicPost(page, "/api/v2/passport/auth/loginWithMailLink", {
+      email: passportMailEmail, redirect: "knowledge"
+    });
+    expect({ status: passportMail.status, body: JSON.parse(passportMail.body) }).toEqual({
+      status: 200, body: { status: "success", message: "操作成功", data: true, error: null }
+    });
+    const passportMailURL = await waitForLoginURL(request, passportMailEmail, "登录到Xboard-Go");
+    expect(new URL(passportMailURL).hash).toMatch(/^#\/login\?verify=[0-9a-f]{32}&redirect=knowledge$/);
+    await page.goto(passportMailURL);
+    await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "知识库" })).toHaveAttribute("aria-current", "page");
     await logoutAndWait(page);
 
     const firstUnknown = await publicPost(page, "/api/v1/auth/mail-link/request", { email: unknownEmail });
@@ -170,13 +229,29 @@ async function ensureAdministrator(page: Page) {
   await login(page, adminEmail, adminPassword, true);
 }
 
-async function publicPost(page: Page, path: string, body: unknown) {
-  return page.evaluate(async ({ requestPath, requestBody }) => {
+async function publicPost(page: Page, path: string, body: unknown, authorization?: string) {
+  return page.evaluate(async ({ requestPath, requestBody, requestAuthorization }) => {
     const response = await fetch(requestPath, {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      method: "POST", credentials: "same-origin", headers: {
+        "Content-Type": "application/json", ...(requestAuthorization === undefined ? {} : { Authorization: requestAuthorization })
+      }, body: JSON.stringify(requestBody)
     });
     return { status: response.status, retryAfter: response.headers.get("Retry-After"), body: await response.text() };
-  }, { requestPath: path, requestBody: body });
+  }, { requestPath: path, requestBody: body, requestAuthorization: authorization });
+}
+
+function legacyCredential(body: string): string {
+  const payload = JSON.parse(body) as {
+    status?: string; message?: string; error?: unknown;
+    data?: { token?: string; auth_data?: string; is_admin?: boolean; is_distributor?: boolean };
+  };
+  expect(payload).toMatchObject({
+    status: "success", message: "操作成功", error: null,
+    data: { is_admin: false, is_distributor: false }
+  });
+  expect(payload.data?.token).toMatch(/^[0-9a-f]{32}$/);
+  expect(payload.data?.auth_data).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+  return payload.data?.auth_data ?? "";
 }
 
 async function authenticatedPost(page: Page, path: string, body: unknown) {

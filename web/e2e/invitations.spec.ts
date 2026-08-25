@@ -72,9 +72,15 @@ test("invitation registration matches forced, single-use, reusable, and referral
     const unknown = await request.post("/api/v1/invitations/view", { data: { invite_code: "Badc1234" } });
     expect(viewed.status()).toBe(200);
     expect(await unknown.text()).toBe(await viewed.text());
+    const knownLegacy = await request.post("/api/v1/passport/comm/pv", { data: { invite_code: singleUseCode } });
+    const unknownLegacy = await request.post("/api/v2/passport/comm/pv", { data: { invite_code: "Badc1234" } });
+    expect({ status: knownLegacy.status(), body: await knownLegacy.json() }).toEqual({
+      status: 200, body: { status: "success", message: "操作成功", data: true, error: null }
+    });
+    expect(await unknownLegacy.text()).toBe(await knownLegacy.text());
     await page.reload();
     await page.getByRole("button", { name: "我的邀请" }).click();
-    await expect(page.locator("tbody tr")).toContainText("1");
+    await expect(page.locator("tbody tr").first().locator("td").nth(1)).toHaveText("2");
     await logout(page);
 
     await login(page, adminEmail, adminPassword, true);
@@ -127,11 +133,25 @@ test("invitation registration matches forced, single-use, reusable, and referral
     current = await getSiteSettings(page);
     await saveSiteSettings(page, { ...current, invite_force: true, invite_never_expire: true });
     await logout(page);
-    for (const email of [emails.reusableOne, emails.reusableTwo]) {
-      const response = await request.post("/api/v1/auth/register", { data: {
+    for (const [index, email] of [emails.reusableOne, emails.reusableTwo].entries()) {
+      const path = index === 0 ? "/api/v1/auth/register" : "/api/v2/passport/auth/register";
+      const response = await request.post(path, { data: {
         email, password, password_confirmation: password, invite_code: reusableCode
       } });
-      expect(response.status(), await response.text()).toBe(200);
+      const body = await response.text();
+      expect(response.status(), body).toBe(200);
+      if (index === 1) {
+        const payload = JSON.parse(body) as {
+          status?: string; message?: string; error?: unknown;
+          data?: { token?: string; auth_data?: string; is_admin?: boolean; is_distributor?: boolean };
+        };
+        expect(payload).toMatchObject({
+          status: "success", message: "操作成功", error: null,
+          data: { is_admin: false, is_distributor: false }
+        });
+        expect(payload.data?.token).toMatch(/^[0-9a-f]{32}$/);
+        expect(payload.data?.auth_data).toMatch(/^Bearer [A-Za-z0-9_-]{48}$/);
+      }
     }
     await login(page, emails.owner, password, false);
     await page.getByRole("button", { name: "我的邀请" }).click();
