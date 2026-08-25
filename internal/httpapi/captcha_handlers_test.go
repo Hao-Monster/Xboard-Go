@@ -81,6 +81,13 @@ func TestCaptchaAdminSecretsPublicContractAndProtectedActions(t *testing.T) {
 	if last.Provider != captcha.ProviderRecaptchaV3 || last.Token != "browser-v3-token" || string(last.Secret) != "private-v3-secret" || last.ExpectedAction != "sendEmailVerify" || last.ScoreThreshold != 0.7 {
 		t.Fatalf("password reset CAPTCHA verification = %#v", last)
 	}
+	legacyPasswordReset := testClient{}.request(t, api, http.MethodPost, "/api/v2/passport/comm/sendEmailVerify", `{"email":"captcha-ok@example.test","recaptcha_v3_token":"legacy-v3-token"}`)
+	expectAPIError(t, legacyPasswordReset, http.StatusServiceUnavailable, "mail_unavailable")
+	inputs = verifier.snapshot()
+	last = inputs[len(inputs)-1]
+	if last.Provider != captcha.ProviderRecaptchaV3 || last.Token != "legacy-v3-token" || string(last.Secret) != "private-v3-secret" || last.ExpectedAction != "sendEmailVerify" || last.ScoreThreshold != 0.7 {
+		t.Fatalf("legacy email CAPTCHA verification = %#v", last)
+	}
 
 	configuredTurnstile := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":3,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
