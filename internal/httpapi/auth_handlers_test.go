@@ -12,7 +12,91 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
+
+func TestNativeLegacyBcryptLoginIsAtomicallyUpgradedAndRecordsLastLogin(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	user, err := database.FindUserByEmail(ctx, "admin@example.test")
+	if err != nil {
+		t.Fatalf("FindUserByEmail() error = %v", err)
+	}
+	legacyHash, err := bcrypt.GenerateFromPassword([]byte("legacy-password-123"), 10)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+	phpHash := "$2y$" + string(legacyHash[4:])
+	if err := database.ChangePassword(ctx, user.ID, user.PasswordHash, phpHash, fixedNow().Add(-time.Hour)); err != nil {
+		t.Fatalf("ChangePassword(legacy) error = %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("legacy bcrypt login status = %d; body=%s", response.Code, response.Body)
+	}
+	updated, err := database.FindUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("FindUserByID() error = %v", err)
+	}
+	if !strings.HasPrefix(updated.PasswordHash, "$argon2id$") || updated.PasswordHash == phpHash {
+		t.Fatalf("password hash was not transparently upgraded: %q", updated.PasswordHash)
+	}
+	detail, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetAdminUser() error = %v", err)
+	}
+	if detail.LastLoginAt == nil || !detail.LastLoginAt.Equal(fixedNow().UTC()) {
+		t.Fatalf("last_login_at = %v, want %v", detail.LastLoginAt, fixedNow().UTC())
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("upgraded Argon2 login status = %d; body=%s", response.Code, response.Body)
+	}
+}
+
+func TestLegacyBearerBcryptLoginIsAtomicallyUpgradedAndRecordsLastLogin(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	user, err := database.FindUserByEmail(ctx, "admin@example.test")
+	if err != nil {
+		t.Fatalf("FindUserByEmail() error = %v", err)
+	}
+	legacyHash, err := bcrypt.GenerateFromPassword([]byte("legacy-password-123"), 10)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+	phpHash := "$2y$" + string(legacyHash[4:])
+	if err := database.ChangePassword(ctx, user.ID, user.PasswordHash, phpHash, fixedNow().Add(-time.Hour)); err != nil {
+		t.Fatalf("ChangePassword(legacy) error = %v", err)
+	}
+
+	credential := loginLegacyBearer(t, api, user.Email, "legacy-password-123")
+	if credential.Authorization == "" {
+		t.Fatal("legacy bearer login returned an empty credential")
+	}
+	updated, err := database.FindUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("FindUserByID() error = %v", err)
+	}
+	if !strings.HasPrefix(updated.PasswordHash, "$argon2id$") || updated.PasswordHash == phpHash {
+		t.Fatalf("password hash was not transparently upgraded: %q", updated.PasswordHash)
+	}
+	detail, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetAdminUser() error = %v", err)
+	}
+	if detail.LastLoginAt == nil || !detail.LastLoginAt.Equal(fixedNow().UTC()) {
+		t.Fatalf("last_login_at = %v, want %v", detail.LastLoginAt, fixedNow().UTC())
+	}
+}
 
 func TestLegacyBearerLoginAndSessionLifecycle(t *testing.T) {
 	api, _ := newTestAPI(t)

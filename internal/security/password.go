@@ -9,6 +9,12 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	legacyBcryptMinCost = 10
+	legacyBcryptMaxCost = 14
 )
 
 type PasswordParams struct {
@@ -64,11 +70,25 @@ func (h PasswordHasher) Hash(password string) (string, error) {
 
 func (h PasswordHasher) Verify(password, encoded string) bool {
 	params, salt, expected, err := parsePasswordHash(encoded)
-	if err != nil {
+	if err == nil {
+		actual := argon2.IDKey([]byte(password), salt, params.Iterations, params.MemoryKiB, params.Parallelism, uint32(len(expected)))
+		return subtle.ConstantTimeCompare(actual, expected) == 1
+	}
+	if !IsLegacyBcryptHash(encoded) {
 		return false
 	}
-	actual := argon2.IDKey([]byte(password), salt, params.Iterations, params.MemoryKiB, params.Parallelism, uint32(len(expected)))
-	return subtle.ConstantTimeCompare(actual, expected) == 1
+	return bcrypt.CompareHashAndPassword([]byte(encoded), []byte(password)) == nil
+}
+
+// IsLegacyBcryptHash accepts only the PHP bcrypt variants and cost range that
+// the legacy Xboard installation used. Checking the cost before comparison
+// prevents attacker-controlled hashes from creating unbounded CPU work.
+func IsLegacyBcryptHash(encoded string) bool {
+	if len(encoded) != 60 || (encoded[:4] != "$2a$" && encoded[:4] != "$2b$" && encoded[:4] != "$2y$") {
+		return false
+	}
+	cost, err := bcrypt.Cost([]byte(encoded))
+	return err == nil && cost >= legacyBcryptMinCost && cost <= legacyBcryptMaxCost
 }
 
 func parsePasswordHash(encoded string) (PasswordParams, []byte, []byte, error) {

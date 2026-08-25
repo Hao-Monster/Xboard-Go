@@ -32,9 +32,15 @@ func TestSchemaMigrationPreservesV16UsersSessionsAndSettings(t *testing.T) {
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 16`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, schemaV25); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
 	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "v16-reset@example.test", PasswordHash: "preserved-hash"}, now)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.CreateSession(ctx, user.ID, strings.Repeat("a", 64), strings.Repeat("b", 64), now.Add(time.Hour), now); err != nil {

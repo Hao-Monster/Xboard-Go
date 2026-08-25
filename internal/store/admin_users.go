@@ -40,7 +40,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserFilter) (Adm
 
 	query := `
 		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
-		       expired_at, speed_limit, device_limit, online_count, last_online_at,
+		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users
 		WHERE account_kind = 'human'`
@@ -112,7 +112,7 @@ func (s *Store) GetAdminUser(ctx context.Context, userID int64) (AdminUser, erro
 	}
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
-		       expired_at, speed_limit, device_limit, online_count, last_online_at,
+		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users WHERE id = ? AND account_kind = 'human'
 	`, userID)
@@ -302,7 +302,7 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 func getAdminUserTx(ctx context.Context, tx *sql.Tx, userID int64) (AdminUser, error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
-		       expired_at, speed_limit, device_limit, online_count, last_online_at,
+		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users WHERE id = ? AND account_kind = 'human'
 	`, userID)
@@ -315,11 +315,11 @@ func getAdminUserTx(ctx context.Context, tx *sql.Tx, userID int64) (AdminUser, e
 
 func scanAdminUser(row rowScanner) (AdminUser, error) {
 	var user AdminUser
-	var groupID, expiredAt, lastOnlineAt sql.NullInt64
+	var groupID, expiredAt, lastOnlineAt, lastLoginAt sql.NullInt64
 	var createdAt, updatedAt int64
 	if err := row.Scan(&user.ID, &user.Email, &user.IsAdmin, &user.Banned, &groupID, &user.TransferEnable,
 		&user.TrafficUpload, &user.TrafficDownload, &expiredAt, &user.SpeedLimit, &user.DeviceLimit,
-		&user.OnlineCount, &lastOnlineAt, &user.Revision, &createdAt, &updatedAt); err != nil {
+		&user.OnlineCount, &lastOnlineAt, &lastLoginAt, &user.Revision, &createdAt, &updatedAt); err != nil {
 		return AdminUser{}, err
 	}
 	if groupID.Valid {
@@ -332,6 +332,10 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 	if lastOnlineAt.Valid {
 		value := time.Unix(lastOnlineAt.Int64, 0).UTC()
 		user.LastOnlineAt = &value
+	}
+	if lastLoginAt.Valid {
+		value := time.Unix(lastLoginAt.Int64, 0).UTC()
+		user.LastLoginAt = &value
 	}
 	user.CreatedAt = time.Unix(createdAt, 0).UTC()
 	user.UpdatedAt = time.Unix(updatedAt, 0).UTC()

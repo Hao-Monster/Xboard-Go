@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 24
+const currentSchemaVersion = 25
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -216,6 +216,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v24: %w", err)
 		}
 		version = 24
+	}
+	if version < 25 {
+		if _, err := tx.ExecContext(ctx, schemaV25); err != nil {
+			return fmt.Errorf("apply schema v25: %w", err)
+		}
+		version = 25
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -995,4 +1001,9 @@ CREATE TABLE legacy_migration_runs (
     PRIMARY KEY (slice, source_sha256)
 );
 CREATE UNIQUE INDEX idx_legacy_migration_runs_slice ON legacy_migration_runs(slice);
+`
+
+const schemaV25 = `
+ALTER TABLE users ADD COLUMN last_login_at INTEGER
+    CHECK (last_login_at IS NULL OR last_login_at >= 0);
 `

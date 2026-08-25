@@ -359,6 +359,9 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 			t.Fatal(err)
 		}
 	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 11`); err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,8 @@ type UsersAPI = Pick<AdminAPI,
   "listAdminUsers" | "getAdminUser" | "createAdminUser" | "updateAdminUser" | "resetAdminUserPassword" | "listServerGroups"
 >;
 
+const userTimestampFormatter = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" });
+
 export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID: number }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
@@ -144,7 +146,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
           <thead><tr><th>用户</th><th>状态</th><th>权限组</th><th>流量</th><th>限制</th><th>操作</th></tr></thead>
           <tbody>{users.map((account) => <tr key={account.id}>
             <td data-label="用户"><strong>{account.email}</strong><small className="muted">#{account.id}{account.is_admin ? " · 管理员" : ""}</small></td>
-            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.banned ? "已封禁" : "正常"}</span><small className="muted">在线 {account.online_count}</small></td>
+            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.banned ? "已封禁" : "正常"}</span><small className="muted">在线 {account.online_count}</small><small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
             <td data-label="权限组">{account.group_id === null ? "未分组" : groupNames.get(account.group_id) ?? `#${account.group_id}`}</td>
             <td data-label="流量"><span>{formatBytes(account.traffic_upload + account.traffic_download)} / {formatBytes(account.transfer_enable)}</span></td>
             <td data-label="限制"><span>{account.speed_limit === 0 ? "不限速" : `${account.speed_limit} Mbps`} · {account.device_limit === 0 ? "不限设备" : `${account.device_limit} 台`}</span></td>
@@ -271,6 +273,10 @@ function formatBytes(value: number): string {
   let unit = -1;
   do { amount /= 1024; unit++; } while (amount >= 1024 && unit < units.length - 1);
   return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function formatTimestamp(value: string | null): string {
+  return value === null ? "从未" : userTimestampFormatter.format(new Date(value));
 }
 
 function errorMessage(cause: unknown): string {

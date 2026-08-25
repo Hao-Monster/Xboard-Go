@@ -16,6 +16,9 @@ test("administrator creates and changes a user's access state", async ({ page })
   await page.getByRole("button", { name: "登录" }).click();
   await page.getByRole("button", { name: "用户管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "用户管理" })).toBeVisible();
+  const administratorRow = page.getByRole("row").filter({ hasText: adminEmail });
+  await expect(administratorRow.getByText(/最后登录/)).toBeVisible();
+  await expect(administratorRow.getByText("最后登录 从未", { exact: true })).toHaveCount(0);
 
   const unique = Date.now();
   const email = `e2e-user-${unique}@example.test`;
@@ -28,6 +31,7 @@ test("administrator creates and changes a user's access state", async ({ page })
   await dialog.getByLabel("设备数（0 为不限设备）").fill("2");
   await dialog.getByRole("button", { name: "创建" }).click();
   await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: email }).getByText("最后登录 从未", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: `编辑用户：${email}` }).click();
   dialog = page.getByRole("dialog", { name: "编辑用户" });

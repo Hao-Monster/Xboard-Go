@@ -221,3 +221,54 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, expectedHash, 
 	}
 	return nil
 }
+
+// CompletePasswordLoginAndCreateSession makes the verified password state,
+// transparent hash upgrade, login timestamp, and new session one transaction.
+// A concurrent password reset therefore either revokes this session or wins
+// the password compare-and-swap before the session can be inserted.
+func (s *Store) CompletePasswordLoginAndCreateSession(ctx context.Context, userID int64, expectedEmail, expectedHash, replacementHash, tokenHash, csrfHash string, expiresAt, now time.Time) error {
+	if userID < 1 || expectedEmail == "" || normalizeEmail(expectedEmail) != expectedEmail || expectedHash == "" || replacementHash == "" || tokenHash == "" || csrfHash == "" ||
+		now.Unix() < 0 || !expiresAt.After(now) {
+		return fmt.Errorf("%w: invalid password login session", ErrInvalidInput)
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin password login: %w", err)
+	}
+	defer tx.Rollback()
+	if err := completePasswordLoginTx(ctx, tx, userID, expectedEmail, expectedHash, replacementHash, now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO admin_sessions (user_id, token_hash, csrf_hash, expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, userID, tokenHash, csrfHash, expiresAt.Unix(), now.Unix()); err != nil {
+		return fmt.Errorf("create password login session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit password login session: %w", err)
+	}
+	return nil
+}
+
+func completePasswordLoginTx(ctx context.Context, tx *sql.Tx, userID int64, expectedEmail, expectedHash, replacementHash string, now time.Time) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE users
+		SET password_hash = ?,
+			last_login_at = ?,
+			updated_at = CASE WHEN password_hash = ? THEN updated_at ELSE ? END
+		WHERE id = ? AND account_kind = 'human' AND banned = 0 AND email = ? COLLATE NOCASE AND password_hash = ?
+	`, replacementHash, now.Unix(), replacementHash, now.Unix(), userID, expectedEmail, expectedHash)
+	if err != nil {
+		return fmt.Errorf("complete password login: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count completed password logins: %w", err)
+	}
+	if changed != 1 {
+		return ErrConflict
+	}
+	return nil
+}
