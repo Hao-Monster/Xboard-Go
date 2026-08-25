@@ -124,6 +124,11 @@ func TestCleanupExpiredSharesWorkSafelyWithSchedulerPrune(t *testing.T) {
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	schedulerDatabase, err := store.OpenSQLite("file:" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer schedulerDatabase.Close()
 	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +159,7 @@ func TestCleanupExpiredSharesWorkSafelyWithSchedulerPrune(t *testing.T) {
 	go func() {
 		defer wait.Done()
 		<-start
-		schedulerRemoved, schedulerErr = database.PruneExpiredLoginFailureLimits(ctx, now, 100)
+		schedulerRemoved, schedulerErr = schedulerDatabase.PruneExpiredLoginFailureLimits(ctx, now, 100)
 	}()
 	close(start)
 	wait.Wait()
