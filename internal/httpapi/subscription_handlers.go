@@ -58,13 +58,13 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 	if r.Method == http.MethodHead {
 		w.Header().Set("Allow", http.MethodGet)
 		w.Header().Set("Cache-Control", "no-store, private")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	if subscriptionPrefetch(r) {
 		w.Header().Set("Cache-Control", "no-store, private")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusTooEarly)
 		return
 	}
