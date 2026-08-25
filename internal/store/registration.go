@@ -348,17 +348,19 @@ func validRegistrationSourceIP(sourceIP string) bool {
 	return address != nil && address.String() == sourceIP
 }
 
+const pruneExpiredRegistrationIPLimitsSQL = `
+	DELETE FROM registration_ip_limits
+	WHERE source_ip IN (
+		SELECT source_ip FROM registration_ip_limits WHERE reset_at <= ? ORDER BY reset_at LIMIT ?
+	)
+`
+
 func (s *Store) PruneExpiredRegistrationIPLimits(ctx context.Context, now time.Time, limit int) (int64, error) {
 	if limit < 1 || limit > 1_000 {
 		return 0, fmt.Errorf("%w: invalid registration IP prune limit", ErrInvalidInput)
 	}
 	defer s.lockWrite()()
-	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM registration_ip_limits
-		WHERE source_ip IN (
-			SELECT source_ip FROM registration_ip_limits WHERE reset_at <= ? ORDER BY reset_at, source_ip LIMIT ?
-		)
-	`, now.Unix(), limit)
+	result, err := s.db.ExecContext(ctx, pruneExpiredRegistrationIPLimitsSQL, now.Unix(), limit)
 	if err != nil {
 		return 0, fmt.Errorf("prune registration IP limits: %w", err)
 	}
