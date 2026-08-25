@@ -159,13 +159,19 @@ docker compose -f compose.local.yaml run --rm --no-deps maintenance \
 This operation deliberately does not invent retention rules for user records,
 attachments, audit history, traffic statistics, or other business data.
 
-## Local legacy content migration
+## Local legacy migration
 
 The first legacy migration slice covers only five public site-identity settings
 (`app_name`, `app_description`, `app_url`, `tos_url`, and `logo`), notices, and
 the `client_catalog_links` JSON setting. It deliberately does not read or copy
 passwords, tokens, SMTP/CAPTCHA credentials, users, plans, orders, payments,
 nodes, plugins, or other settings.
+
+The second independently recorded slice covers server permission groups and
+routing rules while preserving their IDs and timestamps. It validates each
+match array and action against the current bounded runtime contract. User,
+plan, and node relationships are intentionally left for later atomic slices;
+the preserved IDs make those relationship migrations composable.
 
 Never bind-mount a running Xboard database file directly. First use SQLite's
 online backup API to create a standalone snapshot; a filesystem copy of a WAL
@@ -195,7 +201,27 @@ archive still matches its recorded digest. A different snapshot or a target
 whose site identity, notices, or client catalog has already been edited is
 rejected instead of being merged implicitly.
 
+With the application still stopped, the same standalone source can then be
+used for groups and routes. This creates a second rollback point, so restoring
+it removes only this slice while retaining an earlier successful content
+migration:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-groups-routes \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-groups-routes.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+This slice requires empty target group and route tables. It rejects lossy
+normalization, malformed JSON, unsupported actions, invalid timestamps,
+oversized data, a different snapshot after completion, or any pre-existing
+group/route data instead of attempting an ambiguous merge.
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice bodies, email addresses, or
 credentials. This remains a local/isolated-test workflow; later legacy data
-domains require separate mappings and migration evidence.
+domains and relationships require separate mappings and migration evidence.

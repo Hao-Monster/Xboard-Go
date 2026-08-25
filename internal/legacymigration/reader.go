@@ -37,39 +37,105 @@ type ContentSnapshot struct {
 	Checksums            store.LegacyContentChecksums
 }
 
+type snapshotIdentity struct {
+	Path   string
+	Size   int64
+	SHA256 string
+}
+
 func ReadContentSnapshot(ctx context.Context, sourcePath string) (ContentSnapshot, error) {
-	if err := ctx.Err(); err != nil {
+	var settings store.LegacySiteSettings
+	var clientPresent bool
+	var clientLinks []store.ClientCatalogOverride
+	var notices []store.LegacyNotice
+	identity, err := readLegacySnapshot(ctx, sourcePath, func(database *sql.DB) error {
+		if err := requireRealTable(ctx, database, "v2_settings", []string{"name", "value"}); err != nil {
+			return err
+		}
+		if err := requireRealTable(ctx, database, "v2_notice", []string{"id", "sort", "title", "content", "img_url", "tags", "show", "created_at", "updated_at"}); err != nil {
+			return err
+		}
+		if err := validateLegacyQueryBudget(ctx, database, `
+			SELECT COUNT(*), COALESCE(SUM(
+				length(CAST(name AS BLOB)) + COALESCE(length(CAST(value AS BLOB)), 0)
+			), 0)
+			FROM v2_settings
+			WHERE name IN ('app_name', 'app_description', 'app_url', 'tos_url', 'logo', 'client_catalog_links')
+		`, 6, maxLegacyRelevantDataBytes, "legacy public settings"); err != nil {
+			return err
+		}
+		if err := validateLegacyQueryBudget(ctx, database, `
+			SELECT COUNT(*), COALESCE(SUM(
+				length(CAST(title AS BLOB)) + length(CAST(content AS BLOB)) +
+				COALESCE(length(CAST(img_url AS BLOB)), 0) + COALESCE(length(CAST(tags AS BLOB)), 0)
+			), 0)
+			FROM v2_notice
+		`, maxLegacyNotices, maxLegacyRelevantDataBytes, "legacy notices"); err != nil {
+			return err
+		}
+		var relevantBytes int64
+		var readErr error
+		settings, clientPresent, clientLinks, relevantBytes, readErr = readLegacySettings(ctx, database)
+		if readErr != nil {
+			return readErr
+		}
+		var noticeBytes int64
+		notices, noticeBytes, readErr = readLegacyNotices(ctx, database, relevantBytes)
+		if readErr != nil {
+			return readErr
+		}
+		if relevantBytes+noticeBytes > maxLegacyRelevantDataBytes {
+			return errors.New("legacy content exceeds the migration data limit")
+		}
+		return nil
+	})
+	if err != nil {
 		return ContentSnapshot{}, err
+	}
+	checksums := store.LegacyContentChecksums{
+		SiteSettings:  store.LegacySiteSettingsChecksum(settings),
+		Notices:       store.LegacyNoticesChecksum(notices),
+		ClientCatalog: store.LegacyClientCatalogChecksum(clientLinks),
+	}
+	return ContentSnapshot{
+		Path: identity.Path, Size: identity.Size, SHA256: identity.SHA256,
+		SiteSettings: settings, Notices: notices, ClientCatalogPresent: clientPresent,
+		ClientCatalogLinks: clientLinks, Checksums: checksums,
+	}, nil
+}
+
+func readLegacySnapshot(ctx context.Context, sourcePath string, read func(*sql.DB) error) (snapshotIdentity, error) {
+	if err := ctx.Err(); err != nil {
+		return snapshotIdentity{}, err
 	}
 	absolute, err := filepath.Abs(strings.TrimSpace(sourcePath))
 	if err != nil {
-		return ContentSnapshot{}, fmt.Errorf("resolve legacy snapshot: %w", err)
+		return snapshotIdentity{}, fmt.Errorf("resolve legacy snapshot: %w", err)
 	}
 	info, err := os.Lstat(absolute)
 	if err != nil {
-		return ContentSnapshot{}, fmt.Errorf("inspect legacy snapshot: %w", err)
+		return snapshotIdentity{}, fmt.Errorf("inspect legacy snapshot: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return ContentSnapshot{}, errors.New("legacy snapshot must be a regular file, not a link or device")
+		return snapshotIdentity{}, errors.New("legacy snapshot must be a regular file, not a link or device")
 	}
 	if info.Size() < 512 || info.Size() > maxLegacySnapshotSize {
-		return ContentSnapshot{}, fmt.Errorf("legacy snapshot size must be between 512 bytes and %d bytes", maxLegacySnapshotSize)
+		return snapshotIdentity{}, fmt.Errorf("legacy snapshot size must be between 512 bytes and %d bytes", maxLegacySnapshotSize)
 	}
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if _, err := os.Lstat(absolute + suffix); err == nil {
-			return ContentSnapshot{}, fmt.Errorf("legacy snapshot has an adjacent SQLite %s file; create a standalone online backup first", strings.ToUpper(strings.TrimPrefix(suffix, "-")))
+			return snapshotIdentity{}, fmt.Errorf("legacy snapshot has an adjacent SQLite %s file; create a standalone online backup first", strings.ToUpper(strings.TrimPrefix(suffix, "-")))
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return ContentSnapshot{}, fmt.Errorf("inspect legacy snapshot sidecar: %w", err)
+			return snapshotIdentity{}, fmt.Errorf("inspect legacy snapshot sidecar: %w", err)
 		}
 	}
 	firstDigest, firstInfo, err := hashRegularFile(ctx, absolute, info)
 	if err != nil {
-		return ContentSnapshot{}, err
+		return snapshotIdentity{}, err
 	}
-
 	database, err := sql.Open("sqlite", readOnlyImmutableDSN(absolute))
 	if err != nil {
-		return ContentSnapshot{}, fmt.Errorf("open legacy snapshot: %w", err)
+		return snapshotIdentity{}, fmt.Errorf("open legacy snapshot: %w", err)
 	}
 	database.SetMaxOpenConns(1)
 	database.SetMaxIdleConns(1)
@@ -80,40 +146,25 @@ func ReadContentSnapshot(ctx context.Context, sourcePath string) (ContentSnapsho
 		return current
 	}
 	if err := database.PingContext(ctx); err != nil {
-		return ContentSnapshot{}, closeWithError(fmt.Errorf("ping legacy snapshot: %w", err))
+		return snapshotIdentity{}, closeWithError(fmt.Errorf("ping legacy snapshot: %w", err))
 	}
 	if err := validateLegacySnapshot(ctx, database); err != nil {
-		return ContentSnapshot{}, closeWithError(err)
+		return snapshotIdentity{}, closeWithError(err)
 	}
-
-	settings, clientPresent, clientLinks, relevantBytes, err := readLegacySettings(ctx, database)
-	if err != nil {
-		return ContentSnapshot{}, closeWithError(err)
-	}
-	notices, noticeBytes, err := readLegacyNotices(ctx, database, relevantBytes)
-	if err != nil {
-		return ContentSnapshot{}, closeWithError(err)
+	if err := read(database); err != nil {
+		return snapshotIdentity{}, closeWithError(err)
 	}
 	if err := closeWithError(nil); err != nil {
-		return ContentSnapshot{}, err
+		return snapshotIdentity{}, err
 	}
 	secondDigest, secondInfo, err := hashRegularFile(ctx, absolute, firstInfo)
 	if err != nil {
-		return ContentSnapshot{}, err
+		return snapshotIdentity{}, err
 	}
-	if firstDigest != secondDigest || firstInfo.Size() != secondInfo.Size() || !firstInfo.ModTime().Equal(secondInfo.ModTime()) || relevantBytes+noticeBytes > maxLegacyRelevantDataBytes {
-		return ContentSnapshot{}, errors.New("legacy snapshot changed while it was being read")
+	if firstDigest != secondDigest || firstInfo.Size() != secondInfo.Size() || !firstInfo.ModTime().Equal(secondInfo.ModTime()) {
+		return snapshotIdentity{}, errors.New("legacy snapshot changed while it was being read")
 	}
-	checksums := store.LegacyContentChecksums{
-		SiteSettings:  store.LegacySiteSettingsChecksum(settings),
-		Notices:       store.LegacyNoticesChecksum(notices),
-		ClientCatalog: store.LegacyClientCatalogChecksum(clientLinks),
-	}
-	return ContentSnapshot{
-		Path: absolute, Size: secondInfo.Size(), SHA256: secondDigest,
-		SiteSettings: settings, Notices: notices, ClientCatalogPresent: clientPresent,
-		ClientCatalogLinks: clientLinks, Checksums: checksums,
-	}, nil
+	return snapshotIdentity{Path: absolute, Size: secondInfo.Size(), SHA256: secondDigest}, nil
 }
 
 func validateLegacySnapshot(ctx context.Context, database *sql.DB) error {
@@ -134,10 +185,7 @@ func validateLegacySnapshot(ctx context.Context, database *sql.DB) error {
 	if integrity != "ok" {
 		return errors.New("legacy snapshot failed SQLite integrity check")
 	}
-	if err := requireRealTable(ctx, database, "v2_settings", []string{"name", "value"}); err != nil {
-		return err
-	}
-	return requireRealTable(ctx, database, "v2_notice", []string{"id", "sort", "title", "content", "img_url", "tags", "show", "created_at", "updated_at"})
+	return nil
 }
 
 func requireRealTable(ctx context.Context, database *sql.DB, table string, requiredColumns []string) error {
@@ -174,6 +222,20 @@ func requireRealTable(ctx context.Context, database *sql.DB, table string, requi
 		if _, exists := columns[required]; !exists {
 			return fmt.Errorf("legacy table %q is missing required column %q", table, required)
 		}
+	}
+	return nil
+}
+
+func validateLegacyQueryBudget(ctx context.Context, database *sql.DB, query string, maxRows int, maxBytes int64, label string) error {
+	var rows, bytes int64
+	if err := database.QueryRowContext(ctx, query).Scan(&rows, &bytes); err != nil {
+		return fmt.Errorf("measure %s: %w", label, err)
+	}
+	if rows < 0 || rows > int64(maxRows) {
+		return fmt.Errorf("%s exceed the %d-row migration limit", label, maxRows)
+	}
+	if bytes < 0 || bytes > maxBytes {
+		return fmt.Errorf("%s exceed the %d-byte migration limit", label, maxBytes)
 	}
 	return nil
 }
