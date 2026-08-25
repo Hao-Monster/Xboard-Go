@@ -56,11 +56,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
       await page.getByRole("button", { name: "发送", exact: true }).click();
       if (provider.type !== "recaptcha-v3") {
         await expect(page.getByRole("dialog", { name: "人机验证" })).toBeVisible();
-        await page.evaluate(() => {
-          const complete: unknown = Reflect.get(window, "__e2eCaptchaComplete");
-          if (typeof complete !== "function") throw new Error("CAPTCHA completion hook is missing");
-          (complete as () => void)();
-        });
+        await completeInteractiveCaptcha(page);
       }
       const codeResponse = await codeRequest;
       expect(codeResponse.status()).toBe(503);
@@ -78,11 +74,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
       await page.getByRole("button", { name: "注册", exact: true }).click();
       if (provider.type !== "recaptcha-v3") {
         await expect(page.getByRole("dialog", { name: "人机验证" })).toBeVisible();
-        await page.evaluate(() => {
-          const complete: unknown = Reflect.get(window, "__e2eCaptchaComplete");
-          if (typeof complete !== "function") throw new Error("CAPTCHA completion hook is missing");
-          (complete as () => void)();
-        });
+        await completeInteractiveCaptcha(page);
       }
       expect((await registration).status()).toBe(200);
       await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
@@ -133,6 +125,15 @@ async function installProviderScriptStubs(page: Page) {
     contentType: "application/javascript",
     body: `window.turnstile={render:(_element,options)=>{window.__e2eCaptchaComplete=()=>options.callback('e2e-turnstile:'+options.action);return 'widget';},reset:()=>{},remove:()=>{}};`
   }));
+}
+
+async function completeInteractiveCaptcha(page: Page) {
+  await expect.poll(() => page.evaluate(() => typeof Reflect.get(window, "__e2eCaptchaComplete"))).toBe("function");
+  await page.evaluate(() => {
+    const complete: unknown = Reflect.get(window, "__e2eCaptchaComplete");
+    if (typeof complete !== "function") throw new Error("CAPTCHA completion hook is missing");
+    (complete as () => void)();
+  });
 }
 
 async function loginAdmin(page: Page) {
