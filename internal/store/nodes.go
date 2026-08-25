@@ -177,7 +177,8 @@ func (s *Store) ListLoadHistory(ctx context.Context, machineID int64, since time
 	return history, rows.Err()
 }
 
-const nodeSelect = `SELECT id, name, type, host, port, show, enabled, sort, rate_micros, traffic_u, traffic_d,
+const nodeSelect = `SELECT id, name, type, host, port, show, enabled, sort,
+	COALESCE((SELECT configured_rate_micros FROM node_protocol_definitions WHERE node_id = nodes.id), rate_micros), traffic_u, traffic_d,
 	runtime_config IS NOT NULL, last_check_at, last_push_at, machine_id, created_at, updated_at FROM nodes`
 
 func scanNode(row rowScanner) (Node, error) {

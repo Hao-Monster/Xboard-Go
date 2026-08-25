@@ -6,7 +6,7 @@ The project preserves verified business behavior while replacing inaccessible le
 
 The implemented vertical slices cover administrator authentication and account-session security, atomic public email/password registration with administrator-controlled registration policies and optional email verification, invitation-code registration and referral relationship tracking, email-code password recovery, a cursor-paginated user directory and access-state editor, server-machine and node association management, one-time hashed machine enrollment credentials, load reporting, revision-safe daily activation schedules, server permission groups, panel routing rules, notices, multilingual knowledge management and public sharing, a validated cross-platform client download catalog, user and administrator ticket lifecycles, system runtime status and administrator audit, and the Xboard-Node runtime control-plane contract. Password authentication has administrator-configurable persistent error thresholds and expiry windows, normalized identity keys that cannot be bypassed with case or whitespace changes, account-enumeration-resistant failures, and an independent bounded source-IP safeguard. Account holders can list and revoke their active sessions; password and other security-sensitive account changes atomically revoke every session. Registration applies bounded Argon2id concurrency, per-address resource limits, strict origin checks for browsers, normalized email-domain whitelists, scoped Gmail-alias protection, a persistent successful-registration IP quota, Google reCAPTCHA v2/v3 or Cloudflare Turnstile server verification, purpose-isolated six-digit verification codes with durable cooldown, lockout, encrypted outbox delivery and transactional one-time consumption, and CSPRNG invitation codes protected by keyed digests and authenticated encryption at rest. CAPTCHA server credentials are purpose-isolated under authenticated encryption, never returned by the administration API, and enforced on direct registration plus registration and recovery email-code requests; v3 score and action are verified server-side and provider failures fail closed. Invitation relationships and single-use code consumption commit atomically with the user and initial session; reusable codes preserve the verified legacy behavior. Password recovery uses cryptographically generated six-digit codes, persistent cooldown and lockout state, account-enumeration-resistant responses, authenticated encryption at rest, a durable mail outbox, one-time transactional consumption, and bounded password hashing; a successful reset revokes every existing session. The verified Xboard `/api/v1` and `/api/v2` Passport surface remains available for password login and registration, email verification and recovery, mail and quick login links, one-time token exchange, and invitation-view tracking with its legacy validation and response contracts. Internally these compatibility routes preserve purpose isolation, enumeration resistance, bounded abuse controls, transactional credential handling, trusted browser origins, and a redirect allowlist instead of reproducing the legacy open-redirect behavior. Policy checks are repeated transactionally so account, initial session, verification-code consumption, invitation consumption and relationship creation, and IP counter changes cannot bypass concurrent configuration changes or commit partially; expired IP, login-failure, and email-challenge state is removed by bounded background maintenance. Node configuration, selected routing rules, and user snapshots are available over authenticated HTTP and WebSocket transports; user access changes use bounded per-user deltas while traffic reports are transactionally persisted with durable idempotency, node-group authorization, bounded inputs, and cross-node device-state synchronization. Referenced groups and routes are protected by transactional integrity checks so administrative changes cannot leave dangling node configuration. Knowledge articles support categories, languages, optimistic editing, visibility and ordering, subscriber-only regions, user-specific placeholders, and server-rendered public pages with strict HTML sanitization and content-security headers. Client downloads use stable panel routes, strict HTTPS validation, repository-pinned GitHub release resolution, bounded caching, and administrator-configurable action links. Tickets enforce ownership, one-open-ticket-per-user, bounded threads and inputs, role-specific reply rules, automatic stale closure, durable rate-limited reply notifications, encrypted SMTP credentials, and bounded delivery retries. The operations page reports scheduler and mail-worker heartbeats, database schema and combined mail-queue health, failed-delivery metadata, and an append-only mutation audit that deliberately excludes request bodies, verification codes, and credentials.
 
-The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database. A separate host-side lifecycle command composes those primitives into conservative local install, upgrade, failed-health recovery, and explicit rollback flows without exposing the Docker socket to the application container. An offline, source-fingerprinted migration command can import the first verified legacy content slice—public site identity, notices, and validated client action links—from a standalone Xboard SQLite snapshot into a pristine Go database with a verified pre-import backup, atomic commit, per-domain checksums, and idempotent replay.
+The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database. A separate host-side lifecycle command composes those primitives into conservative local install, upgrade, failed-health recovery, and explicit rollback flows without exposing the Docker socket to the application container. Offline, source-fingerprinted migration commands import independently verified legacy slices from a standalone Xboard SQLite snapshot into a pristine Go database with a verified pre-import backup, atomic commit, per-domain checksums, and idempotent replay.
 
 The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
 
@@ -189,6 +189,16 @@ transaction that records the login time and creates the session or bearer token.
 Unsupported staff, distributor, finance, plan, reminder, reset, or audit state is
 rejected instead of being silently discarded.
 
+The fifth slice imports the operational server domain after groups and routes:
+machines, hashed credentials and enrollments, recent load history, nodes,
+protocol definitions, group and route memberships, activation schedules, and
+aggregated node traffic statistics. A legacy plaintext machine-token fallback
+is converted to a SHA-256 credential while the source snapshot is read and is
+never emitted in the result. Protocol definitions remain separate from the
+compiled runtime JSON so node pulls stay on the existing hot path. Time-window
+traffic rates retain Xboard's inclusive `Asia/Shanghai` `HH:mm` behavior. The
+reader fails closed if in-flight report receipts have not been drained.
+
 Never bind-mount a running Xboard database file directly. First use SQLite's
 online backup API to create a standalone snapshot; a filesystem copy of a WAL
 database is not a valid migration input. The migration reader refuses
@@ -276,8 +286,29 @@ must resolve within the snapshot, and password hashes must be bounded legacy
 bcrypt values. Repeating the same source verifies the recorded rollback archive
 and returns the existing result without rewriting users.
 
+With the legacy application and its report workers still stopped, the node
+domain can then be imported. Groups and routes referenced by a node must already
+exist, while the target machine and node tables must be empty:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-nodes \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-nodes.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The import preserves machine and node IDs and verifies four independent target
+checksums (machines/security state, nodes/definitions, schedules, and traffic).
+Existing machine credentials remain valid without copying a plaintext token.
+Transient report receipts are deliberately not approximated: drain them before
+creating the standalone source snapshot or the command refuses to run.
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; later legacy data domains and
-relationships require separate mappings and migration evidence.
+This remains a local/isolated-test workflow; plans, subscriptions, orders,
+payments, distributor data, attachments, and other remaining legacy domains
+still require separate mappings and migration evidence.

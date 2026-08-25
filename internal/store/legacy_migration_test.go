@@ -142,19 +142,19 @@ func TestImportLegacyContentRejectsInvalidOrNonPristineTargetsWithoutPartialWrit
 	})
 }
 
-func TestSchemaV24AndV25AddMigrationLedgerAndLastLoginWithoutChangingBusinessData(t *testing.T) {
+func TestSchemaV24ThroughV26AddMigrationLedgerLastLoginAndNodeDefinitionsWithoutChangingBusinessData(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	if _, err := database.CreateNotice(ctx, SaveNoticeInput{Title: "before", Content: "preserved", Visible: true}, time.Unix(100, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 23; DROP TABLE legacy_migration_runs; ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
+	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 23; DROP TABLE node_protocol_definitions; DROP TABLE legacy_migration_runs; ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var version, notices, ledger, lastLoginColumns int
+	var version, notices, ledger, lastLoginColumns, nodeDefinitionColumns int
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +167,11 @@ func TestSchemaV24AndV25AddMigrationLedgerAndLastLoginWithoutChangingBusinessDat
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'last_login_at' AND [notnull] = 0`).Scan(&lastLoginColumns); err != nil {
 		t.Fatal(err)
 	}
-	if version != currentSchemaVersion || notices != 1 || ledger != 1 || lastLoginColumns != 1 {
-		t.Fatalf("migration result version=%d notices=%d ledger=%d last_login_columns=%d", version, notices, ledger, lastLoginColumns)
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('node_protocol_definitions')`).Scan(&nodeDefinitionColumns); err != nil {
+		t.Fatal(err)
+	}
+	if version != currentSchemaVersion || notices != 1 || ledger != 1 || lastLoginColumns != 1 || nodeDefinitionColumns != 13 {
+		t.Fatalf("migration result version=%d notices=%d ledger=%d last_login_columns=%d node_definition_columns=%d", version, notices, ledger, lastLoginColumns, nodeDefinitionColumns)
 	}
 }
 
