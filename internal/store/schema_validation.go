@@ -50,6 +50,7 @@ var requiredSchemaTables = []struct {
 	{"login_link_mail_outbox", 20},
 	{"access_tokens", 21},
 	{"login_failure_limits", 22},
+	{"legacy_migration_runs", 24},
 }
 
 type schemaQueryer interface {

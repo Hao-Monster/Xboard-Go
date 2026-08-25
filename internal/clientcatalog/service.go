@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -165,9 +166,25 @@ func (s *Service) Resolve(ctx context.Context, clientID, platform, action string
 }
 
 func (s *Service) normalizeOverrides(input OverrideInput) ([]store.ClientCatalogOverride, error) {
+	return normalizeOverrides(s.byID, input)
+}
+
+// NormalizeOverrides applies the same client, platform, action and URL policy
+// used by the administrator API without mutating catalog state. Offline legacy
+// migration uses it before opening a target write transaction.
+func NormalizeOverrides(input OverrideInput) ([]store.ClientCatalogOverride, error) {
+	definitions := DefaultDefinitions()
+	byID := make(map[string]Definition, len(definitions))
+	for _, definition := range definitions {
+		byID[definition.ID] = definition
+	}
+	return normalizeOverrides(byID, input)
+}
+
+func normalizeOverrides(byID map[string]Definition, input OverrideInput) ([]store.ClientCatalogOverride, error) {
 	links := make([]store.ClientCatalogOverride, 0)
 	for clientID, platformValues := range input {
-		definition, exists := s.byID[clientID]
+		definition, exists := byID[clientID]
 		if !exists || platformValues == nil {
 			return nil, fmt.Errorf("%w: unknown client", ErrInvalid)
 		}
@@ -191,6 +208,15 @@ func (s *Service) normalizeOverrides(input OverrideInput) ([]store.ClientCatalog
 			}
 		}
 	}
+	sort.Slice(links, func(left, right int) bool {
+		if links[left].ClientID != links[right].ClientID {
+			return links[left].ClientID < links[right].ClientID
+		}
+		if links[left].Platform != links[right].Platform {
+			return links[left].Platform < links[right].Platform
+		}
+		return links[left].Action < links[right].Action
+	})
 	return links, nil
 }
 

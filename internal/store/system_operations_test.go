@@ -333,6 +333,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 		t.Fatal(err)
 	}
 	for _, table := range []string{
+		"legacy_migration_runs",
 		"access_tokens",
 		"login_failure_limits",
 		"login_link_mail_outbox", "login_link_tokens", "mail_login_request_limits",
