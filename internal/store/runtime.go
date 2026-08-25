@@ -25,6 +25,14 @@ const (
 	deviceStateTTL        = 5 * time.Minute
 )
 
+var nodeRateLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+type nodeRateRange struct {
+	Start string  `json:"start"`
+	End   string  `json:"end"`
+	Rate  float64 `json:"rate"`
+}
+
 func (s *Store) SaveNodeRuntime(ctx context.Context, nodeID int64, input SaveNodeRuntimeInput, now time.Time) (NodeRuntime, error) {
 	if input.RateMicros < 1 || input.RateMicros > 1_000_000_000 || len(input.Config) == 0 || len(input.Config) > maxRuntimeConfigBytes || !json.Valid(input.Config) {
 		return NodeRuntime{}, fmt.Errorf("%w: invalid node runtime", ErrInvalidInput)
@@ -72,6 +80,9 @@ func (s *Store) SaveNodeRuntime(ctx context.Context, nodeID int64, input SaveNod
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET rate_micros = ?, runtime_config = ?, updated_at = ? WHERE id = ?`, input.RateMicros, string(canonical), now.Unix(), nodeID); err != nil {
 		return NodeRuntime{}, fmt.Errorf("update node runtime: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE node_protocol_definitions SET configured_rate_micros = ? WHERE node_id = ?`, input.RateMicros, nodeID); err != nil {
+		return NodeRuntime{}, fmt.Errorf("update node configured rate: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM node_group_memberships WHERE node_id = ?`, nodeID); err != nil {
 		return NodeRuntime{}, fmt.Errorf("replace node groups: %w", err)
@@ -149,7 +160,7 @@ func (s *Store) GetNodeRuntime(ctx context.Context, nodeID int64) (NodeRuntime, 
 	var runtime NodeRuntime
 	var config sql.NullString
 	var updatedAt int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, rate_micros, runtime_config, updated_at FROM nodes WHERE id = ?`, nodeID).Scan(
+	err := s.db.QueryRowContext(ctx, `SELECT id, COALESCE((SELECT configured_rate_micros FROM node_protocol_definitions WHERE node_id = nodes.id), rate_micros), runtime_config, updated_at FROM nodes WHERE id = ?`, nodeID).Scan(
 		&runtime.NodeID, &runtime.RateMicros, &config, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -357,16 +368,25 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 
 	var rateMicros int64
 	var allowed bool
+	var rateTimeEnabled bool
+	var rateTimeRanges string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT rate_micros, machine_id = ? AND enabled = 1 AND runtime_config IS NOT NULL
-		FROM nodes WHERE id = ?
-	`, input.MachineID, input.NodeID).Scan(&rateMicros, &allowed); errors.Is(err, sql.ErrNoRows) {
+		SELECT COALESCE(d.configured_rate_micros, n.rate_micros),
+		       n.machine_id = ? AND n.enabled = 1 AND n.runtime_config IS NOT NULL,
+		       COALESCE(d.rate_time_enabled, 0), COALESCE(d.rate_time_ranges_json, '[]')
+		FROM nodes n LEFT JOIN node_protocol_definitions d ON d.node_id = n.id
+		WHERE n.id = ?
+	`, input.MachineID, input.NodeID).Scan(&rateMicros, &allowed, &rateTimeEnabled, &rateTimeRanges); errors.Is(err, sql.ErrNoRows) {
 		return NodeReportResult{}, ErrNotFound
 	} else if err != nil {
 		return NodeReportResult{}, fmt.Errorf("authorize node report: %w", err)
 	}
 	if !allowed {
 		return NodeReportResult{}, ErrNodeNotLinked
+	}
+	rateMicros, err = nodeRateMicrosAt(rateMicros, rateTimeEnabled, rateTimeRanges, input.Now)
+	if err != nil {
+		return NodeReportResult{}, err
 	}
 
 	result := NodeReportResult{}
@@ -557,6 +577,25 @@ func authorizeReportedUsers(ctx context.Context, tx *sql.Tx, input NodeReportInp
 	return nil
 }
 
+func nodeRateMicrosAt(configured int64, enabled bool, encoded string, now time.Time) (int64, error) {
+	if !enabled {
+		return configured, nil
+	}
+	var ranges []nodeRateRange
+	if err := json.Unmarshal([]byte(encoded), &ranges); err != nil {
+		return 0, fmt.Errorf("decode node rate schedule: %w", err)
+	}
+	clock := now.In(nodeRateLocation).Format("15:04")
+	for _, item := range ranges {
+		// Preserve Xboard's inclusive lexical HH:mm comparison. A range whose
+		// end precedes its start intentionally never matches across midnight.
+		if clock >= item.Start && clock <= item.End {
+			return int64(math.Round(item.Rate * float64(trafficRateScale))), nil
+		}
+	}
+	return configured, nil
+}
+
 func reportTrafficHash(traffic map[int64]TrafficUsage) []byte {
 	userIDs := make([]int64, 0, len(traffic))
 	for userID := range traffic {
@@ -638,7 +677,8 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 		return fmt.Errorf("increment user traffic: %w", err)
 	}
 
-	recordAt := time.Date(input.Now.UTC().Year(), input.Now.UTC().Month(), input.Now.UTC().Day(), 0, 0, 0, 0, time.UTC).Unix()
+	localReportTime := input.Now.In(nodeRateLocation)
+	recordAt := time.Date(localReportTime.Year(), localReportTime.Month(), localReportTime.Day(), 0, 0, 0, 0, nodeRateLocation).Unix()
 	var userStatsOverflow bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS (
@@ -705,7 +745,7 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 }
 
 func weightedTraffic(value, rateMicros int64) (int64, error) {
-	if value < 0 || rateMicros < 1 {
+	if value < 0 || rateMicros < 0 {
 		return 0, fmt.Errorf("%w: invalid weighted traffic", ErrInvalidInput)
 	}
 	whole := value / trafficRateScale

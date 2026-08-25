@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 25
+const currentSchemaVersion = 26
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -222,6 +222,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v25: %w", err)
 		}
 		version = 25
+	}
+	if version < 26 {
+		if _, err := tx.ExecContext(ctx, schemaV26); err != nil {
+			return fmt.Errorf("apply schema v26: %w", err)
+		}
+		version = 26
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1006,4 +1012,31 @@ CREATE UNIQUE INDEX idx_legacy_migration_runs_slice ON legacy_migration_runs(sli
 const schemaV25 = `
 ALTER TABLE users ADD COLUMN last_login_at INTEGER
     CHECK (last_login_at IS NULL OR last_login_at >= 0);
+`
+
+const schemaV26 = `
+CREATE TABLE node_protocol_definitions (
+    node_id INTEGER PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+    external_code TEXT CHECK (external_code IS NULL OR length(external_code) BETWEEN 1 AND 255),
+    parent_id INTEGER REFERENCES nodes(id) ON DELETE RESTRICT,
+    server_port INTEGER NOT NULL CHECK (server_port BETWEEN 1 AND 65535),
+    tags_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array'),
+    protocol_settings_json TEXT NOT NULL
+        CHECK (json_valid(protocol_settings_json) AND json_type(protocol_settings_json) = 'object'),
+    rate_time_enabled INTEGER NOT NULL DEFAULT 0 CHECK (rate_time_enabled IN (0, 1)),
+    rate_time_ranges_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(rate_time_ranges_json) AND json_type(rate_time_ranges_json) = 'array'),
+    custom_outbounds_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(custom_outbounds_json) AND json_type(custom_outbounds_json) = 'array'),
+    custom_routes_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(custom_routes_json) AND json_type(custom_routes_json) = 'array'),
+    cert_config_json TEXT NOT NULL DEFAULT '{}'
+        CHECK (json_valid(cert_config_json) AND json_type(cert_config_json) = 'object'),
+    transfer_enable INTEGER NOT NULL DEFAULT 0 CHECK (transfer_enable >= 0),
+    configured_rate_micros INTEGER NOT NULL CHECK (configured_rate_micros BETWEEN 0 AND 1000000000)
+);
+CREATE INDEX idx_node_protocol_parent ON node_protocol_definitions(parent_id, node_id);
+CREATE INDEX idx_node_protocol_code ON node_protocol_definitions(external_code, node_id)
+    WHERE external_code IS NOT NULL;
 `

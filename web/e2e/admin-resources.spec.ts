@@ -58,7 +58,8 @@ test("administrator manages permission groups and routing rules", async ({ page 
   await dialog.getByLabel("动作").selectOption("direct");
   await expect(dialog.getByLabel("代理出站标记")).toBeHidden();
   await dialog.getByRole("button", { name: "保存" }).click();
-  await expect(page.getByText("直连", { exact: true })).toBeVisible();
+  const updatedRoute = page.getByRole("row").filter({ has: page.getByText(routeName, { exact: true }) });
+  await expect(updatedRoute.getByText("直连", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: `删除路由规则：${routeName}` }).click();
   dialog = page.getByRole("dialog", { name: "删除路由规则" });
   await dialog.getByRole("button", { name: "确认删除" }).click();
