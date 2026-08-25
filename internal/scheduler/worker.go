@@ -20,6 +20,7 @@ type Worker struct {
 	lastRegistrationEmailSweep time.Time
 	lastLoginLinkSweep         time.Time
 	lastLoginFailureSweep      time.Time
+	lastTrafficResetSweep      time.Time
 	tracker                    *operations.Tracker
 }
 
@@ -62,6 +63,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.pruneRegistrationEmailVerifications(ctx, now)
 	w.pruneLoginLinks(ctx, now)
 	w.pruneLoginFailures(ctx, now)
+	w.resetDueTraffic(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -78,6 +80,25 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) resetDueTraffic(ctx context.Context, now time.Time) {
+	// The legacy reset:traffic command runs every minute. Preserve that cadence
+	// while keeping the scheduler's second-level activation transitions.
+	if !w.lastTrafficResetSweep.IsZero() && now.Sub(w.lastTrafficResetSweep) < time.Minute {
+		return
+	}
+	w.lastTrafficResetSweep = now
+	result, err := w.store.ProcessDueTrafficResets(ctx, now, 100)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("reset due user traffic", "error", err)
+		}
+		return
+	}
+	if result.Processed > 0 {
+		w.logger.Info("due user traffic reset", "processed", result.Processed, "remaining", result.Remaining)
 	}
 }
 

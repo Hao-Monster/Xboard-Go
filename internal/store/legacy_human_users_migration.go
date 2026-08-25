@@ -41,10 +41,14 @@ type LegacyHumanUser struct {
 	LastLoginAt       *int64 `json:"last_login_at"`
 	UUID              string `json:"uuid"`
 	GroupID           *int64 `json:"group_id"`
+	PlanID            *int64 `json:"plan_id"`
 	SpeedLimit        int    `json:"speed_limit"`
 	ExpiredAt         *int64 `json:"expired_at"`
 	DeviceLimit       int    `json:"device_limit"`
 	LastOnlineAt      *int64 `json:"last_online_at"`
+	NextResetAt       *int64 `json:"next_reset_at"`
+	LastResetAt       *int64 `json:"last_reset_at"`
+	ResetCount        int64  `json:"reset_count"`
 	SubscriptionToken string `json:"subscription_token"`
 	CreatedAt         int64  `json:"created_at"`
 	UpdatedAt         int64  `json:"updated_at"`
@@ -78,6 +82,23 @@ func LegacyHumanUsersChecksum(users []LegacyHumanUser) string {
 	canonical := newLegacyHumanUsersDigest()
 	for _, user := range ordered {
 		canonical.add(user)
+	}
+	extended := false
+	for _, user := range ordered {
+		if user.PlanID != nil || user.NextResetAt != nil || user.LastResetAt != nil || user.ResetCount != 0 {
+			extended = true
+			break
+		}
+	}
+	if extended {
+		canonical.writeString("plan-reset-v1")
+		for _, user := range ordered {
+			canonical.writeInt64(user.ID)
+			canonical.writePointer(user.PlanID)
+			canonical.writePointer(user.NextResetAt)
+			canonical.writePointer(user.LastResetAt)
+			canonical.writeInt64(user.ResetCount)
+		}
 	}
 	return canonical.sum()
 }
@@ -175,9 +196,12 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 			return fmt.Errorf("%w: legacy human user id %d has an invalid subscription token", ErrInvalidInput, user.ID)
 		}
 		if user.GroupID != nil && *user.GroupID < 1 || user.InviteUserID != nil && (*user.InviteUserID < 1 || *user.InviteUserID == user.ID) ||
+			user.PlanID != nil && *user.PlanID < 1 || user.ResetCount < 0 ||
 			user.ExpiredAt != nil && !validLegacyUnixTimestamp(*user.ExpiredAt) ||
 			user.LastOnlineAt != nil && !validLegacyUnixTimestamp(*user.LastOnlineAt) ||
-			user.LastLoginAt != nil && !validLegacyUnixTimestamp(*user.LastLoginAt) {
+			user.LastLoginAt != nil && !validLegacyUnixTimestamp(*user.LastLoginAt) ||
+			user.NextResetAt != nil && !validLegacyUnixTimestamp(*user.NextResetAt) ||
+			user.LastResetAt != nil && !validLegacyUnixTimestamp(*user.LastResetAt) {
 			return fmt.Errorf("%w: legacy human user id %d has an invalid reference or timestamp", ErrInvalidInput, user.ID)
 		}
 		if _, exists := ids[user.ID]; exists {
@@ -303,6 +327,9 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 	if err := validateLegacyHumanUserGroups(ctx, tx, input.Users); err != nil {
 		return LegacyHumanUsersImportReport{}, err
 	}
+	if err := validateLegacyHumanUserPlans(ctx, tx, input.Users); err != nil {
+		return LegacyHumanUsersImportReport{}, err
+	}
 	if err := ensureNoUserDependencies(ctx, tx, bootstrapID); err != nil {
 		return LegacyHumanUsersImportReport{}, err
 	}
@@ -312,10 +339,11 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO users (
-			id, email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
+			id, email, password_hash, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable,
 			traffic_u, traffic_d, expired_at, speed_limit, device_limit, online_count, last_online_at,
-			last_login_at, admin_revision, subscription_token, invite_user_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?, NULL, ?, ?)
+			last_login_at, next_reset_at, last_reset_at, reset_count, admin_revision, subscription_token,
+			invite_user_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)
 	`)
 	if err != nil {
 		return LegacyHumanUsersImportReport{}, fmt.Errorf("prepare legacy human user import: %w", err)
@@ -323,9 +351,10 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 	defer statement.Close()
 	for _, user := range input.Users {
 		if _, err := statement.ExecContext(ctx, user.ID, user.Email, user.PasswordHash, user.IsAdmin, user.Banned, user.UUID,
-			nullableInt64Value(user.GroupID), user.TransferEnable, user.TrafficUpload, user.TrafficDownload,
+			nullableInt64Value(user.GroupID), nullableInt64Value(user.PlanID), user.TransferEnable, user.TrafficUpload, user.TrafficDownload,
 			nullableInt64Value(user.ExpiredAt), user.SpeedLimit, user.DeviceLimit, nullableInt64Value(user.LastOnlineAt),
-			nullableInt64Value(user.LastLoginAt), user.SubscriptionToken, user.CreatedAt, user.UpdatedAt); err != nil {
+			nullableInt64Value(user.LastLoginAt), nullableInt64Value(user.NextResetAt), nullableInt64Value(user.LastResetAt),
+			user.ResetCount, user.SubscriptionToken, user.CreatedAt, user.UpdatedAt); err != nil {
 			return LegacyHumanUsersImportReport{}, fmt.Errorf("import legacy human user id %d: %w", user.ID, err)
 		}
 	}
@@ -389,19 +418,22 @@ func validateReplaceableBootstrapAdmin(ctx context.Context, tx *sql.Tx) (int64, 
 	var isAdmin, banned bool
 	var kind string
 	var runtimeUUID sql.NullString
-	var groupID, expiredAt, lastOnlineAt, inviteUserID sql.NullInt64
+	var groupID, planID, expiredAt, lastOnlineAt, inviteUserID, nextResetAt, lastResetAt sql.NullInt64
+	var resetCount int64
 	var transfer, upload, download int64
 	var speed, devices, online int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id, is_admin, banned, account_kind, uuid, group_id, transfer_enable, traffic_u, traffic_d,
-		       expired_at, speed_limit, device_limit, online_count, last_online_at, invite_user_id
+		SELECT id, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable, traffic_u, traffic_d,
+		       expired_at, speed_limit, device_limit, online_count, last_online_at, invite_user_id,
+		       next_reset_at, last_reset_at, reset_count
 		FROM users
-	`).Scan(&id, &isAdmin, &banned, &kind, &runtimeUUID, &groupID, &transfer, &upload, &download,
-		&expiredAt, &speed, &devices, &online, &lastOnlineAt, &inviteUserID); err != nil {
+	`).Scan(&id, &isAdmin, &banned, &kind, &runtimeUUID, &groupID, &planID, &transfer, &upload, &download,
+		&expiredAt, &speed, &devices, &online, &lastOnlineAt, &inviteUserID, &nextResetAt, &lastResetAt, &resetCount); err != nil {
 		return 0, fmt.Errorf("inspect bootstrap administrator: %w", err)
 	}
-	if !isAdmin || banned || kind != AccountKindHuman || runtimeUUID.Valid || groupID.Valid || expiredAt.Valid || lastOnlineAt.Valid ||
-		inviteUserID.Valid || transfer != 0 || upload != 0 || download != 0 || speed != 0 || devices != 0 || online != 0 {
+	if !isAdmin || banned || kind != AccountKindHuman || runtimeUUID.Valid || groupID.Valid || planID.Valid || expiredAt.Valid || lastOnlineAt.Valid ||
+		inviteUserID.Valid || nextResetAt.Valid || lastResetAt.Valid || resetCount != 0 || transfer != 0 || upload != 0 || download != 0 ||
+		speed != 0 || devices != 0 || online != 0 {
 		return 0, fmt.Errorf("%w: target user is not a replaceable bootstrap administrator", ErrConflict)
 	}
 	return id, nil
@@ -424,6 +456,27 @@ func validateLegacyHumanUserGroups(ctx context.Context, tx *sql.Tx, users []Lega
 			return fmt.Errorf("%w: legacy human users reference missing group %d", ErrConflict, *user.GroupID)
 		}
 		seen[*user.GroupID] = struct{}{}
+	}
+	return nil
+}
+
+func validateLegacyHumanUserPlans(ctx context.Context, tx *sql.Tx, users []LegacyHumanUser) error {
+	seen := make(map[int64]struct{})
+	for _, user := range users {
+		if user.PlanID == nil {
+			continue
+		}
+		if _, checked := seen[*user.PlanID]; checked {
+			continue
+		}
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM plans WHERE id = ?)`, *user.PlanID).Scan(&exists); err != nil {
+			return fmt.Errorf("validate legacy human user plan: %w", err)
+		}
+		if !exists {
+			return fmt.Errorf("%w: legacy human users reference missing plan %d", ErrConflict, *user.PlanID)
+		}
+		seen[*user.PlanID] = struct{}{}
 	}
 	return nil
 }
@@ -482,25 +535,27 @@ func nullableInt64Value(value *int64) any {
 func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, string, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, invite_user_id, email, password_hash, transfer_enable, traffic_u, traffic_d, banned, is_admin,
-		       last_login_at, uuid, group_id, speed_limit, expired_at, device_limit, online_count,
-		       last_online_at, subscription_token, admin_revision, account_kind, created_at, updated_at
+		       last_login_at, uuid, group_id, plan_id, speed_limit, expired_at, device_limit, online_count,
+		       last_online_at, next_reset_at, last_reset_at, reset_count, subscription_token,
+		       admin_revision, account_kind, created_at, updated_at
 		FROM users WHERE account_kind = 'human' ORDER BY id
 	`)
 	if err != nil {
 		return 0, "", fmt.Errorf("read imported legacy human users: %w", err)
 	}
 	defer rows.Close()
-	canonical := newLegacyHumanUsersDigest()
+	users := make([]LegacyHumanUser, 0)
 	count := 0
 	for rows.Next() {
 		var user LegacyHumanUser
-		var inviteUserID, lastLoginAt, groupID, expiredAt, lastOnlineAt sql.NullInt64
+		var inviteUserID, lastLoginAt, groupID, planID, expiredAt, lastOnlineAt, nextResetAt, lastResetAt sql.NullInt64
 		var onlineCount int
 		var revision int64
 		var accountKind string
 		if err := rows.Scan(&user.ID, &inviteUserID, &user.Email, &user.PasswordHash, &user.TransferEnable,
 			&user.TrafficUpload, &user.TrafficDownload, &user.Banned, &user.IsAdmin, &lastLoginAt, &user.UUID,
-			&groupID, &user.SpeedLimit, &expiredAt, &user.DeviceLimit, &onlineCount, &lastOnlineAt,
+			&groupID, &planID, &user.SpeedLimit, &expiredAt, &user.DeviceLimit, &onlineCount, &lastOnlineAt,
+			&nextResetAt, &lastResetAt, &user.ResetCount,
 			&user.SubscriptionToken, &revision, &accountKind, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return 0, "", fmt.Errorf("scan imported legacy human user: %w", err)
 		}
@@ -510,15 +565,18 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 		user.InviteUserID = nullableInt64Pointer(inviteUserID)
 		user.LastLoginAt = nullableInt64Pointer(lastLoginAt)
 		user.GroupID = nullableInt64Pointer(groupID)
+		user.PlanID = nullableInt64Pointer(planID)
 		user.ExpiredAt = nullableInt64Pointer(expiredAt)
 		user.LastOnlineAt = nullableInt64Pointer(lastOnlineAt)
-		canonical.add(user)
+		user.NextResetAt = nullableInt64Pointer(nextResetAt)
+		user.LastResetAt = nullableInt64Pointer(lastResetAt)
+		users = append(users, user)
 		count++
 	}
 	if err := rows.Err(); err != nil {
 		return 0, "", fmt.Errorf("iterate imported legacy human users: %w", err)
 	}
-	return count, canonical.sum(), nil
+	return count, LegacyHumanUsersChecksum(users), nil
 }
 
 func nullableInt64Pointer(value sql.NullInt64) *int64 {

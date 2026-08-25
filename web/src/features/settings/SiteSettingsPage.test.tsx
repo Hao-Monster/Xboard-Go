@@ -27,6 +27,7 @@ const initial: SiteSettings = {
   invite_gen_limit: 5,
   invite_never_expire: false,
   login_with_mail_link_enable: false,
+	traffic_reset_method: 1,
   captcha_enable: false,
   captcha_type: "recaptcha",
   recaptcha_site_key: "",
@@ -52,6 +53,7 @@ describe("SiteSettingsPage", () => {
       password_limit_enable: true, password_limit_count: 2, password_limit_expire: 30,
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
       login_with_mail_link_enable: true,
+	  traffic_reset_method: 1,
       captcha_enable: true, captcha_type: "turnstile", turnstile_site_key: "turnstile-site",
       turnstile_secret_configured: true
     };
@@ -132,6 +134,7 @@ describe("SiteSettingsPage", () => {
       invite_gen_limit: 7,
       invite_never_expire: true,
       login_with_mail_link_enable: true,
+	  traffic_reset_method: 1,
       captcha_enable: true,
       captcha_type: "turnstile",
       recaptcha_site_key: "",

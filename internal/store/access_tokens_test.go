@@ -149,6 +149,7 @@ func TestCompletePasswordLoginAndCreateAccessTokenUsesIdentityAndPasswordCAS(t *
 func TestSchemaV21PreservesV20SessionsAndAddsAccessTokenIndexes(t *testing.T) {
 	database, user, now := newAuthTestStore(t)
 	ctx := context.Background()
+	removeSchemaV27ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE access_tokens`); err != nil {
 		t.Fatal(err)
 	}

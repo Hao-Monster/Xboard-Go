@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestWorkerAppliesPersistedDueSchedule(t *testing.T) {
@@ -54,6 +56,96 @@ func TestWorkerAppliesPersistedDueSchedule(t *testing.T) {
 	}
 	if !advanced.NextTransitionAt.After(saved.NextTransitionAt) {
 		t.Fatalf("next transition = %s, want after %s", advanced.NextTransitionAt, saved.NextTransitionAt)
+	}
+}
+
+func TestWorkerResetsDuePlanTrafficExactlyOnce(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-plan-reset-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	if _, err := database.BootstrapAdmin(ctx, "bootstrap@example.test", "bootstrap-hash", now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	resetMethod := 1
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
+		Name: "Monthly", TransferEnableGiB: 100, ResetTrafficMethod: &resetMethod, Prices: store.PlanPrices{"monthly": 999},
+	}, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte("legacy-password-123"), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phpHash := "$2y$" + string(hash[4:])
+	expiredAt := now.Add(30 * 24 * time.Hour).Unix()
+	dueAt := now.Add(-time.Minute).Unix()
+	lastResetAt := now.AddDate(0, -1, 0).Unix()
+	input := store.LegacyHumanUsersImport{
+		Slice: store.LegacyHumanUsersSlice, SourceSHA256: strings.Repeat("c", 64), SourceSize: 8192,
+		RollbackBackupPath:   "/var/lib/xboard-backups/worker-plan-reset.xbbackup",
+		RollbackBackupSHA256: strings.Repeat("d", 64), ReplaceBootstrapAdmin: true,
+		Users: []store.LegacyHumanUser{{
+			ID: 10, Email: "plan-worker@example.test", PasswordHash: phpHash, IsAdmin: true,
+			UUID: "11111111-1111-4111-8111-111111111111", SubscriptionToken: "11111111111111111111111111111111",
+			PlanID: &plan.ID, TransferEnable: 100 << 30, TrafficUpload: 1000, TrafficDownload: 2000,
+			ExpiredAt: &expiredAt, NextResetAt: &dueAt, LastResetAt: &lastResetAt, ResetCount: 2,
+			CreatedAt: now.Add(-time.Hour).Unix(), UpdatedAt: now.Add(-time.Hour).Unix(),
+		}},
+	}
+	input.Checksum = store.LegacyHumanUsersChecksum(input.Users)
+	if _, err := database.ImportLegacyHumanUsers(ctx, input, now.Add(-30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now }
+	worker.applyDue(ctx)
+	worker.applyDue(ctx)
+
+	page, err := database.ListAdminUsers(ctx, store.AdminUserFilter{Limit: 10})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListAdminUsers() = (%#v, %v)", page, err)
+	}
+	if page.Items[0].TrafficUpload != 0 || page.Items[0].TrafficDownload != 0 {
+		t.Fatalf("traffic after worker = %d/%d", page.Items[0].TrafficUpload, page.Items[0].TrafficDownload)
+	}
+	if result, err := database.ProcessDueTrafficResets(ctx, now, 100); err != nil || result.Processed != 0 {
+		t.Fatalf("ProcessDueTrafficResets(after worker) = (%#v, %v)", result, err)
+	}
+}
+
+func TestWorkerThrottlesTrafficResetSweepToLegacyMinuteCadence(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-plan-reset-cadence-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	worker.resetDueTraffic(ctx, now)
+	if !worker.lastTrafficResetSweep.Equal(now) {
+		t.Fatalf("first traffic reset sweep = %s, want %s", worker.lastTrafficResetSweep, now)
+	}
+	worker.resetDueTraffic(ctx, now.Add(30*time.Second))
+	if !worker.lastTrafficResetSweep.Equal(now) {
+		t.Fatalf("sub-minute traffic reset sweep advanced to %s", worker.lastTrafficResetSweep)
+	}
+	worker.resetDueTraffic(ctx, now.Add(time.Minute))
+	if !worker.lastTrafficResetSweep.Equal(now.Add(time.Minute)) {
+		t.Fatalf("one-minute traffic reset sweep = %s, want %s", worker.lastTrafficResetSweep, now.Add(time.Minute))
 	}
 }
 

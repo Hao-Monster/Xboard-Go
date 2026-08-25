@@ -27,7 +27,9 @@ func TestReadHumanUsersSnapshotPreservesSupportedLegacyIdentityAndAccessState(t 
 	}
 	if invited.ID != 2 || invited.InviteUserID == nil || *invited.InviteUserID != 1 || invited.TransferEnable != 1_000 ||
 		invited.TrafficUpload != 10 || invited.TrafficDownload != 20 || invited.ExpiredAt == nil || *invited.ExpiredAt != 1_800_000_000 ||
-		invited.LastOnlineAt == nil || *invited.LastOnlineAt != 1_700_000_200 || invited.SpeedLimit != 50 || invited.DeviceLimit != 3 {
+		invited.LastOnlineAt == nil || *invited.LastOnlineAt != 1_700_000_200 || invited.SpeedLimit != 50 || invited.DeviceLimit != 3 ||
+		invited.PlanID == nil || *invited.PlanID != 9 || invited.NextResetAt == nil || *invited.NextResetAt != 1_700_000_300 ||
+		invited.LastResetAt == nil || *invited.LastResetAt != 1_700_000_250 || invited.ResetCount != 2 {
 		t.Fatalf("invited user = %#v", invited)
 	}
 	if !strings.HasPrefix(admin.PasswordHash, "$2y$10$") || strings.Contains(snapshot.Checksum, admin.PasswordHash) {
@@ -48,8 +50,8 @@ func TestReadHumanUsersSnapshotRejectsLossyOrUnsafeLegacyState(t *testing.T) {
 		{name: "staff", statement: `UPDATE v2_user SET is_staff = 1 WHERE id = 2`, contains: "unsupported"},
 		{name: "distributor", statement: `UPDATE v2_user SET is_distributor = 1 WHERE id = 2`, contains: "unsupported"},
 		{name: "finance", statement: `UPDATE v2_user SET balance = 1 WHERE id = 2`, contains: "unsupported"},
-		{name: "plan", statement: `UPDATE v2_user SET plan_id = 9 WHERE id = 2`, contains: "unsupported"},
-		{name: "reset state", statement: `UPDATE v2_user SET reset_count = 1 WHERE id = 2`, contains: "unsupported"},
+		{name: "invalid plan", statement: `UPDATE v2_user SET plan_id = -9 WHERE id = 2`, contains: "invalid"},
+		{name: "invalid reset state", statement: `UPDATE v2_user SET reset_count = -1 WHERE id = 2`, contains: "reset count"},
 		{name: "last login ip", statement: `UPDATE v2_user SET last_login_ip = '203.0.113.4' WHERE id = 2`, contains: "unsupported"},
 		{name: "email normalization", statement: `UPDATE v2_user SET email = ' Upper@Example.Test ' WHERE id = 2`, contains: "invalid"},
 		{name: "missing inviter", statement: `UPDATE v2_user SET invite_user_id = 999 WHERE id = 2`, contains: "missing inviter"},
@@ -113,10 +115,11 @@ func createLegacyHumanUsersSnapshot(t *testing.T) string {
 		VALUES (1, 'admin@example.test', ?, 1, 1700000100, '11111111-1111-4111-8111-111111111111', 7,
 		        '11111111111111111111111111111111', 0, 1700000000, 1700000200);
 		INSERT INTO v2_user
-		(id, invite_user_id, email, password, u, d, transfer_enable, uuid, group_id, speed_limit, token,
-		 expired_at, created_at, updated_at, device_limit, last_online_at)
-		VALUES (2, 1, 'user@example.test', ?, 10, 20, 1000, '22222222-2222-4222-8222-222222222222', 7, 50,
-		        '22222222222222222222222222222222', 1800000000, 1700000001, 1700000201, 3, 1700000200);
+		(id, invite_user_id, email, password, u, d, transfer_enable, uuid, group_id, plan_id, speed_limit, token,
+		 expired_at, created_at, updated_at, device_limit, last_online_at, next_reset_at, last_reset_at, reset_count)
+		VALUES (2, 1, 'user@example.test', ?, 10, 20, 1000, '22222222-2222-4222-8222-222222222222', 7, 9, 50,
+		        '22222222222222222222222222222222', 1800000000, 1700000001, 1700000201, 3, 1700000200,
+		        1700000300, 1700000250, 2);
 	`, phpHash, phpHash); err != nil {
 		_ = database.Close()
 		t.Fatal(err)

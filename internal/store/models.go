@@ -10,6 +10,7 @@ import (
 var (
 	ErrNotFound                               = errors.New("not found")
 	ErrConflict                               = errors.New("conflict")
+	ErrRevisionConflict                       = fmt.Errorf("%w: revision conflict", ErrConflict)
 	ErrEmailInUse                             = fmt.Errorf("%w: email already in use", ErrConflict)
 	ErrRegistrationClosed                     = errors.New("registration is closed")
 	ErrEmailDomainNotAllowed                  = errors.New("email domain is not allowed")
@@ -178,6 +179,7 @@ type SiteSettings struct {
 	InvitationCodeLimit         int       `json:"invite_gen_limit"`
 	InvitationNeverExpire       bool      `json:"invite_never_expire"`
 	MailLoginEnabled            bool      `json:"login_with_mail_link_enable"`
+	TrafficResetMethod          int       `json:"traffic_reset_method"`
 	CaptchaEnabled              bool      `json:"captcha_enable"`
 	CaptchaType                 string    `json:"captcha_type"`
 	RecaptchaSiteKey            string    `json:"recaptcha_site_key"`
@@ -211,6 +213,7 @@ type SaveSiteSettingsInput struct {
 	InvitationCodeLimit        int
 	InvitationNeverExpire      bool
 	MailLoginEnabled           bool
+	TrafficResetMethod         *int
 	CaptchaEnabled             bool
 	CaptchaType                string
 	RecaptchaSiteKey           string
@@ -682,6 +685,63 @@ type ServerGroup struct {
 	ServersCount int64     `json:"server_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PlanPrices map[string]int64
+
+type Plan struct {
+	ID                 int64      `json:"id"`
+	GroupID            *int64     `json:"group_id"`
+	TransferEnableGiB  int64      `json:"transfer_enable"`
+	Name               string     `json:"name"`
+	SpeedLimit         *int       `json:"speed_limit"`
+	Show               bool       `json:"show"`
+	SortPosition       int        `json:"sort"`
+	Renew              bool       `json:"renew"`
+	Content            string     `json:"content"`
+	ResetTrafficMethod *int       `json:"reset_traffic_method"`
+	CapacityLimit      *int       `json:"capacity_limit"`
+	Prices             PlanPrices `json:"prices"`
+	Sell               bool       `json:"sell"`
+	DeviceLimit        *int       `json:"device_limit"`
+	Tags               []string   `json:"tags"`
+	UsersCount         int64      `json:"-"`
+	ActiveUsersCount   int64      `json:"-"`
+	CapacityUsersCount int64      `json:"-"`
+	Revision           int64      `json:"revision"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+type SavePlanInput struct {
+	GroupID            *int64
+	TransferEnableGiB  int64
+	Name               string
+	SpeedLimit         *int
+	Content            string
+	ResetTrafficMethod *int
+	CapacityLimit      *int
+	Prices             PlanPrices
+	DeviceLimit        *int
+	Tags               []string
+}
+
+type PlanState struct {
+	Show  bool `json:"show"`
+	Sell  bool `json:"sell"`
+	Renew bool `json:"renew"`
+}
+
+type PlanOffer struct {
+	Plan
+	CapacityRemaining *int64 `json:"capacity_remaining"`
+	CanPurchase       bool   `json:"can_purchase"`
+	CanRenew          bool   `json:"can_renew"`
+}
+
+type TrafficResetBatchResult struct {
+	Processed int `json:"processed"`
+	Remaining int `json:"remaining"`
 }
 
 type RoutingRule struct {

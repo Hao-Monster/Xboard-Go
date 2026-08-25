@@ -18,6 +18,7 @@ describe("UserPortal", () => {
       listTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
+      listPlanOffers: vi.fn().mockResolvedValue([]),
       logout: vi.fn().mockResolvedValue(undefined)
     };
     const onSignedOut = vi.fn();
@@ -55,6 +56,7 @@ describe("UserPortal", () => {
       listTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0 }), createInvitation: vi.fn(),
+      listPlanOffers: vi.fn().mockResolvedValue([]),
       logout: vi.fn().mockRejectedValue(new Error("会话注销失败"))
     };
     const onSignedOut = vi.fn();

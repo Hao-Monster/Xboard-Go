@@ -292,6 +292,7 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	removeSchemaV27ForMigrationTest(t, database)
 	if _, err := database.BootstrapAdmin(ctx, "migration-admin@example.test", "hash", time.Now()); err != nil {
 		t.Fatal(err)
 	}

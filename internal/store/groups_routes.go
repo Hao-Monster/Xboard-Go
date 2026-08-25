@@ -114,8 +114,13 @@ func (s *Store) DeleteServerGroup(ctx context.Context, groupID int64) error {
 	var exists, referenced bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM server_groups WHERE id = ?),
-		       EXISTS(SELECT 1 FROM users WHERE group_id = ? UNION ALL SELECT 1 FROM node_group_memberships WHERE group_id = ? LIMIT 1)
-	`, groupID, groupID, groupID).Scan(&exists, &referenced); err != nil {
+		       EXISTS(
+		           SELECT 1 FROM users WHERE group_id = ?
+		           UNION ALL SELECT 1 FROM node_group_memberships WHERE group_id = ?
+		           UNION ALL SELECT 1 FROM plans WHERE group_id = ?
+		           LIMIT 1
+		       )
+	`, groupID, groupID, groupID, groupID).Scan(&exists, &referenced); err != nil {
 		return fmt.Errorf("check server group references: %w", err)
 	}
 	if !exists {
