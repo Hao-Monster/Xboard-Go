@@ -64,8 +64,8 @@ test("administrator subscription settings drive the user dashboard, QR, output p
     await expect(page.getByRole("status")).toHaveText("订阅信息已重置");
     const newURL = await address.inputValue();
     expect(newURL).not.toBe(oldURL);
-    expect((await request.get(oldURL)).status()).toBe(403);
-    expect((await request.get(newURL)).status()).toBe(200);
+    expect((await request.get(subscriptionAPIURL(oldURL))).status()).toBe(403);
+    expect((await request.get(subscriptionAPIURL(newURL))).status()).toBe(200);
   } finally {
     if (original !== null) {
       await page.goto("/");
@@ -123,4 +123,10 @@ function decodeData<T>(body: string): T {
   const payload: unknown = JSON.parse(body);
   if (typeof payload !== "object" || payload === null) throw new Error("response envelope is invalid");
   return Reflect.get(payload, "data") as T;
+}
+
+function subscriptionAPIURL(value: string): string {
+  const token = new URL(value).pathname.split("/").filter(Boolean).at(-1);
+  if (token === undefined || !/^[0-9a-f]{32}$/.test(token)) throw new Error("subscription URL token is invalid");
+  return `/api/v1/client/subscribe?token=${token}`;
 }
