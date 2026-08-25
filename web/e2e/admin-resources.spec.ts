@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { adminEmail, adminPassword } from "./support";
 
@@ -20,6 +20,8 @@ test("administrator manages permission groups and routing rules", async ({ page 
   const renamedGroup = `${groupName} 已编辑`;
   await page.getByRole("button", { name: "权限组", exact: true }).click();
   await expect(page.getByRole("heading", { name: "权限组" })).toBeVisible();
+  const originalGroups = await readAdminResources(page, "/api/v1/admin/server-groups");
+  for (const group of originalGroups) await expect(page.getByText(group.name, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "新增权限组" }).click();
   let dialog = page.getByRole("dialog", { name: "新增权限组" });
   await dialog.getByLabel("权限组名称").fill(groupName);
@@ -34,10 +36,13 @@ test("administrator manages permission groups and routing rules", async ({ page 
   dialog = page.getByRole("dialog", { name: "删除权限组" });
   await dialog.getByRole("button", { name: "确认删除" }).click();
   await expect(page.getByText(renamedGroup, { exact: true })).toBeHidden();
+  expect(await readAdminResources(page, "/api/v1/admin/server-groups")).toEqual(originalGroups);
 
   const routeName = `E2E route ${unique}`;
   await page.getByRole("button", { name: "路由规则", exact: true }).click();
   await expect(page.getByRole("heading", { name: "路由规则" })).toBeVisible();
+  const originalRoutes = await readAdminResources(page, "/api/v1/admin/routing-rules");
+  for (const route of originalRoutes) await expect(page.getByText(route.name, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "新增路由规则" }).click();
   dialog = page.getByRole("dialog", { name: "新增路由规则" });
   await dialog.getByLabel("备注").fill(routeName);
@@ -58,7 +63,23 @@ test("administrator manages permission groups and routing rules", async ({ page 
   dialog = page.getByRole("dialog", { name: "删除路由规则" });
   await dialog.getByRole("button", { name: "确认删除" }).click();
   await expect(page.getByText(routeName, { exact: true })).toBeHidden();
+  expect(await readAdminResources(page, "/api/v1/admin/routing-rules")).toEqual(originalRoutes);
 
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
 });
+
+async function readAdminResources(page: Page, path: string): Promise<Array<{ id: number; name: string }>> {
+  return page.evaluate(async (requestPath) => {
+    const response = await fetch(requestPath, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`resource snapshot failed with ${response.status}`);
+    const payload = await response.json() as { data?: Array<{ id?: unknown; name?: unknown; remarks?: unknown }> };
+    if (!Array.isArray(payload.data)) throw new Error("resource snapshot data must be an array");
+    return payload.data.map((item) => {
+      if (!Number.isSafeInteger(item.id)) throw new Error("resource snapshot id must be an integer");
+      const name = typeof item.name === "string" ? item.name : item.remarks;
+      if (typeof name !== "string" || name === "") throw new Error("resource snapshot name must be non-empty");
+      return { id: item.id as number, name };
+    });
+  }, path);
+}
