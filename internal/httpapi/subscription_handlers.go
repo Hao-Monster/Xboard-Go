@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -128,11 +130,17 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	w.Header().Set("Content-Type", response.ContentType)
+	// Surfboard's legacy contract declares its downloadable configuration as
+	// text/html. Keep that client-facing contract while preventing any browser
+	// navigation from executing administrator-controlled template content.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox")
 	for name, value := range response.Headers {
 		w.Header().Set(name, value)
 	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(response.Body)
+	if _, err := io.Copy(w, bytes.NewReader(response.Body)); err != nil {
+		s.logger.Debug("write subscription response", "user_id", account.ID, "client", client.Kind.String(), "error", err)
+	}
 }
 
 func subscriptionRenderTemplate(kind subscription.Kind) string {

@@ -70,6 +70,9 @@ func TestClientSubscriptionMatchesLegacyTokenMethodEligibilityAndRouteContracts(
 			if test.name == "valid HEAD" && response.Header().Get("Allow") != http.MethodGet {
 				t.Errorf("Allow = %q, want GET", response.Header().Get("Allow"))
 			}
+			if test.wantStatus == http.StatusOK && response.Header().Get("Content-Security-Policy") != "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox" {
+				t.Errorf("subscription response CSP = %q", response.Header().Get("Content-Security-Policy"))
+			}
 			if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 				t.Error("response is missing nosniff")
 			}
@@ -103,6 +106,29 @@ func TestValidSubscriptionDoesNotEraseFailedTokenRateLimit(t *testing.T) {
 	}
 	if got := request(strings.Repeat("c", 32)); got != http.StatusTooManyRequests {
 		t.Fatalf("bad token after valid-token interleave status = %d, want 429", got)
+	}
+}
+
+func TestSurfboardLegacyHTMLContractIsDownloadSandboxed(t *testing.T) {
+	api, database := newTestAPI(t)
+	account := createSubscriptionTestAccount(t, database, "surfboard-sandbox@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
+	settings, err := database.GetSubscriptionSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	templates := replaceSubscriptionTemplateHTTP(settings.Templates, "surfboard", `<script>globalThis.subscriptionTemplateExecuted=true</script>`)
+	if _, err := database.UpdateSubscriptionSettings(t.Context(), 1, settings.Revision, store.SaveSubscriptionSettingsInput{
+		Path: settings.Path, ShowInfo: settings.ShowInfo, ShowProtocol: settings.ShowProtocol, Templates: templates,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+
+	response := requestSubscription(api, "/s/"+account.SubscriptionToken+"?flag=surfboard")
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "text/html; charset=utf-8" ||
+		!strings.HasPrefix(response.Header().Get("Content-Disposition"), "attachment;") ||
+		response.Header().Get("Content-Security-Policy") != "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox" ||
+		response.Body.String() != templates["surfboard"] {
+		t.Fatalf("sandboxed Surfboard response status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
 	}
 }
 
@@ -314,6 +340,15 @@ func emptySubscriptionTemplates() map[string]string {
 		templates[name] = ""
 	}
 	return templates
+}
+
+func replaceSubscriptionTemplateHTTP(source map[string]string, name, content string) map[string]string {
+	result := make(map[string]string, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	result[name] = content
+	return result
 }
 
 func requestSubscription(api http.Handler, path string) *httptest.ResponseRecorder {
