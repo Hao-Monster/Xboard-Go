@@ -8,7 +8,7 @@ const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_coun
 const account: AdminUser = {
   id: 41, email: "alpha@example.test", is_admin: false, banned: false, group_id: 7,
   transfer_enable: 1_073_741_824, traffic_upload: 100, traffic_download: 200,
-  expired_at: null, speed_limit: 50, device_limit: 3, online_count: 1, last_online_at: null,
+  expired_at: null, speed_limit: 50, device_limit: 3, online_count: 1, last_online_at: null, last_login_at: "2026-08-24T11:30:00Z",
   revision: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z"
 };
 
@@ -21,6 +21,7 @@ describe("UsersPage", () => {
     render(<UsersPage api={api} currentUserID={1} />);
 
     expect(await screen.findByText("alpha@example.test")).toBeVisible();
+    expect(screen.getByText(/最后登录/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "加载更多用户" }));
     expect(await screen.findByText("beta@example.test")).toBeVisible();
     expect(screen.getByText("alpha@example.test")).toBeVisible();

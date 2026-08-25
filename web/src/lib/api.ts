@@ -262,6 +262,7 @@ export interface AdminUser {
   device_limit: number;
   online_count: number;
   last_online_at: string | null;
+  last_login_at: string | null;
   revision: number;
   created_at: string;
   updated_at: string;

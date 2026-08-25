@@ -14,13 +14,23 @@ import (
 )
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.authenticatePasswordLogin(w, r, false)
+	attempt, ok := s.authenticatePasswordLogin(w, r, false)
 	if !ok {
 		return
 	}
-	if !s.issueSession(w, r, user) {
+	credentials, err := s.newSessionCredentials()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	user, ok := s.completePasswordLogin(w, r, attempt, func(user store.User, expectedHash, replacementHash string) error {
+		return s.store.CompletePasswordLoginAndCreateSession(r.Context(), user.ID, user.Email, expectedHash, replacementHash,
+			credentials.token.Digest, credentials.csrf.Digest, credentials.expiresAt, attempt.now)
+	})
+	if !ok {
+		return
+	}
+	s.setSessionCookies(w, credentials)
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id":       user.ID,
 		"email":    user.Email,
@@ -29,30 +39,50 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) legacyLogin(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.authenticatePasswordLogin(w, r, true)
+	attempt, ok := s.authenticatePasswordLogin(w, r, true)
 	if !ok {
 		return
 	}
-	credential, ok := s.issueAccessToken(w, r, user.ID, "", nil)
+	token, name, err := newAccessTokenCredentials("")
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return
+	}
+	var item store.AccountAccessToken
+	user, ok := s.completePasswordLogin(w, r, attempt, func(user store.User, expectedHash, replacementHash string) error {
+		var createErr error
+		item, createErr = s.store.CompletePasswordLoginAndCreateAccessToken(r.Context(), user.ID, user.Email, expectedHash, replacementHash,
+			store.CreateAccessTokenInput{TokenHash: token.Digest, Name: name}, attempt.now)
+		return createErr
+	})
 	if !ok {
 		return
 	}
+	credential := issuedAccessToken{token: token, item: item}
 	writeLegacySuccess(w, http.StatusOK, legacyAuthData(user, credential.token.Plaintext))
 }
 
-func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Request, legacy bool) (store.User, bool) {
+type passwordLoginAttempt struct {
+	user           store.User
+	password       string
+	identityDigest []byte
+	attemptKey     string
+	now            time.Time
+}
+
+func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Request, legacy bool) (passwordLoginAttempt, bool) {
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if !decodeJSON(w, r, &input) {
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	if legacy {
 		if fields := validateLegacyEmailPassword(input.Email, input.Password); len(fields) > 0 {
 			writeLegacyValidationErrors(w, fields)
-			return store.User{}, false
+			return passwordLoginAttempt{}, false
 		}
 	}
 	now := s.now()
@@ -60,24 +90,24 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 	if !s.loginAttempts.allowed(attemptKey, now) {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "login_rate_limited", "登录尝试过多，请稍后重试", nil)
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
 	identityDigest := security.LoginIdentityDigest(input.Email)
 	status, err := s.store.GetLoginFailureStatus(r.Context(), identityDigest[:], now)
 	if err != nil {
 		handleStoreError(w, err)
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
 	if status.Limited {
 		writePasswordLoginLimited(w, status, now)
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
 	if input.Email == "" || len(input.Email) > 320 || input.Password == "" || len(input.Password) > 1024 {
 		if !s.recordPasswordLoginFailure(w, r, identityDigest[:], attemptKey, now) {
-			return store.User{}, false
+			return passwordLoginAttempt{}, false
 		}
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
 
 	user, err := s.store.FindUserByEmail(r.Context(), input.Email)
@@ -88,13 +118,49 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 	passwordValid := s.passwordHasher.Verify(input.Password, passwordHash)
 	if err != nil || !passwordValid || user.Banned || user.AccountKind != store.AccountKindHuman {
 		if !s.recordPasswordLoginFailure(w, r, identityDigest[:], attemptKey, now) {
-			return store.User{}, false
+			return passwordLoginAttempt{}, false
 		}
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
-		return store.User{}, false
+		return passwordLoginAttempt{}, false
 	}
-	s.loginAttempts.reset(attemptKey)
-	return user, true
+	return passwordLoginAttempt{user: user, password: input.Password, identityDigest: identityDigest[:], attemptKey: attemptKey, now: now}, true
+}
+
+func (s *server) completePasswordLogin(w http.ResponseWriter, r *http.Request, attempt passwordLoginAttempt, complete func(store.User, string, string) error) (store.User, bool) {
+	user := attempt.user
+	for retry := 0; retry < 2; retry++ {
+		replacementHash := user.PasswordHash
+		if security.IsLegacyBcryptHash(user.PasswordHash) {
+			var err error
+			replacementHash, err = s.passwordHasher.Hash(attempt.password)
+			if err != nil {
+				writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+				return store.User{}, false
+			}
+		}
+		err := complete(user, user.PasswordHash, replacementHash)
+		if err == nil {
+			user.PasswordHash = replacementHash
+			s.loginAttempts.reset(attempt.attemptKey)
+			return user, true
+		}
+		if !errors.Is(err, store.ErrConflict) {
+			handleStoreError(w, err)
+			return store.User{}, false
+		}
+		current, findErr := s.store.FindUserByID(r.Context(), user.ID)
+		if findErr != nil || current.Banned || current.AccountKind != store.AccountKindHuman ||
+			!s.passwordHasher.Verify(attempt.password, current.PasswordHash) {
+			if !s.recordPasswordLoginFailure(w, r, attempt.identityDigest, attempt.attemptKey, attempt.now) {
+				return store.User{}, false
+			}
+			writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
+			return store.User{}, false
+		}
+		user = current
+	}
+	writeAPIError(w, http.StatusConflict, "login_state_conflict", "账号状态已变化，请重试", nil)
+	return store.User{}, false
 }
 
 func (s *server) recordPasswordLoginFailure(w http.ResponseWriter, r *http.Request, identityDigest []byte, attemptKey string, now time.Time) bool {

@@ -12,16 +12,9 @@ import (
 )
 
 func (s *Store) CreateAccessToken(ctx context.Context, input CreateAccessTokenInput, now time.Time) (AccountAccessToken, error) {
-	input.Name = strings.TrimSpace(input.Name)
-	if input.UserID < 1 || !validAccessTokenHash(input.TokenHash) || input.Name == "" ||
-		!utf8.ValidString(input.Name) || utf8.RuneCountInString(input.Name) > 80 ||
-		strings.IndexFunc(input.Name, unicode.IsControl) >= 0 || now.IsZero() ||
-		(input.ExpiresAt != nil && !input.ExpiresAt.After(now)) {
-		return AccountAccessToken{}, fmt.Errorf("%w: invalid access token", ErrInvalidInput)
-	}
-	var expiresAt any
-	if input.ExpiresAt != nil {
-		expiresAt = input.ExpiresAt.Unix()
+	input, expiresAt, err := prepareAccessTokenInput(input, now)
+	if err != nil {
+		return AccountAccessToken{}, err
 	}
 	defer s.lockWrite()()
 	result, err := s.db.ExecContext(ctx, `
@@ -48,6 +41,63 @@ func (s *Store) CreateAccessToken(ctx context.Context, input CreateAccessTokenIn
 		token.ExpiresAt = &value
 	}
 	return token, nil
+}
+
+// CompletePasswordLoginAndCreateAccessToken is the bearer-token equivalent of
+// CompletePasswordLoginAndCreateSession and preserves the same reset ordering.
+func (s *Store) CompletePasswordLoginAndCreateAccessToken(ctx context.Context, userID int64, expectedEmail, expectedHash, replacementHash string, input CreateAccessTokenInput, now time.Time) (AccountAccessToken, error) {
+	input.UserID = userID
+	input, expiresAt, err := prepareAccessTokenInput(input, now)
+	if err != nil || expectedEmail == "" || normalizeEmail(expectedEmail) != expectedEmail || expectedHash == "" || replacementHash == "" {
+		if err != nil {
+			return AccountAccessToken{}, err
+		}
+		return AccountAccessToken{}, fmt.Errorf("%w: invalid password login access token", ErrInvalidInput)
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return AccountAccessToken{}, fmt.Errorf("begin password login access token: %w", err)
+	}
+	defer tx.Rollback()
+	if err := completePasswordLoginTx(ctx, tx, userID, expectedEmail, expectedHash, replacementHash, now); err != nil {
+		return AccountAccessToken{}, err
+	}
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO access_tokens (user_id, token_hash, name, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, userID, input.TokenHash, input.Name, expiresAt, now.Unix(), now.Unix())
+	if err != nil {
+		return AccountAccessToken{}, fmt.Errorf("create password login access token: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return AccountAccessToken{}, fmt.Errorf("read password login access token id: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return AccountAccessToken{}, fmt.Errorf("commit password login access token: %w", err)
+	}
+	token := AccountAccessToken{ID: id, UserID: userID, Name: input.Name, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	if input.ExpiresAt != nil {
+		value := input.ExpiresAt.UTC()
+		token.ExpiresAt = &value
+	}
+	return token, nil
+}
+
+func prepareAccessTokenInput(input CreateAccessTokenInput, now time.Time) (CreateAccessTokenInput, any, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	if input.UserID < 1 || !validAccessTokenHash(input.TokenHash) || input.Name == "" ||
+		!utf8.ValidString(input.Name) || utf8.RuneCountInString(input.Name) > 80 ||
+		strings.IndexFunc(input.Name, unicode.IsControl) >= 0 || now.IsZero() ||
+		(input.ExpiresAt != nil && !input.ExpiresAt.After(now)) {
+		return CreateAccessTokenInput{}, nil, fmt.Errorf("%w: invalid access token", ErrInvalidInput)
+	}
+	var expiresAt any
+	if input.ExpiresAt != nil {
+		expiresAt = input.ExpiresAt.Unix()
+	}
+	return input, expiresAt, nil
 }
 
 func (s *Store) AuthenticateAccessToken(ctx context.Context, tokenHash string, now time.Time) (SessionUser, error) {

@@ -180,6 +180,15 @@ optimistic revision `1`. Because knowledge attachments are not implemented yet,
 this slice fails closed if the source has attachment rows, upload sessions, or
 attachment URI references instead of creating broken articles.
 
+The fourth slice replaces the single unused bootstrap administrator with legacy
+human accounts. It preserves IDs, normalized email identities, PHP bcrypt
+password hashes, administrator and banned state, UUIDs, subscription tokens,
+group and invitation relationships, traffic and limits, timestamps, and expiry
+state. A successful first password login upgrades bcrypt to Argon2id in the same
+transaction that records the login time and creates the session or bearer token.
+Unsupported staff, distributor, finance, plan, reminder, reset, or audit state is
+rejected instead of being silently discarded.
+
 Never bind-mount a running Xboard database file directly. First use SQLite's
 online backup API to create a standalone snapshot; a filesystem copy of a WAL
 database is not a valid migration input. The migration reader refuses
@@ -245,8 +254,30 @@ lossy text normalization, invalid visibility/sort/timestamps, oversized data,
 and conflicting snapshots are rejected. Restoring this third backup removes
 only the knowledge slice while retaining the first two completed slices.
 
+Human accounts can then be imported with an explicit acknowledgement that the
+only pristine bootstrap administrator will be replaced. Referenced groups must
+already have been imported, and any foreign-key dependency on the bootstrap
+administrator causes the operation to fail before deletion:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-human-users \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-human-users.xbbackup \
+  --confirm-offline \
+  --replace-bootstrap-admin
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The source must contain at least one active administrator. Account identifiers,
+emails, UUIDs and subscription tokens must be unique, invitation references
+must resolve within the snapshot, and password hashes must be bounded legacy
+bcrypt values. Repeating the same source verifies the recorded rollback archive
+and returns the existing result without rewriting users.
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
-titles, email addresses, or credentials. This remains a local/isolated-test
-workflow; later legacy data domains and relationships require separate mappings
-and migration evidence.
+titles, email addresses, password hashes, subscription tokens, or credentials.
+This remains a local/isolated-test workflow; later legacy data domains and
+relationships require separate mappings and migration evidence.

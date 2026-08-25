@@ -111,6 +111,41 @@ func TestAccessTokenRevocationEnforcesOwnershipAndAllTokens(t *testing.T) {
 	}
 }
 
+func TestCompletePasswordLoginAndCreateAccessTokenUsesIdentityAndPasswordCAS(t *testing.T) {
+	database, user, now := newAuthTestStore(t)
+	ctx := context.Background()
+	created, err := database.CompletePasswordLoginAndCreateAccessToken(ctx, user.ID, user.Email, "old-hash", "upgraded-hash",
+		CreateAccessTokenInput{TokenHash: strings.Repeat("e", 64), Name: "legacy-login"}, now)
+	if err != nil {
+		t.Fatalf("CompletePasswordLoginAndCreateAccessToken() error = %v", err)
+	}
+	if created.UserID != user.ID || created.Name != "legacy-login" {
+		t.Fatalf("created access token = %#v", created)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("e", 64), now); err != nil {
+		t.Fatalf("AuthenticateAccessToken() error = %v", err)
+	}
+	updated, err := database.FindUserByID(ctx, user.ID)
+	if err != nil || updated.PasswordHash != "upgraded-hash" {
+		t.Fatalf("updated user = %#v, error = %v", updated, err)
+	}
+
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET email = 'renamed@example.test' WHERE id = ?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompletePasswordLoginAndCreateAccessToken(ctx, user.ID, user.Email, "upgraded-hash", "upgraded-hash",
+		CreateAccessTokenInput{TokenHash: strings.Repeat("f", 64), Name: "stale-identity"}, now.Add(time.Minute)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("CompletePasswordLoginAndCreateAccessToken(stale identity) error = %v, want ErrConflict", err)
+	}
+	var forbiddenTokens int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM access_tokens WHERE token_hash = ?`, strings.Repeat("f", 64)).Scan(&forbiddenTokens); err != nil {
+		t.Fatal(err)
+	}
+	if forbiddenTokens != 0 {
+		t.Fatalf("stale identity login created %d access tokens", forbiddenTokens)
+	}
+}
+
 func TestSchemaV21PreservesV20SessionsAndAddsAccessTokenIndexes(t *testing.T) {
 	database, user, now := newAuthTestStore(t)
 	ctx := context.Background()
@@ -136,6 +171,9 @@ func TestSchemaV21PreservesV20SessionsAndAddsAccessTokenIndexes(t *testing.T) {
 		if _, err := database.db.ExecContext(ctx, `ALTER TABLE app_settings DROP COLUMN `+column); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 20`); err != nil {
 		t.Fatal(err)

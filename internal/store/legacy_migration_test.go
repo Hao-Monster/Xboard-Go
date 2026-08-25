@@ -142,19 +142,19 @@ func TestImportLegacyContentRejectsInvalidOrNonPristineTargetsWithoutPartialWrit
 	})
 }
 
-func TestSchemaV24AddsLegacyMigrationLedgerWithoutChangingBusinessData(t *testing.T) {
+func TestSchemaV24AndV25AddMigrationLedgerAndLastLoginWithoutChangingBusinessData(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	if _, err := database.CreateNotice(ctx, SaveNoticeInput{Title: "before", Content: "preserved", Visible: true}, time.Unix(100, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 23; DROP TABLE legacy_migration_runs`); err != nil {
+	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 23; DROP TABLE legacy_migration_runs; ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var version, notices, ledger int
+	var version, notices, ledger, lastLoginColumns int
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +164,11 @@ func TestSchemaV24AddsLegacyMigrationLedgerWithoutChangingBusinessData(t *testin
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='legacy_migration_runs'`).Scan(&ledger); err != nil {
 		t.Fatal(err)
 	}
-	if version != 24 || notices != 1 || ledger != 1 {
-		t.Fatalf("migration result version=%d notices=%d ledger=%d", version, notices, ledger)
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'last_login_at' AND [notnull] = 0`).Scan(&lastLoginColumns); err != nil {
+		t.Fatal(err)
+	}
+	if version != currentSchemaVersion || notices != 1 || ledger != 1 || lastLoginColumns != 1 {
+		t.Fatalf("migration result version=%d notices=%d ledger=%d last_login_columns=%d", version, notices, ledger, lastLoginColumns)
 	}
 }
 

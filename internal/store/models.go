@@ -517,6 +517,7 @@ type AdminUser struct {
 	DeviceLimit     int        `json:"device_limit"`
 	OnlineCount     int        `json:"online_count"`
 	LastOnlineAt    *time.Time `json:"last_online_at"`
+	LastLoginAt     *time.Time `json:"last_login_at"`
 	Revision        int64      `json:"revision"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`

@@ -32,9 +32,15 @@ func TestSchemaV18MigrationPreservesV17DataAndAddsRegistrationVerification(t *te
 	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 17`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, schemaV25); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
 	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "v17@example.test", PasswordHash: "preserved-hash"}, now)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx); err != nil {

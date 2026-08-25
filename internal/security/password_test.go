@@ -3,6 +3,8 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestPasswordHasherRoundTrip(t *testing.T) {
@@ -29,6 +31,50 @@ func TestPasswordHasherRoundTrip(t *testing.T) {
 	}
 	if ok := hasher.Verify("correct horse battery staple", "not-a-hash"); ok {
 		t.Fatal("Verify() accepted a malformed hash")
+	}
+}
+
+func TestPasswordHasherAcceptsOnlyBoundedLegacyBcrypt(t *testing.T) {
+	hasher := NewPasswordHasher(PasswordParams{
+		MemoryKiB:   8 * 1024,
+		Iterations:  1,
+		Parallelism: 1,
+		SaltLength:  16,
+		KeyLength:   32,
+	})
+
+	encoded, err := bcrypt.GenerateFromPassword([]byte("legacy-password-123"), 10)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+	phpEncoded := "$2y$" + string(encoded[4:])
+	if !IsLegacyBcryptHash(phpEncoded) {
+		t.Fatal("IsLegacyBcryptHash() rejected a supported PHP bcrypt hash")
+	}
+	if !hasher.Verify("legacy-password-123", phpEncoded) {
+		t.Fatal("Verify() rejected the correct legacy bcrypt password")
+	}
+	if hasher.Verify("wrong-password", phpEncoded) {
+		t.Fatal("Verify() accepted a wrong legacy bcrypt password")
+	}
+
+	weak, err := bcrypt.GenerateFromPassword([]byte("legacy-password-123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword(weak) error = %v", err)
+	}
+	if IsLegacyBcryptHash(string(weak)) || hasher.Verify("legacy-password-123", string(weak)) {
+		t.Fatal("weak legacy bcrypt cost was accepted")
+	}
+
+	for _, invalid := range []string{
+		"$2a$99$invalid",
+		"$2x$10$invalid",
+		"$2b$10$short",
+		"not-a-hash",
+	} {
+		if IsLegacyBcryptHash(invalid) || hasher.Verify("legacy-password-123", invalid) {
+			t.Fatalf("invalid legacy hash %q was accepted", invalid)
+		}
 	}
 }
 
