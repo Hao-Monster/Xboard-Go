@@ -1300,9 +1300,18 @@ test("legacy logo and site name propagate to the administrator shell and public 
   const unique = Date.now();
   const changed = { app_name: `Logo parity ${unique}`, logo: new URL("/favicon.ico", legacyURL).toString() };
   const knowledgeTitle = `Logo guide ${unique}`;
+  const userEmailPrefix = `brand-parity-${unique}`;
+  const userEmail = `${userEmailPrefix}@legacy.local`;
+  const userPassword = crypto.randomUUID();
   let knowledgeID: number | null = null;
 
   try {
+    const generated = await page.request.post(legacyAdminAPI("/user/generate"), {
+      headers,
+      data: { email_prefix: userEmailPrefix, email_suffix: "legacy.local", password: userPassword }
+    });
+    expect(generated.status()).toBe(200);
+
     const saved = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: changed });
     expect(saved.status()).toBe(200);
     const guest = await page.request.get(new URL("/api/v1/guest/comm/config", legacyURL).toString());
@@ -1321,7 +1330,7 @@ test("legacy logo and site name propagate to the administrator shell and public 
       const loginPage = await publicContext.newPage();
       await loginPage.goto(new URL("/", legacyURL).toString());
       await expect(loginPage.locator(`img[src="${changed.logo}"]`).first()).toBeVisible();
-      await loginLegacyUser(loginPage);
+      await loginLegacyUser(loginPage, userEmail, userPassword);
       await expect(loginPage.locator(`img[src="${changed.logo}"]`).first()).toBeVisible();
     } finally {
       await publicContext.close();
@@ -1356,16 +1365,20 @@ test("legacy logo and site name propagate to the administrator shell and public 
     expect(content.status()).toBe(200);
     expect(readProperty(await content.json() as unknown, "page_title")).toBe(`${knowledgeTitle} - ${changed.app_name}`);
   } finally {
-    if (knowledgeID !== null && Number.isSafeInteger(knowledgeID)) {
-      const removed = await page.request.post(legacyAdminAPI("/knowledge/drop"), { headers, data: { id: knowledgeID } });
-      expect(removed.status()).toBe(200);
+    try {
+      if (knowledgeID !== null && Number.isSafeInteger(knowledgeID)) {
+        const removed = await page.request.post(legacyAdminAPI("/knowledge/drop"), { headers, data: { id: knowledgeID } });
+        expect(removed.status()).toBe(200);
+      }
+      const restored = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
+      expect(restored.status()).toBe(200);
+      const verification = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
+      const restoredSite = readObjectProperty(readProperty(await verification.json() as unknown, "data"), "site");
+      expect(readProperty(restoredSite, "app_name")).toBe(original.app_name);
+      expect(readProperty(restoredSite, "logo")).toBe(original.logo);
+    } finally {
+      removeLegacyUser(userEmail);
     }
-    const restored = await page.request.post(legacyAdminAPI("/config/save"), { headers, data: original });
-    expect(restored.status()).toBe(200);
-    const verification = await page.request.get(legacyAdminAPI("/config/fetch?key=site"), { headers });
-    const restoredSite = readObjectProperty(readProperty(await verification.json() as unknown, "data"), "site");
-    expect(readProperty(restoredSite, "app_name")).toBe(original.app_name);
-    expect(readProperty(restoredSite, "logo")).toBe(original.logo);
   }
 });
 
@@ -1410,23 +1423,49 @@ test("legacy dashboard exposes scheduler, queue, failed-job, and audit contracts
 });
 
 test("legacy user ticket surface remains observable without frontend source", async ({ page }) => {
-  const errors = watchErrors(page);
-  await loginLegacyUser(page);
-  const response = page.waitForResponse((item) => item.url().includes("/api/v1/user/ticket/fetch"));
-  await page.getByText("我的工单", { exact: true }).click();
-  expect((await response).status()).toBe(200);
-  await expect(page.getByText("工单历史", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "新的工单" })).toBeVisible();
-  for (const column of ["主题", "工单级别", "工单状态", "创建时间", "最后回复时间", "操作"]) {
-    await expect(page.getByText(column, { exact: true }).first()).toBeVisible();
+  await loginLegacy(page);
+  const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
+  await page.locator('a[href="#/config/system"]').click();
+  const authorization = (await configResponse).request().headers().authorization;
+  expect(authorization).toBeTruthy();
+  if (!authorization) throw new Error("legacy administrator authorization is missing");
+
+  const unique = Date.now();
+  const userEmailPrefix = `ticket-ui-${unique}`;
+  const userEmail = `${userEmailPrefix}@legacy.local`;
+  const userPassword = crypto.randomUUID();
+  const browser = page.context().browser();
+  if (browser === null) throw new Error("legacy browser is unavailable");
+  const userContext = await browser.newContext({ locale: "zh-CN" });
+  try {
+    const generated = await page.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization },
+      data: { email_prefix: userEmailPrefix, email_suffix: "legacy.local", password: userPassword }
+    });
+    expect(generated.status()).toBe(200);
+
+    const userPage = await userContext.newPage();
+    const errors = watchErrors(userPage);
+    await loginLegacyUser(userPage, userEmail, userPassword);
+    const response = userPage.waitForResponse((item) => item.url().includes("/api/v1/user/ticket/fetch"));
+    await userPage.getByText("我的工单", { exact: true }).click();
+    expect((await response).status()).toBe(200);
+    await expect(userPage.getByText("工单历史", { exact: true })).toBeVisible();
+    await expect(userPage.getByRole("button", { name: "新的工单" })).toBeVisible();
+    for (const column of ["主题", "工单级别", "工单状态", "创建时间", "最后回复时间", "操作"]) {
+      await expect(userPage.getByText(column, { exact: true }).first()).toBeVisible();
+    }
+    await userPage.getByRole("button", { name: "新的工单" }).click();
+    await expect(userPage.locator('input[placeholder="请输入工单主题"]:visible')).toBeVisible();
+    await expect(userPage.locator('textarea[placeholder="请描述您遇到的问题"]:visible')).toBeVisible();
+    await userPage.locator(".n-base-selection:visible").click();
+    for (const level of ["低", "中", "高"]) await expect(userPage.getByText(level, { exact: true }).last()).toBeVisible();
+    await userPage.getByRole("button", { name: "取消" }).click();
+    expect(errors).toEqual([]);
+  } finally {
+    await userContext.close();
+    removeLegacyUser(userEmail);
   }
-  await page.getByRole("button", { name: "新的工单" }).click();
-  await expect(page.locator('input[placeholder="请输入工单主题"]:visible')).toBeVisible();
-  await expect(page.locator('textarea[placeholder="请描述您遇到的问题"]:visible')).toBeVisible();
-  await page.locator(".n-base-selection:visible").click();
-  for (const level of ["低", "中", "高"]) await expect(page.getByText(level, { exact: true }).last()).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
-  expect(errors).toEqual([]);
 });
 
 test("legacy ticket API preserves role, ownership, close, and reply state semantics", async ({ page }) => {
@@ -1877,13 +1916,25 @@ async function goAdminRequest(page: Page, path: string, method: string, body?: u
   }, { path, method, body });
 }
 
-async function loginLegacyUser(page: Page) {
+async function loginLegacyUser(page: Page, email: string, password: string) {
+  expect(email.length, "legacy user login email input limit").toBeLessThanOrEqual(40);
+  expect(password.length, "legacy user login password input limit").toBeLessThanOrEqual(41);
   await page.goto(new URL("/", legacyURL).toString(), { waitUntil: "domcontentloaded" });
   const fields = page.locator("input:visible");
-  await fields.first().fill(legacyEmail);
-  await fields.nth(1).fill(legacyPassword);
+  await fields.first().fill(email);
+  await fields.nth(1).fill(password);
+  const responsePromise = page.waitForResponse((response) => (
+    response.url().includes("/api/v1/passport/auth/login") && response.request().method() === "POST"
+  ));
   await fields.nth(1).press("Enter");
+  const response = await responsePromise;
+  expect(response.status(), await response.text()).toBe(200);
   await expect(page.getByText("我的工单", { exact: true })).toBeVisible();
+}
+
+function removeLegacyUser(email: string): void {
+  const encodedEmail = Buffer.from(email, "utf8").toString("base64");
+  legacyTinker(`$email=base64_decode("${encodedEmail}"); App\\Models\\User::where("email",$email)->delete();`);
 }
 
 function watchErrors(page: Page) {
