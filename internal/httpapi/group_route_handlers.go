@@ -57,7 +57,7 @@ func (s *server) deleteServerGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.DeleteServerGroup(r.Context(), groupID); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			writeAPIError(w, http.StatusConflict, "group_in_use", "权限组仍被用户或节点使用，无法删除", nil)
+			writeAPIError(w, http.StatusConflict, "group_in_use", "权限组仍被用户、套餐或节点使用，无法删除", nil)
 			return
 		}
 		handleStoreError(w, err)

@@ -85,6 +85,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
 		MailLoginEnabled           *bool     `json:"login_with_mail_link_enable"`
+		TrafficResetMethod         *int      `json:"traffic_reset_method"`
 		CaptchaEnabled             *bool     `json:"captcha_enable"`
 		CaptchaType                *string   `json:"captcha_type"`
 		RecaptchaSiteKey           *string   `json:"recaptcha_site_key"`
@@ -121,6 +122,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit:        current.InvitationCodeLimit,
 		InvitationNeverExpire:      current.InvitationNeverExpire,
 		MailLoginEnabled:           current.MailLoginEnabled,
+		TrafficResetMethod:         &current.TrafficResetMethod,
 		CaptchaEnabled:             current.CaptchaEnabled,
 		CaptchaType:                current.CaptchaType,
 		RecaptchaSiteKey:           current.RecaptchaSiteKey,
@@ -172,6 +174,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MailLoginEnabled != nil {
 		next.MailLoginEnabled = *input.MailLoginEnabled
+	}
+	if input.TrafficResetMethod != nil {
+		next.TrafficResetMethod = input.TrafficResetMethod
 	}
 	if input.CaptchaEnabled != nil {
 		next.CaptchaEnabled = *input.CaptchaEnabled

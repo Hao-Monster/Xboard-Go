@@ -111,8 +111,7 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		}
 		if err := validateUnsupportedLegacyHumanUserFields(user.ID, telegramID, passwordAlgorithm, passwordSalt,
 			balance, discount, commissionType, commissionRate, commissionBalance, legacyTime, isStaff, lastLoginIP,
-			planID, remindExpire, remindTraffic, remarks, onlineCount, nextResetAt, lastResetAt, resetCount,
-			isDistributor, distributorName); err != nil {
+			remindExpire, remindTraffic, remarks, onlineCount, isDistributor, distributorName); err != nil {
 			return nil, 0, err
 		}
 		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 {
@@ -123,8 +122,17 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		user.InviteUserID = positiveNullableInt64(inviteUserID)
 		user.LastLoginAt = positiveNullableInt64(lastLoginAt)
 		user.GroupID = positiveNullableInt64(groupID)
+		user.PlanID = positiveNullableInt64(planID)
 		user.ExpiredAt = positiveNullableInt64(expiredAt)
 		user.LastOnlineAt = positiveNullableInt64(lastOnlineAt)
+		user.NextResetAt = positiveNullableInt64(nextResetAt)
+		user.LastResetAt = positiveNullableInt64(lastResetAt)
+		if resetCount.Valid {
+			if resetCount.Int64 < 0 {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid reset count", user.ID)
+			}
+			user.ResetCount = resetCount.Int64
+		}
 		if speedLimit.Valid {
 			if speedLimit.Int64 < 0 || speedLimit.Int64 > maxInt {
 				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid speed limit", user.ID)
@@ -152,19 +160,17 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 
 func validateUnsupportedLegacyHumanUserFields(id int64, telegramID, passwordAlgorithm, passwordSalt sql.NullString,
 	balance int64, discount sql.NullFloat64, commissionType sql.NullInt64, commissionRate sql.NullFloat64,
-	commissionBalance, legacyTime, isStaff int64, lastLoginIP sql.NullString, planID sql.NullInt64,
-	remindExpire, remindTraffic int64, remarks sql.NullString, onlineCount, nextResetAt, lastResetAt, resetCount sql.NullInt64,
-	isDistributor int64, distributorName sql.NullString,
+	commissionBalance, legacyTime, isStaff int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
+	remarks sql.NullString, onlineCount sql.NullInt64, isDistributor int64, distributorName sql.NullString,
 ) error {
 	unsupported := telegramID.String != "" || passwordAlgorithm.String != "" || passwordSalt.String != "" ||
 		balance != 0 || discount.Valid && discount.Float64 != 0 || commissionType.Valid && commissionType.Int64 != 0 ||
 		commissionRate.Valid && commissionRate.Float64 != 0 || commissionBalance != 0 || legacyTime != 0 || isStaff != 0 ||
-		lastLoginIP.String != "" || planID.Valid && planID.Int64 != 0 || remindExpire != 1 || remindTraffic != 1 ||
+		lastLoginIP.String != "" || remindExpire != 1 || remindTraffic != 1 ||
 		strings.TrimSpace(remarks.String) != "" || onlineCount.Valid && onlineCount.Int64 != 0 ||
-		nextResetAt.Valid && nextResetAt.Int64 != 0 || lastResetAt.Valid && lastResetAt.Int64 != 0 ||
-		resetCount.Valid && resetCount.Int64 != 0 || isDistributor != 0 || strings.TrimSpace(distributorName.String) != ""
+		isDistributor != 0 || strings.TrimSpace(distributorName.String) != ""
 	if unsupported {
-		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, reset, or audit state", id)
+		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, or audit state", id)
 	}
 	return nil
 }

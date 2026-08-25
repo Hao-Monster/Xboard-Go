@@ -70,6 +70,74 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 	}
 }
 
+func TestImportLegacyHumanUsersPreservesPlanAndTrafficResetState(t *testing.T) {
+	database := newLegacyHumanUserTarget(t)
+	ctx := context.Background()
+	if _, err := database.ImportLegacyGroupsRoutes(ctx, validLegacyGroupsRoutesImport(), time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	plan := LegacyPlan{
+		ID: 77, GroupID: int64Pointer(9), TransferEnableGiB: 100, Name: "Legacy plan", Show: true,
+		Renew: true, Sell: true, Prices: PlanPrices{"monthly": 999}, Tags: []string{"popular"}, CreatedAt: 100, UpdatedAt: 110,
+	}
+	planInput := LegacyPlansImport{
+		Slice: LegacyPlansSlice, SourceSHA256: strings.Repeat("a", 64), SourceSize: 8192,
+		Plans: []LegacyPlan{plan}, RollbackBackupPath: "/var/lib/xboard-backups/pre-plans.xbbackup",
+		RollbackBackupSHA256: strings.Repeat("b", 64), TrafficResetMethod: 1,
+		SettingsChecksum: LegacyPlanSettingsChecksum(1),
+	}
+	planInput.Checksum = LegacyPlansChecksum(planInput.Plans)
+	if _, err := database.ImportLegacyPlans(ctx, planInput, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	input := validLegacyHumanUsersImport(t)
+	nextResetAt := int64(1_700_000_300)
+	lastResetAt := int64(1_700_000_250)
+	input.Users[1].PlanID = int64Pointer(77)
+	input.Users[1].NextResetAt = &nextResetAt
+	input.Users[1].LastResetAt = &lastResetAt
+	input.Users[1].ResetCount = 3
+	input.Checksum = LegacyHumanUsersChecksum(input.Users)
+	report, err := database.ImportLegacyHumanUsers(ctx, input, time.Unix(300, 0))
+	if err != nil || report.Users.SourceChecksum != report.Users.TargetChecksum {
+		t.Fatalf("ImportLegacyHumanUsers() = (%#v, %v)", report, err)
+	}
+	var planID, next, last, resetCount int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT plan_id, next_reset_at, last_reset_at, reset_count FROM users WHERE id = 20
+	`).Scan(&planID, &next, &last, &resetCount); err != nil {
+		t.Fatal(err)
+	}
+	if planID != 77 || next != nextResetAt || last != lastResetAt || resetCount != 3 {
+		t.Fatalf("plan/reset state = %d/%d/%d/%d", planID, next, last, resetCount)
+	}
+}
+
+func TestImportLegacyHumanUsersRejectsMissingPlanBeforeReplacingBootstrap(t *testing.T) {
+	database := newLegacyHumanUserTarget(t)
+	ctx := context.Background()
+	if _, err := database.ImportLegacyGroupsRoutes(ctx, validLegacyGroupsRoutesImport(), time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	input := validLegacyHumanUsersImport(t)
+	input.Users[1].PlanID = int64Pointer(404)
+	input.Checksum = LegacyHumanUsersChecksum(input.Users)
+	if _, err := database.ImportLegacyHumanUsers(ctx, input, time.Unix(200, 0)); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "missing plan 404") {
+		t.Fatalf("ImportLegacyHumanUsers(missing plan) error = %v", err)
+	}
+	var bootstrapCount, runs int
+	if err := database.db.QueryRow(`SELECT COUNT(*) FROM users WHERE email = 'bootstrap@example.test'`).Scan(&bootstrapCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRow(`SELECT COUNT(*) FROM legacy_migration_runs WHERE slice = ?`, LegacyHumanUsersSlice).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if bootstrapCount != 1 || runs != 0 {
+		t.Fatalf("rejected import changed target: bootstrap=%d runs=%d", bootstrapCount, runs)
+	}
+}
+
 func TestImportLegacyHumanUsersRejectsDependenciesAndRollsBackExactly(t *testing.T) {
 	database := newLegacyHumanUserTarget(t)
 	ctx := context.Background()

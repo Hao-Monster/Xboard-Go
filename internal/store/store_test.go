@@ -452,6 +452,23 @@ func newTestStore(t *testing.T) *Store {
 	return store
 }
 
+func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP INDEX idx_users_plan_capacity;
+		DROP INDEX idx_users_due_traffic_reset;
+		DROP TABLE traffic_reset_logs;
+		ALTER TABLE users DROP COLUMN plan_id;
+		ALTER TABLE users DROP COLUMN next_reset_at;
+		ALTER TABLE users DROP COLUMN last_reset_at;
+		ALTER TABLE users DROP COLUMN reset_count;
+		ALTER TABLE app_settings DROP COLUMN traffic_reset_method;
+		DROP TABLE plans;
+	`); err != nil {
+		t.Fatalf("remove schema v27 for migration test: %v", err)
+	}
+}
+
 func testSubscriptionToken(tb testing.TB) string {
 	tb.Helper()
 	token, err := newSubscriptionToken()

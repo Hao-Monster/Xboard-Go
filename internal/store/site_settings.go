@@ -32,7 +32,7 @@ func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, traffic_reset_method,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at
@@ -59,16 +59,20 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	}
 	defer tx.Rollback()
 	var currentEmailVerificationEnabled, currentMailLoginEnabled, smtpEnabled bool
+	var currentTrafficResetMethod int
 	var captchaSecrets CaptchaSecretCiphers
 	if err := tx.QueryRowContext(ctx, `
-		SELECT email_verify, login_with_mail_link_enable, smtp_enabled,
+		SELECT email_verify, login_with_mail_link_enable, smtp_enabled, traffic_reset_method,
 		       recaptcha_secret_cipher, recaptcha_v3_secret_cipher, turnstile_secret_cipher
 		FROM app_settings WHERE id = 1
 	`).Scan(
-		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled,
+		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled, &currentTrafficResetMethod,
 		&captchaSecrets.Recaptcha, &captchaSecrets.RecaptchaV3, &captchaSecrets.Turnstile,
 	); err != nil {
 		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
+	}
+	if normalized.TrafficResetMethod == nil {
+		normalized.TrafficResetMethod = &currentTrafficResetMethod
 	}
 	if normalized.ReplaceRecaptchaSecret {
 		captchaSecrets.Recaptcha = append([]byte(nil), normalized.RecaptchaSecretCipher...)
@@ -94,7 +98,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
 		    password_limit_enable = ?, password_limit_count = ?, password_limit_expire = ?,
-		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?, login_with_mail_link_enable = ?,
+		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?, login_with_mail_link_enable = ?, traffic_reset_method = ?,
 		    captcha_enable = ?, captcha_type = ?, recaptcha_site_key = ?, recaptcha_secret_cipher = ?,
 		    recaptcha_v3_site_key = ?, recaptcha_v3_score_threshold = ?, recaptcha_v3_secret_cipher = ?,
 		    turnstile_site_key = ?, turnstile_secret_cipher = ?,
@@ -105,7 +109,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
 		normalized.PasswordLimitEnabled, normalized.PasswordLimitCount, normalized.PasswordLimitMinutes,
-		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire, normalized.MailLoginEnabled,
+		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire, normalized.MailLoginEnabled, *normalized.TrafficResetMethod,
 		normalized.CaptchaEnabled, normalized.CaptchaType, normalized.RecaptchaSiteKey, nullableBytes(captchaSecrets.Recaptcha),
 		normalized.RecaptchaV3SiteKey, normalized.RecaptchaV3ScoreThreshold, nullableBytes(captchaSecrets.RecaptchaV3),
 		normalized.TurnstileSiteKey, nullableBytes(captchaSecrets.Turnstile),
@@ -160,7 +164,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, traffic_reset_method,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at
@@ -216,6 +220,9 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 		(input.ReplaceRecaptchaSecret && !validSettingsCipherLength(input.RecaptchaSecretCipher)) ||
 		(input.ReplaceRecaptchaV3Secret && !validSettingsCipherLength(input.RecaptchaV3SecretCipher)) ||
 		(input.ReplaceTurnstileSecret && !validSettingsCipherLength(input.TurnstileSecretCipher)) {
+		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
+	}
+	if input.TrafficResetMethod != nil && (*input.TrafficResetMethod < 0 || *input.TrafficResetMethod > 4) {
 		return SaveSiteSettingsInput{}, fmt.Errorf("%w: invalid site settings", ErrInvalidInput)
 	}
 	if input.InvitationCodeLimit < 0 || input.InvitationCodeLimit > maxInvitationCodeLimit {
@@ -311,7 +318,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
 		&settings.PasswordLimitEnabled, &settings.PasswordLimitCount, &settings.PasswordLimitMinutes,
 		&settings.InvitationForceEnabled, &settings.InvitationCodeLimit, &settings.InvitationNeverExpire,
-		&settings.MailLoginEnabled,
+		&settings.MailLoginEnabled, &settings.TrafficResetMethod,
 		&settings.CaptchaEnabled, &settings.CaptchaType, &settings.RecaptchaSiteKey, &recaptchaSecretCipher,
 		&settings.RecaptchaV3SiteKey, &settings.RecaptchaV3ScoreThreshold, &recaptchaV3SecretCipher,
 		&settings.TurnstileSiteKey, &turnstileSecretCipher,

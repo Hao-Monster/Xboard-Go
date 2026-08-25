@@ -52,6 +52,8 @@ var requiredSchemaTables = []struct {
 	{"login_failure_limits", 22},
 	{"legacy_migration_runs", 24},
 	{"node_protocol_definitions", 26},
+	{"plans", 27},
+	{"traffic_reset_logs", 27},
 }
 
 type schemaQueryer interface {

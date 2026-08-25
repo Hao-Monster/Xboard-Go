@@ -128,6 +128,55 @@ export interface ServerGroup {
   updated_at: string;
 }
 
+export type PlanPeriod = "monthly" | "quarterly" | "half_yearly" | "yearly" | "two_yearly" | "three_yearly" | "onetime" | "reset_traffic";
+export type PlanPrices = Partial<Record<PlanPeriod, number>>;
+
+export interface PlanDetails {
+  id: number;
+  group_id: number | null;
+  transfer_enable: number;
+  name: string;
+  speed_limit: number | null;
+  show: boolean;
+  sort: number;
+  renew: boolean;
+  content: string;
+  reset_traffic_method: number | null;
+  capacity_limit: number | null;
+  prices: PlanPrices;
+  sell: boolean;
+  device_limit: number | null;
+  tags: string[];
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Plan extends PlanDetails {
+  users_count: number;
+  active_users_count: number;
+  capacity_users_count: number;
+}
+
+export interface PlanInput {
+  group_id: number | null;
+  transfer_enable: number;
+  name: string;
+  speed_limit: number | null;
+  content: string;
+  reset_traffic_method: number | null;
+  capacity_limit: number | null;
+  prices: PlanPrices;
+  device_limit: number | null;
+  tags: string[];
+}
+
+export interface PlanOffer extends PlanDetails {
+  capacity_remaining: number | null;
+  can_purchase: boolean;
+  can_renew: boolean;
+}
+
 export type RoutingAction = "block" | "direct" | "dns" | "proxy";
 
 export interface RoutingRule {
@@ -365,6 +414,7 @@ export interface SiteSettings {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  traffic_reset_method: number;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -407,6 +457,7 @@ export interface SiteSettingsInput {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  traffic_reset_method: number;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -566,6 +617,12 @@ export interface AdminAPI {
   createServerGroup: (name: string) => Promise<ServerGroup>;
   updateServerGroup: (id: number, name: string) => Promise<ServerGroup>;
   deleteServerGroup: (id: number) => Promise<void>;
+  listPlans: () => Promise<Plan[]>;
+  createPlan: (input: PlanInput) => Promise<Plan>;
+  updatePlan: (id: number, revision: number, input: PlanInput, forceUpdate: boolean) => Promise<Plan>;
+  setPlanState: (id: number, revision: number, show: boolean, sell: boolean, renew: boolean) => Promise<Plan>;
+  reorderPlans: (ids: number[]) => Promise<Plan[]>;
+  deletePlan: (id: number) => Promise<void>;
   listRoutingRules: () => Promise<RoutingRule[]>;
   createRoutingRule: (input: RoutingRuleInput) => Promise<RoutingRule>;
   updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
@@ -798,6 +855,34 @@ export class APIClient implements AdminAPI {
 
   async deleteServerGroup(id: number): Promise<void> {
     await this.request<void>(`/api/v1/admin/server-groups/${id}`, { method: "DELETE" });
+  }
+
+  async listPlans(): Promise<Plan[]> {
+    return this.request<Plan[]>("/api/v1/admin/plans");
+  }
+
+  async createPlan(input: PlanInput): Promise<Plan> {
+    return this.request<Plan>("/api/v1/admin/plans", { method: "POST", body: input });
+  }
+
+  async updatePlan(id: number, revision: number, input: PlanInput, forceUpdate: boolean): Promise<Plan> {
+    return this.request<Plan>(`/api/v1/admin/plans/${id}`, { method: "PATCH", body: { revision, ...input, force_update: forceUpdate } });
+  }
+
+  async setPlanState(id: number, revision: number, show: boolean, sell: boolean, renew: boolean): Promise<Plan> {
+    return this.request<Plan>(`/api/v1/admin/plans/${id}/state`, { method: "PATCH", body: { revision, show, sell, renew } });
+  }
+
+  async reorderPlans(ids: number[]): Promise<Plan[]> {
+    return this.request<Plan[]>("/api/v1/admin/plans/order", { method: "PUT", body: { ids } });
+  }
+
+  async deletePlan(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/plans/${id}`, { method: "DELETE" });
+  }
+
+  async listPlanOffers(): Promise<PlanOffer[]> {
+    return this.request<PlanOffer[]>("/api/v1/plans");
   }
 
   async listRoutingRules(): Promise<RoutingRule[]> {

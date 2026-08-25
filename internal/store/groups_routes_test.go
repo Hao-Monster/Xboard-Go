@@ -131,6 +131,24 @@ func TestServerGroupsAndRoutingRulesMaintainReferences(t *testing.T) {
 	}
 }
 
+func TestDeleteServerGroupRejectsPlanReference(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	group, err := database.CreateServerGroup(ctx, "Plan group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "Referenced plan", GroupID: &group.ID, TransferEnableGiB: 100,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteServerGroup(ctx, group.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("DeleteServerGroup(plan reference) error = %v, want ErrConflict", err)
+	}
+}
+
 func TestSaveNodeRuntimeRejectsMissingReferencesAtomically(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

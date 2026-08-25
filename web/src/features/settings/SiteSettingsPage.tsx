@@ -87,6 +87,13 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         </div>
         <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
         <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
+		<fieldset className="settings-fieldset">
+		  <legend>流量重置策略</legend>
+		  <label>系统默认重置方式<select value={draft.traffic_reset_method} onChange={(event) => updateDraft("traffic_reset_method", Number(event.target.value))}>
+			<option value={0}>每月 1 日</option><option value={1}>按用户到期日每月重置</option><option value={2}>永不重置</option><option value={3}>每年 1 月 1 日</option><option value={4}>按用户到期月日每年重置</option>
+		  </select></label>
+		  <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
+		</fieldset>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
           <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
@@ -174,6 +181,7 @@ function toDraft(settings: SiteSettings): SiteDraft {
     invite_gen_limit: settings.invite_gen_limit,
     invite_never_expire: settings.invite_never_expire,
     login_with_mail_link_enable: settings.login_with_mail_link_enable,
+	traffic_reset_method: settings.traffic_reset_method,
     captcha_enable: settings.captcha_enable,
     captcha_type: settings.captcha_type,
     recaptcha_site_key: settings.recaptcha_site_key,

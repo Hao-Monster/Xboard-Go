@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 26
+const currentSchemaVersion = 27
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -228,6 +228,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v26: %w", err)
 		}
 		version = 26
+	}
+	if version < 27 {
+		if _, err := tx.ExecContext(ctx, schemaV27); err != nil {
+			return fmt.Errorf("apply schema v27: %w", err)
+		}
+		version = 27
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1039,4 +1045,55 @@ CREATE TABLE node_protocol_definitions (
 CREATE INDEX idx_node_protocol_parent ON node_protocol_definitions(parent_id, node_id);
 CREATE INDEX idx_node_protocol_code ON node_protocol_definitions(external_code, node_id)
     WHERE external_code IS NOT NULL;
+`
+
+const schemaV27 = `
+CREATE TABLE plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER REFERENCES server_groups(id) ON DELETE RESTRICT,
+    transfer_enable_gib INTEGER NOT NULL CHECK (transfer_enable_gib BETWEEN 1 AND 8388607),
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 255),
+    speed_limit INTEGER CHECK (speed_limit IS NULL OR speed_limit BETWEEN 0 AND 1000000000),
+    show INTEGER NOT NULL DEFAULT 0 CHECK (show IN (0, 1)),
+    sort_position INTEGER NOT NULL DEFAULT 0 CHECK (sort_position >= 0),
+    renew INTEGER NOT NULL DEFAULT 1 CHECK (renew IN (0, 1)),
+    content TEXT NOT NULL DEFAULT '' CHECK (length(CAST(content AS BLOB)) <= 262144),
+    reset_traffic_method INTEGER CHECK (reset_traffic_method IS NULL OR reset_traffic_method BETWEEN 0 AND 4),
+    capacity_limit INTEGER CHECK (capacity_limit IS NULL OR capacity_limit BETWEEN 0 AND 1000000000),
+    prices_json TEXT NOT NULL DEFAULT '{}'
+        CHECK (json_valid(prices_json) AND json_type(prices_json) = 'object' AND length(CAST(prices_json AS BLOB)) <= 4096),
+    sell INTEGER NOT NULL DEFAULT 0 CHECK (sell IN (0, 1)),
+    device_limit INTEGER CHECK (device_limit IS NULL OR device_limit BETWEEN 0 AND 1000),
+    tags_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array' AND length(CAST(tags_json AS BLOB)) <= 8192),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE INDEX idx_plans_catalog ON plans(sort_position, id);
+CREATE INDEX idx_plans_public ON plans(show, sell, sort_position, id);
+CREATE INDEX idx_plans_group ON plans(group_id, id) WHERE group_id IS NOT NULL;
+
+ALTER TABLE users ADD COLUMN plan_id INTEGER REFERENCES plans(id) ON DELETE RESTRICT;
+ALTER TABLE users ADD COLUMN next_reset_at INTEGER CHECK (next_reset_at IS NULL OR next_reset_at >= 0);
+ALTER TABLE users ADD COLUMN last_reset_at INTEGER CHECK (last_reset_at IS NULL OR last_reset_at >= 0);
+ALTER TABLE users ADD COLUMN reset_count INTEGER NOT NULL DEFAULT 0 CHECK (reset_count >= 0);
+CREATE INDEX idx_users_plan_capacity ON users(plan_id, account_kind, expired_at) WHERE plan_id IS NOT NULL;
+CREATE INDEX idx_users_due_traffic_reset ON users(next_reset_at, id) WHERE next_reset_at IS NOT NULL AND plan_id IS NOT NULL;
+
+ALTER TABLE app_settings ADD COLUMN traffic_reset_method INTEGER NOT NULL DEFAULT 1
+    CHECK (traffic_reset_method BETWEEN 0 AND 4);
+
+CREATE TABLE traffic_reset_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id INTEGER REFERENCES plans(id) ON DELETE SET NULL,
+    scheduled_for INTEGER NOT NULL CHECK (scheduled_for >= 0),
+    reset_at INTEGER NOT NULL CHECK (reset_at >= scheduled_for),
+    upload_before INTEGER NOT NULL CHECK (upload_before >= 0),
+    download_before INTEGER NOT NULL CHECK (download_before >= 0),
+    reset_count INTEGER NOT NULL CHECK (reset_count > 0),
+    UNIQUE (user_id, scheduled_for)
+);
+CREATE INDEX idx_traffic_reset_logs_user ON traffic_reset_logs(user_id, reset_at DESC, id DESC);
 `

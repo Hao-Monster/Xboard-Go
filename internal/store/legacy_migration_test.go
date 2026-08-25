@@ -145,6 +145,7 @@ func TestImportLegacyContentRejectsInvalidOrNonPristineTargetsWithoutPartialWrit
 func TestSchemaV24ThroughV26AddMigrationLedgerLastLoginAndNodeDefinitionsWithoutChangingBusinessData(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
+	removeSchemaV27ForMigrationTest(t, database)
 	if _, err := database.CreateNotice(ctx, SaveNoticeInput{Title: "before", Content: "preserved", Visible: true}, time.Unix(100, 0)); err != nil {
 		t.Fatal(err)
 	}
