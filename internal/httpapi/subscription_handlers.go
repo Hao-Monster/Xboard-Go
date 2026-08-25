@@ -129,7 +129,20 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		writeAPIError(w, http.StatusServiceUnavailable, "subscription_too_large", "订阅内容过大，请联系管理员", nil)
 		return
 	}
-	w.Header().Set("Content-Type", response.ContentType)
+	switch response.ContentType {
+	case "application/json":
+		w.Header().Set("Content-Type", "application/json")
+	case "text/plain; charset=utf-8":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	case "text/yaml; charset=utf-8":
+		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+	case "application/octet-stream":
+		w.Header().Set("Content-Type", "application/octet-stream")
+	default:
+		s.logger.Error("reject unsafe subscription media type", "user_id", account.ID, "client", client.Kind.String(), "content_type", response.ContentType)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return
+	}
 	// Subscription templates are administrator-controlled downloads. A sandbox
 	// remains defense in depth in addition to non-HTML media types and nosniff.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox")
