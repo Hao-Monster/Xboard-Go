@@ -72,6 +72,12 @@ jobs:
 
   packaged-browser:
     runs-on: ubuntu-latest
+    env:
+      XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -85,12 +91,6 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - name: Start packaged application
-        env:
-          XBOARD_GO_REVISION: ${{ github.sha }}
-          XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
-          XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
-          XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
-          XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
         run: |
           mkdir -p .local
           password="$(openssl rand -hex 24)"
