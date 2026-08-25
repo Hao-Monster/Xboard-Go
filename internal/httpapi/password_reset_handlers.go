@@ -39,6 +39,10 @@ func (s *server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !s.verifyCaptcha(w, r, settings, captchaTokens{Recaptcha: input.RecaptchaData, RecaptchaV3: input.RecaptchaV3Token, Turnstile: input.TurnstileToken}, "sendEmailVerify") {
 		return
 	}
+	s.issuePasswordReset(w, r, email, http.StatusAccepted, http.StatusTooManyRequests, "password_reset_cooldown", false)
+}
+
+func (s *server) issuePasswordReset(w http.ResponseWriter, r *http.Request, email string, successStatus, cooldownStatus int, cooldownCode string, legacy bool) {
 	if s.passwordResetProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "mail_unavailable", "邮件服务暂不可用", nil)
 		return
@@ -80,13 +84,17 @@ func (s *server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 			retryAfter = limited.RetryAfterSeconds
 		}
 		w.Header().Set("Retry-After", strconv.FormatInt(retryAfter, 10))
-		writeAPIError(w, http.StatusTooManyRequests, "password_reset_cooldown", "验证码已发送，请过一会儿再请求", nil)
+		writeAPIError(w, cooldownStatus, cooldownCode, "验证码已发送，请过一会儿再请求", nil)
 		return
 	case err != nil:
 		handleStoreError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusAccepted, true)
+	if legacy {
+		writeLegacySuccess(w, successStatus, true)
+		return
+	}
+	writeSuccess(w, successStatus, true)
 }
 
 func (s *server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +117,10 @@ func (s *server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查重置信息", fields)
 		return
 	}
+	s.confirmPasswordResetInput(w, r, email, input.EmailCode, input.Password, false)
+}
+
+func (s *server) confirmPasswordResetInput(w http.ResponseWriter, r *http.Request, email, emailCode, password string, legacy bool) {
 	if s.passwordResetProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "mail_unavailable", "邮件服务暂不可用", nil)
 		return
@@ -118,7 +130,7 @@ func (s *server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
-	codeDigest, err := s.passwordResetProtector.CodeDigest(email, input.EmailCode)
+	codeDigest, err := s.passwordResetProtector.CodeDigest(email, emailCode)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
@@ -135,7 +147,7 @@ func (s *server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseHashSlot()
-	passwordHash, err := s.passwordHasher.Hash(input.Password)
+	passwordHash, err := s.passwordHasher.Hash(password)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
@@ -150,6 +162,10 @@ func (s *server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.clearAuthCookies(w)
+	if legacy {
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	writeSuccess(w, http.StatusOK, true)
 }
 

@@ -724,6 +724,22 @@ test("legacy password recovery preserves fields, cooldown, lockout, one-time cod
   }
 });
 
+test("Go Passport email compatibility preserves the legacy v1 and v2 validation contract", async ({ page }) => {
+  for (const version of ["v1", "v2"]) {
+    for (const [path, data] of [
+      ["passport/comm/sendEmailVerify", { email: "not-an-email" }],
+      ["passport/auth/forget", { email: "not-an-email", password: "short", email_code: "invalid" }]
+    ] as const) {
+      const legacyResponse = await page.request.post(new URL(`/api/${version}/${path}`, legacyURL).toString(), { data });
+      const goResponse = await page.request.post(new URL(`/api/${version}/${path}`, goURL).toString(), { data });
+
+      expect(legacyResponse.status(), `${version} ${path} legacy status`).toBe(422);
+      expect(goResponse.status(), `${version} ${path} Go status`).toBe(legacyResponse.status());
+      expect(await goResponse.json(), `${version} ${path} response`).toEqual(await legacyResponse.json());
+    }
+  }
+});
+
 test("legacy password error limit exposes its configurable threshold, expiry, and historical bypasses", async ({ page }) => {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));

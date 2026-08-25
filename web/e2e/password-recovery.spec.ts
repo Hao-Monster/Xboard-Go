@@ -17,13 +17,16 @@ interface TicketSettings {
   smtp_from_address: string;
 }
 
-test("visitor completes the legacy password recovery flow through Mailpit", async ({ page, request }) => {
+test("visitor completes modern and Passport-compatible password recovery through Mailpit", async ({ page, request }) => {
   test.skip(mailpitURL === undefined, "requires the local Docker Mailpit service");
   test.setTimeout(90_000);
   const unique = `${Date.now()}-${test.info().project.name.replace(/[^a-z0-9]/gi, "-")}`;
   const email = `password-recovery-${unique}@example.test`;
   const oldPassword = `old-password-${unique}`;
   const newPassword = `new-password-${unique}`;
+  const compatibilityEmail = `passport-recovery-${unique}@example.test`;
+  const compatibilityOldPassword = `passport-old-password-${unique}`;
+  const compatibilityNewPassword = `passport-new-password-${unique}`;
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -57,6 +60,17 @@ test("visitor completes the legacy password recovery flow through Mailpit", asyn
       banned: false
     });
     expect(created.status, created.body).toBe(201);
+    const compatibilityUser = await adminRequest(page, "/api/v1/admin/users", "POST", {
+      email: compatibilityEmail,
+      password: compatibilityOldPassword,
+      group_id: null,
+      transfer_enable: 1_073_741_824,
+      expired_at: null,
+      speed_limit: 0,
+      device_limit: 0,
+      banned: false
+    });
+    expect(compatibilityUser.status, compatibilityUser.body).toBe(201);
     await logoutAndWait(page);
 
     await page.goto("/#/forgetpassword");
@@ -85,6 +99,31 @@ test("visitor completes the legacy password recovery flow through Mailpit", asyn
     await page.getByLabel("密码").fill(newPassword);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
+
+    const compatibilitySent = await request.post("/api/v2/passport/comm/sendEmailVerify", {
+      data: { email: compatibilityEmail }
+    });
+    expect(compatibilitySent.status()).toBe(200);
+    expect(await compatibilitySent.json()).toMatchObject({ status: "success", message: "操作成功", data: true, error: null });
+    const compatibilityCode = await waitForPasswordResetCode(request, compatibilityEmail, "Xboard-Go邮箱验证码");
+    const compatibilityRepeated = await request.post("/api/v1/passport/comm/sendEmailVerify", {
+      data: { email: compatibilityEmail }
+    });
+    expect(compatibilityRepeated.status()).toBe(400);
+    expect(await compatibilityRepeated.json()).toMatchObject({
+      status: "fail", message: "验证码已发送，请过一会儿再请求", error: { code: "passport_email_cooldown" }
+    });
+    const compatibilityReset = await request.post("/api/v2/passport/auth/forget", {
+      data: { email: compatibilityEmail, email_code: compatibilityCode, password: compatibilityNewPassword }
+    });
+    expect(compatibilityReset.status()).toBe(200);
+    expect(await compatibilityReset.json()).toMatchObject({ status: "success", message: "操作成功", data: true, error: null });
+    expect((await request.post("/api/v1/passport/auth/login", {
+      data: { email: compatibilityEmail, password: compatibilityOldPassword }
+    })).status()).toBe(401);
+    expect((await request.post("/api/v1/passport/auth/login", {
+      data: { email: compatibilityEmail, password: compatibilityNewPassword }
+    })).status()).toBe(200);
 
     const privacy = await page.evaluate(async ({ knownEmail, unknownEmail }) => {
       const post = async (path: string, body: unknown) => {

@@ -39,6 +39,11 @@ func (s *server) requestRegistrationEmailVerification(w http.ResponseWriter, r *
 	if !s.verifyCaptcha(w, r, settings, captchaTokens{Recaptcha: input.RecaptchaData, RecaptchaV3: input.RecaptchaV3Token, Turnstile: input.TurnstileToken}, "sendEmailVerify") {
 		return
 	}
+	s.issueRegistrationEmailVerification(w, r, email, sourceIP, http.StatusAccepted, http.StatusTooManyRequests, "registration_email_cooldown", false)
+}
+
+func (s *server) issueRegistrationEmailVerification(w http.ResponseWriter, r *http.Request, email, sourceIP string, successStatus, cooldownStatus int, cooldownCode string, legacy bool) {
+	now := s.now()
 	if s.registrationEmailProtector == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "mail_unavailable", "邮件服务暂不可用", nil)
 		return
@@ -77,7 +82,7 @@ func (s *server) requestRegistrationEmailVerification(w http.ResponseWriter, r *
 			retryAfter = limited.RetryAfterSeconds
 		}
 		w.Header().Set("Retry-After", strconv.FormatInt(retryAfter, 10))
-		writeAPIError(w, http.StatusTooManyRequests, "registration_email_cooldown", "验证码已发送，请过一会儿再请求", nil)
+		writeAPIError(w, cooldownStatus, cooldownCode, "验证码已发送，请过一会儿再请求", nil)
 		return
 	case errors.Is(err, store.ErrRegistrationEmailVerificationDisabled):
 		writeAPIError(w, http.StatusConflict, "registration_email_disabled", "注册邮箱验证未启用", nil)
@@ -95,5 +100,9 @@ func (s *server) requestRegistrationEmailVerification(w http.ResponseWriter, r *
 		handleStoreError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusAccepted, true)
+	if legacy {
+		writeLegacySuccess(w, successStatus, true)
+		return
+	}
+	writeSuccess(w, successStatus, true)
 }

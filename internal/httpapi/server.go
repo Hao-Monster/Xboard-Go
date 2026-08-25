@@ -74,6 +74,7 @@ type server struct {
 	passwordResetRequests      *requestLimiter
 	passwordResetConfirmations *requestLimiter
 	registrationEmailRequests  *requestLimiter
+	passportEmailRequests      *requestLimiter
 	invitationViewRequests     *requestLimiter
 	mailLoginRequests          *requestLimiter
 	passwordHashSlots          chan struct{}
@@ -163,6 +164,7 @@ func New(dependencies Dependencies) http.Handler {
 		passwordResetRequests:      newRequestLimiter(10, 15*time.Minute),
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute),
 		registrationEmailRequests:  newRequestLimiter(10, 15*time.Minute),
+		passportEmailRequests:      newRequestLimiter(10, 15*time.Minute),
 		invitationViewRequests:     newRequestLimiter(60, 15*time.Minute),
 		mailLoginRequests:          newRequestLimiter(10, 15*time.Minute),
 		passwordHashSlots:          make(chan struct{}, 2),
@@ -212,6 +214,10 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v1/auth/registration-email/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestRegistrationEmailVerification)))
 	root.Handle("POST /api/v1/auth/password-reset/request", api.requireTrustedOrigin(http.HandlerFunc(api.requestPasswordReset)))
 	root.Handle("POST /api/v1/auth/password-reset/confirm", api.requireTrustedOrigin(http.HandlerFunc(api.confirmPasswordReset)))
+	root.Handle("POST /api/v1/passport/comm/sendEmailVerify", api.requireTrustedOrigin(http.HandlerFunc(api.legacySendEmailVerify)))
+	root.Handle("POST /api/v2/passport/comm/sendEmailVerify", api.requireTrustedOrigin(http.HandlerFunc(api.legacySendEmailVerify)))
+	root.Handle("POST /api/v1/passport/auth/forget", api.requireTrustedOrigin(http.HandlerFunc(api.legacyForgetPassword)))
+	root.Handle("POST /api/v2/passport/auth/forget", api.requireTrustedOrigin(http.HandlerFunc(api.legacyForgetPassword)))
 	root.Handle("GET /api/v1/auth/session", api.requireSession(http.HandlerFunc(api.session)))
 	root.Handle("POST /api/v1/auth/logout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.logout))))
 	root.Handle("GET /api/v1/auth/sessions", api.requireSession(http.HandlerFunc(api.listAccountSessions)))
@@ -596,7 +602,7 @@ func writeAPIError(w http.ResponseWriter, status int, code, message string, fiel
 	if len(fields) > 0 {
 		payload["fields"] = fields
 	}
-	writeJSON(w, status, map[string]any{"status": "fail", "error": payload})
+	writeJSON(w, status, map[string]any{"status": "fail", "message": message, "error": payload})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
