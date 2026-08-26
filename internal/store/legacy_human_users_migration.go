@@ -33,6 +33,11 @@ type LegacyHumanUser struct {
 	InviteUserID      *int64 `json:"invite_user_id"`
 	Email             string `json:"email"`
 	PasswordHash      string `json:"password_hash"`
+	Balance           int64  `json:"balance"`
+	Discount          *int   `json:"discount"`
+	CommissionType    int    `json:"commission_type"`
+	CommissionRate    *int   `json:"commission_rate"`
+	CommissionBalance int64  `json:"commission_balance"`
 	TransferEnable    int64  `json:"transfer_enable"`
 	TrafficUpload     int64  `json:"traffic_upload"`
 	TrafficDownload   int64  `json:"traffic_download"`
@@ -100,6 +105,24 @@ func LegacyHumanUsersChecksum(users []LegacyHumanUser) string {
 			canonical.writeInt64(user.ResetCount)
 		}
 	}
+	financeExtended := false
+	for _, user := range ordered {
+		if user.Balance != 0 || user.Discount != nil || user.CommissionType != 0 || user.CommissionRate != nil || user.CommissionBalance != 0 {
+			financeExtended = true
+			break
+		}
+	}
+	if financeExtended {
+		canonical.writeString("finance-v1")
+		for _, user := range ordered {
+			canonical.writeInt64(user.ID)
+			canonical.writeInt64(user.Balance)
+			canonical.writeIntPointer(user.Discount)
+			canonical.writeInt64(int64(user.CommissionType))
+			canonical.writeIntPointer(user.CommissionRate)
+			canonical.writeInt64(user.CommissionBalance)
+		}
+	}
 	return canonical.sum()
 }
 
@@ -156,6 +179,17 @@ func (canonical *legacyHumanUsersDigest) writePointer(value *int64) {
 	}
 }
 
+func (canonical *legacyHumanUsersDigest) writeIntPointer(value *int) {
+	canonical.flag[0] = 0
+	if value != nil {
+		canonical.flag[0] = 1
+	}
+	_, _ = canonical.digest.Write(canonical.flag[:])
+	if value != nil {
+		canonical.writeInt64(int64(*value))
+	}
+}
+
 func (canonical *legacyHumanUsersDigest) writeBool(value bool) {
 	canonical.flag[0] = 0
 	if value {
@@ -183,6 +217,9 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		if user.ID < 1 || user.Email == "" || len(user.Email) > 320 || normalizeEmail(user.Email) != user.Email ||
 			!utf8.ValidString(user.Email) || emailErr != nil || address.Address != user.Email ||
 			!security.IsLegacyBcryptHash(user.PasswordHash) || user.TransferEnable < 0 ||
+			user.Balance < 0 || user.Balance > maxOrderMoneyCents || user.CommissionBalance < 0 || user.CommissionBalance > maxOrderMoneyCents ||
+			user.Discount != nil && (*user.Discount < 0 || *user.Discount > 100) ||
+			user.CommissionType < 0 || user.CommissionType > 2 || user.CommissionRate != nil && (*user.CommissionRate < 0 || *user.CommissionRate > 100) ||
 			user.TrafficUpload < 0 || user.TrafficDownload < 0 || user.SpeedLimit < 0 || user.DeviceLimit < 0 ||
 			user.DeviceLimit > 1_000 || !validLegacyUnixTimestamp(user.CreatedAt) || !validLegacyUnixTimestamp(user.UpdatedAt) ||
 			user.UpdatedAt < user.CreatedAt {
@@ -339,18 +376,20 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO users (
-			id, email, password_hash, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable,
+			id, email, password_hash, is_admin, banned, account_kind, balance, discount, commission_type,
+			commission_rate, commission_balance, uuid, group_id, plan_id, transfer_enable,
 			traffic_u, traffic_d, expired_at, speed_limit, device_limit, online_count, last_online_at,
 			last_login_at, next_reset_at, last_reset_at, reset_count, admin_revision, subscription_token,
 			invite_user_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)
 	`)
 	if err != nil {
 		return LegacyHumanUsersImportReport{}, fmt.Errorf("prepare legacy human user import: %w", err)
 	}
 	defer statement.Close()
 	for _, user := range input.Users {
-		if _, err := statement.ExecContext(ctx, user.ID, user.Email, user.PasswordHash, user.IsAdmin, user.Banned, user.UUID,
+		if _, err := statement.ExecContext(ctx, user.ID, user.Email, user.PasswordHash, user.IsAdmin, user.Banned,
+			user.Balance, nullableIntValue(user.Discount), user.CommissionType, nullableIntValue(user.CommissionRate), user.CommissionBalance, user.UUID,
 			nullableInt64Value(user.GroupID), nullableInt64Value(user.PlanID), user.TransferEnable, user.TrafficUpload, user.TrafficDownload,
 			nullableInt64Value(user.ExpiredAt), user.SpeedLimit, user.DeviceLimit, nullableInt64Value(user.LastOnlineAt),
 			nullableInt64Value(user.LastLoginAt), nullableInt64Value(user.NextResetAt), nullableInt64Value(user.LastResetAt),
@@ -420,19 +459,24 @@ func validateReplaceableBootstrapAdmin(ctx context.Context, tx *sql.Tx) (int64, 
 	var runtimeUUID sql.NullString
 	var groupID, planID, expiredAt, lastOnlineAt, inviteUserID, nextResetAt, lastResetAt sql.NullInt64
 	var resetCount int64
-	var transfer, upload, download int64
+	var transfer, upload, download, balance, commissionBalance int64
+	var discount, commissionRate sql.NullInt64
+	var commissionType int
 	var speed, devices, online int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable, traffic_u, traffic_d,
+		SELECT id, is_admin, banned, account_kind, uuid, group_id, plan_id, balance, discount, commission_type,
+		       commission_rate, commission_balance, transfer_enable, traffic_u, traffic_d,
 		       expired_at, speed_limit, device_limit, online_count, last_online_at, invite_user_id,
 		       next_reset_at, last_reset_at, reset_count
 		FROM users
-	`).Scan(&id, &isAdmin, &banned, &kind, &runtimeUUID, &groupID, &planID, &transfer, &upload, &download,
+	`).Scan(&id, &isAdmin, &banned, &kind, &runtimeUUID, &groupID, &planID, &balance, &discount, &commissionType,
+		&commissionRate, &commissionBalance, &transfer, &upload, &download,
 		&expiredAt, &speed, &devices, &online, &lastOnlineAt, &inviteUserID, &nextResetAt, &lastResetAt, &resetCount); err != nil {
 		return 0, fmt.Errorf("inspect bootstrap administrator: %w", err)
 	}
 	if !isAdmin || banned || kind != AccountKindHuman || runtimeUUID.Valid || groupID.Valid || planID.Valid || expiredAt.Valid || lastOnlineAt.Valid ||
 		inviteUserID.Valid || nextResetAt.Valid || lastResetAt.Valid || resetCount != 0 || transfer != 0 || upload != 0 || download != 0 ||
+		balance != 0 || discount.Valid || commissionType != 0 || commissionRate.Valid || commissionBalance != 0 ||
 		speed != 0 || devices != 0 || online != 0 {
 		return 0, fmt.Errorf("%w: target user is not a replaceable bootstrap administrator", ErrConflict)
 	}
@@ -532,9 +576,17 @@ func nullableInt64Value(value *int64) any {
 	return *value
 }
 
+func nullableIntValue(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
 func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, string, error) {
 	rows, err := database.QueryContext(ctx, `
-		SELECT id, invite_user_id, email, password_hash, transfer_enable, traffic_u, traffic_d, banned, is_admin,
+		SELECT id, invite_user_id, email, password_hash, balance, discount, commission_type, commission_rate,
+		       commission_balance, transfer_enable, traffic_u, traffic_d, banned, is_admin,
 		       last_login_at, uuid, group_id, plan_id, speed_limit, expired_at, device_limit, online_count,
 		       last_online_at, next_reset_at, last_reset_at, reset_count, subscription_token,
 		       admin_revision, account_kind, created_at, updated_at
@@ -549,10 +601,12 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 	for rows.Next() {
 		var user LegacyHumanUser
 		var inviteUserID, lastLoginAt, groupID, planID, expiredAt, lastOnlineAt, nextResetAt, lastResetAt sql.NullInt64
+		var discount, commissionRate sql.NullInt64
 		var onlineCount int
 		var revision int64
 		var accountKind string
-		if err := rows.Scan(&user.ID, &inviteUserID, &user.Email, &user.PasswordHash, &user.TransferEnable,
+		if err := rows.Scan(&user.ID, &inviteUserID, &user.Email, &user.PasswordHash, &user.Balance, &discount,
+			&user.CommissionType, &commissionRate, &user.CommissionBalance, &user.TransferEnable,
 			&user.TrafficUpload, &user.TrafficDownload, &user.Banned, &user.IsAdmin, &lastLoginAt, &user.UUID,
 			&groupID, &planID, &user.SpeedLimit, &expiredAt, &user.DeviceLimit, &onlineCount, &lastOnlineAt,
 			&nextResetAt, &lastResetAt, &user.ResetCount,
@@ -563,6 +617,8 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 			return 0, "", fmt.Errorf("imported legacy human user id %d has unexpected target state", user.ID)
 		}
 		user.InviteUserID = nullableInt64Pointer(inviteUserID)
+		user.Discount = nullableIntPointer(discount)
+		user.CommissionRate = nullableIntPointer(commissionRate)
 		user.LastLoginAt = nullableInt64Pointer(lastLoginAt)
 		user.GroupID = nullableInt64Pointer(groupID)
 		user.PlanID = nullableInt64Pointer(planID)

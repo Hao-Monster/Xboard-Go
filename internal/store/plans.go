@@ -184,8 +184,9 @@ func (s *Store) DeletePlan(ctx context.Context, planID int64) error {
 	var exists, referenced bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM plans WHERE id = ?),
-		       EXISTS(SELECT 1 FROM users WHERE plan_id = ? LIMIT 1)
-	`, planID, planID).Scan(&exists, &referenced); err != nil {
+		       (EXISTS(SELECT 1 FROM users WHERE plan_id = ? LIMIT 1)
+		        OR EXISTS(SELECT 1 FROM orders WHERE plan_id = ? LIMIT 1))
+	`, planID, planID, planID).Scan(&exists, &referenced); err != nil {
 		return fmt.Errorf("check plan references: %w", err)
 	}
 	if !exists {
@@ -465,9 +466,7 @@ func normalizePlanInput(input SavePlanInput) (SavePlanInput, string, string, err
 		if _, valid := planPricePeriods[period]; !valid || price < 0 || price > maxPlanPriceCents {
 			return SavePlanInput{}, "", "", fmt.Errorf("%w: invalid plan price", ErrInvalidInput)
 		}
-		if price > 0 {
-			prices[period] = price
-		}
+		prices[period] = price
 	}
 	input.Prices = prices
 	input.Tags = normalizePlanTags(input.Tags)

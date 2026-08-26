@@ -21,6 +21,7 @@ type Worker struct {
 	lastLoginLinkSweep         time.Time
 	lastLoginFailureSweep      time.Time
 	lastTrafficResetSweep      time.Time
+	lastOrderSweep             time.Time
 	tracker                    *operations.Tracker
 }
 
@@ -64,6 +65,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.pruneLoginLinks(ctx, now)
 	w.pruneLoginFailures(ctx, now)
 	w.resetDueTraffic(ctx, now)
+	w.processOrders(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -80,6 +82,23 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) processOrders(ctx context.Context, now time.Time) {
+	if !w.lastOrderSweep.IsZero() && now.Sub(w.lastOrderSweep) < time.Minute {
+		return
+	}
+	w.lastOrderSweep = now
+	result, err := w.store.ProcessStaleOrders(ctx, now, 200)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("process pending orders", "error", err)
+		}
+		return
+	}
+	if result.Cancelled > 0 || result.Completed > 0 {
+		w.logger.Info("orders reconciled", "cancelled", result.Cancelled, "completed", result.Completed, "remaining", result.Remaining)
 	}
 }
 

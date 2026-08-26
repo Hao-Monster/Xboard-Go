@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 28
+const currentSchemaVersion = 29
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -240,6 +240,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v28: %w", err)
 		}
 		version = 28
+	}
+	if version < 29 {
+		if _, err := tx.ExecContext(ctx, schemaV29); err != nil {
+			return fmt.Errorf("apply schema v29: %w", err)
+		}
+		version = 29
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1124,4 +1130,90 @@ CREATE TABLE subscription_templates (
 );
 INSERT INTO subscription_templates (name) VALUES
     ('singbox'),('clash'),('clashmeta'),('stash'),('surge'),('surfboard');
+`
+
+const schemaV29 = `
+ALTER TABLE users ADD COLUMN balance INTEGER NOT NULL DEFAULT 0
+    CHECK (balance BETWEEN 0 AND 9000000000000000);
+ALTER TABLE users ADD COLUMN discount INTEGER
+    CHECK (discount IS NULL OR discount BETWEEN 0 AND 100);
+ALTER TABLE users ADD COLUMN commission_type INTEGER NOT NULL DEFAULT 0
+    CHECK (commission_type BETWEEN 0 AND 2);
+ALTER TABLE users ADD COLUMN commission_rate INTEGER
+    CHECK (commission_rate IS NULL OR commission_rate BETWEEN 0 AND 100);
+ALTER TABLE users ADD COLUMN commission_balance INTEGER NOT NULL DEFAULT 0
+    CHECK (commission_balance BETWEEN 0 AND 9000000000000000);
+
+ALTER TABLE app_settings ADD COLUMN plan_change_enable INTEGER NOT NULL DEFAULT 1
+    CHECK (plan_change_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN surplus_enable INTEGER NOT NULL DEFAULT 1
+    CHECK (surplus_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN new_order_event_id INTEGER NOT NULL DEFAULT 0
+    CHECK (new_order_event_id IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN renew_order_event_id INTEGER NOT NULL DEFAULT 0
+    CHECK (renew_order_event_id IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN change_order_event_id INTEGER NOT NULL DEFAULT 0
+    CHECK (change_order_event_id IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN commission_first_time_enable INTEGER NOT NULL DEFAULT 1
+    CHECK (commission_first_time_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN invite_commission INTEGER NOT NULL DEFAULT 10
+    CHECK (invite_commission BETWEEN 0 AND 100);
+
+CREATE TABLE orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+    payment_id INTEGER CHECK (payment_id IS NULL OR payment_id > 0),
+    period TEXT NOT NULL CHECK (period IN (
+        'monthly','quarterly','half_yearly','yearly','two_yearly','three_yearly','onetime','reset_traffic'
+    )),
+    trade_no TEXT NOT NULL UNIQUE CHECK (
+        (length(trade_no) = 25 AND trade_no NOT GLOB '*[^0-9]*')
+        OR
+        (length(trade_no) = 32 AND trade_no NOT GLOB '*[^0-9a-f]*')
+    ),
+    original_amount INTEGER NOT NULL CHECK (original_amount BETWEEN 0 AND 9000000000000000),
+    total_amount INTEGER NOT NULL CHECK (total_amount BETWEEN 0 AND 9000000000000000),
+    handling_amount INTEGER CHECK (handling_amount IS NULL OR handling_amount BETWEEN 0 AND 9000000000000000),
+    balance_amount INTEGER NOT NULL DEFAULT 0 CHECK (balance_amount BETWEEN 0 AND 9000000000000000),
+    surplus_credit INTEGER NOT NULL DEFAULT 0 CHECK (surplus_credit BETWEEN 0 AND 9000000000000000),
+    surplus_amount INTEGER NOT NULL DEFAULT 0 CHECK (surplus_amount BETWEEN 0 AND 9000000000000000),
+    type INTEGER NOT NULL CHECK (type BETWEEN 1 AND 4),
+    status INTEGER NOT NULL DEFAULT 0 CHECK (status BETWEEN 0 AND 4),
+    surplus_order_ids_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(surplus_order_ids_json) AND json_type(surplus_order_ids_json) = 'array'
+               AND length(CAST(surplus_order_ids_json AS BLOB)) <= 262144),
+    coupon_id INTEGER CHECK (coupon_id IS NULL OR coupon_id > 0),
+    commission_status INTEGER NOT NULL DEFAULT 0 CHECK (commission_status BETWEEN 0 AND 3),
+    invite_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    actual_commission_balance INTEGER CHECK (actual_commission_balance IS NULL OR actual_commission_balance BETWEEN 0 AND 9000000000000000),
+    commission_rate INTEGER CHECK (commission_rate IS NULL OR commission_rate BETWEEN 0 AND 100),
+    commission_auto_check INTEGER CHECK (commission_auto_check IS NULL OR commission_auto_check IN (0, 1)),
+    commission_balance INTEGER NOT NULL DEFAULT 0 CHECK (commission_balance BETWEEN 0 AND 9000000000000000),
+    discount_amount INTEGER NOT NULL DEFAULT 0 CHECK (discount_amount BETWEEN 0 AND 9000000000000000),
+    paid_at INTEGER CHECK (paid_at IS NULL OR paid_at >= 0),
+    callback_no TEXT CHECK (callback_no IS NULL OR length(callback_no) BETWEEN 1 AND 255),
+    distributor_order_id INTEGER CHECK (distributor_order_id IS NULL OR distributor_order_id > 0),
+    entitlement_expired_at_before INTEGER CHECK (entitlement_expired_at_before IS NULL OR entitlement_expired_at_before >= 0),
+    entitlement_expired_at_after INTEGER CHECK (entitlement_expired_at_after IS NULL OR entitlement_expired_at_after >= 0),
+    distributor_idempotency_key TEXT CHECK (distributor_idempotency_key IS NULL OR length(distributor_idempotency_key) BETWEEN 1 AND 128),
+    distributor_settled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE UNIQUE INDEX idx_orders_user_active ON orders(user_id) WHERE status IN (0, 1);
+CREATE INDEX idx_orders_user_created ON orders(user_id, created_at DESC, id DESC);
+CREATE INDEX idx_orders_status_created ON orders(status, created_at, id);
+CREATE INDEX idx_orders_plan ON orders(plan_id, id);
+CREATE INDEX idx_orders_inviter ON orders(invite_user_id, status, id) WHERE invite_user_id IS NOT NULL;
+
+CREATE TABLE order_entitlement_events (
+    order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE RESTRICT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    event_type TEXT NOT NULL CHECK (event_type IN ('new','renewal','upgrade','reset_traffic')),
+    before_json TEXT NOT NULL CHECK (json_valid(before_json) AND json_type(before_json) = 'object'),
+    after_json TEXT NOT NULL CHECK (json_valid(after_json) AND json_type(after_json) = 'object'),
+    applied_at INTEGER NOT NULL CHECK (applied_at >= 0)
+);
+CREATE INDEX idx_order_entitlement_events_user ON order_entitlement_events(user_id, applied_at DESC, order_id DESC);
 `

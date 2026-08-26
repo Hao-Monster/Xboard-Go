@@ -33,6 +33,7 @@ type Dependencies struct {
 	PasswordHasher             security.PasswordHasher
 	Now                        func() time.Time
 	PanelURL                   string
+	LegacyAdminPath            string
 	NodeRelease                string
 	CookieSecure               bool
 	AllowedOrigins             []string
@@ -86,6 +87,7 @@ type server struct {
 	reportRequests             *requestLimitGroup
 	machineRequests            *requestLimitGroup
 	ticketRequests             *requestLimitGroup
+	orderRequests              *requestLimitGroup
 	hub                        *wsHub
 	webSocketEnabled           bool
 	webSocketURL               string
@@ -121,6 +123,12 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.NodeRelease == "" {
 		dependencies.NodeRelease = "v1.14.3"
+	}
+	if dependencies.LegacyAdminPath == "" {
+		dependencies.LegacyAdminPath = "admin"
+	}
+	if !validLegacyAdminPath(dependencies.LegacyAdminPath) {
+		panic("httpapi: LegacyAdminPath must contain 1 to 64 ASCII letters, digits, underscores, or hyphens")
 	}
 	if dependencies.NodePushInterval == 0 {
 		dependencies.NodePushInterval = 60
@@ -178,6 +186,7 @@ func New(dependencies Dependencies) http.Handler {
 		reportRequests:             newRequestLimitGroup(1_200, 240),
 		machineRequests:            newRequestLimitGroup(1_200, 240),
 		ticketRequests:             newRequestLimitGroup(240, 60),
+		orderRequests:              newRequestLimitGroup(240, 60),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
 		webSocketURL:               strings.TrimRight(dependencies.WebSocketURL, "/"),
 		nodePushInterval:           dependencies.NodePushInterval,
@@ -242,6 +251,18 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v1/user/logout", api.requireLegacyBearer(http.HandlerFunc(api.legacyLogout)))
 	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
 	root.Handle("GET /api/v1/plans", api.requireSession(http.HandlerFunc(api.listUserPlans)))
+	root.Handle("GET /api/v1/orders", api.requireSession(http.HandlerFunc(api.listUserOrders)))
+	root.Handle("POST /api/v1/orders", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createOrder))))
+	root.Handle("GET /api/v1/orders/{tradeNo}", api.requireSession(http.HandlerFunc(api.getUserOrder)))
+	root.Handle("POST /api/v1/orders/{tradeNo}/checkout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.checkoutUserOrder))))
+	root.Handle("POST /api/v1/orders/{tradeNo}/cancel", api.requireSession(api.requireCSRF(http.HandlerFunc(api.cancelUserOrder))))
+	root.Handle("GET /api/v1/user/order/fetch", api.requireLegacyBearer(http.HandlerFunc(api.legacyListUserOrders)))
+	root.Handle("POST /api/v1/user/order/save", api.requireLegacyBearer(http.HandlerFunc(api.legacyCreateOrder)))
+	root.Handle("GET /api/v1/user/order/detail", api.requireLegacyBearer(http.HandlerFunc(api.legacyGetUserOrder)))
+	root.Handle("GET /api/v1/user/order/check", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckUserOrder)))
+	root.Handle("GET /api/v1/user/order/getPaymentMethod", api.requireLegacyBearer(http.HandlerFunc(api.legacyPaymentMethods)))
+	root.Handle("POST /api/v1/user/order/checkout", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckoutUserOrder)))
+	root.Handle("POST /api/v1/user/order/cancel", api.requireLegacyBearer(http.HandlerFunc(api.legacyCancelUserOrder)))
 	root.Handle("GET /api/v1/subscription", api.requireSession(http.HandlerFunc(api.getUserSubscription)))
 	root.Handle("GET /api/v1/subscription/qr", api.requireSession(http.HandlerFunc(api.getUserSubscriptionQR)))
 	root.Handle("POST /api/v1/subscription/security/reset", api.requireSession(api.requireCSRF(http.HandlerFunc(api.resetUserSubscriptionSecurity))))
@@ -276,6 +297,14 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v2/server/user", api.xboardNodeUsers)
 	root.HandleFunc("POST /api/v2/server/report", api.xboardNodeReport)
 	root.HandleFunc("GET /{subscriptionPath}/{subscriptionToken}", api.dynamicClientSubscription)
+	legacyAdminOrder := http.NewServeMux()
+	legacyAdminOrder.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/assign", api.legacyAssignOrder)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/detail", api.legacyGetAdminOrder)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/paid", api.legacyPaidAdminOrder)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/cancel", api.legacyCancelAdminOrder)
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/order/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminOrderMutations(api.recoverPanic(legacyAdminOrder)))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -302,6 +331,11 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/plans/{planID}", api.updatePlan)
 	admin.HandleFunc("PATCH /api/v1/admin/plans/{planID}/state", api.setPlanState)
 	admin.HandleFunc("DELETE /api/v1/admin/plans/{planID}", api.deletePlan)
+	admin.HandleFunc("GET /api/v1/admin/orders", api.listAdminOrders)
+	admin.HandleFunc("POST /api/v1/admin/orders", api.assignOrder)
+	admin.HandleFunc("GET /api/v1/admin/orders/{tradeNo}", api.getAdminOrder)
+	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/paid", api.paidAdminOrder)
+	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/cancel", api.cancelAdminOrder)
 	admin.HandleFunc("GET /api/v1/admin/routing-rules", api.listRoutingRules)
 	admin.HandleFunc("POST /api/v1/admin/routing-rules", api.createRoutingRule)
 	admin.HandleFunc("PATCH /api/v1/admin/routing-rules/{routeID}", api.updateRoutingRule)
@@ -348,6 +382,21 @@ func New(dependencies Dependencies) http.Handler {
 	return api.securityHeaders(api.recoverPanic(root))
 }
 
+func validLegacyAdminPath(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || character == '_' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -368,15 +417,44 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 		} else if _, patternRoute, found := strings.Cut(route, " "); found {
 			route = patternRoute
 		}
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
-		defer cancel()
-		if err := s.store.RecordAdminAudit(ctx, store.AdminAuditInput{
-			AdministratorID: session.UserID, AdministratorEmail: session.Email,
-			Method: r.Method, Route: route, StatusCode: recorder.statusCode(),
-		}, s.now()); err != nil {
-			s.logger.Warn("record administrator audit", "administrator_id", session.UserID, "method", r.Method, "route", route, "error", err)
-		}
+		s.recordAdminAudit(r.Context(), session, r.Method, route, recorder.statusCode())
 	})
+}
+
+func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action := ""
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/order/assign"):
+			action = "assign"
+		case strings.HasSuffix(r.URL.Path, "/order/paid"):
+			action = "paid"
+		case strings.HasSuffix(r.URL.Path, "/order/cancel"):
+			action = "cancel"
+		}
+		if r.Method != http.MethodPost || action == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/order/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) recordAdminAudit(parent context.Context, session store.SessionUser, method, route string, statusCode int) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 2*time.Second)
+	defer cancel()
+	if err := s.store.RecordAdminAudit(ctx, store.AdminAuditInput{
+		AdministratorID: session.UserID, AdministratorEmail: session.Email,
+		Method: method, Route: route, StatusCode: statusCode,
+	}, s.now()); err != nil {
+		s.logger.Warn("record administrator audit", "administrator_id", session.UserID, "method", method, "route", route, "error", err)
+	}
 }
 
 type responseStatusRecorder struct {

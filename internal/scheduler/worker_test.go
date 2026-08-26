@@ -149,6 +149,49 @@ func TestWorkerThrottlesTrafficResetSweepToLegacyMinuteCadence(t *testing.T) {
 	}
 }
 
+func TestWorkerCancelsOrdersAtLegacyTwoHourBoundaryAndThrottlesSweep(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-order-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "worker-order@example.test", PasswordHash: "hash"}, now.Add(-3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{Name: "Worker order", TransferEnableGiB: 10, Prices: store.PlanPrices{"monthly": 500}}, now.Add(-3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.AssignOrder(ctx, store.AssignOrderInput{Email: user.Email, PlanID: plan.ID, Period: "month_price", TotalAmount: 500}, now.Add(-2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.processOrders(ctx, now)
+	worker.processOrders(ctx, now.Add(30*time.Second))
+	if !worker.lastOrderSweep.Equal(now) {
+		t.Fatalf("sub-minute order sweep advanced to %s", worker.lastOrderSweep)
+	}
+	updated, err := database.GetAdminOrder(ctx, order.TradeNo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != store.OrderStatusCancelled {
+		t.Fatalf("order status=%d, want cancelled", updated.Status)
+	}
+	worker.processOrders(ctx, now.Add(time.Minute))
+	if !worker.lastOrderSweep.Equal(now.Add(time.Minute)) {
+		t.Fatalf("one-minute order sweep=%s", worker.lastOrderSweep)
+	}
+}
+
 func TestWorkerAutomaticallyClosesTicketsAnsweredMoreThanOneDayAgo(t *testing.T) {
 	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-ticket-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
