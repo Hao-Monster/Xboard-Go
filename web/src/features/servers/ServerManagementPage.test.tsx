@@ -246,6 +246,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     assignOrder: vi.fn(),
     paidAdminOrder: vi.fn(),
     cancelAdminOrder: vi.fn(),
+		updateAdminOrderCommissionStatus: vi.fn(),
     listAdminDistributorOptions: vi.fn().mockResolvedValue([]),
     listAdminDistributorOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
     getAdminDistributorOrder: vi.fn(),

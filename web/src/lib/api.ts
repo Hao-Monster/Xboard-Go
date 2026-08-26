@@ -221,6 +221,12 @@ export interface AdminOrder extends Order {
   plan_name: string;
 }
 
+export interface AdminOrderDetail extends AdminOrder {
+	invite_user: { id: number; email: string } | null;
+	commission_log: CommissionLog[];
+	subscribe_url: string | null;
+}
+
 export interface AdminOrderPage {
   items: AdminOrder[];
   total: number;
@@ -337,7 +343,13 @@ export interface AdminOrderQuery {
   status?: OrderStatus;
   type?: OrderType;
   period?: PlanPeriod;
+	statuses?: OrderStatus[];
+	types?: OrderType[];
+	periods?: PlanPeriod[];
+	commission_statuses?: Array<0 | 1 | 2 | 3>;
   query?: string;
+	sort_by?: "created_at" | "total_amount" | "status" | "commission_balance" | "commission_status";
+	sort_desc?: boolean;
 }
 
 export interface AssignOrderInput {
@@ -1155,10 +1167,11 @@ export interface AdminAPI {
   reorderPayments: (ids: number[]) => Promise<void>;
   deletePayment: (id: number) => Promise<void>;
   listAdminOrders: (query?: AdminOrderQuery) => Promise<AdminOrderPage>;
-  getAdminOrder: (tradeNo: string) => Promise<AdminOrder>;
+  getAdminOrder: (tradeNo: string) => Promise<AdminOrderDetail>;
   assignOrder: (input: AssignOrderInput) => Promise<Order>;
-  paidAdminOrder: (tradeNo: string) => Promise<Order>;
-  cancelAdminOrder: (tradeNo: string) => Promise<Order>;
+  paidAdminOrder: (tradeNo: string) => Promise<AdminOrderDetail>;
+  cancelAdminOrder: (tradeNo: string) => Promise<AdminOrderDetail>;
+	updateAdminOrderCommissionStatus: (tradeNo: string, status: 0 | 1 | 3) => Promise<AdminOrderDetail>;
 	listAdminDistributorOptions: () => Promise<AdminUser[]>;
 	listAdminDistributorOrders: (query?: DistributorOrderQuery) => Promise<DistributorOrderPage>;
 	getAdminDistributorOrder: (orderID: number) => Promise<AdminDistributorOrderDetail>;
@@ -1549,29 +1562,38 @@ export class APIClient implements AdminAPI {
     const params = new URLSearchParams();
     if (query.page !== undefined) params.set("page", String(query.page));
     if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
-    if (query.status !== undefined) params.set("status", String(query.status));
-    if (query.type !== undefined) params.set("type", String(query.type));
-    if (query.period !== undefined) params.set("period", query.period);
+		for (const status of query.statuses ?? (query.status === undefined ? [] : [query.status])) params.append("status", String(status));
+		for (const type of query.types ?? (query.type === undefined ? [] : [query.type])) params.append("type", String(type));
+		for (const period of query.periods ?? (query.period === undefined ? [] : [query.period])) params.append("period", period);
+		for (const status of query.commission_statuses ?? []) params.append("commission_status", String(status));
     if (query.query !== undefined && query.query !== "") params.set("query", query.query);
+		if (query.sort_by !== undefined) params.set("sort_by", query.sort_by);
+		if (query.sort_desc !== undefined) params.set("sort_desc", String(query.sort_desc));
     const suffix = params.size === 0 ? "" : `?${params.toString()}`;
     return this.request<AdminOrderPage>(`/api/v1/admin/orders${suffix}`);
   }
 
-  async getAdminOrder(tradeNo: string): Promise<AdminOrder> {
-    return this.request<AdminOrder>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}`);
+  async getAdminOrder(tradeNo: string): Promise<AdminOrderDetail> {
+		return this.request<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}`);
   }
 
   async assignOrder(input: AssignOrderInput): Promise<Order> {
     return this.request<Order>("/api/v1/admin/orders", { method: "POST", body: input });
   }
 
-  async paidAdminOrder(tradeNo: string): Promise<Order> {
-    return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/paid`, { method: "POST", body: {} });
+  async paidAdminOrder(tradeNo: string): Promise<AdminOrderDetail> {
+    return this.request<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/paid`, { method: "POST", body: {} });
   }
 
-  async cancelAdminOrder(tradeNo: string): Promise<Order> {
-    return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
+  async cancelAdminOrder(tradeNo: string): Promise<AdminOrderDetail> {
+    return this.request<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
   }
+
+	async updateAdminOrderCommissionStatus(tradeNo: string, status: 0 | 1 | 3): Promise<AdminOrderDetail> {
+		return this.request<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/commission`, {
+			method: "PATCH", body: { commission_status: status }
+		});
+	}
 
 	async listAdminDistributorOptions(): Promise<AdminUser[]> {
 		return this.request<AdminUser[]>("/api/v1/admin/distributors/options");

@@ -1267,13 +1267,41 @@ type AdminOrder struct {
 	PlanName  string `json:"plan_name"`
 }
 
+type AdminOrderInviteUser struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+}
+
+type AdminOrderDetail struct {
+	AdminOrder
+	InviteUser    *AdminOrderInviteUser `json:"invite_user"`
+	CommissionLog []CommissionLog       `json:"commission_log"`
+	SubscribeURL  *string               `json:"subscribe_url"`
+}
+
+type AdminOrderSortField string
+
+const (
+	AdminOrderSortCreatedAt         AdminOrderSortField = "created_at"
+	AdminOrderSortTotalAmount       AdminOrderSortField = "total_amount"
+	AdminOrderSortStatus            AdminOrderSortField = "status"
+	AdminOrderSortCommissionBalance AdminOrderSortField = "commission_balance"
+	AdminOrderSortCommissionStatus  AdminOrderSortField = "commission_status"
+)
+
 type AdminOrderFilter struct {
-	Page     int
-	PageSize int
-	Status   *OrderStatus
-	Type     *OrderType
-	Period   string
-	Query    string
+	Page               int
+	PageSize           int
+	Status             *OrderStatus
+	Type               *OrderType
+	Period             string
+	Statuses           []OrderStatus
+	Types              []OrderType
+	Periods            []string
+	CommissionStatuses []int
+	Query              string
+	SortBy             AdminOrderSortField
+	SortDescending     bool
 }
 
 type AdminOrderPage struct {

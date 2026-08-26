@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 35
+const currentSchemaVersion = 36
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -282,6 +282,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v35: %w", err)
 		}
 		version = 35
+	}
+	if version < 36 {
+		if _, err := tx.ExecContext(ctx, schemaV36); err != nil {
+			return fmt.Errorf("apply schema v36: %w", err)
+		}
+		version = 36
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1789,4 +1795,25 @@ CREATE TABLE IF NOT EXISTS knowledge_attachment_chunks (
     created_at INTEGER NOT NULL CHECK (created_at >= 0),
     PRIMARY KEY (upload_id, chunk_index)
 ) WITHOUT ROWID;
+`
+
+const schemaV36 = `
+CREATE INDEX IF NOT EXISTS idx_orders_created
+    ON orders(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_type_created
+    ON orders(type, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_period_created
+    ON orders(period, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_total_amount
+    ON orders(total_amount, id);
+CREATE INDEX IF NOT EXISTS idx_orders_status
+    ON orders(status, id);
+CREATE INDEX IF NOT EXISTS idx_orders_commission_balance
+    ON orders(commission_balance, id);
+CREATE INDEX IF NOT EXISTS idx_orders_commission_status
+    ON orders(commission_status, id);
+CREATE INDEX IF NOT EXISTS idx_orders_commission_status_created
+    ON orders(commission_status, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_admin_filters
+    ON orders(status, type, period, commission_status);
 `
