@@ -31,10 +31,10 @@ const (
 var (
 	imageIDPattern      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	revisionPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	sha256Pattern       = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	databasePattern     = regexp.MustCompile(`^file:/var/lib/xboard/[A-Za-z0-9._-]+\.db$`)
 	backupPattern       = regexp.MustCompile(`^/var/lib/xboard-backups/[A-Za-z0-9._-]+\.xbbackup$`)
 	databasePathPattern = regexp.MustCompile(`^/var/lib/xboard/[A-Za-z0-9._-]+\.db$`)
+	attachmentPattern   = regexp.MustCompile(`^/var/lib/xboard/[A-Za-z0-9._-]+-attachments$`)
 )
 
 type Image struct {
@@ -51,17 +51,18 @@ type Application struct {
 }
 
 type State struct {
-	Version        int              `json:"version"`
-	Status         string           `json:"status"`
-	UpdatedAt      time.Time        `json:"updated_at"`
-	Previous       *Image           `json:"previous_image,omitempty"`
-	Target         *Image           `json:"target_image,omitempty"`
-	BackupPath     string           `json:"backup_path,omitempty"`
-	BackupManifest *backup.Manifest `json:"backup_manifest,omitempty"`
-	OriginalDSN    string           `json:"original_database_dsn,omitempty"`
-	ActiveDSN      string           `json:"active_database_dsn,omitempty"`
-	RestoredPath   string           `json:"restored_path,omitempty"`
-	Failure        string           `json:"failure,omitempty"`
+	Version             int              `json:"version"`
+	Status              string           `json:"status"`
+	UpdatedAt           time.Time        `json:"updated_at"`
+	Previous            *Image           `json:"previous_image,omitempty"`
+	Target              *Image           `json:"target_image,omitempty"`
+	BackupPath          string           `json:"backup_path,omitempty"`
+	BackupManifest      *backup.Manifest `json:"backup_manifest,omitempty"`
+	OriginalDSN         string           `json:"original_database_dsn,omitempty"`
+	ActiveDSN           string           `json:"active_database_dsn,omitempty"`
+	RestoredPath        string           `json:"restored_path,omitempty"`
+	RestoredAttachments string           `json:"restored_attachment_path,omitempty"`
+	Failure             string           `json:"failure,omitempty"`
 }
 
 type Result struct {
@@ -77,7 +78,7 @@ type Platform interface {
 	Fresh(context.Context) (bool, error)
 	Activate(context.Context, Image, string) (Application, error)
 	Backup(context.Context, Application, string) (backup.Manifest, error)
-	Restore(context.Context, Image, string, string) (backup.Manifest, error)
+	Restore(context.Context, Image, string, string, string) (backup.Manifest, error)
 }
 
 type Orchestrator struct {
@@ -218,7 +219,11 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 
 	restoredDSN := fmt.Sprintf("file:/var/lib/xboard/xboard-rollback-%s.db", lifecycleTimestamp(now))
 	restoredPath := strings.TrimPrefix(restoredDSN, "file:")
-	restoredManifest, restoreErr := o.platform.Restore(ctx, current.Image, backupPath, restoredPath)
+	restoredAttachments, attachmentOutput, restoreErr := restoredAttachmentPaths(restoredDSN, manifest.FormatVersion)
+	var restoredManifest backup.Manifest
+	if restoreErr == nil {
+		restoredManifest, restoreErr = o.platform.Restore(ctx, current.Image, backupPath, restoredPath, attachmentOutput)
+	}
 	if restoreErr == nil && !reflect.DeepEqual(restoredManifest, manifest) {
 		restoreErr = fmt.Errorf(
 			"restored backup revision %q or manifest does not match the verified pre-upgrade backup revision %q",
@@ -229,6 +234,7 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 		state.Status = StatusRollbackFailed
 		state.UpdatedAt = o.now().UTC()
 		state.RestoredPath = restoredPath
+		state.RestoredAttachments = restoredAttachments
 		state.Failure = safeFailure(restoreErr)
 		operationErr := fmt.Errorf("target failed (%v) and automatic database restore failed: %w", activationErr, restoreErr)
 		if appendErr := o.journal.Append(state); appendErr != nil {
@@ -241,6 +247,7 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 		state.Status = StatusRollbackFailed
 		state.UpdatedAt = o.now().UTC()
 		state.RestoredPath = restoredPath
+		state.RestoredAttachments = restoredAttachments
 		state.Failure = safeFailure(err)
 		operationErr := fmt.Errorf("target failed (%v) and restored previous image failed health validation: %w", activationErr, err)
 		if appendErr := o.journal.Append(state); appendErr != nil {
@@ -252,6 +259,7 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 	state.UpdatedAt = o.now().UTC()
 	state.ActiveDSN = restoredDSN
 	state.RestoredPath = restoredPath
+	state.RestoredAttachments = restoredAttachments
 	state.Failure = safeFailure(activationErr)
 	result := failedResult("lifecycle.upgrade", recovered, &state)
 	if err := o.journal.Append(state); err != nil {
@@ -288,7 +296,11 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 	now := o.now().UTC()
 	restoredDSN := fmt.Sprintf("file:/var/lib/xboard/xboard-rollback-%s.db", lifecycleTimestamp(now))
 	restoredPath := strings.TrimPrefix(restoredDSN, "file:")
-	restoredManifest, restoreErr := o.platform.Restore(ctx, *state.Previous, state.BackupPath, restoredPath)
+	restoredAttachments, attachmentOutput, restoreErr := restoredAttachmentPaths(restoredDSN, state.BackupManifest.FormatVersion)
+	var restoredManifest backup.Manifest
+	if restoreErr == nil {
+		restoredManifest, restoreErr = o.platform.Restore(ctx, *state.Previous, state.BackupPath, restoredPath, attachmentOutput)
+	}
 	if restoreErr == nil && !reflect.DeepEqual(restoredManifest, *state.BackupManifest) {
 		restoreErr = fmt.Errorf(
 			"restored backup revision %q or manifest does not match recorded backup revision %q",
@@ -299,6 +311,7 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 		state.Status = StatusRollbackFailed
 		state.UpdatedAt = o.now().UTC()
 		state.RestoredPath = restoredPath
+		state.RestoredAttachments = restoredAttachments
 		state.Failure = safeFailure(restoreErr)
 		operationErr := fmt.Errorf("restore rollback database: %w", restoreErr)
 		if appendErr := o.journal.Append(state); appendErr != nil {
@@ -311,6 +324,7 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 		state.Status = StatusRollbackFailed
 		state.UpdatedAt = o.now().UTC()
 		state.RestoredPath = restoredPath
+		state.RestoredAttachments = restoredAttachments
 		state.Failure = safeFailure(err)
 		operationErr := fmt.Errorf("activate previous image: %w", err)
 		if appendErr := o.journal.Append(state); appendErr != nil {
@@ -322,6 +336,7 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 	state.UpdatedAt = o.now().UTC()
 	state.ActiveDSN = restoredDSN
 	state.RestoredPath = restoredPath
+	state.RestoredAttachments = restoredAttachments
 	state.Failure = ""
 	if err := o.journal.Append(state); err != nil {
 		return failedResult("lifecycle.rollback", application, &state), err
@@ -396,12 +411,36 @@ func validateState(state State) error {
 	if state.RestoredPath != "" && !databasePathPattern.MatchString(state.RestoredPath) {
 		return fmt.Errorf("invalid lifecycle restored database path %q", state.RestoredPath)
 	}
+	if state.RestoredAttachments != "" && !attachmentPattern.MatchString(state.RestoredAttachments) {
+		return fmt.Errorf("invalid lifecycle restored attachment path %q", state.RestoredAttachments)
+	}
 	for _, dsn := range []string{state.OriginalDSN, state.ActiveDSN} {
 		if dsn != "" && !databasePattern.MatchString(dsn) {
 			return fmt.Errorf("invalid lifecycle database DSN %q", dsn)
 		}
 	}
 	return nil
+}
+
+func attachmentRootForDSN(dsn string) (string, error) {
+	if !databasePattern.MatchString(dsn) {
+		return "", fmt.Errorf("unsupported runtime database DSN %q", dsn)
+	}
+	if dsn == defaultDatabaseDSN {
+		return "/var/lib/xboard/knowledge-attachments", nil
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(dsn, "file:"), ".db") + "-attachments", nil
+}
+
+func restoredAttachmentPaths(dsn string, formatVersion int) (string, string, error) {
+	root, err := attachmentRootForDSN(dsn)
+	if err != nil {
+		return "", "", err
+	}
+	if formatVersion == 2 {
+		return root, root, nil
+	}
+	return root, "", nil
 }
 
 func failedResult(action string, application Application, state *State) Result {
@@ -428,23 +467,11 @@ func validLifecycleStatus(status string) bool {
 }
 
 func validateBackupManifest(manifest backup.Manifest) error {
-	if manifest.FormatVersion != 1 {
-		return fmt.Errorf("unsupported backup format version %d", manifest.FormatVersion)
-	}
-	if manifest.CreatedAt.IsZero() {
-		return errors.New("backup creation time is required")
+	if err := backup.ValidateManifest(manifest); err != nil {
+		return err
 	}
 	if !revisionPattern.MatchString(manifest.AppRevision) {
 		return fmt.Errorf("invalid backup revision %q", manifest.AppRevision)
-	}
-	if manifest.SchemaVersion <= 0 {
-		return fmt.Errorf("invalid backup schema version %d", manifest.SchemaVersion)
-	}
-	if manifest.DatabaseSize < 0 {
-		return fmt.Errorf("invalid backup database size %d", manifest.DatabaseSize)
-	}
-	if !sha256Pattern.MatchString(manifest.DatabaseSHA256) {
-		return errors.New("invalid backup database SHA-256")
 	}
 	return nil
 }

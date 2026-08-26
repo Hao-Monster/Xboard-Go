@@ -85,6 +85,7 @@ func TestJournalRejectsPathsOutsideLifecycleVolumes(t *testing.T) {
 	tests := []State{
 		{Version: StateVersion, Status: StatusPrepared, UpdatedAt: now, BackupPath: "/etc/passwd.xbbackup"},
 		{Version: StateVersion, Status: StatusRollbackFailed, UpdatedAt: now, RestoredPath: "/tmp/restored.db"},
+		{Version: StateVersion, Status: StatusRollbackFailed, UpdatedAt: now, RestoredAttachments: "/tmp/attachments"},
 	}
 	for _, state := range tests {
 		journal := NewJournal(filepath.Join(t.TempDir(), "state.jsonl"))
@@ -167,7 +168,7 @@ func TestUpgradeFailureAutomaticallyRestoresPreviousImageAndDatabase(t *testing.
 		"current", "resolve:candidate",
 		"backup:/var/lib/xboard-backups/lifecycle-20260825T080000.000000000Z-aaaaaaaaaaaa.xbbackup",
 		"activate:" + target.ID + ":file:/var/lib/xboard/xboard.db",
-		"restore:" + previous.ID + ":/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db",
+		"restore:" + previous.ID + ":/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db:",
 		"activate:" + previous.ID + ":file:/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db",
 	}
 	if !reflect.DeepEqual(platform.actions, wantActions) {
@@ -211,9 +212,12 @@ func TestRollbackRequiresTheRecordedHealthyTarget(t *testing.T) {
 func TestSuccessfulUpgradeCanBeExplicitlyRolledBack(t *testing.T) {
 	previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
 	target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
+	manifest := testBackupManifest(previous.Revision)
+	manifest.FormatVersion = 2
+	manifest.AttachmentSHA256 = strings.Repeat("c", 64)
 	platform := &fakePlatform{
 		current: healthyApplication(previous, defaultDatabaseDSN),
-		images:  map[string]Image{"candidate": target},
+		images:  map[string]Image{"candidate": target}, backupManifest: manifest, restoreManifest: manifest,
 	}
 	journal := NewJournal(filepath.Join(t.TempDir(), "state.jsonl"))
 	fixed := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
@@ -235,6 +239,12 @@ func TestSuccessfulUpgradeCanBeExplicitlyRolledBack(t *testing.T) {
 	}
 	if rolledBack.State.ActiveDSN != "file:/var/lib/xboard/xboard-rollback-20260825T090000.000000000Z.db" {
 		t.Fatalf("active DSN = %q", rolledBack.State.ActiveDSN)
+	}
+	if rolledBack.State.RestoredAttachments != "/var/lib/xboard/xboard-rollback-20260825T090000.000000000Z-attachments" {
+		t.Fatalf("restored attachments = %q", rolledBack.State.RestoredAttachments)
+	}
+	if !slicesContainPrefix(platform.actions, "restore:"+previous.ID+":"+rolledBack.State.RestoredPath+":"+rolledBack.State.RestoredAttachments) {
+		t.Fatalf("bundle attachment restore was not recorded: %#v", platform.actions)
 	}
 }
 
@@ -310,6 +320,7 @@ type fakePlatform struct {
 	images          map[string]Image
 	activateErrors  map[string]error
 	restoreManifest backup.Manifest
+	backupManifest  backup.Manifest
 	actions         []string
 }
 
@@ -340,11 +351,14 @@ func (f *fakePlatform) Activate(_ context.Context, image Image, dsn string) (App
 
 func (f *fakePlatform) Backup(_ context.Context, _ Application, output string) (backup.Manifest, error) {
 	f.actions = append(f.actions, "backup:"+output)
+	if f.backupManifest.AppRevision != "" {
+		return f.backupManifest, nil
+	}
 	return testBackupManifest(f.current.Image.Revision), nil
 }
 
-func (f *fakePlatform) Restore(_ context.Context, image Image, _ string, output string) (backup.Manifest, error) {
-	f.actions = append(f.actions, "restore:"+image.ID+":"+output)
+func (f *fakePlatform) Restore(_ context.Context, image Image, _ string, output, attachmentOutput string) (backup.Manifest, error) {
+	f.actions = append(f.actions, "restore:"+image.ID+":"+output+":"+attachmentOutput)
 	if f.restoreManifest.AppRevision != "" {
 		return f.restoreManifest, nil
 	}
@@ -359,6 +373,20 @@ func testBackupManifest(revision string) backup.Manifest {
 		SchemaVersion:  23,
 		DatabaseSize:   1024,
 		DatabaseSHA256: strings.Repeat("d", 64),
+	}
+}
+
+func TestValidateBackupManifestAcceptsCurrentBundleFormat(t *testing.T) {
+	manifest := testBackupManifest(strings.Repeat("a", 40))
+	manifest.FormatVersion = 2
+	manifest.AttachmentSHA256 = strings.Repeat("b", 64)
+	if err := validateBackupManifest(manifest); err != nil {
+		t.Fatalf("validateBackupManifest() error = %v", err)
+	}
+
+	manifest.AttachmentSHA256 = ""
+	if err := validateBackupManifest(manifest); err == nil {
+		t.Fatal("validateBackupManifest() accepted incomplete bundle metadata")
 	}
 }
 
