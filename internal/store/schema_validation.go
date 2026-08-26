@@ -63,6 +63,9 @@ var requiredSchemaTables = []struct {
 	{"gift_card_templates", 32},
 	{"gift_card_codes", 32},
 	{"gift_card_usages", 32},
+	{"distributor_subscriptions", 33},
+	{"distributor_hwid_devices", 33},
+	{"commission_logs", 34},
 }
 
 type schemaQueryer interface {

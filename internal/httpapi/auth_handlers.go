@@ -32,9 +32,12 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setSessionCookies(w, credentials)
 	writeSuccess(w, http.StatusOK, map[string]any{
-		"id":       user.ID,
-		"email":    user.Email,
-		"is_admin": user.IsAdmin,
+		"id":               user.ID,
+		"email":            user.Email,
+		"is_admin":         user.IsAdmin,
+		"is_staff":         user.IsStaff,
+		"is_distributor":   user.IsDistributor,
+		"distributor_name": user.DistributorName,
 	})
 }
 
@@ -243,7 +246,7 @@ func legacyAuthData(user store.User, plaintext string) map[string]any {
 		"token":          user.SubscriptionToken,
 		"auth_data":      "Bearer " + plaintext,
 		"is_admin":       user.IsAdmin,
-		"is_distributor": false,
+		"is_distributor": user.IsDistributor,
 	}
 }
 
@@ -267,9 +270,12 @@ func (s *server) setSessionCookies(w http.ResponseWriter, credentials sessionCre
 func (s *server) session(w http.ResponseWriter, r *http.Request) {
 	session, _ := sessionFromContext(r.Context())
 	writeSuccess(w, http.StatusOK, map[string]any{
-		"id":       session.UserID,
-		"email":    session.Email,
-		"is_admin": session.IsAdmin,
+		"id":               session.UserID,
+		"email":            session.Email,
+		"is_admin":         session.IsAdmin,
+		"is_staff":         session.IsStaff,
+		"is_distributor":   session.IsDistributor,
+		"distributor_name": session.DistributorName,
 	})
 }
 

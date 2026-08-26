@@ -78,6 +78,9 @@ export interface UserSession {
   id: number;
   email: string;
   is_admin: boolean;
+  is_staff?: boolean;
+  is_distributor?: boolean;
+  distributor_name?: string | null;
 }
 
 export type LoginLinkRedirect = "dashboard" | "invite" | "knowledge" | "ticket" | "subscribe";
@@ -223,6 +226,109 @@ export interface AdminOrderPage {
   total: number;
   page: number;
   page_size: number;
+}
+
+export type DistributorDeliveryStatus = 0 | 1 | 2;
+export type DistributorSettlementStatus = 0 | 1;
+
+export interface DistributorSubscription {
+	id: number;
+	original_order_id: number;
+	trade_no: string;
+	distributor_user_id: number;
+	customer_name: string | null;
+	remark: string | null;
+	delivery_status: DistributorDeliveryStatus;
+	settlement_status: DistributorSettlementStatus;
+	config_issued_at: string | null;
+	connected_at: string | null;
+	connected_node_id: number | null;
+	connected_node_name: string | null;
+	claimed_at: string | null;
+	closed_at: string | null;
+	hwid_enabled: boolean;
+	hwid_limit: number;
+	revision: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface DistributorEntitlement {
+	plan_id: number;
+	plan_name: string;
+	transfer_enable: number;
+	used_traffic: number;
+	remaining_traffic: number;
+	expired_at: string | null;
+	speed_limit: number;
+	device_limit: number;
+}
+
+export interface DistributorOrder {
+	order: Order;
+	plan_name: string;
+	distributor_email?: string;
+	distributor_name?: string;
+	subscription: DistributorSubscription;
+	settlement_status: DistributorSettlementStatus;
+	subscription_entitlement: DistributorEntitlement;
+	bound_devices: string[];
+	is_subscription_origin: boolean;
+	can_view_subscription_qr: boolean;
+	can_renew: boolean;
+}
+
+export interface DistributorOrderPage {
+	items: DistributorOrder[];
+	total: number;
+	page: number;
+	page_size: number;
+}
+
+export interface DistributorOrderQuery {
+	page?: number;
+	page_size?: number;
+	search?: string;
+	settlement_status?: DistributorSettlementStatus;
+	distributor_user_id?: number;
+}
+
+export interface DistributorQR {
+	trade_no: string;
+	customer_name: string | null;
+	qr_code: string;
+	hwid_enabled: boolean;
+	hwid_devices: string[];
+}
+
+export interface DistributorHWIDSettings {
+	enabled: boolean;
+	limit: number;
+	registered_count: number;
+}
+
+export interface DistributorHWIDDevice {
+	id: number;
+	hwid: string;
+	device_os: string | null;
+	os_version: string | null;
+	device_model: string | null;
+	user_agent: string | null;
+	ip_address: string | null;
+	first_seen_at: string;
+	last_seen_at: string;
+}
+
+export interface AdminDistributorOrderDetail {
+	order: DistributorOrder;
+	hwid: DistributorHWIDSettings;
+	subscribe_url: string;
+}
+
+export interface DistributorSettlementSummary {
+	count: number;
+	total_amount: number;
+	settled_at: string | null;
 }
 
 export interface AdminOrderQuery {
@@ -607,6 +713,9 @@ export interface AdminUser {
   id: number;
   email: string;
   is_admin: boolean;
+  is_staff?: boolean;
+  is_distributor?: boolean;
+  distributor_name?: string | null;
   banned: boolean;
   group_id: number | null;
   transfer_enable: number;
@@ -844,6 +953,30 @@ export interface InvitationCode {
 export interface InvitationSummary {
   codes: InvitationCode[];
   invited_count: number;
+  valid_commission: number;
+  pending_commission: number;
+  commission_rate: number;
+  available_commission: number;
+}
+
+export interface CommissionLog {
+  id: number;
+  trade_no: string;
+  order_amount: number;
+  get_amount: number;
+  created_at: string;
+}
+
+export interface CommissionLogPage {
+  items: CommissionLog[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CommissionTransferResult {
+  commission_balance: number;
+  balance: number;
 }
 
 export interface WorkerStatus {
@@ -937,6 +1070,10 @@ export interface AdminUserCreateInput {
   speed_limit: number;
   device_limit: number;
   banned: boolean;
+  is_admin?: boolean;
+  is_staff?: boolean;
+  is_distributor?: boolean;
+  distributor_name?: string | null;
 }
 
 export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "password"> {
@@ -980,6 +1117,17 @@ export interface AdminAPI {
   assignOrder: (input: AssignOrderInput) => Promise<Order>;
   paidAdminOrder: (tradeNo: string) => Promise<Order>;
   cancelAdminOrder: (tradeNo: string) => Promise<Order>;
+	listAdminDistributorOptions: () => Promise<AdminUser[]>;
+	listAdminDistributorOrders: (query?: DistributorOrderQuery) => Promise<DistributorOrderPage>;
+	getAdminDistributorOrder: (orderID: number) => Promise<AdminDistributorOrderDetail>;
+	updateAdminDistributorRemark: (orderID: number, remark: string | null) => Promise<{ order_id: number; remark: string | null }>;
+	updateAdminDistributorEntitlement: (orderID: number, input: Omit<DistributorEntitlement, "plan_id" | "plan_name" | "used_traffic" | "remaining_traffic">) => Promise<DistributorEntitlement>;
+	updateAdminDistributorHWID: (orderID: number, enabled: boolean, limit: number) => Promise<DistributorHWIDSettings>;
+	listAdminDistributorHWIDDevices: (orderID: number, search?: string) => Promise<DistributorHWIDDevice[]>;
+	deleteAdminDistributorHWIDDevice: (orderID: number, deviceID: number) => Promise<void>;
+	previewAdminDistributorSettlement: (userID: number) => Promise<DistributorSettlementSummary>;
+	settleAdminDistributorOrders: (userID: number) => Promise<DistributorSettlementSummary>;
+	exportAdminDistributorOrders: (query?: DistributorOrderQuery) => Promise<Blob>;
   listCoupons: (query?: CouponQuery) => Promise<CouponPage>;
   createCoupon: (input: CouponInput) => Promise<Coupon>;
   updateCoupon: (id: number, input: CouponInput) => Promise<Coupon>;
@@ -1138,6 +1286,14 @@ export class APIClient implements AdminAPI {
     return this.request<InvitationCode>("/api/v1/invitations", { method: "POST", body: {} });
   }
 
+  async listCommissionLogs(page = 1, pageSize = 50): Promise<CommissionLogPage> {
+    return this.request<CommissionLogPage>(`/api/v1/invitations/commissions?page=${page}&page_size=${pageSize}`);
+  }
+
+  async transferCommission(amount: number): Promise<CommissionTransferResult> {
+    return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", { method: "POST", body: { amount } });
+  }
+
   async recordInvitationView(invitationCode: string): Promise<void> {
     await this.request<boolean>("/api/v1/invitations/view", { method: "POST", body: { invite_code: invitationCode } });
   }
@@ -1278,6 +1434,32 @@ export class APIClient implements AdminAPI {
     return this.request<PlanOffer[]>("/api/v1/plans");
   }
 
+	async listDistributorOrders(query: DistributorOrderQuery = {}): Promise<DistributorOrderPage> {
+		return this.request<DistributorOrderPage>(`/api/v1/distributor/orders${distributorOrderQuery(query)}`);
+	}
+
+	async createDistributorOrder(planID: number, period: PlanPeriod): Promise<DistributorOrder> {
+		return this.request<DistributorOrder>("/api/v1/distributor/orders", { method: "POST", body: { plan_id: planID, period } });
+	}
+
+	async getDistributorOrder(tradeNo: string): Promise<DistributorOrder> {
+		return this.request<DistributorOrder>(`/api/v1/distributor/orders/${encodeURIComponent(tradeNo)}`);
+	}
+
+	async renewDistributorOrder(tradeNo: string, period: PlanPeriod, idempotencyKey: string): Promise<DistributorOrder> {
+		return this.request<DistributorOrder>(`/api/v1/distributor/orders/${encodeURIComponent(tradeNo)}/renew`, {
+			method: "POST", body: { period, idempotency_key: idempotencyKey }
+		});
+	}
+
+	async getDistributorOrderQR(tradeNo: string): Promise<DistributorQR> {
+		return this.request<DistributorQR>(`/api/v1/distributor/orders/${encodeURIComponent(tradeNo)}/qr`);
+	}
+
+	async exportDistributorOrders(query: DistributorOrderQuery = {}): Promise<Blob> {
+		return this.download(`/api/v1/distributor/orders/export${distributorOrderQuery(query)}`);
+	}
+
   async listOrders(status?: OrderStatus, limit = 100): Promise<Order[]> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status !== undefined) params.set("status", String(status));
@@ -1339,6 +1521,51 @@ export class APIClient implements AdminAPI {
   async cancelAdminOrder(tradeNo: string): Promise<Order> {
     return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
   }
+
+	async listAdminDistributorOptions(): Promise<AdminUser[]> {
+		return this.request<AdminUser[]>("/api/v1/admin/distributors/options");
+	}
+
+	async listAdminDistributorOrders(query: DistributorOrderQuery = {}): Promise<DistributorOrderPage> {
+		return this.request<DistributorOrderPage>(`/api/v1/admin/distributor-orders${distributorOrderQuery(query)}`);
+	}
+
+	async getAdminDistributorOrder(orderID: number): Promise<AdminDistributorOrderDetail> {
+		return this.request<AdminDistributorOrderDetail>(`/api/v1/admin/distributor-orders/${orderID}`);
+	}
+
+	async updateAdminDistributorRemark(orderID: number, remark: string | null): Promise<{ order_id: number; remark: string | null }> {
+		return this.request(`/api/v1/admin/distributor-orders/${orderID}/remark`, { method: "PATCH", body: { remark } });
+	}
+
+	async updateAdminDistributorEntitlement(orderID: number, input: Omit<DistributorEntitlement, "plan_id" | "plan_name" | "used_traffic" | "remaining_traffic">): Promise<DistributorEntitlement> {
+		return this.request<DistributorEntitlement>(`/api/v1/admin/distributor-orders/${orderID}/entitlement`, { method: "PATCH", body: input });
+	}
+
+	async updateAdminDistributorHWID(orderID: number, enabled: boolean, limit: number): Promise<DistributorHWIDSettings> {
+		return this.request<DistributorHWIDSettings>(`/api/v1/admin/distributor-orders/${orderID}/hwid`, { method: "PATCH", body: { enabled, limit } });
+	}
+
+	async listAdminDistributorHWIDDevices(orderID: number, search = ""): Promise<DistributorHWIDDevice[]> {
+		const suffix = search.trim() === "" ? "" : `?search=${encodeURIComponent(search.trim())}`;
+		return this.request<DistributorHWIDDevice[]>(`/api/v1/admin/distributor-orders/${orderID}/hwid/devices${suffix}`);
+	}
+
+	async deleteAdminDistributorHWIDDevice(orderID: number, deviceID: number): Promise<void> {
+		await this.request<boolean>(`/api/v1/admin/distributor-orders/${orderID}/hwid/devices/${deviceID}`, { method: "DELETE" });
+	}
+
+	async previewAdminDistributorSettlement(userID: number): Promise<DistributorSettlementSummary> {
+		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement`);
+	}
+
+	async settleAdminDistributorOrders(userID: number): Promise<DistributorSettlementSummary> {
+		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement`, { method: "POST", body: {} });
+	}
+
+	async exportAdminDistributorOrders(query: DistributorOrderQuery = {}): Promise<Blob> {
+		return this.download(`/api/v1/admin/distributor-orders/export${distributorOrderQuery(query)}`);
+	}
 
   async listCoupons(query: CouponQuery = {}): Promise<CouponPage> {
     const params = new URLSearchParams();
@@ -1736,4 +1963,14 @@ function readCookie(name: string): string | null {
   const prefix = `${encodeURIComponent(name)}=`;
   const item = document.cookie.split("; ").find((cookie) => cookie.startsWith(prefix));
   return item === undefined ? null : decodeURIComponent(item.slice(prefix.length));
+}
+
+function distributorOrderQuery(query: DistributorOrderQuery): string {
+	const params = new URLSearchParams();
+	if (query.page !== undefined) params.set("page", String(query.page));
+	if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
+	if (query.search !== undefined && query.search.trim() !== "") params.set("search", query.search.trim());
+	if (query.settlement_status !== undefined) params.set("settlement_status", String(query.settlement_status));
+	if (query.distributor_user_id !== undefined) params.set("distributor_user_id", String(query.distributor_user_id));
+	return params.size === 0 ? "" : `?${params.toString()}`;
 }

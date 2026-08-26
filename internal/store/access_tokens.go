@@ -107,14 +107,16 @@ func (s *Store) AuthenticateAccessToken(ctx context.Context, tokenHash string, n
 	var session SessionUser
 	var expiresAt, lastUsedAt sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT a.id, u.id, u.email, u.is_admin, u.banned, a.expires_at, a.last_used_at
+		SELECT a.id, u.id, u.email, u.is_admin, u.is_staff, u.is_distributor, u.distributor_name,
+		       u.banned, a.expires_at, a.last_used_at
 		FROM access_tokens a
 		JOIN users u ON u.id = a.user_id
 		WHERE a.token_hash = ? AND a.revoked_at IS NULL
 		  AND (a.expires_at IS NULL OR a.expires_at > ?)
 		  AND u.account_kind = ? AND u.banned = 0
 	`, tokenHash, now.Unix(), AccountKindHuman).Scan(
-		&session.SessionID, &session.UserID, &session.Email, &session.IsAdmin, &session.Banned, &expiresAt, &lastUsedAt,
+		&session.SessionID, &session.UserID, &session.Email, &session.IsAdmin, &session.IsStaff,
+		&session.IsDistributor, &session.DistributorName, &session.Banned, &expiresAt, &lastUsedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SessionUser{}, ErrNotFound

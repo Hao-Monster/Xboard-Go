@@ -41,10 +41,10 @@ func (s *Store) BootstrapAdmin(ctx context.Context, email, passwordHash string, 
 func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned, account_kind, subscription_token
+		SELECT id, email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, subscription_token
 		FROM users
 		WHERE email = ? COLLATE NOCASE
-	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
+	`, strings.TrimSpace(email)).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.IsStaff, &user.IsDistributor, &user.DistributorName, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -57,10 +57,10 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, error)
 func (s *Store) FindUserByID(ctx context.Context, userID int64) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, is_admin, banned, account_kind, subscription_token
+		SELECT id, email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, subscription_token
 		FROM users
 		WHERE id = ?
-	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
+	`, userID).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.IsStaff, &user.IsDistributor, &user.DistributorName, &user.Banned, &user.AccountKind, &user.SubscriptionToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -87,7 +87,8 @@ func (s *Store) AuthenticateSession(ctx context.Context, tokenHash string, now t
 	var expiresAt int64
 	var lastUsed sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT s.id, u.id, u.email, u.is_admin, u.banned, s.csrf_hash, s.expires_at, s.last_used_at
+		SELECT s.id, u.id, u.email, u.is_admin, u.is_staff, u.is_distributor, u.distributor_name,
+		       u.banned, s.csrf_hash, s.expires_at, s.last_used_at
 		FROM admin_sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND u.account_kind = 'human'
@@ -96,6 +97,9 @@ func (s *Store) AuthenticateSession(ctx context.Context, tokenHash string, now t
 		&session.UserID,
 		&session.Email,
 		&session.IsAdmin,
+		&session.IsStaff,
+		&session.IsDistributor,
+		&session.DistributorName,
 		&session.Banned,
 		&session.CSRFHash,
 		&expiresAt,

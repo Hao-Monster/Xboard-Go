@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"strings"
@@ -72,6 +73,26 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusForbidden)
 		return
+	}
+	hwid, err := s.store.AuthorizeDistributorHWID(r.Context(), store.AuthorizeDistributorHWIDInput{
+		SubscriberUserID: account.ID, HWID: r.Header.Get("x-hwid"), DeviceOS: r.Header.Get("x-device-os"),
+		OSVersion: r.Header.Get("x-ver-os"), DeviceModel: r.Header.Get("x-device-model"),
+		UserAgent: r.UserAgent(), IPAddress: requestIP(r),
+	}, s.now())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	setDistributorHWIDHeaders(w, hwid)
+	if !hwid.Allowed {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if hwid.SubscriptionID > 0 {
+		if err := s.store.MarkDistributorSubscriptionClaimed(r.Context(), hwid.SubscriptionID, requestIP(r), r.UserAgent(), s.now()); err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
 
 	config := store.SubscriptionRenderConfig{}
@@ -147,9 +168,35 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 	for name, value := range response.Headers {
 		w.Header().Set(name, value)
 	}
+	if hwid.SubscriptionID > 0 {
+		if err := s.store.MarkDistributorConfigIssued(r.Context(), hwid.SubscriptionID, s.now()); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		if hwid.OriginalTradeNo != "" {
+			title := "订单号：" + hwid.OriginalTradeNo
+			w.Header().Set("profile-title", "base64:"+base64.StdEncoding.EncodeToString([]byte(title)))
+			w.Header().Set("x-order-no", hwid.OriginalTradeNo)
+			w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+hwid.OriginalTradeNo)
+		}
+	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(response.Body); err != nil {
 		s.logger.Debug("write subscription response", "user_id", account.ID, "client", client.Kind.String(), "error", err)
+	}
+}
+
+func setDistributorHWIDHeaders(w http.ResponseWriter, result store.DistributorHWIDAuthorization) {
+	if !result.Enabled {
+		return
+	}
+	w.Header().Set("x-hwid-active", "true")
+	if result.NotSupported {
+		w.Header().Set("x-hwid-not-supported", "true")
+	}
+	if result.LimitReached {
+		w.Header().Set("x-hwid-max-devices-reached", "true")
+		w.Header().Set("x-hwid-limit", "true")
 	}
 }
 

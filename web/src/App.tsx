@@ -23,6 +23,8 @@ const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagem
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
+const DistributorPortal = lazy(async () => import("./features/distributor/DistributorPortal").then((module) => ({ default: module.DistributorPortal })));
+const AdminDistributorPage = lazy(async () => import("./features/distributor/AdminDistributorPage").then((module) => ({ default: module.AdminDistributorPage })));
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
   is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
@@ -39,7 +41,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export function App() {
       : api.exchangeLoginLink(loginLink.token);
     void authentication.then((nextSession) => {
       if (!active || sequence !== authenticationSequence.current) return;
-      setSession({ id: nextSession.id, email: nextSession.email, is_admin: nextSession.is_admin });
+      setSession(nextSession);
       if (loginLink !== null) {
         setUserLanding(nextSession.redirect);
         window.history.replaceState(null, "", nextSession.is_admin ? "#/" : loginLinkLandingHash(nextSession.redirect));
@@ -100,7 +102,7 @@ export function App() {
       setBootstrapAuthError("");
       void api.exchangeLoginLink(loginLink.token).then((nextSession) => {
         if (!active || sequence !== authenticationSequence.current) return;
-        setSession({ id: nextSession.id, email: nextSession.email, is_admin: nextSession.is_admin });
+        setSession(nextSession);
         setUserLanding(nextSession.redirect);
         window.history.replaceState(null, "", nextSession.is_admin ? "#/" : loginLinkLandingHash(nextSession.redirect));
         setAuthLocation(window.location.hash);
@@ -160,6 +162,9 @@ export function App() {
     return <AuthPage config={guestConfig} mode={authMode} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
   }
   if (!session.is_admin) {
+    if (session.is_distributor) {
+      return <Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+    }
     return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
@@ -173,6 +178,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>套餐管理</button>
           <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>订单管理</button>
+          <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => setPage("distributors")}>分销管理</button>
           <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => setPage("payments")}>支付配置</button>
           <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => setPage("coupons")}>优惠券管理</button>
           <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => setPage("gift-cards")}>礼品卡管理</button>
@@ -196,6 +202,7 @@ export function App() {
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "orders" && <OrderManagementPage api={api} />}
+      {page === "distributors" && <Suspense fallback={<div className="app-loading">正在加载分销管理…</div>}><AdminDistributorPage api={api} /></Suspense>}
       {page === "payments" && <PaymentManagementPage api={api} />}
       {page === "coupons" && <CouponManagementPage api={api} />}
       {page === "gift-cards" && <Suspense fallback={<div className="app-loading">正在加载礼品卡管理…</div>}><GiftCardManagementPage api={api} /></Suspense>}

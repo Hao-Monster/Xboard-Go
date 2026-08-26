@@ -29,6 +29,7 @@ var (
 	ErrInvitationCodeInvalid                  = errors.New("invitation code is invalid")
 	ErrInvitationCodeLimit                    = errors.New("invitation code generation limit reached")
 	ErrInvitationCodeCollision                = fmt.Errorf("%w: invitation code collision", ErrConflict)
+	ErrInsufficientCommission                 = fmt.Errorf("%w: insufficient commission balance", ErrConflict)
 	ErrLoginLinkInvalid                       = errors.New("login link is invalid")
 	ErrMailLoginLimited                       = errors.New("mail login request is limited")
 	ErrMailLoginDisabled                      = errors.New("mail login is disabled")
@@ -66,6 +67,12 @@ var (
 	ErrGiftCardCondition                      = errors.New("gift card conditions are not satisfied")
 	ErrGiftCardActivePlan                     = errors.New("gift card plan reward requires no active plan")
 	ErrGiftCardReferenced                     = fmt.Errorf("%w: gift card is referenced by usage history", ErrConflict)
+	ErrDistributorUnavailable                 = errors.New("distributor account is unavailable")
+	ErrDistributorSubscriptionClosed          = fmt.Errorf("%w: distributor subscription is closed", ErrConflict)
+	ErrDistributorRenewalMismatch             = fmt.Errorf("%w: distributor renewal idempotency key was reused", ErrConflict)
+	ErrDistributorRenewalUnavailable          = fmt.Errorf("%w: distributor subscription cannot be renewed", ErrConflict)
+	ErrDistributorHWIDLimit                   = fmt.Errorf("%w: distributor subscription device limit reached", ErrConflict)
+	ErrDistributorClaimConsumed               = fmt.Errorf("%w: distributor claim has already been consumed", ErrConflict)
 )
 
 const (
@@ -78,6 +85,9 @@ type User struct {
 	Email             string
 	PasswordHash      string
 	IsAdmin           bool
+	IsStaff           bool
+	IsDistributor     bool
+	DistributorName   *string
 	Banned            bool
 	AccountKind       string
 	SubscriptionToken string
@@ -285,8 +295,41 @@ type InvitationCode struct {
 }
 
 type InvitationSummary struct {
-	Codes        []InvitationCode
-	InvitedCount int64
+	Codes               []InvitationCode
+	InvitedCount        int64
+	ValidCommission     int64
+	PendingCommission   int64
+	CommissionRate      int
+	AvailableCommission int64
+}
+
+type CommissionLog struct {
+	ID           int64     `json:"id"`
+	OrderID      int64     `json:"-"`
+	InviteUserID int64     `json:"-"`
+	UserID       int64     `json:"-"`
+	TradeNo      string    `json:"trade_no"`
+	OrderAmount  int64     `json:"order_amount"`
+	GetAmount    int64     `json:"get_amount"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type CommissionLogPage struct {
+	Items    []CommissionLog `json:"items"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}
+
+type CommissionTransferResult struct {
+	CommissionBalance int64 `json:"commission_balance"`
+	Balance           int64 `json:"balance"`
+}
+
+type CommissionProcessingResult struct {
+	Checked   int64 `json:"checked"`
+	Paid      int64 `json:"paid"`
+	Remaining int64 `json:"remaining"`
 }
 
 type TicketMailJob struct {
@@ -590,6 +633,9 @@ type AdminUser struct {
 	ID              int64      `json:"id"`
 	Email           string     `json:"email"`
 	IsAdmin         bool       `json:"is_admin"`
+	IsStaff         bool       `json:"is_staff"`
+	IsDistributor   bool       `json:"is_distributor"`
+	DistributorName *string    `json:"distributor_name"`
 	Banned          bool       `json:"banned"`
 	GroupID         *int64     `json:"group_id"`
 	TransferEnable  int64      `json:"transfer_enable"`
@@ -620,25 +666,33 @@ type AdminUserFilter struct {
 }
 
 type CreateAdminUserInput struct {
-	Email          string
-	PasswordHash   string
-	GroupID        *int64
-	TransferEnable int64
-	ExpiredAt      *time.Time
-	SpeedLimit     int
-	DeviceLimit    int
-	Banned         bool
+	Email           string
+	PasswordHash    string
+	IsAdmin         bool
+	IsStaff         bool
+	IsDistributor   bool
+	DistributorName string
+	GroupID         *int64
+	TransferEnable  int64
+	ExpiredAt       *time.Time
+	SpeedLimit      int
+	DeviceLimit     int
+	Banned          bool
 }
 
 type UpdateAdminUserInput struct {
-	Revision       int64
-	Email          string
-	GroupID        *int64
-	TransferEnable int64
-	ExpiredAt      *time.Time
-	SpeedLimit     int
-	DeviceLimit    int
-	Banned         bool
+	Revision        int64
+	Email           string
+	IsAdmin         *bool
+	IsStaff         *bool
+	IsDistributor   *bool
+	DistributorName *string
+	GroupID         *int64
+	TransferEnable  int64
+	ExpiredAt       *time.Time
+	SpeedLimit      int
+	DeviceLimit     int
+	Banned          bool
 }
 
 type AdminUserMutation struct {
@@ -650,15 +704,18 @@ type AdminUserMutation struct {
 }
 
 type SessionUser struct {
-	UserID         int64
-	Email          string
-	IsAdmin        bool
-	Banned         bool
-	CSRFHash       string
-	ExpiresAt      time.Time
-	SessionID      int64
-	LastUsedAt     *time.Time
-	CredentialKind string
+	UserID          int64
+	Email           string
+	IsAdmin         bool
+	IsStaff         bool
+	IsDistributor   bool
+	DistributorName *string
+	Banned          bool
+	CSRFHash        string
+	ExpiresAt       time.Time
+	SessionID       int64
+	LastUsedAt      *time.Time
+	CredentialKind  string
 }
 
 type AccountSession struct {
@@ -1028,6 +1085,173 @@ type CreateOrderInput struct {
 	PlanID     int64
 	Period     string
 	CouponCode string
+}
+
+type DistributorDeliveryStatus int
+
+const (
+	DistributorDeliveryPending DistributorDeliveryStatus = iota
+	DistributorDeliveryClaimed
+	DistributorDeliveryClosed
+)
+
+type DistributorSettlementStatus int
+
+const (
+	DistributorSettlementUnsettled DistributorSettlementStatus = iota
+	DistributorSettlementSettled
+)
+
+type DistributorSubscription struct {
+	ID                int64                       `json:"id"`
+	OriginalOrderID   int64                       `json:"original_order_id"`
+	OriginalTradeNo   string                      `json:"trade_no"`
+	DistributorUserID int64                       `json:"distributor_user_id"`
+	SubscriberUserID  int64                       `json:"-"`
+	CustomerName      *string                     `json:"customer_name"`
+	Remark            *string                     `json:"remark"`
+	DeliveryStatus    DistributorDeliveryStatus   `json:"delivery_status"`
+	SettlementStatus  DistributorSettlementStatus `json:"settlement_status"`
+	ConfigIssuedAt    *time.Time                  `json:"config_issued_at"`
+	ConnectedAt       *time.Time                  `json:"connected_at"`
+	ConnectedNodeID   *int64                      `json:"connected_node_id"`
+	ConnectedNodeName *string                     `json:"connected_node_name"`
+	ClaimedAt         *time.Time                  `json:"claimed_at"`
+	ClosedAt          *time.Time                  `json:"closed_at"`
+	HWIDEnabled       bool                        `json:"hwid_enabled"`
+	HWIDLimit         int                         `json:"hwid_limit"`
+	Revision          int64                       `json:"revision"`
+	CreatedAt         time.Time                   `json:"created_at"`
+	UpdatedAt         time.Time                   `json:"updated_at"`
+	SubscriptionToken string                      `json:"-"`
+	SubscriberUUID    string                      `json:"-"`
+	ClaimToken        string                      `json:"-"`
+}
+
+type DistributorOrder struct {
+	Order                 Order                       `json:"order"`
+	PlanName              string                      `json:"plan_name"`
+	DistributorEmail      string                      `json:"distributor_email,omitempty"`
+	DistributorName       string                      `json:"distributor_name,omitempty"`
+	Subscription          DistributorSubscription     `json:"subscription"`
+	SettlementStatus      DistributorSettlementStatus `json:"settlement_status"`
+	Entitlement           DistributorEntitlement      `json:"subscription_entitlement"`
+	BoundDevices          []string                    `json:"bound_devices"`
+	IsSubscriptionOrigin  bool                        `json:"is_subscription_origin"`
+	CanViewSubscriptionQR bool                        `json:"can_view_subscription_qr"`
+	CanRenew              bool                        `json:"can_renew"`
+}
+
+type DistributorOrderFilter struct {
+	Page               int
+	PageSize           int
+	DistributorUserID  *int64
+	Status             *OrderStatus
+	SettlementStatus   *DistributorSettlementStatus
+	Search             string
+	IncludeTokenSearch bool
+}
+
+type DistributorOrderPage struct {
+	Items    []DistributorOrder `json:"items"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
+}
+
+type DistributorOrderExportRow struct {
+	TradeNo             string
+	Type                OrderType
+	SubscriptionTradeNo string
+	CustomerName        *string
+	DistributorEmail    string
+	DistributorName     string
+	PlanName            string
+	Period              string
+	TotalAmount         int64
+	SettlementStatus    DistributorSettlementStatus
+	Remark              *string
+}
+
+type CreateDistributorOrderInput struct {
+	DistributorUserID int64
+	PlanID            int64
+	Period            string
+	CustomerName      *string
+}
+
+type RenewDistributorOrderInput struct {
+	DistributorUserID int64
+	TradeNo           string
+	Period            string
+	IdempotencyKey    string
+}
+
+type DistributorEntitlement struct {
+	PlanID           int64      `json:"plan_id"`
+	PlanName         string     `json:"plan_name"`
+	TransferEnable   int64      `json:"transfer_enable"`
+	UsedTraffic      int64      `json:"used_traffic"`
+	RemainingTraffic int64      `json:"remaining_traffic"`
+	ExpiredAt        *time.Time `json:"expired_at"`
+	SpeedLimit       int        `json:"speed_limit"`
+	DeviceLimit      int        `json:"device_limit"`
+}
+
+type UpdateDistributorEntitlementInput struct {
+	TransferEnable int64
+	ExpiredAt      *time.Time
+	SpeedLimit     int
+	DeviceLimit    int
+}
+
+type DistributorSettlementSummary struct {
+	Count       int64      `json:"count"`
+	TotalAmount int64      `json:"total_amount"`
+	SettledAt   *time.Time `json:"settled_at"`
+}
+
+type DistributorHWIDSettings struct {
+	Enabled         bool `json:"enabled"`
+	Limit           int  `json:"limit"`
+	RegisteredCount int  `json:"registered_count"`
+}
+
+type DistributorHWIDDevice struct {
+	ID          int64     `json:"id"`
+	HWID        string    `json:"hwid"`
+	DeviceOS    *string   `json:"device_os"`
+	OSVersion   *string   `json:"os_version"`
+	DeviceModel *string   `json:"device_model"`
+	UserAgent   *string   `json:"user_agent"`
+	IPAddress   *string   `json:"ip"`
+	FirstSeenAt time.Time `json:"first_seen_at"`
+	LastSeenAt  time.Time `json:"last_seen_at"`
+}
+
+type AuthorizeDistributorHWIDInput struct {
+	SubscriberUserID int64
+	HWID             string
+	DeviceOS         string
+	OSVersion        string
+	DeviceModel      string
+	UserAgent        string
+	IPAddress        string
+}
+
+type DistributorHWIDAuthorization struct {
+	SubscriptionID  int64
+	OriginalTradeNo string
+	Enabled         bool
+	Allowed         bool
+	LimitReached    bool
+	NotSupported    bool
+}
+
+type DistributorClaim struct {
+	SubscriptionID    int64  `json:"-"`
+	SubscriptionToken string `json:"-"`
+	OriginalTradeNo   string `json:"-"`
 }
 
 type StaleOrderBatchResult struct {

@@ -215,7 +215,7 @@ func (s *Store) FindSubscriptionAccount(ctx context.Context, token string) (Subs
 	}
 	return scanSubscriptionAccount(s.db.QueryRowContext(ctx, `
 		SELECT id,email,uuid,group_id,plan_id,transfer_enable,traffic_u,traffic_d,expired_at,next_reset_at,speed_limit,device_limit,banned,subscription_token,created_at
-		FROM users WHERE subscription_token = ? AND account_kind = 'human'
+		FROM users WHERE subscription_token = ? AND account_kind IN ('human', 'internal_subscription')
 	`, token))
 }
 

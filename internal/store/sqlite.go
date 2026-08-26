@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 32
+const currentSchemaVersion = 34
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -264,6 +264,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v32: %w", err)
 		}
 		version = 32
+	}
+	if version < 33 {
+		if _, err := tx.ExecContext(ctx, schemaV33); err != nil {
+			return fmt.Errorf("apply schema v33: %w", err)
+		}
+		version = 33
+	}
+	if version < 34 {
+		if _, err := tx.ExecContext(ctx, schemaV34); err != nil {
+			return fmt.Errorf("apply schema v34: %w", err)
+		}
+		version = 34
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1480,4 +1492,201 @@ CREATE TABLE gift_card_usages (
 CREATE INDEX idx_gift_usages_user ON gift_card_usages(user_id, used_at DESC, id DESC);
 CREATE INDEX idx_gift_usages_code ON gift_card_usages(code_id, used_at DESC, id DESC);
 CREATE INDEX idx_gift_usages_template ON gift_card_usages(template_id, used_at DESC, id DESC);
+`
+
+const schemaV33 = `
+ALTER TABLE users ADD COLUMN is_staff INTEGER NOT NULL DEFAULT 0
+    CHECK (is_staff IN (0, 1));
+ALTER TABLE users ADD COLUMN is_distributor INTEGER NOT NULL DEFAULT 0
+    CHECK (is_distributor IN (0, 1));
+ALTER TABLE users ADD COLUMN distributor_name TEXT CHECK (
+    (is_distributor = 0 AND distributor_name IS NULL)
+    OR
+    (is_distributor = 1 AND distributor_name IS NOT NULL
+        AND distributor_name = trim(distributor_name)
+        AND length(distributor_name) BETWEEN 1 AND 100)
+);
+CREATE INDEX idx_users_distributor
+    ON users(account_kind, is_distributor, banned, distributor_name COLLATE NOCASE, id);
+
+CREATE TABLE distributor_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE RESTRICT,
+    distributor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    subscriber_user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
+    customer_name TEXT CHECK (
+        customer_name IS NULL
+        OR (customer_name = trim(customer_name) AND length(customer_name) BETWEEN 1 AND 64)
+    ),
+    remark TEXT CHECK (
+        remark IS NULL
+        OR (remark = trim(remark) AND length(remark) BETWEEN 1 AND 500)
+    ),
+    claim_token_hash TEXT NOT NULL UNIQUE CHECK (
+        length(claim_token_hash) = 64 AND claim_token_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    delivery_status INTEGER NOT NULL DEFAULT 0 CHECK (delivery_status BETWEEN 0 AND 2),
+    config_issued_at INTEGER CHECK (config_issued_at IS NULL OR config_issued_at >= 0),
+    connected_at INTEGER CHECK (connected_at IS NULL OR connected_at >= 0),
+    connected_node_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL,
+    connected_node_name TEXT CHECK (
+        connected_node_name IS NULL OR length(CAST(connected_node_name AS BLOB)) BETWEEN 1 AND 255
+    ),
+    claimed_at INTEGER CHECK (claimed_at IS NULL OR claimed_at >= 0),
+    claim_ip TEXT CHECK (claim_ip IS NULL OR length(claim_ip) BETWEEN 1 AND 45),
+    claim_user_agent TEXT CHECK (
+        claim_user_agent IS NULL OR length(CAST(claim_user_agent AS BLOB)) BETWEEN 1 AND 255
+    ),
+    closed_at INTEGER CHECK (closed_at IS NULL OR closed_at >= 0),
+    settlement_status INTEGER NOT NULL DEFAULT 0 CHECK (settlement_status IN (0, 1)),
+    settled_at INTEGER CHECK (settled_at IS NULL OR settled_at >= 0),
+    settled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    hwid_enabled INTEGER NOT NULL DEFAULT 1 CHECK (hwid_enabled IN (0, 1)),
+    hwid_limit INTEGER NOT NULL DEFAULT 1 CHECK (hwid_limit BETWEEN 1 AND 100),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    CHECK ((settlement_status = 0 AND settled_at IS NULL AND settled_by IS NULL)
+        OR (settlement_status = 1 AND settled_at IS NOT NULL)),
+    CHECK (claimed_at IS NOT NULL OR (claim_ip IS NULL AND claim_user_agent IS NULL))
+);
+CREATE INDEX idx_distributor_subscriptions_owner_settlement
+    ON distributor_subscriptions(distributor_user_id, settlement_status, created_at DESC, id DESC);
+CREATE INDEX idx_distributor_subscriptions_subscriber
+    ON distributor_subscriptions(subscriber_user_id, id);
+CREATE INDEX idx_distributor_subscriptions_delivery
+    ON distributor_subscriptions(delivery_status, updated_at, id);
+
+CREATE TABLE distributor_hwid_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscription_id INTEGER NOT NULL REFERENCES distributor_subscriptions(id) ON DELETE RESTRICT,
+    hwid TEXT NOT NULL CHECK (length(hwid) BETWEEN 1 AND 128),
+    device_os TEXT CHECK (device_os IS NULL OR length(device_os) BETWEEN 1 AND 100),
+    os_version TEXT CHECK (os_version IS NULL OR length(os_version) BETWEEN 1 AND 100),
+    device_model TEXT CHECK (device_model IS NULL OR length(device_model) BETWEEN 1 AND 150),
+    user_agent TEXT CHECK (user_agent IS NULL OR length(CAST(user_agent AS BLOB)) BETWEEN 1 AND 255),
+    ip_address TEXT CHECK (ip_address IS NULL OR length(ip_address) BETWEEN 1 AND 45),
+    first_seen_at INTEGER NOT NULL CHECK (first_seen_at >= 0),
+    last_seen_at INTEGER NOT NULL CHECK (last_seen_at >= first_seen_at),
+    UNIQUE (subscription_id, hwid)
+);
+CREATE INDEX idx_distributor_hwid_last_seen
+    ON distributor_hwid_devices(subscription_id, last_seen_at DESC, id DESC);
+
+CREATE UNIQUE INDEX idx_orders_distributor_idempotency
+    ON orders(user_id, distributor_idempotency_key)
+    WHERE distributor_idempotency_key IS NOT NULL;
+CREATE INDEX idx_orders_distributor_settlement
+    ON orders(user_id, distributor_order_id, status, paid_at, created_at DESC, id DESC)
+    WHERE distributor_order_id IS NOT NULL;
+
+CREATE TRIGGER trg_distributor_subscriptions_insert_guard
+BEFORE INSERT ON distributor_subscriptions
+FOR EACH ROW
+WHEN NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.distributor_user_id
+          AND account_kind = 'human' AND is_distributor = 1
+    )
+    OR NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.subscriber_user_id AND account_kind = 'internal_subscription'
+    )
+    OR NOT EXISTS (
+        SELECT 1 FROM orders
+        WHERE id = NEW.original_order_id
+          AND user_id = NEW.distributor_user_id AND type = 1 AND status = 3
+    )
+BEGIN
+    SELECT RAISE(ABORT, 'invalid distributor subscription relationship');
+END;
+
+CREATE TRIGGER trg_distributor_subscriptions_update_guard
+BEFORE UPDATE OF original_order_id, distributor_user_id, subscriber_user_id ON distributor_subscriptions
+FOR EACH ROW
+WHEN NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.distributor_user_id
+          AND account_kind = 'human' AND is_distributor = 1
+    )
+    OR NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.subscriber_user_id AND account_kind = 'internal_subscription'
+    )
+    OR NOT EXISTS (
+        SELECT 1 FROM orders
+        WHERE id = NEW.original_order_id
+          AND user_id = NEW.distributor_user_id AND type = 1 AND status = 3
+    )
+BEGIN
+    SELECT RAISE(ABORT, 'invalid distributor subscription relationship');
+END;
+
+CREATE TRIGGER trg_orders_distributor_insert_guard
+BEFORE INSERT ON orders
+FOR EACH ROW
+WHEN NEW.distributor_order_id IS NOT NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM distributor_subscriptions
+        WHERE id = NEW.distributor_order_id AND distributor_user_id = NEW.user_id
+    )
+BEGIN
+    SELECT RAISE(ABORT, 'invalid distributor order owner');
+END;
+
+CREATE TRIGGER trg_orders_distributor_update_guard
+BEFORE UPDATE OF distributor_order_id, user_id ON orders
+FOR EACH ROW
+WHEN NEW.distributor_order_id IS NOT NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM distributor_subscriptions
+        WHERE id = NEW.distributor_order_id AND distributor_user_id = NEW.user_id
+    )
+BEGIN
+    SELECT RAISE(ABORT, 'invalid distributor order owner');
+END;
+
+CREATE TRIGGER trg_distributor_subscriptions_delete_restrict
+BEFORE DELETE ON distributor_subscriptions
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM orders WHERE distributor_order_id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'distributor subscription is referenced by an order');
+END;
+`
+
+const schemaV34 = `
+ALTER TABLE app_settings ADD COLUMN commission_auto_check_enable INTEGER NOT NULL DEFAULT 1
+    CHECK (commission_auto_check_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN withdraw_close_enable INTEGER NOT NULL DEFAULT 0
+    CHECK (withdraw_close_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN commission_distribution_enable INTEGER NOT NULL DEFAULT 0
+    CHECK (commission_distribution_enable IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN commission_distribution_l1 INTEGER NOT NULL DEFAULT 100
+    CHECK (commission_distribution_l1 BETWEEN 0 AND 100);
+ALTER TABLE app_settings ADD COLUMN commission_distribution_l2 INTEGER NOT NULL DEFAULT 0
+    CHECK (commission_distribution_l2 BETWEEN 0 AND 100);
+ALTER TABLE app_settings ADD COLUMN commission_distribution_l3 INTEGER NOT NULL DEFAULT 0
+    CHECK (commission_distribution_l3 BETWEEN 0 AND 100);
+
+CREATE TABLE commission_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+    invite_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    trade_no TEXT NOT NULL CHECK (
+        (length(trade_no) = 25 AND trade_no NOT GLOB '*[^0-9]*')
+        OR
+        (length(trade_no) = 32 AND trade_no NOT GLOB '*[^0-9a-f]*')
+    ),
+    order_amount INTEGER NOT NULL CHECK (order_amount BETWEEN 0 AND 9000000000000000),
+    get_amount INTEGER NOT NULL CHECK (get_amount BETWEEN 1 AND 9000000000000000),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    UNIQUE (order_id, invite_user_id)
+);
+CREATE INDEX idx_commission_logs_owner_created
+    ON commission_logs(invite_user_id, created_at DESC, id DESC);
+CREATE INDEX idx_commission_logs_user
+    ON commission_logs(user_id, created_at DESC, id DESC);
 `

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -63,19 +64,26 @@ func (s *server) getAdminUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createAdminUser(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Email          string     `json:"email"`
-		Password       string     `json:"password"`
-		GroupID        *int64     `json:"group_id"`
-		TransferEnable int64      `json:"transfer_enable"`
-		ExpiredAt      *time.Time `json:"expired_at"`
-		SpeedLimit     int        `json:"speed_limit"`
-		DeviceLimit    int        `json:"device_limit"`
-		Banned         bool       `json:"banned"`
+		Email           string     `json:"email"`
+		Password        string     `json:"password"`
+		IsAdmin         bool       `json:"is_admin"`
+		IsStaff         bool       `json:"is_staff"`
+		IsDistributor   bool       `json:"is_distributor"`
+		DistributorName *string    `json:"distributor_name"`
+		GroupID         *int64     `json:"group_id"`
+		TransferEnable  int64      `json:"transfer_enable"`
+		ExpiredAt       *time.Time `json:"expired_at"`
+		SpeedLimit      int        `json:"speed_limit"`
+		DeviceLimit     int        `json:"device_limit"`
+		Banned          bool       `json:"banned"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	fields := validateAdminUserFields(input.Email, input.Password, input.GroupID, input.TransferEnable, input.ExpiredAt, input.SpeedLimit, input.DeviceLimit, true)
+	for field, message := range validateDistributorRoleFields(input.IsDistributor, input.DistributorName, true) {
+		fields[field] = message
+	}
 	if len(fields) > 0 {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查用户信息", fields)
 		return
@@ -85,9 +93,14 @@ func (s *server) createAdminUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	distributorName := ""
+	if input.DistributorName != nil {
+		distributorName = *input.DistributorName
+	}
 	user, err := s.store.CreateAdminUser(r.Context(), store.CreateAdminUserInput{
 		Email: input.Email, PasswordHash: passwordHash, GroupID: input.GroupID, TransferEnable: input.TransferEnable,
 		ExpiredAt: input.ExpiredAt, SpeedLimit: input.SpeedLimit, DeviceLimit: input.DeviceLimit, Banned: input.Banned,
+		IsAdmin: input.IsAdmin, IsStaff: input.IsStaff, IsDistributor: input.IsDistributor, DistributorName: distributorName,
 	}, s.now())
 	if errors.Is(err, store.ErrEmailInUse) {
 		writeAPIError(w, http.StatusConflict, "email_in_use", "邮箱已被使用", map[string]string{"email": "邮箱已被使用"})
@@ -122,9 +135,14 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "cannot_ban_self", "管理员不能封禁自己的当前账号", map[string]string{"banned": "不能封禁当前账号"})
 		return
 	}
+	if userID == session.UserID && input.IsAdmin != nil && !*input.IsAdmin {
+		writeAPIError(w, http.StatusUnprocessableEntity, "cannot_remove_admin_self", "不能撤销当前登录账号的管理员权限，请使用另一个管理员账号操作", map[string]string{"is_admin": "不能撤销当前账号的管理员权限"})
+		return
+	}
 	user, mutation, err := s.store.UpdateAdminUser(r.Context(), userID, store.UpdateAdminUserInput{
 		Revision: *input.Revision, Email: *input.Email, GroupID: input.GroupID.Value, TransferEnable: *input.TransferEnable,
 		ExpiredAt: input.ExpiredAt.Value, SpeedLimit: *input.SpeedLimit, DeviceLimit: *input.DeviceLimit, Banned: *input.Banned,
+		IsAdmin: input.IsAdmin, IsStaff: input.IsStaff, IsDistributor: input.IsDistributor, DistributorName: input.DistributorName,
 	}, s.now())
 	if errors.Is(err, store.ErrEmailInUse) {
 		writeAPIError(w, http.StatusConflict, "email_in_use", "邮箱已被使用", map[string]string{"email": "邮箱已被使用"})
@@ -187,14 +205,18 @@ func (s *server) resetAdminUserPassword(w http.ResponseWriter, r *http.Request) 
 }
 
 type adminUserUpdateRequest struct {
-	Revision       *int64        `json:"revision"`
-	Email          *string       `json:"email"`
-	GroupID        nullableInt64 `json:"group_id"`
-	TransferEnable *int64        `json:"transfer_enable"`
-	ExpiredAt      nullableTime  `json:"expired_at"`
-	SpeedLimit     *int          `json:"speed_limit"`
-	DeviceLimit    *int          `json:"device_limit"`
-	Banned         *bool         `json:"banned"`
+	Revision        *int64        `json:"revision"`
+	Email           *string       `json:"email"`
+	IsAdmin         *bool         `json:"is_admin"`
+	IsStaff         *bool         `json:"is_staff"`
+	IsDistributor   *bool         `json:"is_distributor"`
+	DistributorName *string       `json:"distributor_name"`
+	GroupID         nullableInt64 `json:"group_id"`
+	TransferEnable  *int64        `json:"transfer_enable"`
+	ExpiredAt       nullableTime  `json:"expired_at"`
+	SpeedLimit      *int          `json:"speed_limit"`
+	DeviceLimit     *int          `json:"device_limit"`
+	Banned          *bool         `json:"banned"`
 }
 
 func (input adminUserUpdateRequest) validationFields() map[string]string {
@@ -226,7 +248,13 @@ func (input adminUserUpdateRequest) validationFields() map[string]string {
 	if len(fields) > 0 {
 		return fields
 	}
-	return validateAdminUserFields(*input.Email, "", input.GroupID.Value, *input.TransferEnable, input.ExpiredAt.Value, *input.SpeedLimit, *input.DeviceLimit, false)
+	fields = validateAdminUserFields(*input.Email, "", input.GroupID.Value, *input.TransferEnable, input.ExpiredAt.Value, *input.SpeedLimit, *input.DeviceLimit, false)
+	if input.DistributorName != nil || (input.IsDistributor != nil && *input.IsDistributor) {
+		for field, message := range validateDistributorRoleFields(input.IsDistributor != nil && *input.IsDistributor, input.DistributorName, false) {
+			fields[field] = message
+		}
+	}
+	return fields
 }
 
 func validateAdminUserFields(email, password string, groupID *int64, transferEnable int64, expiredAt *time.Time, speedLimit, deviceLimit int, validatePassword bool) map[string]string {
@@ -257,6 +285,26 @@ func validateAdminUserFields(email, password string, groupID *int64, transferEna
 	}
 	if deviceLimit < 0 || deviceLimit > 1_000 {
 		fields["device_limit"] = "必须在 0 到 1000 之间"
+	}
+	return fields
+}
+
+func validateDistributorRoleFields(enabled bool, name *string, requireName bool) map[string]string {
+	fields := map[string]string{}
+	if !enabled {
+		return fields
+	}
+	if name == nil {
+		if requireName {
+			fields["distributor_name"] = "启用分销商时必须填写分销商名称"
+		}
+		return fields
+	}
+	normalized := strings.TrimSpace(*name)
+	if normalized == "" {
+		fields["distributor_name"] = "启用分销商时必须填写分销商名称"
+	} else if !utf8.ValidString(normalized) || utf8.RuneCountInString(normalized) > 100 {
+		fields["distributor_name"] = "分销商名称不能超过100个字符"
 	}
 	return fields
 }

@@ -239,6 +239,58 @@ func TestAdminUserMutationIsOptimisticAndRevokesSensitiveState(t *testing.T) {
 	}
 }
 
+func TestAdminUserRolesRequireDistributorNameAndRevokeCredentials(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 26, 9, 0, 0, 0, time.UTC)
+
+	if _, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "invalid-distributor@example.test", PasswordHash: "hash", IsDistributor: true,
+	}, now); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("CreateAdminUser(distributor without name) error = %v, want ErrInvalidInput", err)
+	}
+
+	created, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "roles@example.test", PasswordHash: "hash", IsAdmin: true, IsStaff: true,
+		IsDistributor: true, DistributorName: "  华东渠道  ",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(roles) error = %v", err)
+	}
+	if !created.IsAdmin || !created.IsStaff || !created.IsDistributor || created.DistributorName == nil || *created.DistributorName != "华东渠道" {
+		t.Fatalf("created roles = %#v", created)
+	}
+	if err := database.CreateSession(ctx, created.ID, "roles-session", "csrf", now.Add(time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
+		UserID: created.ID, TokenHash: strings.Repeat("9", 64), Name: "roles-client",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	session, err := database.AuthenticateSession(ctx, "roles-session", now.Add(time.Minute))
+	if err != nil || !session.IsAdmin || !session.IsStaff || !session.IsDistributor || session.DistributorName == nil || *session.DistributorName != "华东渠道" {
+		t.Fatalf("session roles = %#v err=%v", session, err)
+	}
+
+	disabled := false
+	updated, _, err := database.UpdateAdminUser(ctx, created.ID, UpdateAdminUserInput{
+		Revision: created.Revision, Email: created.Email, IsDistributor: &disabled, DistributorName: pointerTo("不得保留"),
+	}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("UpdateAdminUser(disable distributor) error = %v", err)
+	}
+	if updated.IsDistributor || updated.DistributorName != nil || !updated.IsAdmin || !updated.IsStaff {
+		t.Fatalf("updated roles = %#v", updated)
+	}
+	if _, err := database.AuthenticateSession(ctx, "roles-session", now.Add(3*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("role change left session active: %v", err)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("9", 64), now.Add(3*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("role change left access token active: %v", err)
+	}
+}
+
 func TestAdminPasswordResetRevokesSessionsAndChecksRevision(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
