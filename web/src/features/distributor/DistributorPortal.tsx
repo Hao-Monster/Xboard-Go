@@ -7,6 +7,7 @@ import { InvitationPage } from "../invitations/InvitationPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { DistributorOrdersPage } from "./DistributorOrdersPage";
 import { DistributorPlansPage } from "./DistributorPlansPage";
+import { distributorCopy, type DistributorLocale } from "./locale";
 
 interface DistributorPortalAPI {
   listPlanOffers: () => Promise<PlanOffer[]>;
@@ -27,14 +28,8 @@ interface DistributorPortalAPI {
 }
 
 type DistributorPage = "plans" | "orders" | "invitations" | "knowledge" | "clients";
-type Locale = "zh-CN" | "en-US";
-
-const navigation: Array<[DistributorPage, Record<Locale, string>]> = [
-  ["plans", { "zh-CN": "购买订阅", "en-US": "Buy subscriptions" }],
-  ["orders", { "zh-CN": "我的订单", "en-US": "My orders" }],
-  ["invitations", { "zh-CN": "我的邀请", "en-US": "Invitations" }],
-  ["knowledge", { "zh-CN": "使用文档", "en-US": "Guides" }],
-  ["clients", { "zh-CN": "客户端下载", "en-US": "Downloads" }]
+const navigation: Array<[DistributorPage, keyof Pick<typeof distributorCopy["zh-CN"], "buy" | "orders" | "invite" | "knowledge" | "clients">]> = [
+  ["plans", "buy"], ["orders", "orders"], ["invitations", "invite"], ["knowledge", "knowledge"], ["clients", "clients"]
 ];
 
 export function DistributorPortal({ api, session, siteName, siteLogo, initialPage = "dashboard", onSignedOut }: {
@@ -46,42 +41,43 @@ export function DistributorPortal({ api, session, siteName, siteLogo, initialPag
   onSignedOut: () => void;
 }) {
   const [page, setPage] = useState<DistributorPage>(() => landingPage(initialPage));
-  const [locale, setLocale] = useState<Locale>(() => localStorage.getItem("xboard-distributor-locale") === "en-US" ? "en-US" : "zh-CN");
-  const [light, setLight] = useState(() => localStorage.getItem("xboard-distributor-theme") === "light");
+  const [locale, setLocale] = useState<DistributorLocale>(() => localStorage.getItem("xboard_distributor_locale") === "en-US" ? "en-US" : "zh-CN");
+  const [light, setLight] = useState(() => localStorage.getItem("xboard_distributor_dark") !== "1");
   const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     const root = document.documentElement;
     if (light) root.dataset.distributorTheme = "light"; else delete root.dataset.distributorTheme;
-    localStorage.setItem("xboard-distributor-theme", light ? "light" : "dark");
+    localStorage.setItem("xboard_distributor_dark", light ? "0" : "1");
     return () => { delete root.dataset.distributorTheme; };
   }, [light]);
 
   const switchLocale = () => {
     setLocale((current) => {
       const next = current === "zh-CN" ? "en-US" : "zh-CN";
-      localStorage.setItem("xboard-distributor-locale", next);
+      localStorage.setItem("xboard_distributor_locale", next);
       return next;
     });
   };
   const logout = async () => {
     setLogoutError("");
     try { await api.logout(); onSignedOut(); }
-    catch (cause) { setLogoutError(cause instanceof Error ? cause.message : "退出失败"); }
+    catch (cause) { setLogoutError(cause instanceof Error ? cause.message : locale === "en-US" ? "Sign out failed" : "退出失败"); }
   };
+  const copy = distributorCopy[locale];
 
   return <div className="app-frame distributor-portal" lang={locale}>
-    <nav className="topbar" aria-label="分销端导航">
+    <nav className="topbar" aria-label={locale === "en-US" ? "Distributor navigation" : "分销端导航"}>
       <div className="brand"><BrandMark appName={siteName} logo={siteLogo} /><span>{siteName}</span></div>
-      <div className="admin-nav">{navigation.map(([key, labels]) => <button className="nav-link" aria-current={page === key ? "page" : undefined} key={key} onClick={() => setPage(key)}>{labels[locale]}</button>)}</div>
-      <div className="account distributor-account"><button className="button ghost compact" aria-label={light ? "切换深色主题" : "切换浅色主题"} onClick={() => setLight((current) => !current)}>{light ? "☾" : "☀"}</button><button className="button ghost compact" aria-label="切换语言" onClick={switchLocale}>{locale === "zh-CN" ? "中" : "EN"}</button><span>{session.distributor_name ?? session.email}</span><button className="button ghost compact" onClick={() => void logout()}>{locale === "zh-CN" ? "退出" : "Log out"}</button></div>
+      <div className="admin-nav">{navigation.map(([key, label]) => <button className="nav-link" aria-current={page === key ? "page" : undefined} key={key} onClick={() => setPage(key)}>{copy[label]}</button>)}</div>
+      <div className="account distributor-account"><button className="button ghost compact" aria-label={light ? copy.dark : copy.light} onClick={() => setLight((current) => !current)}>{light ? "☾" : "☀"}</button><button className="button ghost compact" aria-label={copy.language} onClick={switchLocale}>{locale === "zh-CN" ? "中" : "EN"}</button><span>{session.distributor_name ?? session.email}</span><button className="button ghost compact" onClick={() => void logout()}>{copy.logout}</button></div>
     </nav>
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
-    {page === "plans" && <DistributorPlansPage api={api} />}
-    {page === "orders" && <DistributorOrdersPage api={api} />}
+    {page === "plans" && <DistributorPlansPage api={api} locale={locale} />}
+    {page === "orders" && <DistributorOrdersPage api={api} locale={locale} />}
     {page === "invitations" && <InvitationPage api={api} locale={locale} />}
-    {page === "knowledge" && <UserKnowledgePage api={api} />}
-    {page === "clients" && <ClientCatalogPage api={api} />}
+    {page === "knowledge" && <UserKnowledgePage key={locale} api={api} locale={locale} fixedLocale />}
+    {page === "clients" && <ClientCatalogPage api={api} locale={locale} />}
   </div>;
 }
 

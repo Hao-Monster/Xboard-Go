@@ -30,7 +30,7 @@ describe("App public identity bootstrap", () => {
 		}));
 
 		render(<App />);
-		expect(await screen.findByRole("heading", { name: "购买订阅" }, { timeout: 5_000 })).toBeVisible();
+		expect(await screen.findByRole("heading", { name: "分销订阅中心" }, { timeout: 5_000 })).toBeVisible();
 		expect(screen.getByText("星河分销")).toBeVisible();
 		expect(screen.queryByRole("button", { name: "我的订阅" })).not.toBeInTheDocument();
 		expect(requested.some((path) => path.includes("/api/v1/notices"))).toBe(false);

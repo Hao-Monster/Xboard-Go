@@ -22,13 +22,30 @@ describe("Distributor portal", () => {
     const user = userEvent.setup();
     render(<DistributorPortal api={api} session={{ id: 9, email: "seller@example.test", is_admin: false, is_distributor: true, distributor_name: "星河分销" }} siteName="Tenant Board" siteLogo={null} onSignedOut={vi.fn()} />);
 
-    expect(await screen.findByRole("heading", { name: "购买订阅" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "分销订阅中心" })).toBeVisible();
     for (const label of ["购买订阅", "我的订单", "我的邀请", "使用文档", "客户端下载"]) expect(screen.getByRole("button", { name: label })).toBeVisible();
     for (const forbidden of ["我的订阅", "我的工单", "礼品卡", "公告"]) expect(screen.queryByRole("button", { name: forbidden })).not.toBeInTheDocument();
     expect(screen.getByText("星河分销")).toBeVisible();
+    expect(document.documentElement).toHaveAttribute("data-distributor-theme", "light");
+    await user.click(screen.getByRole("button", { name: "深色模式" }));
+    expect(document.documentElement).not.toHaveAttribute("data-distributor-theme");
+    expect(localStorage.getItem("xboard_distributor_dark")).toBe("1");
+    await user.click(screen.getByRole("button", { name: "浅色模式" }));
+    expect(document.documentElement).toHaveAttribute("data-distributor-theme", "light");
+    expect(localStorage.getItem("xboard_distributor_dark")).toBe("0");
 
-    await user.click(screen.getByRole("button", { name: "切换语言" }));
-    await user.click(screen.getByRole("button", { name: "Invitations" }));
+    await user.click(screen.getByRole("button", { name: "语言" }));
+    expect(await screen.findByRole("heading", { name: "Distributor Center" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Confirmed — place order" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "My Orders" }));
+    expect(await screen.findByRole("heading", { name: "My Orders" })).toBeVisible();
+    expect(screen.getByPlaceholderText("Search by order or customer name")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Documentation" }));
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeVisible();
+    expect(api.listKnowledge).toHaveBeenLastCalledWith("en-US", "");
+    await user.click(screen.getByRole("button", { name: "Client downloads" }));
+    expect(await screen.findByRole("heading", { name: "Client downloads" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "My Invitations" }));
     expect(await screen.findByRole("heading", { name: "My Invitations" })).toBeVisible();
     expect(screen.getAllByText("Valid commission", { exact: true })[0]).toBeVisible();
     expect(screen.getByRole("button", { name: "Transfer commission" })).toBeVisible();
@@ -107,7 +124,9 @@ function distributorOrder(): DistributorOrder {
 
 function portalAPI() {
   return {
-    listPlanOffers: vi.fn().mockResolvedValue([plan]), createDistributorOrder: vi.fn(), listDistributorOrders: vi.fn(), getDistributorOrderQR: vi.fn(), renewDistributorOrder: vi.fn(), exportDistributorOrders: vi.fn(),
+    listPlanOffers: vi.fn().mockResolvedValue([plan]), createDistributorOrder: vi.fn(),
+    listDistributorOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
+    getDistributorOrderQR: vi.fn(), renewDistributorOrder: vi.fn(), exportDistributorOrders: vi.fn(),
     getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, available_commission: 0 }), createInvitation: vi.fn(),
     listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), transferCommission: vi.fn(),
     listKnowledge: vi.fn().mockResolvedValue([]), getKnowledge: vi.fn(), listClientCatalog: vi.fn().mockResolvedValue([]), clientCatalogQR: vi.fn(), logout: vi.fn()

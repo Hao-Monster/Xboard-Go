@@ -33,7 +33,7 @@ export default defineConfig({
     fileParallelism: false,
     coverage: {
       provider: "v8",
-      include: ["src/App.tsx", "src/components/*.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/auth/*.tsx", "src/features/users/*.tsx", "src/features/notices/*.tsx", "src/features/clients/*.tsx", "src/features/coupons/*.tsx", "src/features/distributor/*.tsx", "src/features/giftcards/*.tsx", "src/features/invitations/*.tsx", "src/features/knowledge/*.tsx", "src/features/orders/*.tsx", "src/features/payments/*.tsx", "src/features/plans/*.tsx", "src/features/tickets/*.tsx", "src/features/system/*.tsx", "src/features/settings/*.tsx", "src/features/user/*.tsx"],
+      include: ["src/App.tsx", "src/components/*.tsx", "src/features/servers/ServerManagementPage.tsx", "src/features/admin/*.tsx", "src/features/account/*.tsx", "src/features/auth/*.tsx", "src/features/users/*.tsx", "src/features/notices/*.tsx", "src/features/clients/*.tsx", "src/features/coupons/*.tsx", "src/features/distributor/*.{ts,tsx}", "src/features/giftcards/*.tsx", "src/features/invitations/*.tsx", "src/features/knowledge/*.tsx", "src/features/orders/*.tsx", "src/features/payments/*.tsx", "src/features/plans/*.tsx", "src/features/tickets/*.tsx", "src/features/system/*.tsx", "src/features/settings/*.tsx", "src/features/user/*.tsx"],
       reporter: ["text", "json-summary"],
       thresholds: {
         statements: 70,

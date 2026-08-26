@@ -21,7 +21,7 @@ test("distributor purchase, delivery, renewal, administration, and settlement wo
 
   await logoutAndWait(page);
   await login(page, distributorEmail, distributorPassword);
-  await expect(page.getByRole("heading", { name: "购买订阅", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "分销订阅中心", exact: true })).toBeVisible();
   for (const item of ["购买订阅", "我的订单", "我的邀请", "使用文档", "客户端下载"]) await expect(page.getByRole("button", { name: item, exact: true })).toBeVisible();
   for (const item of ["我的订阅", "我的工单", "礼品卡"]) await expect(page.getByRole("button", { name: item, exact: true })).toHaveCount(0);
 
@@ -35,12 +35,27 @@ test("distributor purchase, delivery, renewal, administration, and settlement wo
   await page.getByLabel("划转金额（CNY）", { exact: true }).fill("0.01");
   await page.getByRole("button", { name: "佣金划转余额", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("佣金余额不足");
-  await page.getByRole("button", { name: "切换语言", exact: true }).click();
+  await page.getByRole("button", { name: "语言", exact: true }).click();
   await expect(page.getByRole("heading", { name: "My Invitations", exact: true })).toBeVisible();
   await expect(page.getByText("Valid commission", { exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "切换浅色主题", exact: true }).click();
+  await page.getByRole("button", { name: "Buy Subscription", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Distributor Center", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirmed — place order", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "My Orders", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "My Orders", exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("Search by order or customer name", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Documentation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Documentation", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Search documentation", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Client downloads", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Client downloads", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "My Invitations", exact: true }).click();
   await expect.poll(() => page.locator("html").getAttribute("data-distributor-theme")).toBe("light");
-  await page.getByRole("button", { name: "切换语言", exact: true }).click();
+  await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+  await expect.poll(() => page.locator("html").getAttribute("data-distributor-theme")).toBeNull();
+  await page.getByRole("button", { name: "Light mode", exact: true }).click();
+  await expect.poll(() => page.locator("html").getAttribute("data-distributor-theme")).toBe("light");
+  await page.getByRole("button", { name: "Language", exact: true }).click();
   await page.getByRole("button", { name: "购买订阅", exact: true }).click();
 
   const card = page.getByRole("article").filter({ has: page.getByRole("heading", { name: planName, exact: true }) });
