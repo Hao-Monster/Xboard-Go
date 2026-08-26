@@ -465,6 +465,13 @@ func (s *Store) CancelAdminOrder(ctx context.Context, tradeNo string, now time.T
 	if order.Status != OrderStatusPending {
 		return Order{}, ErrOrderState
 	}
+	activeCheckout, err := hasActivePaymentCheckoutTx(ctx, tx, order.ID)
+	if err != nil {
+		return Order{}, err
+	}
+	if activeCheckout {
+		return Order{}, ErrPaymentInProgress
+	}
 	if err := cancelOrderTx(ctx, tx, &order, now); err != nil {
 		return Order{}, err
 	}
@@ -490,6 +497,13 @@ func (s *Store) CancelOrder(ctx context.Context, userID int64, tradeNo string, n
 	}
 	if order.Status != OrderStatusPending {
 		return Order{}, ErrOrderState
+	}
+	activeCheckout, err := hasActivePaymentCheckoutTx(ctx, tx, order.ID)
+	if err != nil {
+		return Order{}, err
+	}
+	if activeCheckout {
+		return Order{}, ErrPaymentInProgress
 	}
 	if err := cancelOrderTx(ctx, tx, &order, now); err != nil {
 		return Order{}, err
@@ -639,6 +653,19 @@ func cancelOrderTx(ctx context.Context, tx *sql.Tx, order *Order, now time.Time)
 	order.Status = OrderStatusCancelled
 	order.UpdatedAt = now.UTC()
 	return nil
+}
+
+func hasActivePaymentCheckoutTx(ctx context.Context, tx *sql.Tx, orderID int64) (bool, error) {
+	var active bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM payment_checkout_attempts
+			WHERE order_id = ? AND status IN (0, 1)
+		)
+	`, orderID).Scan(&active); err != nil {
+		return false, fmt.Errorf("check active payment checkout before cancellation: %w", err)
+	}
+	return active, nil
 }
 
 func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo string, now time.Time) error {

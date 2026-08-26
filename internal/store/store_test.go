@@ -455,6 +455,13 @@ func newTestStore(t testing.TB) *Store {
 func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER trg_orders_payment_insert;
+		DROP TRIGGER trg_orders_payment_update;
+		DROP TRIGGER trg_payments_delete_restrict;
+		DROP TABLE payment_webhook_receipts;
+		DROP TABLE payment_checkout_attempts;
+		DROP TABLE payments;
+		DROP INDEX idx_orders_payment_status;
 		DROP TRIGGER trg_orders_coupon_insert;
 		DROP TRIGGER trg_orders_coupon_update;
 		DROP TRIGGER trg_coupons_delete_restrict;

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -257,6 +258,42 @@ func TestInitializeSettingsCipherFailsClosedForStoredCaptchaCredentials(t *testi
 	}
 	if initialized, err := initializeSettingsCipher(ctx, database, key); err != nil || initialized == nil {
 		t.Fatalf("initializeSettingsCipher() rejected the CAPTCHA key: cipher=%v err=%v", initialized, err)
+	}
+}
+
+func TestInitializeSettingsCipherFailsClosedForStoredPaymentCredentials(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "payment-settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x71}, 32)
+	cipherBox, err := appsettings.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := map[string]string{"url": "https://epay.example.test", "pid": "1001", "key": "payment-secret", "type": "alipay"}
+	ciphertext, err := payment.SealConfig(cipherBox, store.PaymentProviderEPay, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreatePayment(ctx, store.SavePaymentInput{
+		Provider: store.PaymentProviderEPay, Name: "EPay", ConfigCiphertext: ciphertext, Enabled: true,
+	}, time.Date(2026, 8, 26, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initializeSettingsCipher(ctx, database, nil); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted a missing key for payment credentials")
+	}
+	if _, err := initializeSettingsCipher(ctx, database, bytes.Repeat([]byte{0x24}, 32)); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted the wrong key for payment credentials")
+	}
+	if initialized, err := initializeSettingsCipher(ctx, database, key); err != nil || initialized == nil {
+		t.Fatalf("initializeSettingsCipher() rejected the payment key: cipher=%v err=%v", initialized, err)
 	}
 }
 

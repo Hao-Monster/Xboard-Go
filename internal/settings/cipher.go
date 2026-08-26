@@ -23,6 +23,7 @@ const (
 	RecaptchaSecretPurpose   SecretPurpose = "recaptcha-secret"
 	RecaptchaV3SecretPurpose SecretPurpose = "recaptcha-v3-secret"
 	TurnstileSecretPurpose   SecretPurpose = "turnstile-secret"
+	PaymentConfigPurpose     SecretPurpose = "payment-config"
 )
 
 const settingsAADPrefix = "xboard-go:app-settings:"
@@ -117,6 +118,8 @@ func purposeAAD(purpose SecretPurpose) ([]byte, error) {
 		suffix = "recaptcha-v3-secret:v1"
 	case TurnstileSecretPurpose:
 		suffix = "turnstile-secret:v1"
+	case PaymentConfigPurpose:
+		suffix = "payment-config:v1"
 	default:
 		return nil, errors.New("settings secret purpose is invalid")
 	}

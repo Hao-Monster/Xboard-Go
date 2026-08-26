@@ -328,6 +328,13 @@ func TestSchemaV29PreservesV28DataAndAddsFinancialConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
+		DROP TRIGGER trg_orders_payment_insert;
+		DROP TRIGGER trg_orders_payment_update;
+		DROP TRIGGER trg_payments_delete_restrict;
+		DROP TABLE payment_webhook_receipts;
+		DROP TABLE payment_checkout_attempts;
+		DROP TABLE payments;
+		DROP INDEX idx_orders_payment_status;
 		DROP TRIGGER trg_orders_coupon_insert;
 		DROP TRIGGER trg_orders_coupon_update;
 		DROP TRIGGER trg_coupons_delete_restrict;

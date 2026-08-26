@@ -27,7 +27,7 @@ describe("UserOrdersPage", () => {
     const completed = { ...pending, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", callback_no: pending.trade_no };
     const api = {
       listOrders: vi.fn().mockResolvedValue([pending]), getOrder: vi.fn().mockResolvedValue(pending),
-      checkoutOrder: vi.fn().mockResolvedValue(completed), cancelOrder: vi.fn()
+      listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn().mockResolvedValue(completed), cancelOrder: vi.fn()
     };
     const user = userEvent.setup();
     render(<UserOrdersPage api={api} />);
@@ -48,19 +48,44 @@ describe("UserOrdersPage", () => {
     const cancelled = { ...payable, status: 2 as const };
     const api = {
       listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable),
-      checkoutOrder: vi.fn(), cancelOrder: vi.fn().mockResolvedValue(cancelled)
+      listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn().mockResolvedValue(cancelled)
     };
     const user = userEvent.setup();
     render(<UserOrdersPage api={api} />);
 
     await user.click(await screen.findByRole("button", { name: `查看订单：${payable.trade_no}` }));
     const dialog = await screen.findByRole("dialog", { name: "订单详情" });
-    expect(within(dialog).getByText("当前没有可用支付方式。你可以关闭订单，待支付方式配置后重新下单。")).toBeVisible();
+    expect(await within(dialog).findByText("当前没有可用支付方式。你可以关闭订单，待支付方式配置后重新下单。")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
     await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith(payable.trade_no));
     expect(within(dialog).getByText("已取消")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "关闭订单" })).not.toBeInTheDocument();
+  });
+
+  it("selects an enabled payment method, shows the exact fee, and exposes the created checkout safely", async () => {
+    const payable = { ...pending, original_amount: 1_000, total_amount: 1_000 };
+		const completed = { ...payable, status: 3 as const, payment_id: 9, handling_amount: 148, paid_at: "2026-08-26T00:01:00Z" };
+    const method = { id: 9, name: "易支付", payment: "EPay" as const, handling_fee_fixed: 123, handling_fee_basis_points: 250 };
+    const checkout = { type: 1 as const, data: "https://checkout.example.test/pay/one", payment_id: method.id, handling_amount: 148, total_amount: 1_148 };
+    const api = {
+			listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValueOnce(payable).mockResolvedValue(completed),
+      listPaymentMethods: vi.fn().mockResolvedValue([method]), checkoutOrder: vi.fn().mockResolvedValue(checkout), cancelOrder: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+
+    await user.click(await screen.findByRole("button", { name: `查看订单：${payable.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(await within(dialog).findByText("手续费 ¥1.48")).toBeVisible();
+    expect(within(dialog).getByText("¥11.48")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "立即支付" }));
+    await waitFor(() => expect(api.checkoutOrder).toHaveBeenCalledWith(payable.trade_no, method.id));
+    expect(within(dialog).getByRole("link", { name: "前往支付" })).toHaveAttribute("href", checkout.data);
+    expect(within(dialog).getByText("应付 ¥11.48")).toBeVisible();
+		await waitFor(() => expect(api.getOrder).toHaveBeenCalledTimes(2), { timeout: 3_500 });
+		expect(within(dialog).getByText("已完成")).toBeVisible();
+		expect(within(dialog).queryByRole("link", { name: "前往支付" })).not.toBeInTheDocument();
   });
 });
 

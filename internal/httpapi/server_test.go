@@ -503,22 +503,26 @@ func loginAs(t *testing.T, api http.Handler, email, password string) testClient 
 }
 
 func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, nil, true, nil)
+	return newTestAPIWithOptions(t, nil, true, nil, nil)
 }
 
 func newTestAPIWithCatalogHTTP(t *testing.T, function func(*http.Request) (*http.Response, error)) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, function, true, nil)
+	return newTestAPIWithOptions(t, function, true, nil, nil)
 }
 
 func newTestAPIWithoutInvitationProtection(t *testing.T) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, nil, false, nil)
+	return newTestAPIWithOptions(t, nil, false, nil, nil)
 }
 
 func newTestAPIWithCaptcha(t *testing.T, verifier captcha.Verifier) (http.Handler, *store.Store) {
-	return newTestAPIWithOptions(t, nil, true, verifier)
+	return newTestAPIWithOptions(t, nil, true, verifier, nil)
 }
 
-func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier) (http.Handler, *store.Store) {
+func newTestAPIWithPaymentGateway(t *testing.T, gateway paymentGateway) (http.Handler, *store.Store) {
+	return newTestAPIWithOptions(t, nil, true, nil, gateway)
+}
+
+func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway) (http.Handler, *store.Store) {
 	t.Helper()
 	database, err := store.OpenSQLite(fmt.Sprintf("file:http-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
@@ -589,6 +593,7 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 		LoginLinkProtector:         loginLinkProtector,
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
+		PaymentGateway:             gateway,
 	})
 	return handler, database
 }

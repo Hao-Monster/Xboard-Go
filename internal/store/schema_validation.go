@@ -57,6 +57,9 @@ var requiredSchemaTables = []struct {
 	{"orders", 29},
 	{"order_entitlement_events", 29},
 	{"coupons", 30},
+	{"payments", 31},
+	{"payment_checkout_attempts", 31},
+	{"payment_webhook_receipts", 31},
 }
 
 type schemaQueryer interface {

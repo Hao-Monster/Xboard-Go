@@ -16,6 +16,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
+	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -51,6 +52,12 @@ type Dependencies struct {
 	SMTPAllowInsecure          bool
 	RuntimeTracker             *operations.Tracker
 	CaptchaVerifier            captcha.Verifier
+	PaymentGateway             paymentGateway
+}
+
+type paymentGateway interface {
+	Checkout(context.Context, payment.CheckoutRequest) (payment.CheckoutResult, error)
+	VerifyWebhook(context.Context, payment.WebhookRequest) (payment.VerifiedWebhook, error)
 }
 
 type passwordService interface {
@@ -88,6 +95,7 @@ type server struct {
 	machineRequests            *requestLimitGroup
 	ticketRequests             *requestLimitGroup
 	orderRequests              *requestLimitGroup
+	paymentWebhookRequests     *requestLimiter
 	hub                        *wsHub
 	webSocketEnabled           bool
 	webSocketURL               string
@@ -102,6 +110,7 @@ type server struct {
 	smtpAllowInsecure          bool
 	runtimeTracker             *operations.Tracker
 	captchaVerifier            captcha.Verifier
+	paymentGateway             paymentGateway
 }
 
 type contextKey int
@@ -141,6 +150,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.RuntimeTracker == nil {
 		dependencies.RuntimeTracker = operations.NewTracker(dependencies.Now())
+	}
+	if dependencies.PaymentGateway == nil {
+		dependencies.PaymentGateway = payment.NewService(payment.Options{})
 	}
 	dummyHash, err := dependencies.PasswordHasher.Hash("xboard-dummy-login-password")
 	if err != nil {
@@ -187,6 +199,7 @@ func New(dependencies Dependencies) http.Handler {
 		machineRequests:            newRequestLimitGroup(1_200, 240),
 		ticketRequests:             newRequestLimitGroup(240, 60),
 		orderRequests:              newRequestLimitGroup(240, 60),
+		paymentWebhookRequests:     newRequestLimiter(600, time.Minute),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
 		webSocketURL:               strings.TrimRight(dependencies.WebSocketURL, "/"),
 		nodePushInterval:           dependencies.NodePushInterval,
@@ -202,6 +215,7 @@ func New(dependencies Dependencies) http.Handler {
 		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
 		runtimeTracker:             dependencies.RuntimeTracker,
 		captchaVerifier:            dependencies.CaptchaVerifier,
+		paymentGateway:             dependencies.PaymentGateway,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -213,6 +227,8 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("GET /api/v1/guest/plans", api.listGuestPlans)
+	root.HandleFunc("GET /api/v1/guest/payment/notify/{method}/{uuid}", api.paymentWebhook)
+	root.HandleFunc("POST /api/v1/guest/payment/notify/{method}/{uuid}", api.paymentWebhook)
 	root.HandleFunc("GET /api/v1/client/subscribe", api.clientSubscription)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
 	root.Handle("POST /api/v1/passport/auth/login", api.requireTrustedOrigin(http.HandlerFunc(api.legacyLogin)))
@@ -254,6 +270,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/orders", api.requireSession(http.HandlerFunc(api.listUserOrders)))
 	root.Handle("POST /api/v1/orders", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createOrder))))
 	root.Handle("POST /api/v1/user/coupons/check", api.requireSession(api.requireCSRF(http.HandlerFunc(api.checkUserCoupon))))
+	root.Handle("GET /api/v1/payments", api.requireSession(http.HandlerFunc(api.listUserPayments)))
 	root.Handle("GET /api/v1/orders/{tradeNo}", api.requireSession(http.HandlerFunc(api.getUserOrder)))
 	root.Handle("POST /api/v1/orders/{tradeNo}/checkout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.checkoutUserOrder))))
 	root.Handle("POST /api/v1/orders/{tradeNo}/cancel", api.requireSession(api.requireCSRF(http.HandlerFunc(api.cancelUserOrder))))
@@ -315,6 +332,15 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/update", api.legacyUpdateAdminCoupon)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/drop", api.legacyDeleteAdminCoupon)
 	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/coupon/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminCouponMutations(api.recoverPanic(legacyAdminCoupon)))))
+	legacyAdminPayment := http.NewServeMux()
+	legacyAdminPayment.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/payment/fetch", api.legacyFetchPayments)
+	legacyAdminPayment.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/payment/getPaymentMethods", api.legacyListPaymentProviders)
+	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/getPaymentForm", api.legacyPaymentForm)
+	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/save", api.legacySavePayment)
+	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/drop", api.legacyDeletePayment)
+	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/show", api.legacyTogglePayment)
+	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/sort", api.legacyReorderPayments)
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/payment/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminPaymentMutations(api.recoverPanic(legacyAdminPayment)))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -352,6 +378,13 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/coupons/{couponID}", api.updateAdminCoupon)
 	admin.HandleFunc("PATCH /api/v1/admin/coupons/{couponID}/visibility", api.setAdminCouponVisibility)
 	admin.HandleFunc("DELETE /api/v1/admin/coupons/{couponID}", api.deleteAdminCoupon)
+	admin.HandleFunc("GET /api/v1/admin/payment-providers", api.listPaymentProviders)
+	admin.HandleFunc("GET /api/v1/admin/payments", api.listAdminPayments)
+	admin.HandleFunc("POST /api/v1/admin/payments", api.createAdminPayment)
+	admin.HandleFunc("PUT /api/v1/admin/payments/order", api.reorderAdminPayments)
+	admin.HandleFunc("PUT /api/v1/admin/payments/{paymentID}", api.updateAdminPayment)
+	admin.HandleFunc("PATCH /api/v1/admin/payments/{paymentID}/enabled", api.setAdminPaymentEnabled)
+	admin.HandleFunc("DELETE /api/v1/admin/payments/{paymentID}", api.deleteAdminPayment)
 	admin.HandleFunc("GET /api/v1/admin/routing-rules", api.listRoutingRules)
 	admin.HandleFunc("POST /api/v1/admin/routing-rules", api.createRoutingRule)
 	admin.HandleFunc("PATCH /api/v1/admin/routing-rules/{routeID}", api.updateRoutingRule)
@@ -482,6 +515,29 @@ func (s *server) auditLegacyAdminCouponMutations(next http.Handler) http.Handler
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/coupon/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminPaymentMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action := ""
+		for _, candidate := range []string{"save", "drop", "show", "sort"} {
+			if strings.HasSuffix(r.URL.Path, "/payment/"+candidate) {
+				action = candidate
+				break
+			}
+		}
+		if r.Method != http.MethodPost || action == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/payment/"+action, recorder.statusCode())
 	})
 }
 

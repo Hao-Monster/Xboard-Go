@@ -79,7 +79,7 @@ func TestCipherSeparatesSecretPurposesWithoutBreakingSMTPCompatibility(t *testin
 	if err != nil || string(recaptchaPlaintext) != "recaptcha-secret" {
 		t.Fatalf("DecryptFor(recaptcha) = (%q, %v)", recaptchaPlaintext, err)
 	}
-	for _, purpose := range []SecretPurpose{SMTPPasswordPurpose, RecaptchaV3SecretPurpose, TurnstileSecretPurpose} {
+	for _, purpose := range []SecretPurpose{SMTPPasswordPurpose, RecaptchaV3SecretPurpose, TurnstileSecretPurpose, PaymentConfigPurpose} {
 		if _, err := box.DecryptFor(purpose, recaptchaCiphertext); err == nil {
 			t.Fatalf("DecryptFor(%q) accepted a reCAPTCHA v2 secret", purpose)
 		}

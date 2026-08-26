@@ -64,7 +64,9 @@ func (s *server) getUserOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) checkoutUserOrder(w http.ResponseWriter, r *http.Request) {
-	var input struct{}
+	var input struct {
+		PaymentID int64 `json:"payment_id,omitempty"`
+	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
@@ -86,7 +88,12 @@ func (s *server) checkoutUserOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if order.TotalAmount > 0 {
-		writeAPIError(w, http.StatusConflict, "payment_unavailable", "当前没有可用的支付方式，可关闭订单后重试", nil)
+		checkout, err := s.checkoutPayment(r.Context(), session.UserID, order.TradeNo, input.PaymentID)
+		if err != nil {
+			handlePaymentCheckoutError(w, err)
+			return
+		}
+		writeSuccess(w, http.StatusOK, checkout)
 		return
 	}
 	order, err = s.store.CompleteOrder(r.Context(), order.TradeNo, order.TradeNo, s.now())
@@ -506,10 +513,6 @@ func (s *server) legacyCheckUserOrder(w http.ResponseWriter, r *http.Request) {
 	writeLegacySuccess(w, http.StatusOK, order.Status)
 }
 
-func (s *server) legacyPaymentMethods(w http.ResponseWriter, _ *http.Request) {
-	writeLegacySuccess(w, http.StatusOK, []any{})
-}
-
 func (s *server) legacyCheckoutUserOrder(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		TradeNo string `json:"trade_no"`
@@ -528,7 +531,16 @@ func (s *server) legacyCheckoutUserOrder(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if order.TotalAmount > 0 {
-		writeLegacyOrderFail(w, http.StatusBadRequest, "支付方式不可用")
+		if input.Method == nil {
+			writeLegacyOrderFail(w, http.StatusBadRequest, "支付方式不可用")
+			return
+		}
+		checkout, err := s.checkoutPayment(r.Context(), session.UserID, order.TradeNo, *input.Method)
+		if err != nil {
+			writeLegacyPaymentCheckoutError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"type": checkout.Type, "data": checkout.Data})
 		return
 	}
 	if _, err := s.store.CompleteOrder(r.Context(), order.TradeNo, order.TradeNo, s.now()); err != nil {
@@ -643,6 +655,8 @@ func handleOrderError(w http.ResponseWriter, err error) {
 		handleCouponError(w, err)
 	case errors.Is(err, store.ErrActiveOrderExists):
 		writeAPIError(w, http.StatusConflict, "active_order_exists", "存在待支付或开通中的订单，请先处理该订单", nil)
+	case errors.Is(err, store.ErrPaymentInProgress):
+		writeAPIError(w, http.StatusConflict, "payment_in_progress", "支付订单已创建，不能取消；请完成支付或等待订单超时", nil)
 	case errors.Is(err, store.ErrOrderState):
 		writeAPIError(w, http.StatusConflict, "order_state_conflict", "当前订单状态不允许此操作", nil)
 	case errors.Is(err, store.ErrPlanUnavailable):
@@ -662,6 +676,8 @@ func writeLegacyOrderStoreError(w http.ResponseWriter, err error) {
 		writeLegacyOrderFail(w, http.StatusBadRequest, "订单不存在")
 	case errors.Is(err, store.ErrActiveOrderExists):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "您有未支付或开通中的订单，请稍后重试或取消订单")
+	case errors.Is(err, store.ErrPaymentInProgress):
+		writeLegacyOrderFail(w, http.StatusBadRequest, "支付订单已创建，不能取消，请完成支付或等待订单超时")
 	case errors.Is(err, store.ErrOrderState):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "只能取消待支付的订单")
 	case errors.Is(err, store.ErrPlanUnavailable), errors.Is(err, store.ErrInvalidInput):

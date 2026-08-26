@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 30
+const currentSchemaVersion = 31
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -252,6 +252,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v30: %w", err)
 		}
 		version = 30
+	}
+	if version < 31 {
+		if _, err := tx.ExecContext(ctx, schemaV31); err != nil {
+			return fmt.Errorf("apply schema v31: %w", err)
+		}
+		version = 31
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1284,5 +1290,91 @@ FOR EACH ROW
 WHEN EXISTS (SELECT 1 FROM orders WHERE coupon_id = OLD.id)
 BEGIN
     SELECT RAISE(ABORT, 'coupon is referenced by an order');
+END;
+`
+
+const schemaV31 = `
+CREATE TABLE payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT NOT NULL UNIQUE CHECK (
+        length(uuid) BETWEEN 8 AND 32 AND uuid NOT GLOB '*[^A-Za-z0-9]*'
+    ),
+    provider TEXT NOT NULL CHECK (provider IN ('AlipayF2F','BTCPay','CoinPayments','Coinbase','EPay','MGate')),
+    name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 255),
+    icon TEXT CHECK (icon IS NULL OR length(CAST(icon AS BLOB)) BETWEEN 1 AND 2048),
+    config_ciphertext BLOB NOT NULL CHECK (length(config_ciphertext) BETWEEN 1 AND 8192),
+    notify_domain TEXT CHECK (notify_domain IS NULL OR length(CAST(notify_domain AS BLOB)) BETWEEN 1 AND 512),
+    handling_fee_fixed INTEGER NOT NULL DEFAULT 0 CHECK (handling_fee_fixed BETWEEN 0 AND 9000000000000000),
+    handling_fee_basis_points INTEGER NOT NULL DEFAULT 0 CHECK (handling_fee_basis_points BETWEEN 0 AND 10000),
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+    sort_position INTEGER NOT NULL CHECK (sort_position BETWEEN 1 AND 1000000000),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE INDEX idx_payments_order ON payments(sort_position, id);
+CREATE INDEX idx_payments_enabled ON payments(enabled, sort_position, id);
+CREATE INDEX idx_payments_provider ON payments(provider, id);
+CREATE INDEX idx_orders_payment_status ON orders(payment_id, status, id) WHERE payment_id IS NOT NULL;
+
+CREATE TABLE payment_checkout_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+    payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) BETWEEN 32 AND 128),
+    expected_amount INTEGER NOT NULL CHECK (expected_amount BETWEEN 1 AND 9000000000000000),
+    currency TEXT NOT NULL DEFAULT 'CNY' CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    status INTEGER NOT NULL DEFAULT 0 CHECK (status BETWEEN 0 AND 2),
+    external_id TEXT CHECK (external_id IS NULL OR length(CAST(external_id AS BLOB)) BETWEEN 1 AND 255),
+    response_type INTEGER CHECK (response_type IS NULL OR response_type IN (0, 1)),
+    response_data TEXT CHECK (response_data IS NULL OR length(CAST(response_data AS BLOB)) BETWEEN 1 AND 4096),
+    error_code TEXT CHECK (error_code IS NULL OR length(error_code) BETWEEN 1 AND 64),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    UNIQUE (order_id, payment_id)
+);
+CREATE INDEX idx_payment_attempts_order ON payment_checkout_attempts(order_id, status, id);
+
+CREATE TABLE payment_webhook_receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+    provider TEXT NOT NULL CHECK (provider IN ('AlipayF2F','BTCPay','CoinPayments','Coinbase','EPay','MGate')),
+    external_id TEXT NOT NULL CHECK (length(CAST(external_id AS BLOB)) BETWEEN 1 AND 255),
+    trade_no TEXT NOT NULL CHECK (length(trade_no) BETWEEN 1 AND 64),
+    amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 9000000000000000),
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64 AND payload_sha256 NOT GLOB '*[^0-9a-f]*'),
+    received_at INTEGER NOT NULL CHECK (received_at >= 0),
+    UNIQUE (payment_id, external_id)
+);
+CREATE INDEX idx_payment_receipts_order ON payment_webhook_receipts(order_id, received_at DESC, id DESC);
+
+CREATE TRIGGER trg_orders_payment_insert
+BEFORE INSERT ON orders
+FOR EACH ROW
+WHEN NEW.payment_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM payments WHERE id = NEW.payment_id)
+BEGIN
+    SELECT RAISE(ABORT, 'orders.payment_id references a missing payment');
+END;
+
+CREATE TRIGGER trg_orders_payment_update
+BEFORE UPDATE OF payment_id ON orders
+FOR EACH ROW
+WHEN NEW.payment_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM payments WHERE id = NEW.payment_id)
+BEGIN
+    SELECT RAISE(ABORT, 'orders.payment_id references a missing payment');
+END;
+
+CREATE TRIGGER trg_payments_delete_restrict
+BEFORE DELETE ON payments
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM orders WHERE payment_id = OLD.id)
+    OR EXISTS (SELECT 1 FROM payment_checkout_attempts WHERE payment_id = OLD.id)
+    OR EXISTS (SELECT 1 FROM payment_webhook_receipts WHERE payment_id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'payment is referenced by an order or receipt');
 END;
 `
