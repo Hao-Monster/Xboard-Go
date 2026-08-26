@@ -117,6 +117,31 @@ func TestLoadRejectsRelativeWebRoot(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesPrivateAttachmentStorageAndLimits(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_ATTACHMENT_ROOT", filepath.Join(t.TempDir(), "attachments"))
+	settings, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AttachmentChunkSize != 5<<20 || settings.AttachmentMaxFileSize != 1<<30 || settings.AttachmentTotalQuota != 20<<30 ||
+		settings.AttachmentSignedURLTTL != 2*time.Hour || settings.AttachmentDraftTTL != 24*time.Hour ||
+		settings.AttachmentTrashTTL != 7*24*time.Hour || settings.AttachmentMaxPerArticle != 100 {
+		t.Fatalf("attachment defaults=%#v", settings)
+	}
+	t.Setenv("XBOARD_ATTACHMENT_ROOT", "relative/attachments")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative attachment root")
+	}
+	t.Setenv("XBOARD_ATTACHMENT_ROOT", filepath.Join(t.TempDir(), "attachments"))
+	t.Setenv("XBOARD_ATTACHMENT_TOTAL_QUOTA", "1024")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a quota below the maximum file size")
+	}
+}
+
 func TestLoadRejectsInvalidWebSocketAndNodeIntervals(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")

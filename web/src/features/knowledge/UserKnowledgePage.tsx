@@ -63,7 +63,38 @@ function KnowledgeReader({ article, locale, onClose }: { article: KnowledgeArtic
   const body = (article.body ?? "").replace(/<div class="v2board-no-access">(.*?)<\/div>/gs, "> $1");
   const copy = distributorCopy[locale];
   return <Modal title={article.title} onClose={onClose}><div className="modal-header"><div><p className="eyebrow">{article.category}</p><h2>{article.title}</h2></div><button className="icon-button" aria-label={distributorCloseLabel(locale, article.title)} onClick={onClose}>×</button></div><div className="knowledge-reader-meta"><time dateTime={article.updated_at}>{copy.updatedAt}: {formatDate(article.updated_at, locale)}</time><a className="button ghost compact" href={article.share_url} target="_blank" rel="noopener noreferrer">{copy.publicShare}</a></div>
-    <div className="markdown-body"><Markdown components={{ a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; }, img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; } }}>{body}</Markdown></div></Modal>;
+    <div className="markdown-body"><SafeKnowledgeMarkdown body={body} /></div></Modal>;
+}
+
+export function SafeKnowledgeMarkdown({ body }: { body: string }) {
+  const videos = /<video controls preload="metadata" src="([^"<>]+)"><\/video>/g;
+  const parts: Array<{ markdown?: string; video?: string }> = [];
+  let cursor = 0;
+  for (const match of body.matchAll(videos)) {
+    const index = match.index;
+    const source = match[1];
+    if (index === undefined || source === undefined || !safeAttachmentVideoURL(source)) continue;
+    if (index > cursor) parts.push({ markdown: body.slice(cursor, index) });
+    parts.push({ video: source });
+    cursor = index + match[0].length;
+  }
+  if (cursor < body.length) parts.push({ markdown: body.slice(cursor) });
+  return <>{parts.map((part, index) => part.video === undefined
+    ? <Markdown key={`markdown-${index}`} components={{ a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; }, img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; } }}>{part.markdown ?? ""}</Markdown>
+    : <video key={`video-${index}`} src={part.video} controls preload="metadata" />)}</>;
+}
+
+function safeAttachmentVideoURL(value: string): boolean {
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (parsed.origin !== window.location.origin || !/^\/(?:knowledge|guide)-attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(parsed.pathname)) return false;
+    if (parsed.pathname.startsWith("/knowledge-attachments/")) {
+      return /^\d+$/.test(parsed.searchParams.get("expires") ?? "") && parsed.searchParams.get("disposition") === "inline" && /^[0-9a-f]{64}$/.test(parsed.searchParams.get("signature") ?? "");
+    }
+    return parsed.search === "";
+  } catch {
+    return false;
+  }
 }
 
 function formatDate(value: string, locale: DistributorLocale) { return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "Asia/Singapore" }).format(new Date(value)); }

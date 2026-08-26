@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
@@ -53,6 +54,7 @@ type Dependencies struct {
 	RuntimeTracker             *operations.Tracker
 	CaptchaVerifier            captcha.Verifier
 	PaymentGateway             paymentGateway
+	Attachments                *attachments.Service
 }
 
 type paymentGateway interface {
@@ -111,6 +113,7 @@ type server struct {
 	runtimeTracker             *operations.Tracker
 	captchaVerifier            captcha.Verifier
 	paymentGateway             paymentGateway
+	attachments                *attachments.Service
 }
 
 type contextKey int
@@ -216,6 +219,7 @@ func New(dependencies Dependencies) http.Handler {
 		runtimeTracker:             dependencies.RuntimeTracker,
 		captchaVerifier:            dependencies.CaptchaVerifier,
 		paymentGateway:             dependencies.PaymentGateway,
+		attachments:                dependencies.Attachments,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -329,6 +333,10 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /client-link/{clientID}/{platform}/{action}", api.clientActionRedirect)
 	root.HandleFunc("GET /guide/{knowledgeID}", api.publicKnowledge)
 	root.HandleFunc("GET /guide/{knowledgeID}/{tail}", api.publicKnowledge)
+	root.HandleFunc("GET /knowledge-attachments/{attachmentUUID}", api.readSignedKnowledgeAttachment)
+	root.HandleFunc("HEAD /knowledge-attachments/{attachmentUUID}", api.readSignedKnowledgeAttachment)
+	root.HandleFunc("GET /guide-attachments/{attachmentUUID}", api.readPublicKnowledgeAttachment)
+	root.HandleFunc("HEAD /guide-attachments/{attachmentUUID}", api.readPublicKnowledgeAttachment)
 	root.HandleFunc("GET /api/v1/client/distributor/claim/{claimToken}", api.claimDistributorSubscription)
 	root.HandleFunc("HEAD /api/v1/client/distributor/claim/{claimToken}", api.claimDistributorSubscription)
 	root.HandleFunc("POST /api/v1/machines/enroll", api.exchangeEnrollment)
@@ -395,6 +403,10 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/types", api.legacyGiftCardTypes)
 	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))))
+	legacyKnowledgeAttachments := http.NewServeMux()
+	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
+	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
+	root.Handle(legacyAttachmentPrefix+"/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyKnowledgeAttachmentMutations(api.recoverPanic(legacyKnowledgeAttachments)))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -481,6 +493,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/knowledge/{knowledgeID}", api.updateKnowledge)
 	admin.HandleFunc("PATCH /api/v1/admin/knowledge/{knowledgeID}/visibility", api.setKnowledgeVisibility)
 	admin.HandleFunc("DELETE /api/v1/admin/knowledge/{knowledgeID}", api.deleteKnowledge)
+	registerKnowledgeAttachmentRoutes(admin, "/api/v1/admin/knowledge-attachments", api)
 	admin.HandleFunc("GET /api/v1/admin/client-catalog", api.listAdminClientCatalog)
 	admin.HandleFunc("PUT /api/v1/admin/client-catalog", api.saveClientCatalog)
 	admin.HandleFunc("GET /api/v1/admin/tickets", api.listAdminTickets)

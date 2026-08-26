@@ -40,7 +40,7 @@ func TestSchemaV34PreservesV33DataAndAddsCommissionConstraints(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND name IN ('idx_commission_logs_owner_created','idx_commission_logs_user')`).Scan(&indexes); err != nil {
 		t.Fatal(err)
 	}
-	if version != 34 || appName != "V33 commission board" || commissionAutoCheck != 1 || withdrawClose != 0 ||
+	if version != CurrentSchemaVersion() || appName != "V33 commission board" || commissionAutoCheck != 1 || withdrawClose != 0 ||
 		distributionEnabled != 0 || l1 != 100 || l2 != 0 || l3 != 0 || tables != 1 || indexes != 2 {
 		t.Fatalf("v34 migration version=%d app=%q settings=%d/%d/%d/%d/%d/%d tables=%d indexes=%d", version, appName,
 			commissionAutoCheck, withdrawClose, distributionEnabled, l1, l2, l3, tables, indexes)

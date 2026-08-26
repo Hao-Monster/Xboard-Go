@@ -658,6 +658,48 @@ export interface KnowledgeInput {
   title: string;
   body: string;
   show: boolean;
+  draft_token?: string;
+}
+
+export interface KnowledgeAttachmentUpload {
+  upload_uuid: string;
+  original_name: string;
+  declared_size: number;
+  chunk_size: number;
+  total_chunks: number;
+  received_chunks: number;
+  uploaded_chunks: number[];
+  status: "initialized" | "uploading" | "completing" | "completed" | "failed" | "expired";
+  expires_at: number;
+}
+
+export interface KnowledgeAttachment {
+  uuid: string;
+  knowledge_id: number | null;
+  original_name: string;
+  mime_type: string;
+  extension: string | null;
+  size: number;
+  sha256: string;
+  status: "ready";
+  disposition: "inline" | "attachment";
+  url: string;
+  placeholder: string;
+  created_at: number;
+}
+
+export interface KnowledgeAttachmentPage {
+  items: KnowledgeAttachment[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface KnowledgeAttachmentChunkResult {
+  accepted_index: number;
+  idempotent: boolean;
+  received_chunks: number;
+  ready_to_complete: boolean;
 }
 
 export interface ClientCatalogActionLinks {
@@ -1165,6 +1207,15 @@ export interface AdminAPI {
   setKnowledgeVisibility: (id: number, revision: number, show: boolean) => Promise<KnowledgeArticle>;
   reorderKnowledge: (ids: number[]) => Promise<KnowledgeArticle[]>;
   deleteKnowledge: (id: number, revision: number) => Promise<void>;
+  initializeKnowledgeAttachment: (file: File, draftToken: string) => Promise<KnowledgeAttachmentUpload>;
+  uploadKnowledgeAttachmentChunk: (uploadUUID: string, index: number, digest: string, chunk: Blob, signal?: AbortSignal) => Promise<KnowledgeAttachmentChunkResult>;
+  getKnowledgeAttachmentUpload: (uploadUUID: string) => Promise<KnowledgeAttachmentUpload>;
+  completeKnowledgeAttachmentUpload: (uploadUUID: string) => Promise<KnowledgeAttachment>;
+  cancelKnowledgeAttachmentUpload: (uploadUUID: string, draftToken: string) => Promise<void>;
+  listKnowledgeAttachments: (filter: { knowledgeID?: number; draftToken?: string; page?: number; perPage?: number }) => Promise<KnowledgeAttachmentPage>;
+  dropKnowledgeAttachment: (uuid: string, draftToken: string) => Promise<void>;
+  cloneKnowledgeAttachments: (sourceKnowledgeID: number, sourceUUIDs: string[], draftToken: string) => Promise<Array<{ source_uuid: string; attachment: KnowledgeAttachment }>>;
+  generateKnowledgeAttachmentQRCode: (url: string) => Promise<{ svg: string }>;
   listClientCatalogAdmin: () => Promise<AdminClientCatalog>;
   saveClientCatalog: (revision: number, links: ClientCatalogOverrideInput) => Promise<AdminClientCatalog>;
   getSystemStatus: () => Promise<SystemStatus>;
@@ -1884,6 +1935,56 @@ export class APIClient implements AdminAPI {
     await this.request<void>(`/api/v1/admin/knowledge/${id}?revision=${revision}`, { method: "DELETE" });
   }
 
+  async initializeKnowledgeAttachment(file: File, draftToken: string): Promise<KnowledgeAttachmentUpload> {
+    return this.request<KnowledgeAttachmentUpload>("/api/v1/admin/knowledge-attachments/uploads", {
+      method: "POST", body: { original_name: file.name, size: file.size, draft_token: draftToken }
+    });
+  }
+
+  async uploadKnowledgeAttachmentChunk(uploadUUID: string, index: number, digest: string, chunk: Blob, signal?: AbortSignal): Promise<KnowledgeAttachmentChunkResult> {
+    const body = new FormData();
+    body.set("index", String(index));
+    body.set("sha256", digest);
+    body.set("file", chunk, `${index}.part`);
+    return this.requestForm<KnowledgeAttachmentChunkResult>(`/api/v1/admin/knowledge-attachments/uploads/${encodeURIComponent(uploadUUID)}/chunks`, body, signal);
+  }
+
+  async getKnowledgeAttachmentUpload(uploadUUID: string): Promise<KnowledgeAttachmentUpload> {
+    return this.request<KnowledgeAttachmentUpload>(`/api/v1/admin/knowledge-attachments/uploads/${encodeURIComponent(uploadUUID)}`);
+  }
+
+  async completeKnowledgeAttachmentUpload(uploadUUID: string): Promise<KnowledgeAttachment> {
+    return this.request<KnowledgeAttachment>(`/api/v1/admin/knowledge-attachments/uploads/${encodeURIComponent(uploadUUID)}/complete`, { method: "POST", body: {} });
+  }
+
+  async cancelKnowledgeAttachmentUpload(uploadUUID: string, draftToken: string): Promise<void> {
+    await this.request<boolean>(`/api/v1/admin/knowledge-attachments/uploads/${encodeURIComponent(uploadUUID)}/cancel`, { method: "POST", body: { draft_token: draftToken } });
+  }
+
+  async listKnowledgeAttachments(filter: { knowledgeID?: number; draftToken?: string; page?: number; perPage?: number }): Promise<KnowledgeAttachmentPage> {
+    const query = new URLSearchParams();
+    if (filter.knowledgeID !== undefined) query.set("knowledge_id", String(filter.knowledgeID));
+    if (filter.draftToken !== undefined) query.set("draft_token", filter.draftToken);
+    query.set("page", String(filter.page ?? 1));
+    query.set("per_page", String(filter.perPage ?? 100));
+    return this.request<KnowledgeAttachmentPage>(`/api/v1/admin/knowledge-attachments?${query.toString()}`);
+  }
+
+  async dropKnowledgeAttachment(uuid: string, draftToken: string): Promise<void> {
+    await this.request<boolean>(`/api/v1/admin/knowledge-attachments/${encodeURIComponent(uuid)}/drop`, { method: "POST", body: { draft_token: draftToken } });
+  }
+
+  async cloneKnowledgeAttachments(sourceKnowledgeID: number, sourceUUIDs: string[], draftToken: string): Promise<Array<{ source_uuid: string; attachment: KnowledgeAttachment }>> {
+    const result = await this.request<{ items: Array<{ source_uuid: string; attachment: KnowledgeAttachment }> }>("/api/v1/admin/knowledge-attachments/clone", {
+      method: "POST", body: { source_knowledge_id: sourceKnowledgeID, source_uuids: sourceUUIDs, draft_token: draftToken }
+    });
+    return result.items;
+  }
+
+  async generateKnowledgeAttachmentQRCode(url: string): Promise<{ svg: string }> {
+    return this.request<{ svg: string }>("/api/v1/admin/knowledge-attachments/qr-code", { method: "POST", body: { url } });
+  }
+
   async listKnowledge(language: KnowledgeLanguage, keyword = ""): Promise<KnowledgeArticle[]> {
     const query = new URLSearchParams({ language });
     if (keyword.trim() !== "") query.set("keyword", keyword.trim());
@@ -1933,6 +2034,19 @@ export class APIClient implements AdminAPI {
     if (response.status === 204) {
       return undefined as T;
     }
+    const payload = (await response.json()) as Envelope<T> | ErrorEnvelope;
+    if (!response.ok || payload.status === "fail") {
+      const error = payload.status === "fail" ? payload.error : { code: "request_failed", message: "请求失败" };
+      throw new APIError(response.status, error.code, error.message, error.fields);
+    }
+    return payload.data;
+  }
+
+  private async requestForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+    const headers = new Headers({ Accept: "application/json" });
+    const csrf = readCookie("xboard_csrf");
+    if (csrf !== null) headers.set("X-CSRF-Token", csrf);
+    const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body, signal });
     const payload = (await response.json()) as Envelope<T> | ErrorEnvelope;
     if (!response.ok || payload.status === "fail") {
       const error = payload.status === "fail" ? payload.error : { code: "request_failed", message: "请求失败" };

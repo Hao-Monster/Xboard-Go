@@ -126,7 +126,10 @@ func isBackendPath(path string) bool {
 	return path == "/healthz" || path == "/ws" || strings.HasPrefix(path, "/api/") ||
 		path == "/client-download" || strings.HasPrefix(path, "/client-download/") ||
 		path == "/client-link" || strings.HasPrefix(path, "/client-link/") ||
-		path == "/guide" || strings.HasPrefix(path, "/guide/") || isDynamicSubscriptionPath(path)
+		path == "/guide" || strings.HasPrefix(path, "/guide/") ||
+		path == "/knowledge-attachments" || strings.HasPrefix(path, "/knowledge-attachments/") ||
+		path == "/guide-attachments" || strings.HasPrefix(path, "/guide-attachments/") ||
+		isDynamicSubscriptionPath(path)
 }
 
 func isDynamicSubscriptionPath(path string) bool {

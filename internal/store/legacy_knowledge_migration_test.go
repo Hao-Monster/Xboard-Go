@@ -199,6 +199,8 @@ func validLegacyKnowledgeImport() LegacyKnowledgeImport {
 		},
 	}
 	input.Checksum = LegacyKnowledgeChecksum(input.Articles)
+	input.AttachmentsChecksum = LegacyKnowledgeAttachmentsChecksum(input.Attachments)
+	input.UploadsChecksum = LegacyKnowledgeUploadsChecksum(input.Uploads)
 	return input
 }
 

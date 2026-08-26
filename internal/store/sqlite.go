@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 34
+const currentSchemaVersion = 35
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -277,8 +277,17 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 		version = 34
 	}
+	if version < 35 {
+		if _, err := tx.ExecContext(ctx, schemaV35); err != nil {
+			return fmt.Errorf("apply schema v35: %w", err)
+		}
+		version = 35
+	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
+	}
+	if err := ValidateSchema(ctx, tx, version); err != nil {
+		return fmt.Errorf("validate migrated schema: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migration: %w", err)
@@ -1689,4 +1698,95 @@ CREATE INDEX idx_commission_logs_owner_created
     ON commission_logs(invite_user_id, created_at DESC, id DESC);
 CREATE INDEX idx_commission_logs_user
     ON commission_logs(user_id, created_at DESC, id DESC);
+`
+
+const schemaV35 = `
+CREATE TABLE IF NOT EXISTS knowledge_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT NOT NULL UNIQUE CHECK (
+        length(uuid) = 36 AND uuid = lower(uuid) AND uuid NOT GLOB '*[^0-9a-f-]*'
+        AND substr(uuid, 9, 1) = '-' AND substr(uuid, 14, 1) = '-'
+        AND substr(uuid, 19, 1) = '-' AND substr(uuid, 24, 1) = '-'
+		AND substr(uuid, 15, 1) IN ('1', '2', '3', '4', '5')
+		AND substr(uuid, 20, 1) IN ('8', '9', 'a', 'b')
+    ),
+    knowledge_id INTEGER REFERENCES knowledge(id) ON DELETE SET NULL,
+    uploader_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    draft_token_hash TEXT CHECK (
+        draft_token_hash IS NULL OR (
+            length(draft_token_hash) = 64 AND draft_token_hash NOT GLOB '*[^0-9a-f]*'
+        )
+    ),
+    original_name TEXT NOT NULL CHECK (length(CAST(original_name AS BLOB)) BETWEEN 1 AND 1024),
+    storage_path TEXT NOT NULL UNIQUE CHECK (
+        length(CAST(storage_path AS BLOB)) BETWEEN 1 AND 512
+        AND storage_path NOT LIKE '/%' AND instr(storage_path, char(92)) = 0
+        AND storage_path NOT LIKE '%..%'
+    ),
+    mime_type TEXT NOT NULL DEFAULT 'application/octet-stream' CHECK (
+        length(mime_type) BETWEEN 1 AND 191 AND mime_type = lower(mime_type)
+    ),
+    extension TEXT CHECK (
+        extension IS NULL OR (
+            length(extension) BETWEEN 1 AND 32 AND extension = lower(extension)
+            AND extension NOT GLOB '*[^a-z0-9]*'
+        )
+    ),
+    size INTEGER NOT NULL CHECK (size BETWEEN 1 AND 1099511627776),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
+    status TEXT NOT NULL CHECK (status IN ('quarantined', 'ready', 'rejected')),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    deleted_at INTEGER CHECK (deleted_at IS NULL OR deleted_at >= created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_article ON knowledge_attachments(knowledge_id, deleted_at, status, id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_article_list ON knowledge_attachments(knowledge_id, deleted_at, id DESC);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_draft ON knowledge_attachments(uploader_user_id, draft_token_hash, deleted_at, id DESC);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_purge ON knowledge_attachments(deleted_at, id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_stale_draft ON knowledge_attachments(knowledge_id, deleted_at, created_at, id);
+
+CREATE TABLE IF NOT EXISTS knowledge_attachment_uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT NOT NULL UNIQUE CHECK (
+        length(uuid) = 36 AND uuid = lower(uuid) AND uuid NOT GLOB '*[^0-9a-f-]*'
+        AND substr(uuid, 9, 1) = '-' AND substr(uuid, 14, 1) = '-'
+        AND substr(uuid, 19, 1) = '-' AND substr(uuid, 24, 1) = '-'
+		AND substr(uuid, 15, 1) IN ('1', '2', '3', '4', '5')
+		AND substr(uuid, 20, 1) IN ('8', '9', 'a', 'b')
+    ),
+    uploader_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    draft_token_hash TEXT NOT NULL CHECK (
+        length(draft_token_hash) = 64 AND draft_token_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    original_name TEXT NOT NULL CHECK (length(CAST(original_name AS BLOB)) BETWEEN 1 AND 1024),
+    declared_size INTEGER NOT NULL CHECK (declared_size BETWEEN 1 AND 1099511627776),
+    expected_sha256 TEXT CHECK (
+        expected_sha256 IS NULL OR (
+            length(expected_sha256) = 64 AND expected_sha256 NOT GLOB '*[^0-9a-f]*'
+        )
+    ),
+    chunk_size INTEGER NOT NULL CHECK (chunk_size BETWEEN 1 AND 1073741824),
+    total_chunks INTEGER NOT NULL CHECK (total_chunks BETWEEN 1 AND 1000000),
+    received_chunks INTEGER NOT NULL DEFAULT 0 CHECK (received_chunks BETWEEN 0 AND total_chunks),
+    temporary_path TEXT NOT NULL UNIQUE CHECK (
+        length(CAST(temporary_path AS BLOB)) BETWEEN 1 AND 512
+        AND temporary_path NOT LIKE '/%' AND instr(temporary_path, char(92)) = 0
+        AND temporary_path NOT LIKE '%..%'
+    ),
+    status TEXT NOT NULL CHECK (status IN ('initialized', 'uploading', 'completing', 'completed', 'failed', 'expired')),
+    expires_at INTEGER NOT NULL CHECK (expires_at >= 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachment_uploads_owner ON knowledge_attachment_uploads(uploader_user_id, status, id DESC);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachment_uploads_expiry ON knowledge_attachment_uploads(expires_at, id);
+
+CREATE TABLE IF NOT EXISTS knowledge_attachment_chunks (
+    upload_id INTEGER NOT NULL REFERENCES knowledge_attachment_uploads(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL CHECK (chunk_index BETWEEN 0 AND 999999),
+    size INTEGER NOT NULL CHECK (size BETWEEN 1 AND 1073741824),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    PRIMARY KEY (upload_id, chunk_index)
+) WITHOUT ROWID;
 `

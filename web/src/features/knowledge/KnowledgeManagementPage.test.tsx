@@ -41,10 +41,10 @@ describe("KnowledgeManagementPage", () => {
     await user.click(within(addDialog).getByRole("button", { name: "插入订阅专属区块" }));
     await user.click(within(addDialog).getByLabelText("显示"));
     await user.click(within(addDialog).getByRole("button", { name: "提交" }));
-    await waitFor(() => expect(api.createKnowledge).toHaveBeenCalledWith({
+    await waitFor(() => expect(api.createKnowledge).toHaveBeenCalledWith(expect.objectContaining({
       language: "zh-CN", category: "入门", title: "新手教程", show: true,
-      body: expect.stringContaining("<!--access start-->")
-    }));
+      body: expect.stringContaining("<!--access start-->"), draft_token: expect.stringMatching(/^[0-9a-f]{64}$/)
+    })));
 
     await user.click(screen.getByRole("button", { name: "显示知识：安装草稿" }));
     await waitFor(() => expect(api.setKnowledgeVisibility).toHaveBeenCalledWith(12, 1, true));
