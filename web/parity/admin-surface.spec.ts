@@ -128,6 +128,67 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go coupon administration expose the same observable business fields", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/coupon/fetch"));
+    await legacyPage.locator('a[href="#/finance/coupon"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await expect(legacyPage.getByRole("heading", { name: "优惠券管理" })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: "添加优惠券" })).toBeVisible();
+    for (const column of ["ID", "启用", "卷名称", "类型", "卷码", "剩余次数", "可用次数/用户", "有效期", "操作"]) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `legacy coupon column ${column}`).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "添加优惠券" }).click();
+    const legacyDialog = legacyPage.getByRole("dialog", { name: "添加优惠券" });
+    for (const field of ["优惠券名称*", "批量生成数量", "自定义优惠码", "优惠券类型和值", "优惠券有效期", "最大使用次数", "每个用户可使用次数", "指定周期", "指定订阅"]) {
+      await expect(legacyDialog.getByText(field, { exact: true }).first(), `legacy coupon field ${field}`).toBeVisible();
+    }
+    await legacyDialog.getByRole("button", { name: "取消" }).click();
+
+    await loginGo(goPage);
+    const now = Math.floor(Date.now() / 1000);
+    const created = await goAdminRequest(goPage, "/api/v1/admin/coupons", "POST", {
+      code: `PARITY${now}`, name: "coupon parity fixture", type: 1, value: 100, show: true,
+      limit_use: null, limit_use_with_user: null, limit_plan_ids: [], limit_period: [],
+      started_at: now - 60, ended_at: now + 3600
+    });
+    expect(created.status, created.body).toBe(201);
+    const createdCoupon = readProperty(JSON.parse(created.body) as unknown, "data");
+    const createdCouponID = readProperty(createdCoupon, "id");
+    expect(typeof createdCouponID).toBe("number");
+    await goPage.getByRole("button", { name: "优惠券管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "优惠券管理" })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "新增优惠券" })).toBeVisible();
+    for (const column of ["ID / 状态", "卷名称", "类型", "卷码", "剩余次数", "每用户次数", "有效期", "操作"]) {
+      await expect(goPage.getByText(column, { exact: true }).first(), `Go coupon column ${column}`).toBeVisible();
+    }
+    await goPage.getByRole("button", { name: "新增优惠券" }).click();
+    const goDialog = goPage.getByRole("dialog", { name: "新增优惠券" });
+    for (const field of ["卷名称", "卷码", "批量数量", "优惠金额（元）", "开始时间", "结束时间", "可用总次数", "每用户可用次数"]) {
+      await expect(goDialog.getByLabel(field, { exact: true }), `Go coupon field ${field}`).toBeVisible();
+    }
+    await expect(goDialog.locator("label").filter({ hasText: "优惠类型" }).getByRole("combobox"), "Go coupon field 优惠类型").toBeVisible();
+    for (const field of ["可用付款周期（不选表示不限）", "可用订阅套餐（不选表示不限）"]) {
+      await expect(goDialog.getByText(field, { exact: true }), `Go coupon field ${field}`).toBeVisible();
+    }
+    await goDialog.getByRole("button", { name: "取消" }).click();
+    const deleted = await goAdminRequest(goPage, `/api/v1/admin/coupons/${String(createdCouponID)}`, "DELETE");
+    expect(deleted.status, deleted.body).toBe(204);
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy system configuration exposes its observable sections and API groups", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacy(page);

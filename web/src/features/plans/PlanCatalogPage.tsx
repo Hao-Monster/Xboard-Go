@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Markdown from "react-markdown";
 
 import { Modal } from "../../components/Overlay";
-import type { Order, PlanOffer, PlanPeriod } from "../../lib/api";
+import type { CouponQuote, Order, PlanOffer, PlanPeriod } from "../../lib/api";
 
 type PlanCatalogAPI = {
   listPlanOffers: () => Promise<PlanOffer[]>;
-  createOrder: (planID: number, period: PlanPeriod) => Promise<Order>;
+  checkCoupon: (code: string, planID: number, period: PlanPeriod) => Promise<CouponQuote>;
+  createOrder: (planID: number, period: PlanPeriod, couponCode?: string) => Promise<Order>;
 };
 
 const labels: Record<string, string> = { monthly: "月付", quarterly: "季付", half_yearly: "半年付", yearly: "年付", two_yearly: "两年付", three_yearly: "三年付", onetime: "流量包", reset_traffic: "重置包" };
 
-export function PlanCatalogPage({ api, onOrderCreated }: { api: PlanCatalogAPI; onOrderCreated?: (order: Order) => void }) {
+export function PlanCatalogPage({ api, couponEnabled, onOrderCreated }: { api: PlanCatalogAPI; couponEnabled: boolean; onOrderCreated?: (order: Order) => void }) {
   const [plans, setPlans] = useState<PlanOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,7 +40,7 @@ export function PlanCatalogPage({ api, onOrderCreated }: { api: PlanCatalogAPI; 
       a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; },
       img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; }
     }}>{plan.content}</Markdown></div>}<p className="small muted">{plan.can_renew ? "当前套餐可续费" : plan.can_purchase ? "可购买" : "暂不可购买"}</p><button className="button primary" disabled={(!plan.can_purchase && !plan.can_renew) || Object.keys(plan.prices).length === 0} onClick={() => setPurchasing(plan)}>立即订阅</button></article>)}</section>}
-    {purchasing !== null && <PurchaseDialog api={api} plan={purchasing} onClose={() => setPurchasing(null)} onCreated={(order) => {
+    {purchasing !== null && <PurchaseDialog api={api} plan={purchasing} couponEnabled={couponEnabled} onClose={() => setPurchasing(null)} onCreated={(order) => {
       setPurchasing(null);
       setCreatedTradeNo(order.trade_no);
       onOrderCreated?.(order);
@@ -47,18 +48,37 @@ export function PlanCatalogPage({ api, onOrderCreated }: { api: PlanCatalogAPI; 
   </main>;
 }
 
-function PurchaseDialog({ api, plan, onClose, onCreated }: { api: PlanCatalogAPI; plan: PlanOffer; onClose: () => void; onCreated: (order: Order) => void }) {
+function PurchaseDialog({ api, plan, couponEnabled, onClose, onCreated }: { api: PlanCatalogAPI; plan: PlanOffer; couponEnabled: boolean; onClose: () => void; onCreated: (order: Order) => void }) {
   const periods = useMemo(() => Object.entries(plan.prices).filter((entry): entry is [PlanPeriod, number] => entry[1] !== undefined), [plan.prices]);
   const [period, setPeriod] = useState<PlanPeriod>(() => periods[0]?.[0] ?? "monthly");
   const [saving, setSaving] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponQuote, setCouponQuote] = useState<CouponQuote | null>(null);
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
   const [error, setError] = useState("");
+  const couponCheckVersion = useRef(0);
+  const verifyCoupon = async () => {
+    if (couponCode.trim() === "" || checkingCoupon) return;
+    const version = ++couponCheckVersion.current;
+    setCheckingCoupon(true);
+    setError("");
+    setCouponQuote(null);
+    try {
+      const quote = await api.checkCoupon(couponCode.trim(), plan.id, period);
+      if (version === couponCheckVersion.current) setCouponQuote(quote);
+    } catch (cause) {
+      if (version === couponCheckVersion.current) setError(cause instanceof Error ? cause.message : "优惠券验证失败");
+    } finally {
+      if (version === couponCheckVersion.current) setCheckingCoupon(false);
+    }
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (saving) return;
     setSaving(true);
     setError("");
     try {
-      onCreated(await api.createOrder(plan.id, period));
+      onCreated(await api.createOrder(plan.id, period, couponQuote?.coupon.code));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "订单创建失败");
       setSaving(false);
@@ -68,8 +88,10 @@ function PurchaseDialog({ api, plan, onClose, onCreated }: { api: PlanCatalogAPI
   return <Modal title="配置订阅" onClose={onClose}><div className="modal-header"><div><p className="eyebrow">Checkout</p><h2>配置订阅</h2></div><button className="icon-button" aria-label="关闭配置订阅" onClick={onClose}>×</button></div>
     <form className="form-stack" onSubmit={(event) => void submit(event)}>
       <div className="detail-list"><div><span>套餐</span><strong>{plan.name}</strong></div><div><span>流量</span><strong>{plan.transfer_enable} GiB</strong></div></div>
-      <label>付款周期<select value={period} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{periods.map(([key, cents]) => <option key={key} value={key}>{labels[key] ?? key} · ¥{formatCents(cents)}</option>)}</select></label>
+      <label>付款周期<select value={period} onChange={(event) => { couponCheckVersion.current++; setPeriod(event.target.value as PlanPeriod); setCouponQuote(null); setCheckingCoupon(false); }}>{periods.map(([key, cents]) => <option key={key} value={key}>{labels[key] ?? key} · ¥{formatCents(cents)}</option>)}</select></label>
       <div className="order-total"><span>套餐标价</span><strong>¥{formatCents(amount)}</strong></div>
+      {couponEnabled && <div className="coupon-check-row"><input aria-label="优惠券" placeholder="有优惠券？" value={couponCode} onChange={(event) => { couponCheckVersion.current++; setCouponCode(event.target.value); setCouponQuote(null); setCheckingCoupon(false); }} /><button className="button secondary" type="button" disabled={checkingCoupon || couponCode.trim() === ""} onClick={() => void verifyCoupon()}>{checkingCoupon ? "验证中…" : "验证"}</button></div>}
+      {couponQuote !== null && <div className="detail-list coupon-quote"><div><span>优惠券</span><strong>{couponQuote.coupon.name}</strong></div><div><span>优惠</span><strong>-¥{formatCents(couponQuote.coupon_discount_amount)}</strong></div><div><span>券后金额</span><strong>¥{formatCents(couponQuote.total_after_coupon)}</strong></div></div>}
       <p className="small muted">余额、会员折扣和套餐折抵由服务端在下单时计算，订单金额以订单详情为准。</p>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
       <div className="form-actions"><button className="button ghost" type="button" disabled={saving} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || periods.length === 0}>{saving ? "正在下单…" : "下单"}</button></div>

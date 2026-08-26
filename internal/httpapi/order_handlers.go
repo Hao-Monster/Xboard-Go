@@ -32,8 +32,9 @@ func (s *server) listUserOrders(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createOrder(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		PlanID int64  `json:"plan_id"`
-		Period string `json:"period"`
+		PlanID     int64  `json:"plan_id"`
+		Period     string `json:"period"`
+		CouponCode string `json:"coupon_code,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -43,7 +44,7 @@ func (s *server) createOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	order, err := s.store.CreateOrder(r.Context(), store.CreateOrderInput{
-		UserID: session.UserID, PlanID: input.PlanID, Period: input.Period,
+		UserID: session.UserID, PlanID: input.PlanID, Period: input.Period, CouponCode: input.CouponCode,
 	}, s.now())
 	if err != nil {
 		handleOrderError(w, err)
@@ -468,15 +469,11 @@ func (s *server) legacyCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if input.CouponCode != "" {
-		writeLegacyOrderFail(w, http.StatusBadRequest, "优惠券功能尚未启用")
-		return
-	}
 	session, _ := sessionFromContext(r.Context())
 	if !s.allowOrderMutation(w, r, session.UserID) {
 		return
 	}
-	order, err := s.store.CreateOrder(r.Context(), store.CreateOrderInput{UserID: session.UserID, PlanID: input.PlanID, Period: input.Period}, s.now())
+	order, err := s.store.CreateOrder(r.Context(), store.CreateOrderInput{UserID: session.UserID, PlanID: input.PlanID, Period: input.Period, CouponCode: input.CouponCode}, s.now())
 	if err != nil {
 		writeLegacyOrderStoreError(w, err)
 		return
@@ -640,6 +637,10 @@ func legacyOrderPlanResponse(plan *store.Plan) map[string]any {
 
 func handleOrderError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrCouponInvalid), errors.Is(err, store.ErrCouponNotStarted), errors.Is(err, store.ErrCouponExpired),
+		errors.Is(err, store.ErrCouponExhausted), errors.Is(err, store.ErrCouponPlanRestricted),
+		errors.Is(err, store.ErrCouponPeriodRestricted), errors.Is(err, store.ErrCouponUserLimit):
+		handleCouponError(w, err)
 	case errors.Is(err, store.ErrActiveOrderExists):
 		writeAPIError(w, http.StatusConflict, "active_order_exists", "存在待支付或开通中的订单，请先处理该订单", nil)
 	case errors.Is(err, store.ErrOrderState):
@@ -653,6 +654,10 @@ func handleOrderError(w http.ResponseWriter, err error) {
 
 func writeLegacyOrderStoreError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrCouponInvalid), errors.Is(err, store.ErrCouponNotStarted), errors.Is(err, store.ErrCouponExpired),
+		errors.Is(err, store.ErrCouponExhausted), errors.Is(err, store.ErrCouponPlanRestricted),
+		errors.Is(err, store.ErrCouponPeriodRestricted), errors.Is(err, store.ErrCouponUserLimit):
+		writeLegacyCouponError(w, err)
 	case errors.Is(err, store.ErrNotFound):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "订单不存在")
 	case errors.Is(err, store.ErrActiveOrderExists):

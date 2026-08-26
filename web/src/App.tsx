@@ -16,13 +16,14 @@ import { SubscriptionSettingsPage } from "./features/settings/SubscriptionSettin
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 import { OrderManagementPage } from "./features/orders/OrderManagementPage";
+import { CouponManagementPage } from "./features/coupons/CouponManagementPage";
 
 const api = new APIClient();
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
-  is_email_verify: 0, is_invite_force: 0, email_whitelist_suffix: 0, is_captcha: 0,
+  is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
   captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
 };
@@ -36,7 +37,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "coupons" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -138,6 +139,7 @@ export function App() {
       app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
       is_email_verify: settings.email_verify ? 1 : 0,
       is_invite_force: settings.invite_force ? 1 : 0,
+      enable_coupon_system: settings.coupon_enabled ? 1 : 0,
       email_whitelist_suffix: settings.email_whitelist_enable ? settings.email_whitelist_suffix : 0,
       is_captcha: settings.captcha_enable ? 1 : 0,
       is_recaptcha: settings.captcha_enable ? 1 : 0,
@@ -156,7 +158,7 @@ export function App() {
     return <AuthPage config={guestConfig} mode={authMode} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
   }
   if (!session.is_admin) {
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
   }
   return (
     <div className="app-frame">
@@ -169,6 +171,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>套餐管理</button>
           <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>订单管理</button>
+          <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => setPage("coupons")}>优惠券管理</button>
           <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => setPage("users")}>用户管理</button>
           <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>工单管理</button>
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
@@ -189,6 +192,7 @@ export function App() {
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "orders" && <OrderManagementPage api={api} />}
+      {page === "coupons" && <CouponManagementPage api={api} />}
       {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
       {page === "tickets" && <TicketManagementPage api={api} />}
       {page === "groups" && <ServerGroupsPage api={api} />}

@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 29
+const currentSchemaVersion = 30
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -246,6 +246,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v29: %w", err)
 		}
 		version = 29
+	}
+	if version < 30 {
+		if _, err := tx.ExecContext(ctx, schemaV30); err != nil {
+			return fmt.Errorf("apply schema v30: %w", err)
+		}
+		version = 30
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1216,4 +1222,67 @@ CREATE TABLE order_entitlement_events (
     applied_at INTEGER NOT NULL CHECK (applied_at >= 0)
 );
 CREATE INDEX idx_order_entitlement_events_user ON order_entitlement_events(user_id, applied_at DESC, order_id DESC);
+`
+
+const schemaV30 = `
+ALTER TABLE app_settings ADD COLUMN coupon_enabled INTEGER NOT NULL DEFAULT 1
+    CHECK (coupon_enabled IN (0, 1));
+
+CREATE TABLE coupons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE CHECK (length(CAST(code AS BLOB)) BETWEEN 1 AND 64),
+    name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 200),
+    type INTEGER NOT NULL CHECK (type IN (1, 2)),
+    value INTEGER NOT NULL CHECK (
+        (type = 1 AND value BETWEEN 1 AND 9000000000000000)
+        OR (type = 2 AND value BETWEEN 1 AND 100)
+    ),
+    show INTEGER NOT NULL DEFAULT 0 CHECK (show IN (0, 1)),
+    limit_use INTEGER CHECK (limit_use IS NULL OR limit_use BETWEEN 0 AND 1000000000),
+    limit_use_with_user INTEGER CHECK (limit_use_with_user IS NULL OR limit_use_with_user BETWEEN 0 AND 1000000000),
+    limit_plan_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (
+        json_valid(limit_plan_ids_json) AND json_type(limit_plan_ids_json) = 'array'
+        AND length(CAST(limit_plan_ids_json AS BLOB)) <= 65536
+    ),
+    limit_periods_json TEXT NOT NULL DEFAULT '[]' CHECK (
+        json_valid(limit_periods_json) AND json_type(limit_periods_json) = 'array'
+        AND length(CAST(limit_periods_json AS BLOB)) <= 4096
+    ),
+    started_at INTEGER NOT NULL CHECK (started_at >= 0),
+    ended_at INTEGER NOT NULL CHECK (ended_at > started_at),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE INDEX idx_coupons_created ON coupons(created_at DESC, id DESC);
+CREATE INDEX idx_coupons_show_window ON coupons(show, started_at, ended_at, id);
+CREATE INDEX idx_orders_coupon_user_status ON orders(coupon_id, user_id, status) WHERE coupon_id IS NOT NULL;
+
+-- SQLite cannot add a foreign key to the v29 orders table without rebuilding it.
+-- These triggers provide the same RESTRICT semantics for the coupon relationship
+-- while keeping the upgrade atomic and avoiding a potentially long table copy.
+CREATE TRIGGER trg_orders_coupon_insert
+BEFORE INSERT ON orders
+FOR EACH ROW
+WHEN NEW.coupon_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM coupons WHERE id = NEW.coupon_id)
+BEGIN
+    SELECT RAISE(ABORT, 'orders.coupon_id references a missing coupon');
+END;
+
+CREATE TRIGGER trg_orders_coupon_update
+BEFORE UPDATE OF coupon_id ON orders
+FOR EACH ROW
+WHEN NEW.coupon_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM coupons WHERE id = NEW.coupon_id)
+BEGIN
+    SELECT RAISE(ABORT, 'orders.coupon_id references a missing coupon');
+END;
+
+CREATE TRIGGER trg_coupons_delete_restrict
+BEFORE DELETE ON coupons
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM orders WHERE coupon_id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'coupon is referenced by an order');
+END;
 `

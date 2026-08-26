@@ -14,6 +14,7 @@ type guestConfigResponse struct {
 	TOSURL                    *string `json:"tos_url"`
 	IsEmailVerify             int     `json:"is_email_verify"`
 	IsInviteForce             int     `json:"is_invite_force"`
+	EnableCouponSystem        int     `json:"enable_coupon_system"`
 	EmailWhitelistSuffix      any     `json:"email_whitelist_suffix"`
 	IsCaptcha                 int     `json:"is_captcha"`
 	CaptchaType               string  `json:"captcha_type"`
@@ -49,7 +50,8 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		TurnstileSiteKey:          nullablePublicString(settings.TurnstileSiteKey), AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
 		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
-		IsInviteForce: boolToInt(settings.InvitationForceEnabled),
+		IsInviteForce:      boolToInt(settings.InvitationForceEnabled),
+		EnableCouponSystem: boolToInt(settings.CouponEnabled),
 	})
 }
 
@@ -86,6 +88,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
 		MailLoginEnabled           *bool     `json:"login_with_mail_link_enable"`
 		TrafficResetMethod         *int      `json:"traffic_reset_method"`
+		CouponEnabled              *bool     `json:"coupon_enabled"`
 		CaptchaEnabled             *bool     `json:"captcha_enable"`
 		CaptchaType                *string   `json:"captcha_type"`
 		RecaptchaSiteKey           *string   `json:"recaptcha_site_key"`
@@ -123,6 +126,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationNeverExpire:      current.InvitationNeverExpire,
 		MailLoginEnabled:           current.MailLoginEnabled,
 		TrafficResetMethod:         &current.TrafficResetMethod,
+		CouponEnabled:              &current.CouponEnabled,
 		CaptchaEnabled:             current.CaptchaEnabled,
 		CaptchaType:                current.CaptchaType,
 		RecaptchaSiteKey:           current.RecaptchaSiteKey,
@@ -177,6 +181,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.TrafficResetMethod != nil {
 		next.TrafficResetMethod = input.TrafficResetMethod
+	}
+	if input.CouponEnabled != nil {
+		next.CouponEnabled = input.CouponEnabled
 	}
 	if input.CaptchaEnabled != nil {
 		next.CaptchaEnabled = *input.CaptchaEnabled

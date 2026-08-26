@@ -455,6 +455,12 @@ func newTestStore(t testing.TB) *Store {
 func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER trg_orders_coupon_insert;
+		DROP TRIGGER trg_orders_coupon_update;
+		DROP TRIGGER trg_coupons_delete_restrict;
+		DROP TABLE coupons;
+		DROP INDEX idx_orders_coupon_user_status;
+		ALTER TABLE app_settings DROP COLUMN coupon_enabled;
 		DROP TABLE order_entitlement_events;
 		DROP TABLE orders;
 		ALTER TABLE users DROP COLUMN balance;

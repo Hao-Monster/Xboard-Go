@@ -120,10 +120,24 @@ func (s *Store) CreateOrder(ctx context.Context, input CreateOrderInput, now tim
 		OriginalAmount: price, TotalAmount: price, Status: OrderStatusPending, SurplusOrderIDs: []int64{}, CommissionStatus: &commissionStatus,
 		CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}
-	if user.discount.Valid && user.discount.Int64 > 0 {
-		order.DiscountAmount = order.TotalAmount * user.discount.Int64 / 100
-		order.TotalAmount -= order.DiscountAmount
+	var appliedCoupon *Coupon
+	couponCode := strings.TrimSpace(input.CouponCode)
+	if couponCode != "" {
+		coupon, couponErr := validateCoupon(ctx, tx, user.id, plan.ID, period, couponCode, now)
+		if couponErr != nil {
+			return Order{}, couponErr
+		}
+		order.CouponID = &coupon.ID
+		order.DiscountAmount = couponDiscount(order.OriginalAmount, coupon)
+		appliedCoupon = &coupon
 	}
+	if user.discount.Valid && user.discount.Int64 > 0 {
+		order.DiscountAmount += percentageCents(order.OriginalAmount, user.discount.Int64)
+	}
+	if order.DiscountAmount > order.OriginalAmount {
+		order.DiscountAmount = order.OriginalAmount
+	}
+	order.TotalAmount = order.OriginalAmount - order.DiscountAmount
 	activeSubscription := !user.expiredAt.Valid || user.expiredAt.Int64 > now.Unix()
 	switch {
 	case period == "reset_traffic":
@@ -160,6 +174,22 @@ func (s *Store) CreateOrder(ctx context.Context, input CreateOrderInput, now tim
 			return Order{}, fmt.Errorf("deduct order balance: %w", err)
 		}
 	}
+	if appliedCoupon != nil && appliedCoupon.LimitUse != nil {
+		result, consumeErr := tx.ExecContext(ctx, `
+			UPDATE coupons SET limit_use = limit_use - 1, updated_at = ?
+			WHERE id = ? AND limit_use > 0
+		`, now.Unix(), appliedCoupon.ID)
+		if consumeErr != nil {
+			return Order{}, fmt.Errorf("consume coupon: %w", consumeErr)
+		}
+		consumed, consumeErr := result.RowsAffected()
+		if consumeErr != nil {
+			return Order{}, fmt.Errorf("count consumed coupon: %w", consumeErr)
+		}
+		if consumed != 1 {
+			return Order{}, ErrCouponExhausted
+		}
+	}
 	surplusJSON, err := json.Marshal(order.SurplusOrderIDs)
 	if err != nil {
 		return Order{}, fmt.Errorf("encode order surplus IDs: %w", err)
@@ -168,11 +198,11 @@ func (s *Store) CreateOrder(ctx context.Context, input CreateOrderInput, now tim
 		INSERT INTO orders (
 			user_id, plan_id, period, trade_no, original_amount, total_amount, balance_amount,
 			surplus_credit, surplus_amount, type, status, surplus_order_ids_json, invite_user_id,
-			commission_rate, commission_balance, discount_amount, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+			commission_rate, commission_balance, discount_amount, coupon_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, order.UserID, order.PlanID, order.Period, order.TradeNo, order.OriginalAmount, order.TotalAmount,
 		order.BalanceAmount, order.SurplusCredit, order.SurplusAmount, order.Type, string(surplusJSON),
-		order.InviteUserID, order.CommissionRate, order.CommissionBalance, order.DiscountAmount, now.Unix(), now.Unix())
+		order.InviteUserID, order.CommissionRate, order.CommissionBalance, order.DiscountAmount, order.CouponID, now.Unix(), now.Unix())
 	if err != nil {
 		var exists bool
 		if checkErr := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM orders WHERE user_id = ? AND status IN (0, 1))`, input.UserID).Scan(&exists); checkErr == nil && exists {

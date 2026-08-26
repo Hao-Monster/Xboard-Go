@@ -79,6 +79,32 @@ func TestImportLegacyOrdersRejectsMissingReferencesWithoutPartialWrites(t *testi
 	}
 }
 
+func TestImportLegacyOrdersRequiresReferencedCouponsFirst(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "legacy-coupon-order@example.test", PasswordHash: "hash"}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.CreatePlan(ctx, SavePlanInput{Name: "Legacy coupon order", TransferEnableGiB: 1, Prices: PlanPrices{"monthly": 100}}, time.Unix(10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	couponID := int64(404)
+	commissionStatus := 0
+	input := LegacyOrdersImport{
+		Slice: LegacyOrdersSlice, SourceSHA256: strings.Repeat("e", 64), SourceSize: 1,
+		RollbackBackupPath: "/var/lib/xboard-backups/pre-orders.xbbackup", RollbackBackupSHA256: strings.Repeat("f", 64),
+		Orders: []LegacyOrder{{ID: 1, UserID: user.ID, PlanID: plan.ID, CouponID: &couponID, Period: "monthly", TradeNo: "2026082612000000000000404",
+			OriginalAmount: 100, TotalAmount: 100, Type: OrderTypeNew, Status: OrderStatusCompleted,
+			SurplusOrderIDs: []int64{}, CommissionStatus: &commissionStatus, CreatedAt: 10, UpdatedAt: 10}},
+	}
+	input.Checksum = LegacyOrdersChecksum(input.Orders)
+	if _, err := database.ImportLegacyOrders(ctx, input, time.Unix(20, 0)); !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), "import coupons before orders") {
+		t.Fatalf("ImportLegacyOrders(missing coupon) error = %v", err)
+	}
+}
+
 func TestValidateLegacyOrdersRejectsMultipleActiveOrdersAndForeignSurplus(t *testing.T) {
 	commissionStatus := 0
 	base := LegacyOrder{ID: 1, UserID: 1, PlanID: 1, Period: "monthly", TradeNo: "2026082612000000000000001", OriginalAmount: 0, Type: OrderTypeNew, Status: OrderStatusPending, SurplusOrderIDs: []int64{}, CommissionStatus: &commissionStatus, CreatedAt: 1, UpdatedAt: 1}

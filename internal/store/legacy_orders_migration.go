@@ -327,6 +327,7 @@ func validateLegacyOrdersImport(input LegacyOrdersImport) error {
 func validateLegacyOrderReferences(ctx context.Context, tx *sql.Tx, orders []LegacyOrder) error {
 	users := make(map[int64]struct{})
 	plans := make(map[int64]struct{})
+	coupons := make(map[int64]struct{})
 	for _, order := range orders {
 		for _, userID := range []*int64{&order.UserID, order.InviteUserID, order.DistributorSettledBy} {
 			if userID == nil {
@@ -353,6 +354,18 @@ func validateLegacyOrderReferences(ctx context.Context, tx *sql.Tx, orders []Leg
 				return fmt.Errorf("%w: legacy orders reference missing plan %d", ErrConflict, order.PlanID)
 			}
 			plans[order.PlanID] = struct{}{}
+		}
+		if order.CouponID != nil {
+			if _, checked := coupons[*order.CouponID]; !checked {
+				var exists bool
+				if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM coupons WHERE id = ?)`, *order.CouponID).Scan(&exists); err != nil {
+					return fmt.Errorf("validate legacy order coupon: %w", err)
+				}
+				if !exists {
+					return fmt.Errorf("%w: legacy orders reference missing coupon %d; import coupons before orders", ErrConflict, *order.CouponID)
+				}
+				coupons[*order.CouponID] = struct{}{}
+			}
 		}
 	}
 	return nil

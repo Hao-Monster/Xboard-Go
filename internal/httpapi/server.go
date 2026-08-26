@@ -253,6 +253,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/plans", api.requireSession(http.HandlerFunc(api.listUserPlans)))
 	root.Handle("GET /api/v1/orders", api.requireSession(http.HandlerFunc(api.listUserOrders)))
 	root.Handle("POST /api/v1/orders", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createOrder))))
+	root.Handle("POST /api/v1/user/coupons/check", api.requireSession(api.requireCSRF(http.HandlerFunc(api.checkUserCoupon))))
 	root.Handle("GET /api/v1/orders/{tradeNo}", api.requireSession(http.HandlerFunc(api.getUserOrder)))
 	root.Handle("POST /api/v1/orders/{tradeNo}/checkout", api.requireSession(api.requireCSRF(http.HandlerFunc(api.checkoutUserOrder))))
 	root.Handle("POST /api/v1/orders/{tradeNo}/cancel", api.requireSession(api.requireCSRF(http.HandlerFunc(api.cancelUserOrder))))
@@ -263,6 +264,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/user/order/getPaymentMethod", api.requireLegacyBearer(http.HandlerFunc(api.legacyPaymentMethods)))
 	root.Handle("POST /api/v1/user/order/checkout", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckoutUserOrder)))
 	root.Handle("POST /api/v1/user/order/cancel", api.requireLegacyBearer(http.HandlerFunc(api.legacyCancelUserOrder)))
+	root.Handle("POST /api/v1/user/coupon/check", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckUserCoupon)))
 	root.Handle("GET /api/v1/subscription", api.requireSession(http.HandlerFunc(api.getUserSubscription)))
 	root.Handle("GET /api/v1/subscription/qr", api.requireSession(http.HandlerFunc(api.getUserSubscriptionQR)))
 	root.Handle("POST /api/v1/subscription/security/reset", api.requireSession(api.requireCSRF(http.HandlerFunc(api.resetUserSubscriptionSecurity))))
@@ -305,6 +307,14 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/paid", api.legacyPaidAdminOrder)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/cancel", api.legacyCancelAdminOrder)
 	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/order/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminOrderMutations(api.recoverPanic(legacyAdminOrder)))))
+	legacyAdminCoupon := http.NewServeMux()
+	legacyAdminCoupon.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
+	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
+	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/generate", api.legacyGenerateAdminCoupon)
+	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/show", api.legacyToggleAdminCoupon)
+	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/update", api.legacyUpdateAdminCoupon)
+	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/drop", api.legacyDeleteAdminCoupon)
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/coupon/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminCouponMutations(api.recoverPanic(legacyAdminCoupon)))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -336,6 +346,12 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/orders/{tradeNo}", api.getAdminOrder)
 	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/paid", api.paidAdminOrder)
 	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/cancel", api.cancelAdminOrder)
+	admin.HandleFunc("GET /api/v1/admin/coupons", api.listAdminCoupons)
+	admin.HandleFunc("POST /api/v1/admin/coupons", api.createAdminCoupon)
+	admin.HandleFunc("POST /api/v1/admin/coupons/batch", api.batchAdminCoupons)
+	admin.HandleFunc("PUT /api/v1/admin/coupons/{couponID}", api.updateAdminCoupon)
+	admin.HandleFunc("PATCH /api/v1/admin/coupons/{couponID}/visibility", api.setAdminCouponVisibility)
+	admin.HandleFunc("DELETE /api/v1/admin/coupons/{couponID}", api.deleteAdminCoupon)
 	admin.HandleFunc("GET /api/v1/admin/routing-rules", api.listRoutingRules)
 	admin.HandleFunc("POST /api/v1/admin/routing-rules", api.createRoutingRule)
 	admin.HandleFunc("PATCH /api/v1/admin/routing-rules/{routeID}", api.updateRoutingRule)
@@ -443,6 +459,29 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/order/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminCouponMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action := ""
+		for _, candidate := range []string{"generate", "show", "update", "drop"} {
+			if strings.HasSuffix(r.URL.Path, "/coupon/"+candidate) {
+				action = candidate
+				break
+			}
+		}
+		if r.Method != http.MethodPost || action == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/coupon/"+action, recorder.statusCode())
 	})
 }
 

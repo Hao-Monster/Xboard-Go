@@ -328,6 +328,12 @@ func TestSchemaV29PreservesV28DataAndAddsFinancialConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
+		DROP TRIGGER trg_orders_coupon_insert;
+		DROP TRIGGER trg_orders_coupon_update;
+		DROP TRIGGER trg_coupons_delete_restrict;
+		DROP TABLE coupons;
+		DROP INDEX idx_orders_coupon_user_status;
+		ALTER TABLE app_settings DROP COLUMN coupon_enabled;
 		DROP TABLE order_entitlement_events;
 		DROP TABLE orders;
 		ALTER TABLE users DROP COLUMN balance;
@@ -358,7 +364,7 @@ func TestSchemaV29PreservesV28DataAndAddsFinancialConstraints(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT email, balance FROM users WHERE id = ?`, user.ID).Scan(&email, &balance); err != nil {
 		t.Fatal(err)
 	}
-	if version != 29 || email != user.Email || balance != 0 {
+	if version != currentSchemaVersion || email != user.Email || balance != 0 {
 		t.Fatalf("migration version=%d email=%q balance=%d", version, email, balance)
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE users SET balance = -1 WHERE id = ?`, user.ID); err == nil {

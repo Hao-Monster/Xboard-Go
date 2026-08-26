@@ -94,6 +94,11 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
 		  </select></label>
 		  <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
 		</fieldset>
+		<fieldset className="settings-fieldset">
+		  <legend>优惠券系统</legend>
+		  <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
+		  <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
+		</fieldset>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
           <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
@@ -182,6 +187,7 @@ function toDraft(settings: SiteSettings): SiteDraft {
     invite_never_expire: settings.invite_never_expire,
     login_with_mail_link_enable: settings.login_with_mail_link_enable,
 	traffic_reset_method: settings.traffic_reset_method,
+    coupon_enabled: settings.coupon_enabled,
     captcha_enable: settings.captcha_enable,
     captcha_type: settings.captcha_type,
     recaptcha_site_key: settings.recaptcha_site_key,

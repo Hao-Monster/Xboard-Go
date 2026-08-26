@@ -28,6 +28,7 @@ const initial: SiteSettings = {
   invite_never_expire: false,
   login_with_mail_link_enable: false,
 	traffic_reset_method: 1,
+  coupon_enabled: true,
   captcha_enable: false,
   captcha_type: "recaptcha",
   recaptcha_site_key: "",
@@ -54,6 +55,7 @@ describe("SiteSettingsPage", () => {
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
       login_with_mail_link_enable: true,
 	  traffic_reset_method: 1,
+      coupon_enabled: false,
       captcha_enable: true, captcha_type: "turnstile", turnstile_site_key: "turnstile-site",
       turnstile_secret_configured: true
     };
@@ -86,6 +88,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("密码错误次数")).toHaveValue(5);
     expect(screen.getByLabelText("登录锁定时长（分钟）")).toHaveValue(60);
     expect(screen.getByRole("checkbox", { name: "验证码" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "启用优惠券" })).toBeChecked();
 
     changeValue("站点名称", updated.app_name);
     changeValue("站点描述", updated.app_description);
@@ -93,6 +96,7 @@ describe("SiteSettingsPage", () => {
     changeValue("用户条款(TOS)URL", updated.tos_url);
     changeValue("LOGO", updated.logo);
     await user.click(screen.getByRole("checkbox", { name: "停止新用户注册" }));
+    await user.click(screen.getByRole("checkbox", { name: "启用优惠券" }));
     await user.click(screen.getByRole("checkbox", { name: "验证码" }));
     await user.selectOptions(screen.getByLabelText("验证码类型"), "turnstile");
     changeValue("Turnstile 站点密钥", "turnstile-site");
@@ -135,6 +139,7 @@ describe("SiteSettingsPage", () => {
       invite_never_expire: true,
       login_with_mail_link_enable: true,
 	  traffic_reset_method: 1,
+      coupon_enabled: false,
       captcha_enable: true,
       captcha_type: "turnstile",
       recaptcha_site_key: "",
