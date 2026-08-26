@@ -45,6 +45,14 @@ var (
 	ErrActiveOrderExists                      = fmt.Errorf("%w: an unpaid or processing order already exists", ErrConflict)
 	ErrOrderState                             = fmt.Errorf("%w: order state does not allow this operation", ErrConflict)
 	ErrPlanUnavailable                        = fmt.Errorf("%w: subscription plan is unavailable", ErrConflict)
+	ErrCouponInvalid                          = errors.New("invalid coupon")
+	ErrCouponNotStarted                       = errors.New("coupon has not started")
+	ErrCouponExpired                          = errors.New("coupon has expired")
+	ErrCouponExhausted                        = errors.New("coupon is exhausted")
+	ErrCouponPlanRestricted                   = errors.New("coupon is not valid for this plan")
+	ErrCouponPeriodRestricted                 = errors.New("coupon is not valid for this period")
+	ErrCouponUserLimit                        = errors.New("coupon user limit reached")
+	ErrCouponReferenced                       = fmt.Errorf("%w: coupon is referenced by an order", ErrConflict)
 )
 
 const (
@@ -183,6 +191,7 @@ type SiteSettings struct {
 	InvitationNeverExpire       bool      `json:"invite_never_expire"`
 	MailLoginEnabled            bool      `json:"login_with_mail_link_enable"`
 	TrafficResetMethod          int       `json:"traffic_reset_method"`
+	CouponEnabled               bool      `json:"coupon_enabled"`
 	CaptchaEnabled              bool      `json:"captcha_enable"`
 	CaptchaType                 string    `json:"captcha_type"`
 	RecaptchaSiteKey            string    `json:"recaptcha_site_key"`
@@ -217,6 +226,7 @@ type SaveSiteSettingsInput struct {
 	InvitationNeverExpire      bool
 	MailLoginEnabled           bool
 	TrafficResetMethod         *int
+	CouponEnabled              *bool
 	CaptchaEnabled             bool
 	CaptchaType                string
 	RecaptchaSiteKey           string
@@ -773,6 +783,75 @@ type ServerGroup struct {
 
 type PlanPrices map[string]int64
 
+type CouponType int
+
+const (
+	CouponTypeFixed CouponType = iota + 1
+	CouponTypePercentage
+)
+
+type Coupon struct {
+	ID               int64      `json:"id"`
+	Code             string     `json:"code"`
+	Name             string     `json:"name"`
+	Type             CouponType `json:"type"`
+	Value            int64      `json:"value"`
+	Show             bool       `json:"show"`
+	LimitUse         *int       `json:"limit_use"`
+	LimitUseWithUser *int       `json:"limit_use_with_user"`
+	LimitPlanIDs     []int64    `json:"limit_plan_ids"`
+	LimitPeriods     []string   `json:"limit_period"`
+	StartedAt        time.Time  `json:"started_at"`
+	EndedAt          time.Time  `json:"ended_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type SaveCouponInput struct {
+	Code             string
+	Name             string
+	Type             CouponType
+	Value            int64
+	Show             bool
+	LimitUse         *int
+	LimitUseWithUser *int
+	LimitPlanIDs     []int64
+	LimitPeriods     []string
+	StartedAt        time.Time
+	EndedAt          time.Time
+}
+
+type CouponCheckInput struct {
+	UserID int64
+	PlanID int64
+	Period string
+	Code   string
+}
+
+type CouponQuote struct {
+	Coupon               Coupon `json:"coupon"`
+	OriginalAmount       int64  `json:"original_amount"`
+	CouponDiscountAmount int64  `json:"coupon_discount_amount"`
+	TotalAfterCoupon     int64  `json:"total_after_coupon"`
+}
+
+type CouponFilter struct {
+	Page     int
+	PageSize int
+	Query    string
+	Type     *CouponType
+	Show     *bool
+	Sort     string
+	Desc     bool
+}
+
+type CouponPage struct {
+	Items    []Coupon `json:"items"`
+	Total    int64    `json:"total"`
+	Page     int      `json:"page"`
+	PageSize int      `json:"page_size"`
+}
+
 type OrderStatus int
 
 const (
@@ -827,9 +906,10 @@ type Order struct {
 }
 
 type CreateOrderInput struct {
-	UserID int64
-	PlanID int64
-	Period string
+	UserID     int64
+	PlanID     int64
+	Period     string
+	CouponCode string
 }
 
 type StaleOrderBatchResult struct {

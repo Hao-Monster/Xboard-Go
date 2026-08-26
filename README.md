@@ -311,14 +311,36 @@ must resolve within the snapshot, and password hashes must be bounded legacy
 bcrypt values. Repeating the same source verifies the recorded rollback archive
 and returns the existing result without rewriting users.
 
-Orders can then be imported after their referenced users and plans. This slice
+Coupons can be imported after plans and before orders. The slice preserves
+coupon IDs, exact codes and names, fixed-cent or percentage values, visibility,
+remaining and per-user limits, plan and period restrictions, timestamps, and
+the legacy global coupon-system setting. Duplicate codes, invalid or lossy
+values, malformed restrictions, missing plans, and ambiguous settings fail
+before any target write:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-coupons \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-coupons.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The target coupon table must be empty and its global setting must still have
+the default value. A canonical checksum independently verifies both coupons
+and the setting after the atomic import. Referenced coupon IDs must exist before
+the order slice is imported.
+
+Orders can then be imported after their referenced users, plans, and coupons. This slice
 preserves order IDs, 25-digit trades, 32-character callback references, periods,
 types, statuses, integer-cent financial fields, balance and surplus deductions,
 coupon and payment references, referral attribution and commission state,
 entitlement-boundary timestamps, and distributor metadata. Coupon, payment,
-commission-settlement, and distributor domain tables are separate future
-slices, so preserving their references does not claim those workflows are
-already executable. Historical completed orders remain historical records; the
+commission-settlement, and distributor domain tables are independently migrated;
+payment, commission-settlement, and distributor workflows remain future slices.
+Historical completed orders remain historical records; the
 import deliberately does not fabricate entitlement events or replay account
 changes that were already applied by Xboard.
 
@@ -361,7 +383,7 @@ creating the standalone source snapshot or the command refuses to run.
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; payment providers, coupons, gift
+This remains a local/isolated-test workflow; payment providers, gift
 cards, commission settlement, distributor workflows, attachments, and other
 remaining legacy domains still require separate mappings and migration
 evidence.

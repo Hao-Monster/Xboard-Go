@@ -122,7 +122,7 @@ describe("PlanCatalogPage", () => {
     const createOrder = vi.fn().mockResolvedValue(order);
     const onOrderCreated = vi.fn();
     const user = userEvent.setup();
-    render(<PlanCatalogPage api={{ listPlanOffers: vi.fn().mockResolvedValue([offer]), createOrder }} onOrderCreated={onOrderCreated} />);
+    render(<PlanCatalogPage api={{ listPlanOffers: vi.fn().mockResolvedValue([offer]), checkCoupon: vi.fn(), createOrder }} couponEnabled={false} onOrderCreated={onOrderCreated} />);
     expect(await screen.findByRole("heading", { name: "Pro" })).toBeVisible();
     expect(screen.getByText("不限量")).toBeVisible();
     expect(screen.getByText("月付 ¥1.23")).toBeVisible();
@@ -134,7 +134,7 @@ describe("PlanCatalogPage", () => {
     const dialog = screen.getByRole("dialog", { name: "配置订阅" });
     expect(within(dialog).getByText("套餐标价")).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "下单" }));
-    await waitFor(() => expect(createOrder).toHaveBeenCalledWith(offer.id, "monthly"));
+    await waitFor(() => expect(createOrder).toHaveBeenCalledWith(offer.id, "monthly", undefined));
     expect(onOrderCreated).toHaveBeenCalledWith(order);
   });
 });

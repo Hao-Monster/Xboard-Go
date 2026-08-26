@@ -241,6 +241,63 @@ export interface AssignOrderInput {
   total_amount: number;
 }
 
+export type CouponType = 1 | 2;
+
+export interface Coupon {
+  id: number;
+  code: string;
+  name: string;
+  type: CouponType;
+  value: number;
+  show: boolean;
+  limit_use: number | null;
+  limit_use_with_user: number | null;
+  limit_plan_ids: number[];
+  limit_period: PlanPeriod[];
+  started_at: string;
+  ended_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CouponQuote {
+  coupon: Coupon;
+  original_amount: number;
+  coupon_discount_amount: number;
+  total_after_coupon: number;
+}
+
+export interface CouponPage {
+  items: Coupon[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CouponQuery {
+  page?: number;
+  page_size?: number;
+  query?: string;
+  type?: CouponType;
+  show?: boolean;
+  sort?: "id" | "name" | "type" | "code" | "limit_use" | "started_at" | "ended_at" | "created_at";
+  desc?: boolean;
+}
+
+export interface CouponInput {
+  code: string;
+  name: string;
+  type: CouponType;
+  value: number;
+  show: boolean;
+  limit_use: number | null;
+  limit_use_with_user: number | null;
+  limit_plan_ids: number[];
+  limit_period: PlanPeriod[];
+  started_at: number;
+  ended_at: number;
+}
+
 export type RoutingAction = "block" | "direct" | "dns" | "proxy";
 
 export interface RoutingRule {
@@ -479,6 +536,7 @@ export interface SiteSettings {
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
   traffic_reset_method: number;
+  coupon_enabled: boolean;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -522,6 +580,7 @@ export interface SiteSettingsInput {
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
   traffic_reset_method: number;
+  coupon_enabled: boolean;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -580,6 +639,7 @@ export interface GuestConfig {
   logo: string | null;
   is_email_verify: number;
   is_invite_force: number;
+  enable_coupon_system: number;
   email_whitelist_suffix: number | string[];
   is_captcha: number;
   captcha_type: string;
@@ -728,6 +788,12 @@ export interface AdminAPI {
   assignOrder: (input: AssignOrderInput) => Promise<Order>;
   paidAdminOrder: (tradeNo: string) => Promise<Order>;
   cancelAdminOrder: (tradeNo: string) => Promise<Order>;
+  listCoupons: (query?: CouponQuery) => Promise<CouponPage>;
+  createCoupon: (input: CouponInput) => Promise<Coupon>;
+  updateCoupon: (id: number, input: CouponInput) => Promise<Coupon>;
+  setCouponVisibility: (id: number, show: boolean) => Promise<Coupon>;
+  deleteCoupon: (id: number) => Promise<void>;
+  createCouponBatch: (input: CouponInput, count: number) => Promise<Blob>;
   listRoutingRules: () => Promise<RoutingRule[]>;
   createRoutingRule: (input: RoutingRuleInput) => Promise<RoutingRule>;
   updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
@@ -996,8 +1062,14 @@ export class APIClient implements AdminAPI {
     return this.request<Order[]>(`/api/v1/orders?${params.toString()}`);
   }
 
-  async createOrder(planID: number, period: PlanPeriod): Promise<Order> {
-    return this.request<Order>("/api/v1/orders", { method: "POST", body: { plan_id: planID, period } });
+  async checkCoupon(code: string, planID: number, period: PlanPeriod): Promise<CouponQuote> {
+    return this.request<CouponQuote>("/api/v1/user/coupons/check", { method: "POST", body: { code, plan_id: planID, period } });
+  }
+
+  async createOrder(planID: number, period: PlanPeriod, couponCode?: string): Promise<Order> {
+    const body: { plan_id: number; period: PlanPeriod; coupon_code?: string } = { plan_id: planID, period };
+    if (couponCode !== undefined && couponCode !== "") body.coupon_code = couponCode;
+    return this.request<Order>("/api/v1/orders", { method: "POST", body });
   }
 
   async getOrder(tradeNo: string): Promise<Order> {
@@ -1038,6 +1110,39 @@ export class APIClient implements AdminAPI {
 
   async cancelAdminOrder(tradeNo: string): Promise<Order> {
     return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
+  }
+
+  async listCoupons(query: CouponQuery = {}): Promise<CouponPage> {
+    const params = new URLSearchParams();
+    if (query.page !== undefined) params.set("page", String(query.page));
+    if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
+    if (query.query !== undefined && query.query !== "") params.set("query", query.query);
+    if (query.type !== undefined) params.set("type", String(query.type));
+    if (query.show !== undefined) params.set("show", String(query.show));
+    if (query.sort !== undefined) params.set("sort", query.sort);
+    if (query.desc !== undefined) params.set("desc", String(query.desc));
+    const suffix = params.size === 0 ? "" : `?${params.toString()}`;
+    return this.request<CouponPage>(`/api/v1/admin/coupons${suffix}`);
+  }
+
+  async createCoupon(input: CouponInput): Promise<Coupon> {
+    return this.request<Coupon>("/api/v1/admin/coupons", { method: "POST", body: input });
+  }
+
+  async updateCoupon(id: number, input: CouponInput): Promise<Coupon> {
+    return this.request<Coupon>(`/api/v1/admin/coupons/${id}`, { method: "PUT", body: input });
+  }
+
+  async setCouponVisibility(id: number, show: boolean): Promise<Coupon> {
+    return this.request<Coupon>(`/api/v1/admin/coupons/${id}/visibility`, { method: "PATCH", body: { show } });
+  }
+
+  async deleteCoupon(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/coupons/${id}`, { method: "DELETE" });
+  }
+
+  async createCouponBatch(input: CouponInput, count: number): Promise<Blob> {
+    return this.download("/api/v1/admin/coupons/batch", { ...input, code: "", count });
   }
 
   async listRoutingRules(): Promise<RoutingRule[]> {
@@ -1298,6 +1403,19 @@ export class APIClient implements AdminAPI {
       throw new APIError(response.status, error.code, error.message, error.fields);
     }
     return payload.data;
+  }
+
+  private async download(path: string, body: unknown): Promise<Blob> {
+    const headers = new Headers({ Accept: "text/csv", "Content-Type": "application/json" });
+    const csrf = readCookie("xboard_csrf");
+    if (csrf !== null) headers.set("X-CSRF-Token", csrf);
+    const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(body) });
+    if (!response.ok) {
+      const payload = (await response.json()) as ErrorEnvelope;
+      const error = payload.status === "fail" ? payload.error : { code: "request_failed", message: "请求失败" };
+      throw new APIError(response.status, error.code, error.message, error.fields);
+    }
+    return response.blob();
   }
 }
 

@@ -22,7 +22,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	}
 	initialGuest := decodeGuestConfigEnvelope(t, publicInitial)
 	if initialGuest.AppName != "Xboard-Go" || initialGuest.AppDescription != nil || initialGuest.AppURL != nil || initialGuest.TOSURL != nil || initialGuest.Logo != nil ||
-		initialGuest.IsEmailVerify != 0 || initialGuest.IsCaptcha != 0 || initialGuest.CaptchaType != "recaptcha" || initialGuest.IsRecaptcha != 0 {
+		initialGuest.IsEmailVerify != 0 || initialGuest.EnableCouponSystem != 1 || initialGuest.IsCaptcha != 0 || initialGuest.CaptchaType != "recaptcha" || initialGuest.IsRecaptcha != 0 {
 		t.Fatalf("initial guest config = %#v", initialGuest)
 	}
 	if string(initialGuest.EmailWhitelistSuffix) != "0" {
@@ -38,7 +38,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		t.Fatalf("initial admin settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
 	initial := decodeSiteSettingsEnvelope(t, initialResponse)
-	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || !initial.PasswordLimitEnabled ||
+	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || !initial.CouponEnabled || !initial.PasswordLimitEnabled ||
 		initial.PasswordLimitCount != 5 || initial.PasswordLimitMinutes != 60 {
 		t.Fatalf("initial admin site settings = %#v", initial)
 	}
@@ -63,6 +63,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":true,
 		"register_limit_count":2,"register_limit_expire":30,
 		"password_limit_enable":true,"password_limit_count":2,"password_limit_expire":30
+		,"coupon_enabled":false
 	}`)
 	if updatedResponse.Code != http.StatusOK {
 		t.Fatalf("update admin settings status=%d body=%s", updatedResponse.Code, updatedResponse.Body)
@@ -74,7 +75,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		len(updated.EmailWhitelistSuffixes) != 2 || updated.EmailWhitelistSuffixes[0] != "allowed.test" || updated.EmailWhitelistSuffixes[1] != "gmail.com" ||
 		!updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled || updated.RegistrationIPLimitCount != 2 ||
 		updated.RegistrationIPLimitMinutes != 30 || !updated.PasswordLimitEnabled || updated.PasswordLimitCount != 2 ||
-		updated.PasswordLimitMinutes != 30 {
+		updated.PasswordLimitMinutes != 30 || updated.CouponEnabled {
 		t.Fatalf("updated admin settings = %#v", updated)
 	}
 
@@ -82,7 +83,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	guest := decodeGuestConfigEnvelope(t, publicUpdated)
 	if guest.AppName != updated.AppName || stringValue(guest.AppDescription) != updated.AppDescription ||
 		stringValue(guest.AppURL) != updated.AppURL || stringValue(guest.TOSURL) != updated.TOSURL ||
-		stringValue(guest.Logo) != updated.Logo {
+		stringValue(guest.Logo) != updated.Logo || guest.EnableCouponSystem != 0 {
 		t.Fatalf("public config did not observe update: %#v", guest)
 	}
 	var publicSuffixes []string
@@ -106,7 +107,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	if preserved.Revision != 3 || !preserved.StopRegister || !preserved.EmailWhitelistEnabled ||
 		len(preserved.EmailWhitelistSuffixes) != 2 || !preserved.GmailAliasLimitEnabled || !preserved.RegistrationIPLimitEnabled ||
 		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 ||
-		!preserved.PasswordLimitEnabled || preserved.PasswordLimitCount != 2 || preserved.PasswordLimitMinutes != 30 {
+		!preserved.PasswordLimitEnabled || preserved.PasswordLimitCount != 2 || preserved.PasswordLimitMinutes != 30 || preserved.CouponEnabled {
 		t.Fatalf("legacy-shape settings update lost registration policy fields: %#v", preserved)
 	}
 
@@ -160,6 +161,7 @@ type guestConfigContract struct {
 	Logo                 *string         `json:"logo"`
 	IsEmailVerify        int             `json:"is_email_verify"`
 	IsInviteForce        int             `json:"is_invite_force"`
+	EnableCouponSystem   int             `json:"enable_coupon_system"`
 	EmailWhitelistSuffix json.RawMessage `json:"email_whitelist_suffix"`
 	IsCaptcha            int             `json:"is_captcha"`
 	CaptchaType          string          `json:"captcha_type"`
@@ -210,7 +212,7 @@ func assertGuestConfigKeys(t *testing.T, response *httptest.ResponseRecorder) {
 	for _, key := range []string{
 		"tos_url", "is_email_verify", "is_invite_force", "email_whitelist_suffix", "is_captcha", "captcha_type",
 		"recaptcha_site_key", "recaptcha_v3_site_key", "recaptcha_v3_score_threshold", "turnstile_site_key",
-		"app_name", "app_description", "app_url", "logo", "is_recaptcha",
+		"app_name", "app_description", "app_url", "logo", "is_recaptcha", "enable_coupon_system",
 	} {
 		if _, ok := envelope.Data[key]; !ok {
 			t.Errorf("guest config key %q is missing", key)

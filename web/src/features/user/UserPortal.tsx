@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -25,7 +25,8 @@ interface UserPortalAPI {
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
   listPlanOffers: () => Promise<PlanOffer[]>;
-  createOrder: (planID: number, period: PlanPeriod) => Promise<Order>;
+  checkCoupon: (code: string, planID: number, period: PlanPeriod) => Promise<CouponQuote>;
+  createOrder: (planID: number, period: PlanPeriod, couponCode?: string) => Promise<Order>;
   listOrders: (status?: OrderStatus, limit?: number) => Promise<Order[]>;
   getOrder: (tradeNo: string) => Promise<Order>;
   checkoutOrder: (tradeNo: string) => Promise<Order>;
@@ -36,11 +37,12 @@ interface UserPortalAPI {
   logout: () => Promise<void>;
 }
 
-export function UserPortal({ api, session, siteName, siteLogo, initialPage = "dashboard", onSignedOut }: {
+export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, initialPage = "dashboard", onSignedOut }: {
   api: UserPortalAPI;
   session: UserSession;
   siteName: string;
   siteLogo: string | null;
+  couponEnabled: boolean;
   initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
@@ -75,7 +77,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
     </nav>
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
     {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
-    {page === "plans" && <PlanCatalogPage api={api} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
+    {page === "plans" && <PlanCatalogPage api={api} couponEnabled={couponEnabled} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
     {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
     {page === "notices" && <UserNoticesPage api={api} />}
     {page === "knowledge" && <UserKnowledgePage api={api} />}
