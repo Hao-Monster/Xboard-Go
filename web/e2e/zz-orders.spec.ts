@@ -129,9 +129,23 @@ async function findReusableInvitedUser(page: Page): Promise<{ email: string; inv
   });
   expect(response.status, response.body).toBe(200);
   const payload = JSON.parse(response.body) as { data?: { items?: Array<{ email?: string }> } };
-  const email = payload.data?.items?.find((item) => item.email?.startsWith("il-"))?.email;
-  if (email === undefined) return null;
-  return { email, inviterEmail: `io-${email.slice(3)}` };
+  const candidates = (payload.data?.items ?? [])
+    .flatMap((item) => item.email?.startsWith("il-") ? [item.email] : [])
+    .sort((left, right) => right.localeCompare(left));
+  for (const email of candidates) {
+    const prior = await page.evaluate(async (candidate) => {
+      const query = new URLSearchParams({ page: "1", page_size: "100", query: candidate });
+      for (const status of ["1", "3", "4"]) query.append("status", status);
+      const result = await fetch(`/api/v1/admin/orders?${query.toString()}`, { credentials: "same-origin" });
+      return { status: result.status, body: await result.text() };
+    }, email);
+    expect(prior.status, prior.body).toBe(200);
+    const orders = JSON.parse(prior.body) as { data?: { items?: Array<{ user_email?: string }> } };
+    if (!(orders.data?.items ?? []).some((order) => order.user_email === email)) {
+      return { email, inviterEmail: `io-${email.slice(3)}` };
+    }
+  }
+  return null;
 }
 
 async function createInvitedUser(page: Page, email: string, password: string) {
