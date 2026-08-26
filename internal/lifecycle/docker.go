@@ -270,14 +270,25 @@ func (p *DockerPlatform) Backup(ctx context.Context, current Application, output
 	return verified, nil
 }
 
-func (p *DockerPlatform) Restore(ctx context.Context, image Image, inputPath, outputPath string) (backup.Manifest, error) {
+func (p *DockerPlatform) Restore(ctx context.Context, image Image, inputPath, outputPath, attachmentOutputPath string) (backup.Manifest, error) {
 	if err := validateImage(image); err != nil {
 		return backup.Manifest{}, err
+	}
+	expectedAttachmentRoot, err := attachmentRootForDSN("file:" + outputPath)
+	if err != nil {
+		return backup.Manifest{}, err
+	}
+	if attachmentOutputPath != "" && attachmentOutputPath != expectedAttachmentRoot {
+		return backup.Manifest{}, errors.New("rollback attachment path does not match the restored database")
 	}
 	if _, err := p.runner.Run(ctx, "docker", "image", "tag", image.ID, p.runtimeImageTag()); err != nil {
 		return backup.Manifest{}, commandFailure("bind rollback maintenance image", err)
 	}
-	return p.runBackupCommand(ctx, defaultDatabaseDSN, "restore", "--input", inputPath, "--output", outputPath)
+	arguments := []string{"--input", inputPath, "--output", outputPath}
+	if attachmentOutputPath != "" {
+		arguments = append(arguments, "--attachment-output", attachmentOutputPath)
+	}
+	return p.runBackupCommand(ctx, defaultDatabaseDSN, "restore", arguments...)
 }
 
 func (p *DockerPlatform) runBackupCommand(ctx context.Context, dsn, subcommand string, arguments ...string) (backup.Manifest, error) {
@@ -319,13 +330,17 @@ func (p *DockerPlatform) runtimeEnvFile(dsn string) (string, error) {
 	if !databasePattern.MatchString(dsn) {
 		return "", fmt.Errorf("unsupported runtime database DSN %q", dsn)
 	}
+	attachmentRoot, err := attachmentRootForDSN(dsn)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(p.config.RuntimeEnvDir, stateDirectoryMode); err != nil {
 		return "", fmt.Errorf("create lifecycle environment directory: %w", err)
 	}
 	if err := os.Chmod(p.config.RuntimeEnvDir, stateDirectoryMode); err != nil {
 		return "", fmt.Errorf("restrict lifecycle environment directory: %w", err)
 	}
-	payload := []byte("XBOARD_DATABASE_DSN=" + dsn + "\nXBOARD_GO_IMAGE=" + p.runtimeImageTag() + "\n")
+	payload := []byte("XBOARD_DATABASE_DSN=" + dsn + "\nXBOARD_ATTACHMENT_ROOT=" + attachmentRoot + "\nXBOARD_GO_IMAGE=" + p.runtimeImageTag() + "\n")
 	digest := sha256.Sum256(payload)
 	path := filepath.Join(p.config.RuntimeEnvDir, "runtime-"+hex.EncodeToString(digest[:8])+".env")
 	if existing, err := os.ReadFile(path); err == nil {

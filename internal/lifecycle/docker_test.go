@@ -71,7 +71,7 @@ func TestDockerPlatformActivateUsesArgumentVectorsAndNonSecretRuntimeEnvironment
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(payload) != "XBOARD_DATABASE_DSN="+defaultDatabaseDSN+"\nXBOARD_GO_IMAGE=xboard-go:lifecycle-lifecycle-test\n" {
+	if string(payload) != "XBOARD_DATABASE_DSN="+defaultDatabaseDSN+"\nXBOARD_ATTACHMENT_ROOT=/var/lib/xboard/knowledge-attachments\nXBOARD_GO_IMAGE=xboard-go:lifecycle-lifecycle-test\n" {
 		t.Fatalf("runtime environment = %q", payload)
 	}
 }
@@ -156,6 +156,7 @@ func TestDockerPlatformRestoreBindsTheExactImageAndUsesArgumentVectors(t *testin
 		context.Background(), image,
 		"/var/lib/xboard-backups/pre-upgrade.xbbackup",
 		"/var/lib/xboard/xboard-rollback-safe.db",
+		"/var/lib/xboard/xboard-rollback-safe-attachments",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -171,8 +172,24 @@ func TestDockerPlatformRestoreBindsTheExactImageAndUsesArgumentVectors(t *testin
 	last := runner.calls[1]
 	if last.name != "docker" || !slicesContain(last.arguments, "restore") ||
 		!slicesContain(last.arguments, "/var/lib/xboard-backups/pre-upgrade.xbbackup") ||
-		!slicesContain(last.arguments, "/var/lib/xboard/xboard-rollback-safe.db") {
+		!slicesContain(last.arguments, "/var/lib/xboard/xboard-rollback-safe.db") ||
+		!slicesContain(last.arguments, "--attachment-output") ||
+		!slicesContain(last.arguments, "/var/lib/xboard/xboard-rollback-safe-attachments") {
 		t.Fatalf("restore command = %#v", last)
+	}
+}
+
+func TestDockerPlatformRestoreRejectsAnUnrelatedAttachmentPath(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	image := Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: strings.Repeat("e", 40)}
+	if _, err := platform.Restore(context.Background(), image,
+		"/var/lib/xboard-backups/pre-upgrade.xbbackup",
+		"/var/lib/xboard/xboard-rollback-safe.db",
+		"/var/lib/xboard/unrelated-attachments"); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("Restore() executed commands before path validation: %#v", runner.calls)
 	}
 }
 
