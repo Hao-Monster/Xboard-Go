@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, KnowledgeArticle, KnowledgeInput, KnowledgeLanguage } from "../../lib/api";
+import { createKnowledgeDraftToken, KnowledgeAttachmentEditor, type KnowledgeAttachmentAPI } from "./KnowledgeAttachmentEditor";
 
 type KnowledgeAdminAPI = Pick<AdminAPI,
   "listKnowledgeAdmin" | "getKnowledgeAdmin" | "listKnowledgeCategories" | "createKnowledge" | "updateKnowledge" |
   "setKnowledgeVisibility" | "reorderKnowledge" | "deleteKnowledge"
->;
+> & Partial<KnowledgeAttachmentAPI>;
 
 const languages: Array<{ value: KnowledgeLanguage; label: string }> = [
   { value: "en-US", label: "English" }, { value: "ja-JP", label: "日本語" }, { value: "ko-KR", label: "한국어" },
@@ -114,10 +115,16 @@ function KnowledgeEditor({ api, article, categories, onClose, onSaved }: { api: 
   const [show, setShow] = useState(article?.show ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [draftToken] = useState(createKnowledgeDraftToken);
+  const [attachmentsBlocking, setAttachmentsBlocking] = useState(false);
+  const attachmentAPI = completeAttachmentAPI(api) ? api : null;
+  const handleBlockingChange = useCallback((blocked: boolean) => setAttachmentsBlocking(blocked), []);
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true); setError("");
-    const input: KnowledgeInput = { title, category, language, body, show };
+    event.preventDefault();
+    if (attachmentsBlocking) { setError("附件仍在上传或等待重试，请完成或取消后再提交。"); return; }
+    setSaving(true); setError("");
+    const input: KnowledgeInput = { title, category, language, body, show, draft_token: draftToken };
     try { onSaved(article === null ? await api.createKnowledge(input) : await api.updateKnowledge(article.id, article.revision, input)); }
     catch (cause) { setError(messageOf(cause)); setSaving(false); }
   };
@@ -129,10 +136,11 @@ function KnowledgeEditor({ api, article, categories, onClose, onSaved }: { api: 
       <label>分类<input name="category" required maxLength={255} list="knowledge-categories" value={category} onChange={(event) => setCategory(event.target.value)} /><datalist id="knowledge-categories">{categories.map((item) => <option key={item} value={item} />)}</datalist></label>
       <label>语言<select value={language} onChange={(event) => setLanguage(event.target.value as KnowledgeLanguage)}>{languages.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></label>
       <label className="switch-label"><input type="checkbox" checked={show} onChange={(event) => setShow(event.target.checked)} />显示</label>
-      <label>内容<textarea name="body" required maxLength={1_048_576} value={body} onChange={(event) => setBody(event.target.value)} /></label>
+      {attachmentAPI === null ? <label>内容<textarea aria-label="内容" name="body" required maxLength={1_048_576} value={body} onChange={(event) => setBody(event.target.value)} /></label> :
+        <KnowledgeAttachmentEditor api={attachmentAPI} articleID={article?.id} draftToken={draftToken} body={body} setBody={setBody} onBlockingChange={handleBlockingChange} />}
       <div className="editor-toolbar"><button className="button secondary compact" type="button" onClick={insertProtectedRegion}>插入订阅专属区块</button><span className="muted small">区块仅对有效订阅用户显示。</span></div>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      <div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving}>{saving ? "正在提交…" : "提交"}</button></div>
+      <div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || attachmentsBlocking}>{saving ? "正在提交…" : attachmentsBlocking ? "请先处理附件" : "提交"}</button></div>
     </form></Modal>;
 }
 
@@ -157,3 +165,11 @@ function KnowledgeDelete({ api, article, onClose, onDeleted }: { api: KnowledgeA
 function DialogHeader({ title, onClose }: { title: string; onClose: () => void }) { return <div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div>; }
 function languageLabel(language: KnowledgeLanguage) { return languages.find((item) => item.value === language)?.label ?? language; }
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : "请求失败，请稍后重试"; }
+
+function completeAttachmentAPI(api: KnowledgeAdminAPI): api is KnowledgeAdminAPI & KnowledgeAttachmentAPI {
+  return typeof api.initializeKnowledgeAttachment === "function" && typeof api.uploadKnowledgeAttachmentChunk === "function" &&
+    typeof api.getKnowledgeAttachmentUpload === "function" && typeof api.completeKnowledgeAttachmentUpload === "function" &&
+    typeof api.cancelKnowledgeAttachmentUpload === "function" && typeof api.listKnowledgeAttachments === "function" &&
+    typeof api.dropKnowledgeAttachment === "function" && typeof api.cloneKnowledgeAttachments === "function" &&
+    typeof api.generateKnowledgeAttachmentQRCode === "function";
+}

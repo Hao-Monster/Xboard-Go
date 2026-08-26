@@ -18,6 +18,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
 	"github.com/Hao-Monster/Xboard-Go/internal/backup"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
@@ -112,6 +113,24 @@ func main() {
 		logger.Error("initialize CAPTCHA verifier", "error", err)
 		os.Exit(1)
 	}
+	var attachmentService *attachments.Service
+	if settings.AttachmentRoot != "" {
+		if len(settings.SettingsEncryptionKey) != 32 {
+			logger.Error("initialize knowledge attachments", "error", "XBOARD_SETTINGS_ENCRYPTION_KEY is required when attachments are enabled")
+			os.Exit(1)
+		}
+		attachmentService, err = attachments.New(database, attachments.Options{
+			Root: settings.AttachmentRoot, SigningKey: settings.SettingsEncryptionKey, PanelURL: settings.PanelURL,
+			ChunkSize: settings.AttachmentChunkSize, MaxFileSize: settings.AttachmentMaxFileSize,
+			TotalQuota: settings.AttachmentTotalQuota, SignedURLTTL: settings.AttachmentSignedURLTTL,
+			DraftTTL: settings.AttachmentDraftTTL, TrashRetention: settings.AttachmentTrashTTL,
+			MaxPerArticle: settings.AttachmentMaxPerArticle,
+		})
+		if err != nil {
+			logger.Error("initialize knowledge attachments", "error", err)
+			os.Exit(1)
+		}
+	}
 	for index := range settings.SettingsEncryptionKey {
 		settings.SettingsEncryptionKey[index] = 0
 	}
@@ -136,6 +155,9 @@ func main() {
 	runtimeTracker := operations.NewTracker(time.Now())
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger, runtimeTracker)
 	go worker.Run(ctx)
+	if attachmentService != nil {
+		go runAttachmentCleanup(ctx, attachmentService, logger, time.Hour)
+	}
 	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, loginLinkProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
 
@@ -161,6 +183,7 @@ func main() {
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
+		Attachments:                attachmentService,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)
@@ -195,11 +218,30 @@ func main() {
 	}
 }
 
+func runAttachmentCleanup(ctx context.Context, service *attachments.Service, logger *slog.Logger, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			report, err := service.Cleanup(ctx, now.UTC(), 100)
+			if err != nil {
+				logger.Warn("knowledge attachment cleanup incomplete", "expired_uploads", report.ExpiredUploads,
+					"soft_deleted_drafts", report.SoftDeletedDrafts, "purged_attachments", report.PurgedAttachments,
+					"orphan_files", report.OrphanFiles, "failures", report.Failures, "error", err)
+			}
+		}
+	}
+}
+
 type commandResult struct {
-	Status   string          `json:"status"`
-	Action   string          `json:"action"`
-	Path     string          `json:"path"`
-	Manifest backup.Manifest `json:"manifest"`
+	Status         string          `json:"status"`
+	Action         string          `json:"action"`
+	Path           string          `json:"path"`
+	AttachmentPath string          `json:"attachment_path,omitempty"`
+	Manifest       backup.Manifest `json:"manifest"`
 }
 
 type maintenanceCommandResult struct {
@@ -208,6 +250,12 @@ type maintenanceCommandResult struct {
 	AsOf   time.Time                 `json:"as_of"`
 	Limit  int                       `json:"limit"`
 	Result maintenance.CleanupResult `json:"result"`
+}
+
+type attachmentStatusCommandResult struct {
+	Status string                   `json:"status"`
+	Action string                   `json:"action"`
+	Result attachments.StatusReport `json:"result"`
 }
 
 type legacyMigrationSourceResult struct {
@@ -328,6 +376,9 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	if arguments[0] == "maintenance" {
 		return runMaintenanceCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
+	if arguments[0] == "knowledge-attachments" {
+		return runKnowledgeAttachmentsCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
 	if arguments[0] == "migration" {
 		return runMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
@@ -348,13 +399,14 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		}
 		defaultOutput := filepath.Join(defaultDirectory, "xboard-"+now().UTC().Format("20060102T150405Z")+".xbbackup")
 		output := flags.String("output", defaultOutput, "new backup archive path")
+		attachmentRoot := flags.String("attachment-root", strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")), "private attachment root to include")
 		if err := flags.Parse(arguments[2:]); err != nil {
 			return true, err
 		}
 		if flags.NArg() != 0 {
 			return true, errors.New("backup create does not accept positional arguments")
 		}
-		manifest, err := backup.Create(ctx, config.DatabaseDSN(), *output, buildRevision, now())
+		manifest, err := backup.Create(ctx, config.DatabaseDSN(), *output, buildRevision, now(), *attachmentRoot)
 		if err != nil {
 			return true, err
 		}
@@ -389,13 +441,14 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		flags.SetOutput(stderr)
 		input := flags.String("input", "", "backup archive path")
 		output := flags.String("output", "", "new restored database path")
+		attachmentOutput := flags.String("attachment-output", "", "new restored attachment root for format-v2 bundles")
 		if err := flags.Parse(arguments[2:]); err != nil {
 			return true, err
 		}
 		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" {
 			return true, errors.New("backup restore requires --input and --output and accepts no positional arguments")
 		}
-		manifest, err := backup.Restore(ctx, *input, *output)
+		manifest, err := backup.Restore(ctx, *input, *output, *attachmentOutput)
 		if err != nil {
 			return true, err
 		}
@@ -403,11 +456,72 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		if err != nil {
 			return true, err
 		}
-		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.restore", Path: absolute, Manifest: manifest})
+		var absoluteAttachment string
+		if strings.TrimSpace(*attachmentOutput) != "" {
+			absoluteAttachment, err = filepath.Abs(*attachmentOutput)
+			if err != nil {
+				return true, err
+			}
+		}
+		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.restore", Path: absolute, AttachmentPath: absoluteAttachment, Manifest: manifest})
 
 	default:
 		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
 	}
+}
+
+func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	if len(arguments) == 0 || arguments[0] != "status" {
+		return true, errors.New("knowledge-attachments subcommand is required: status")
+	}
+	flags := flag.NewFlagSet("knowledge-attachments status", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	if err := flags.Parse(arguments[1:]); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("knowledge-attachments status does not accept positional arguments")
+	}
+	settings, err := config.Load()
+	if err != nil {
+		return true, err
+	}
+	defer func() {
+		for index := range settings.SettingsEncryptionKey {
+			settings.SettingsEncryptionKey[index] = 0
+		}
+	}()
+	if settings.AttachmentRoot == "" || len(settings.SettingsEncryptionKey) != 32 {
+		return true, errors.New("knowledge-attachments status requires XBOARD_ATTACHMENT_ROOT and XBOARD_SETTINGS_ENCRYPTION_KEY")
+	}
+	database, err := store.OpenSQLite(settings.DatabaseDSN)
+	if err != nil {
+		return true, err
+	}
+	defer database.Close()
+	if err := database.ValidateCurrentSchema(ctx); err != nil {
+		return true, err
+	}
+	service, err := attachments.New(database, attachments.Options{
+		Root: settings.AttachmentRoot, SigningKey: settings.SettingsEncryptionKey, PanelURL: settings.PanelURL,
+		ChunkSize: settings.AttachmentChunkSize, MaxFileSize: settings.AttachmentMaxFileSize,
+		TotalQuota: settings.AttachmentTotalQuota, SignedURLTTL: settings.AttachmentSignedURLTTL,
+		DraftTTL: settings.AttachmentDraftTTL, TrashRetention: settings.AttachmentTrashTTL,
+		MaxPerArticle: settings.AttachmentMaxPerArticle,
+	})
+	if err != nil {
+		return true, err
+	}
+	report := service.StatusReport(ctx, now().UTC())
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(attachmentStatusCommandResult{Status: "success", Action: "knowledge-attachments.status", Result: report}); err != nil {
+		return true, err
+	}
+	if !report.Healthy {
+		return true, errors.New("knowledge attachment storage health check failed")
+	}
+	return true, nil
 }
 
 func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
@@ -541,7 +655,6 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 			Path: existing.RollbackBackupPath, SHA256: digest, Manifest: manifest,
 		}, existing)
 	}
-
 	if strings.TrimSpace(*backupOutput) == "" {
 		return true, errors.New("a new legacy content migration requires --backup-output")
 	}
@@ -552,7 +665,7 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import rollback backup: %w", err)
 	}
@@ -567,7 +680,6 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	if err != nil {
 		return true, err
 	}
-
 	database, err = store.OpenSQLite(targetDSN)
 	if err != nil {
 		return true, err
@@ -598,6 +710,8 @@ func runLegacyKnowledgeMigrationCommand(ctx context.Context, arguments []string,
 	flags := flag.NewFlagSet("migration import-legacy-knowledge", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	sourcePath := flags.String("source", "", "standalone legacy Xboard SQLite snapshot path")
+	sourceAttachmentRoot := flags.String("source-attachment-root", "", "legacy private knowledge attachment root")
+	targetAttachmentRoot := flags.String("target-attachment-root", configuredAttachmentRoot(), "new private knowledge attachment root")
 	backupOutput := flags.String("backup-output", "", "new pre-import Xboard-Go rollback archive path")
 	confirmOffline := flags.Bool("confirm-offline", false, "confirm the target application is stopped")
 	if err := flags.Parse(arguments); err != nil {
@@ -683,6 +797,14 @@ func runLegacyKnowledgeMigrationCommand(ctx context.Context, arguments []string,
 			Path: existing.RollbackBackupPath, SHA256: digest, Manifest: manifest,
 		}, existing)
 	}
+	if len(snapshot.Attachments) != 0 || len(snapshot.Uploads) != 0 {
+		if strings.TrimSpace(*sourceAttachmentRoot) == "" || strings.TrimSpace(*targetAttachmentRoot) == "" {
+			return true, errors.New("non-empty legacy knowledge attachments or uploads require --source-attachment-root and --target-attachment-root")
+		}
+		if err := attachments.PrepareStorageRoot(*targetAttachmentRoot); err != nil {
+			return true, fmt.Errorf("prepare target knowledge attachment root: %w", err)
+		}
+	}
 
 	if strings.TrimSpace(*backupOutput) == "" {
 		return true, errors.New("a new legacy knowledge migration requires --backup-output")
@@ -694,7 +816,7 @@ func runLegacyKnowledgeMigrationCommand(ctx context.Context, arguments []string,
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), *targetAttachmentRoot)
 	if err != nil {
 		return true, fmt.Errorf("create pre-import knowledge rollback backup: %w", err)
 	}
@@ -709,19 +831,36 @@ func runLegacyKnowledgeMigrationCommand(ctx context.Context, arguments []string,
 	if err != nil {
 		return true, err
 	}
+	rollbackFiles := func() {}
+	legacyUploads := snapshot.Uploads
+	if len(snapshot.Attachments) != 0 || len(snapshot.Uploads) != 0 {
+		settings, err := config.Load()
+		if err != nil {
+			return true, fmt.Errorf("load attachment migration limits: %w", err)
+		}
+		legacyUploads, rollbackFiles, err = attachments.ImportLegacySnapshotFiles(ctx, *sourceAttachmentRoot, *targetAttachmentRoot,
+			snapshot.Attachments, snapshot.Uploads, settings.AttachmentTotalQuota)
+		if err != nil {
+			return true, fmt.Errorf("copy legacy knowledge attachments: %w", err)
+		}
+	}
 
 	database, err = store.OpenSQLite(targetDSN)
 	if err != nil {
+		rollbackFiles()
 		return true, err
 	}
 	input := store.LegacyKnowledgeImport{
 		Slice: store.LegacyKnowledgeSlice, SourceSHA256: snapshot.SHA256, SourceSize: snapshot.Size,
 		Articles: snapshot.Articles, Checksum: snapshot.Checksum,
+		Attachments: snapshot.Attachments, AttachmentsChecksum: snapshot.AttachmentsChecksum,
+		Uploads: legacyUploads, UploadsChecksum: store.LegacyKnowledgeUploadsChecksum(legacyUploads),
 		RollbackBackupPath: rollbackPath, RollbackBackupSHA256: rollbackDigest,
 	}
 	report, importErr := database.ImportLegacyKnowledge(ctx, input, now().UTC())
 	closeErr = database.Close()
 	if importErr != nil {
+		rollbackFiles()
 		return true, importErr
 	}
 	if closeErr != nil {
@@ -849,7 +988,7 @@ func runLegacyHumanUsersMigrationCommand(ctx context.Context, arguments []string
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import human user rollback backup: %w", err)
 	}
@@ -1000,7 +1139,7 @@ func runLegacyGroupsRoutesMigrationCommand(ctx context.Context, arguments []stri
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import groups/routes rollback backup: %w", err)
 	}
@@ -1149,7 +1288,7 @@ func runLegacyNodesMigrationCommand(ctx context.Context, arguments []string, std
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import node rollback backup: %w", err)
 	}
@@ -1298,7 +1437,7 @@ func runLegacySubscriptionConfigMigrationCommand(ctx context.Context, arguments 
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import subscription config rollback backup: %w", err)
 	}
@@ -1448,7 +1587,7 @@ func runLegacyOrdersMigrationCommand(ctx context.Context, arguments []string, st
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import order rollback backup: %w", err)
 	}
@@ -1598,7 +1737,7 @@ func runLegacyPlansMigrationCommand(ctx context.Context, arguments []string, std
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import plan rollback backup: %w", err)
 	}
@@ -1749,7 +1888,7 @@ func runLegacyCouponsMigrationCommand(ctx context.Context, arguments []string, s
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import coupon rollback backup: %w", err)
 	}
@@ -1900,7 +2039,7 @@ func runLegacyGiftCardsMigrationCommand(ctx context.Context, arguments []string,
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import gift card rollback backup: %w", err)
 	}
@@ -2071,6 +2210,10 @@ func encodeCommandResult(output io.Writer, result commandResult) error {
 	encoder := json.NewEncoder(output)
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(result)
+}
+
+func configuredAttachmentRoot() string {
+	return strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT"))
 }
 
 func initializeInvitationProtector(ctx context.Context, database *store.Store, key []byte) (*security.InvitationProtector, error) {

@@ -66,6 +66,21 @@ var requiredSchemaTables = []struct {
 	{"distributor_subscriptions", 33},
 	{"distributor_hwid_devices", 33},
 	{"commission_logs", 34},
+	{"knowledge_attachments", 35},
+	{"knowledge_attachment_uploads", 35},
+	{"knowledge_attachment_chunks", 35},
+}
+
+var requiredSchemaColumns = map[string][]string{
+	"knowledge_attachments": {
+		"id", "uuid", "knowledge_id", "uploader_user_id", "draft_token_hash", "original_name", "storage_path",
+		"mime_type", "extension", "size", "sha256", "status", "created_at", "updated_at", "deleted_at",
+	},
+	"knowledge_attachment_uploads": {
+		"id", "uuid", "uploader_user_id", "draft_token_hash", "original_name", "declared_size", "expected_sha256",
+		"chunk_size", "total_chunks", "received_chunks", "temporary_path", "status", "expires_at", "created_at", "updated_at",
+	},
+	"knowledge_attachment_chunks": {"upload_id", "chunk_index", "size", "sha256", "created_at"},
 }
 
 type schemaQueryer interface {
@@ -110,6 +125,36 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if _, exists := tables[required.name]; !exists {
 			return fmt.Errorf("Xboard schema version %d is missing required table %q", schemaVersion, required.name)
+		}
+	}
+	if schemaVersion >= 35 {
+		for table, requiredColumns := range requiredSchemaColumns {
+			rows, err := database.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info("%s")`, table))
+			if err != nil {
+				return fmt.Errorf("inspect Xboard table %q: %w", table, err)
+			}
+			columns := make(map[string]struct{}, len(requiredColumns))
+			for rows.Next() {
+				var sequence, notNull, primaryKey int
+				var name, dataType string
+				var defaultValue any
+				if err := rows.Scan(&sequence, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+					_ = rows.Close()
+					return fmt.Errorf("inspect Xboard table %q: %w", table, err)
+				}
+				columns[name] = struct{}{}
+			}
+			if err := rows.Close(); err != nil {
+				return fmt.Errorf("inspect Xboard table %q: %w", table, err)
+			}
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("inspect Xboard table %q: %w", table, err)
+			}
+			for _, column := range requiredColumns {
+				if _, exists := columns[column]; !exists {
+					return fmt.Errorf("Xboard schema version %d table %q is missing required column %q", schemaVersion, table, column)
+				}
+			}
 		}
 	}
 	return nil

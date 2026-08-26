@@ -2,9 +2,12 @@ package backup
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -85,6 +88,117 @@ func TestCreateVerifyAndRestoreRoundTrip(t *testing.T) {
 	}
 	if _, err := restoredDatabase.GetAdminUser(ctx, second.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("post-backup user is present or returned wrong error: %v", err)
+	}
+}
+
+func TestAttachmentBundleCreateVerifyAndRestoreRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "source.db")
+	database, err := store.OpenSQLite("file:" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 27, 1, 2, 3, 0, time.UTC)
+	admin, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "attachment-backup@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	root := filepath.Join(directory, "attachment-root")
+	relative := filepath.ToSlash(filepath.Join("files", "2026", "08", "11111111-1111-4111-8111-111111111111.txt"))
+	path := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("immutable attachment backup")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	chunkContent := []byte("resumable upload chunk")
+	chunkRelative := filepath.ToSlash(filepath.Join("temporary", "1", "22222222-2222-4222-8222-222222222222", "chunks", "0.part"))
+	chunkPath := filepath.Join(root, filepath.FromSlash(chunkRelative))
+	if err := os.MkdirAll(filepath.Dir(chunkPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(chunkPath, chunkContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	chunkDigest := sha256.Sum256(chunkContent)
+	raw, err := sql.Open("sqlite", "file:"+databasePath+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+		INSERT INTO knowledge_attachments
+		(uuid, uploader_user_id, original_name, storage_path, mime_type, extension, size, sha256, status, created_at, updated_at)
+		VALUES (?, ?, 'manual.txt', ?, 'text/plain; charset=utf-8', 'txt', ?, ?, 'ready', ?, ?)
+	`, "11111111-1111-4111-8111-111111111111", admin.ID, relative, len(content), hex.EncodeToString(digest[:]), now.Unix(), now.Unix()); err != nil {
+		_ = raw.Close()
+		t.Fatal(err)
+	}
+	result, err := raw.Exec(`
+		INSERT INTO knowledge_attachment_uploads
+		(uuid, uploader_user_id, draft_token_hash, original_name, declared_size, chunk_size, total_chunks, received_chunks, temporary_path, status, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, 'resume.bin', ?, ?, 1, 1, ?, 'uploading', ?, ?, ?)
+	`, "22222222-2222-4222-8222-222222222222", admin.ID, strings.Repeat("a", 64), len(chunkContent), len(chunkContent),
+		filepath.ToSlash(filepath.Dir(filepath.Dir(chunkRelative))), now.Add(time.Hour).Unix(), now.Unix(), now.Unix())
+	if err != nil {
+		_ = raw.Close()
+		t.Fatal(err)
+	}
+	uploadID, err := result.LastInsertId()
+	if err != nil {
+		_ = raw.Close()
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO knowledge_attachment_chunks (upload_id, chunk_index, size, sha256, created_at) VALUES (?, 0, ?, ?, ?)`, uploadID, len(chunkContent), hex.EncodeToString(chunkDigest[:]), now.Unix()); err != nil {
+		_ = raw.Close()
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	archivePath := filepath.Join(directory, "bundle.xbbackup")
+	created, err := Create(ctx, "file:"+databasePath, archivePath, "bundle-test", now, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.FormatVersion != bundleFormatVersion || created.AttachmentCount != 2 || created.AttachmentSize != int64(len(content)+len(chunkContent)) || len(created.AttachmentSHA256) != 64 {
+		t.Fatalf("bundle manifest = %#v", created)
+	}
+	if verified, err := Verify(ctx, archivePath); err != nil || verified != created {
+		t.Fatalf("Verify(bundle) = (%#v, %v), want %#v", verified, err, created)
+	}
+
+	missingRootDatabase := filepath.Join(directory, "missing-root.db")
+	if _, err := Restore(ctx, archivePath, missingRootDatabase); err == nil || !strings.Contains(err.Error(), "attachment") {
+		t.Fatalf("Restore(bundle without attachment output) error = %v", err)
+	}
+	if _, err := os.Lstat(missingRootDatabase); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed bundle restore published a database: %v", err)
+	}
+
+	restoredDatabase := filepath.Join(directory, "restored.db")
+	restoredRoot := filepath.Join(directory, "restored-attachments")
+	if restored, err := Restore(ctx, archivePath, restoredDatabase, restoredRoot); err != nil || restored != created {
+		t.Fatalf("Restore(bundle) = (%#v, %v), want %#v", restored, err, created)
+	}
+	got, err := os.ReadFile(filepath.Join(restoredRoot, filepath.FromSlash(relative)))
+	if err != nil || !bytes.Equal(got, content) {
+		t.Fatalf("restored attachment = %q, err=%v", got, err)
+	}
+	gotChunk, err := os.ReadFile(filepath.Join(restoredRoot, filepath.FromSlash(chunkRelative)))
+	if err != nil || !bytes.Equal(gotChunk, chunkContent) {
+		t.Fatalf("restored resumable chunk = %q, err=%v", gotChunk, err)
 	}
 }
 

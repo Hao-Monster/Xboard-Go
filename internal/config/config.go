@@ -19,28 +19,36 @@ var (
 )
 
 type Config struct {
-	Address                string
-	DatabaseDSN            string
-	PanelURL               string
-	LegacyAdminPath        string
-	AllowedOrigins         []string
-	CookieSecure           bool
-	NodeRelease            string
-	BootstrapAdminEmail    string
-	BootstrapAdminPassword string
-	SchedulerInterval      time.Duration
-	MailPollInterval       time.Duration
-	SMTPAllowInsecure      bool
-	CaptchaAllowInsecure   bool
-	CaptchaRecaptchaURL    string
-	CaptchaRecaptchaV3URL  string
-	CaptchaTurnstileURL    string
-	SettingsEncryptionKey  []byte
-	WebSocketEnabled       bool
-	WebSocketURL           string
-	NodePushInterval       int
-	NodePullInterval       int
-	WebRoot                string
+	Address                 string
+	DatabaseDSN             string
+	PanelURL                string
+	LegacyAdminPath         string
+	AllowedOrigins          []string
+	CookieSecure            bool
+	NodeRelease             string
+	BootstrapAdminEmail     string
+	BootstrapAdminPassword  string
+	SchedulerInterval       time.Duration
+	MailPollInterval        time.Duration
+	SMTPAllowInsecure       bool
+	CaptchaAllowInsecure    bool
+	CaptchaRecaptchaURL     string
+	CaptchaRecaptchaV3URL   string
+	CaptchaTurnstileURL     string
+	SettingsEncryptionKey   []byte
+	WebSocketEnabled        bool
+	WebSocketURL            string
+	NodePushInterval        int
+	NodePullInterval        int
+	WebRoot                 string
+	AttachmentRoot          string
+	AttachmentChunkSize     int64
+	AttachmentMaxFileSize   int64
+	AttachmentTotalQuota    int64
+	AttachmentSignedURLTTL  time.Duration
+	AttachmentDraftTTL      time.Duration
+	AttachmentTrashTTL      time.Duration
+	AttachmentMaxPerArticle int
 }
 
 func Load() (Config, error) {
@@ -77,6 +85,34 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	attachmentChunkSize, err := parseInt64Env("XBOARD_ATTACHMENT_CHUNK_SIZE", 5<<20)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentMaxFileSize, err := parseInt64Env("XBOARD_ATTACHMENT_MAX_FILE_SIZE", 1<<30)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentTotalQuota, err := parseInt64Env("XBOARD_ATTACHMENT_TOTAL_QUOTA", 20<<30)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentSignedURLTTL, err := parseDurationEnv("XBOARD_ATTACHMENT_SIGNED_URL_TTL", 2*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentDraftTTL, err := parseDurationEnv("XBOARD_ATTACHMENT_DRAFT_TTL", 24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentTrashTTL, err := parseDurationEnv("XBOARD_ATTACHMENT_TRASH_TTL", 7*24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	attachmentMaxPerArticle, err := parseIntEnv("XBOARD_ATTACHMENT_MAX_PER_ARTICLE", 100)
+	if err != nil {
+		return Config{}, err
+	}
 
 	bootstrapPassword, err := readSecretEnv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD")
 	if err != nil {
@@ -95,27 +131,35 @@ func Load() (Config, error) {
 	}
 
 	config := Config{
-		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
-		DatabaseDSN:            DatabaseDSN(),
-		PanelURL:               panelURL,
-		LegacyAdminPath:        envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
-		CookieSecure:           cookieSecure,
-		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
-		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
-		BootstrapAdminPassword: bootstrapPassword,
-		SchedulerInterval:      interval,
-		MailPollInterval:       mailPollInterval,
-		SMTPAllowInsecure:      smtpAllowInsecure,
-		CaptchaAllowInsecure:   captchaAllowInsecure,
-		CaptchaRecaptchaURL:    strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
-		CaptchaRecaptchaV3URL:  strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL")),
-		CaptchaTurnstileURL:    strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL")),
-		SettingsEncryptionKey:  append([]byte(nil), settingsEncryptionKey...),
-		WebSocketEnabled:       webSocketEnabled,
-		WebSocketURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
-		NodePushInterval:       nodePushInterval,
-		NodePullInterval:       nodePullInterval,
-		WebRoot:                strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
+		Address:                 envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
+		DatabaseDSN:             DatabaseDSN(),
+		PanelURL:                panelURL,
+		LegacyAdminPath:         envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
+		CookieSecure:            cookieSecure,
+		NodeRelease:             envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
+		BootstrapAdminEmail:     strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
+		BootstrapAdminPassword:  bootstrapPassword,
+		SchedulerInterval:       interval,
+		MailPollInterval:        mailPollInterval,
+		SMTPAllowInsecure:       smtpAllowInsecure,
+		CaptchaAllowInsecure:    captchaAllowInsecure,
+		CaptchaRecaptchaURL:     strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
+		CaptchaRecaptchaV3URL:   strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL")),
+		CaptchaTurnstileURL:     strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL")),
+		SettingsEncryptionKey:   append([]byte(nil), settingsEncryptionKey...),
+		WebSocketEnabled:        webSocketEnabled,
+		WebSocketURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
+		NodePushInterval:        nodePushInterval,
+		NodePullInterval:        nodePullInterval,
+		WebRoot:                 strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
+		AttachmentRoot:          strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")),
+		AttachmentChunkSize:     attachmentChunkSize,
+		AttachmentMaxFileSize:   attachmentMaxFileSize,
+		AttachmentTotalQuota:    attachmentTotalQuota,
+		AttachmentSignedURLTTL:  attachmentSignedURLTTL,
+		AttachmentDraftTTL:      attachmentDraftTTL,
+		AttachmentTrashTTL:      attachmentTrashTTL,
+		AttachmentMaxPerArticle: attachmentMaxPerArticle,
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -135,6 +179,26 @@ func Load() (Config, error) {
 	}
 	if config.WebRoot != "" && !filepath.IsAbs(config.WebRoot) {
 		return Config{}, errors.New("XBOARD_WEB_ROOT must be an absolute path")
+	}
+	if config.AttachmentRoot != "" {
+		if !filepath.IsAbs(config.AttachmentRoot) {
+			return Config{}, errors.New("XBOARD_ATTACHMENT_ROOT must be an absolute path")
+		}
+		cleanRoot := filepath.Clean(config.AttachmentRoot)
+		if cleanRoot == filepath.VolumeName(cleanRoot)+string(filepath.Separator) || (config.WebRoot != "" && cleanRoot == filepath.Clean(config.WebRoot)) {
+			return Config{}, errors.New("XBOARD_ATTACHMENT_ROOT must be a dedicated private directory")
+		}
+	}
+	if config.AttachmentChunkSize < 1 || config.AttachmentChunkSize > 64<<20 ||
+		config.AttachmentMaxFileSize < config.AttachmentChunkSize || config.AttachmentMaxFileSize > 1<<30 ||
+		config.AttachmentTotalQuota < config.AttachmentMaxFileSize || config.AttachmentTotalQuota > 1<<40 {
+		return Config{}, errors.New("attachment size and quota limits are invalid")
+	}
+	if config.AttachmentSignedURLTTL < time.Minute || config.AttachmentSignedURLTTL > 24*time.Hour ||
+		config.AttachmentDraftTTL < time.Hour || config.AttachmentDraftTTL > 30*24*time.Hour ||
+		config.AttachmentTrashTTL < 24*time.Hour || config.AttachmentTrashTTL > 365*24*time.Hour ||
+		config.AttachmentMaxPerArticle < 1 || config.AttachmentMaxPerArticle > 1000 {
+		return Config{}, errors.New("attachment TTL or article limit is invalid")
 	}
 	if config.SchedulerInterval < 100*time.Millisecond || config.SchedulerInterval > time.Minute {
 		return Config{}, errors.New("XBOARD_SCHEDULER_INTERVAL must be between 100ms and 1m")
@@ -247,6 +311,18 @@ func parseIntEnv(name string, fallback int) (int, error) {
 		return fallback, nil
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	return parsed, nil
+}
+
+func parseInt64Env(name string, fallback int64) (int64, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
 	}

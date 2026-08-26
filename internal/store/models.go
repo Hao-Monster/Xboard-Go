@@ -10,6 +10,7 @@ import (
 var (
 	ErrNotFound                               = errors.New("not found")
 	ErrConflict                               = errors.New("conflict")
+	ErrAttachmentQuotaExceeded                = errors.New("attachment quota exceeded")
 	ErrRevisionConflict                       = fmt.Errorf("%w: revision conflict", ErrConflict)
 	ErrEmailInUse                             = fmt.Errorf("%w: email already in use", ErrConflict)
 	ErrRegistrationClosed                     = errors.New("registration is closed")

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
 	knowledgecontent "github.com/Hao-Monster/Xboard-Go/internal/knowledge"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -59,11 +60,18 @@ func (s *server) listKnowledgeCategories(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *server) createKnowledge(w http.ResponseWriter, r *http.Request) {
-	input, _, ok := decodeKnowledgeInput(w, r, false)
+	input, _, draftToken, ok := decodeKnowledgeInput(w, r, false)
 	if !ok {
 		return
 	}
-	item, err := s.store.CreateKnowledge(r.Context(), input, s.now())
+	var item store.Knowledge
+	var err error
+	if s.attachments != nil {
+		session, _ := sessionFromContext(r.Context())
+		item, err = s.attachments.CreateKnowledge(r.Context(), session.UserID, strings.ToLower(draftToken), input, s.now())
+	} else {
+		item, err = s.store.CreateKnowledge(r.Context(), input, s.now())
+	}
 	if err != nil {
 		handleKnowledgeMutationError(w, err)
 		return
@@ -76,11 +84,18 @@ func (s *server) updateKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	input, revision, ok := decodeKnowledgeInput(w, r, true)
+	input, revision, draftToken, ok := decodeKnowledgeInput(w, r, true)
 	if !ok {
 		return
 	}
-	item, err := s.store.UpdateKnowledge(r.Context(), id, revision, input, s.now())
+	var item store.Knowledge
+	var err error
+	if s.attachments != nil {
+		session, _ := sessionFromContext(r.Context())
+		item, err = s.attachments.UpdateKnowledge(r.Context(), session.UserID, strings.ToLower(draftToken), id, revision, input, s.now())
+	} else {
+		item, err = s.store.UpdateKnowledge(r.Context(), id, revision, input, s.now())
+	}
 	if err != nil {
 		handleKnowledgeMutationError(w, err)
 		return
@@ -136,7 +151,13 @@ func (s *server) deleteKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.DeleteKnowledge(r.Context(), id, int64(revision)); err != nil {
+	var err error
+	if s.attachments != nil {
+		err = s.attachments.DeleteKnowledge(r.Context(), id, int64(revision), s.now())
+	} else {
+		err = s.store.DeleteKnowledge(r.Context(), id, int64(revision))
+	}
+	if err != nil {
 		handleKnowledgeMutationError(w, err)
 		return
 	}
@@ -167,6 +188,13 @@ func (s *server) listUserKnowledge(w http.ResponseWriter, r *http.Request) {
 	responses := make([]knowledgeResponse, 0, len(items))
 	for _, item := range items {
 		item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+		if s.attachments != nil {
+			item.Body, err = s.attachments.RenderKnowledgeBody(r.Context(), item.ID, item.Body, false, s.now())
+			if err != nil {
+				handleKnowledgeAttachmentError(w, err)
+				return
+			}
+		}
 		responses = append(responses, s.knowledgeResponse(item, true))
 	}
 	writeSuccess(w, http.StatusOK, responses)
@@ -192,6 +220,13 @@ func (s *server) getUserKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+	if s.attachments != nil {
+		item.Body, err = s.attachments.RenderKnowledgeBody(r.Context(), item.ID, item.Body, false, s.now())
+		if err != nil {
+			handleKnowledgeAttachmentError(w, err)
+			return
+		}
+	}
 	writeSuccess(w, http.StatusOK, s.knowledgeResponse(item, true))
 }
 
@@ -242,6 +277,13 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := knowledgecontent.PublicContent(item.Body, settings.AppName, s.panelURL+"/#/login")
+	if s.attachments != nil {
+		body, err = s.attachments.RenderKnowledgeBody(r.Context(), item.ID, body, true, s.now())
+		if err != nil {
+			handleKnowledgeAttachmentError(w, err)
+			return
+		}
+	}
 	document, err := knowledgecontent.RenderPublic(body)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "knowledge_render_failed", "知识文章暂时无法显示", nil)
@@ -267,6 +309,14 @@ func (s *server) publicKnowledge(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) publicKnowledgeContent(w http.ResponseWriter, r *http.Request, item store.Knowledge, canonical, siteName string) {
 	body := knowledgecontent.PublicContent(item.Body, siteName, s.panelURL+"/#/login")
+	if s.attachments != nil {
+		rendered, renderErr := s.attachments.RenderKnowledgeBody(r.Context(), item.ID, body, true, s.now())
+		if renderErr != nil {
+			handleKnowledgeAttachmentError(w, renderErr)
+			return
+		}
+		body = rendered
+	}
 	document, err := knowledgecontent.RenderPublic(body)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "knowledge_render_failed", "知识文章暂时无法显示", nil)
@@ -279,23 +329,24 @@ func (s *server) publicKnowledgeContent(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-func decodeKnowledgeInput(w http.ResponseWriter, r *http.Request, requireRevision bool) (store.SaveKnowledgeInput, int64, bool) {
+func decodeKnowledgeInput(w http.ResponseWriter, r *http.Request, requireRevision bool) (store.SaveKnowledgeInput, int64, string, bool) {
 	var input struct {
-		Revision int64  `json:"revision,omitempty"`
-		Language string `json:"language"`
-		Category string `json:"category"`
-		Title    string `json:"title"`
-		Body     string `json:"body"`
-		Show     bool   `json:"show"`
+		Revision   int64  `json:"revision,omitempty"`
+		Language   string `json:"language"`
+		Category   string `json:"category"`
+		Title      string `json:"title"`
+		Body       string `json:"body"`
+		Show       bool   `json:"show"`
+		DraftToken string `json:"draft_token,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
-		return store.SaveKnowledgeInput{}, 0, false
+		return store.SaveKnowledgeInput{}, 0, "", false
 	}
 	if requireRevision && input.Revision < 1 {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "revision 必须为正整数", nil)
-		return store.SaveKnowledgeInput{}, 0, false
+		return store.SaveKnowledgeInput{}, 0, "", false
 	}
-	return store.SaveKnowledgeInput{Language: input.Language, Category: input.Category, Title: input.Title, Body: input.Body, Visible: input.Show}, input.Revision, true
+	return store.SaveKnowledgeInput{Language: input.Language, Category: input.Category, Title: input.Title, Body: input.Body, Visible: input.Show}, input.Revision, input.DraftToken, true
 }
 
 func (s *server) knowledgeResponse(item store.Knowledge, includeBody bool) knowledgeResponse {
@@ -327,6 +378,14 @@ func (s *server) subscriptionURL(token string) string {
 }
 
 func handleKnowledgeMutationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, attachments.ErrConflict) {
+		writeAPIError(w, http.StatusConflict, "knowledge_attachment_conflict", "知识附件尚未完成或状态已变化", nil)
+		return
+	}
+	if errors.Is(err, attachments.ErrInvalidInput) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "knowledge_attachment_invalid", "知识正文包含无效或无权使用的附件", nil)
+		return
+	}
 	if errors.Is(err, store.ErrConflict) {
 		writeAPIError(w, http.StatusConflict, "knowledge_conflict", "知识文章已被其他操作修改，请刷新后重试", nil)
 		return

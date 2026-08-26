@@ -13,9 +13,10 @@ const summary: KnowledgeArticle = {
 
 describe("UserKnowledgePage", () => {
   it("filters by language/keyword, groups categories, and reads safe subscription-aware content", async () => {
+    const videoURL = `/knowledge-attachments/550e8400-e29b-41d4-a716-446655440000?expires=1787796000&disposition=inline&signature=${"a".repeat(64)}`;
     const detail = {
       ...summary,
-      body: `# 安装\n\n<div class="v2board-no-access">您必须拥有有效的订阅才可以查看该区域的内容</div>\n\n<script>alert(1)</script>\n\n[危险链接](javascript:alert(2))`
+			body: `# 安装\n\n<div class="v2board-no-access">您必须拥有有效的订阅才可以查看该区域的内容</div>\n\n<script>alert(1)</script>\n\n[危险链接](javascript:alert(2))\n\n<video controls preload="metadata" src="${videoURL}"></video>\n\n<video controls preload="metadata" src="https://evil.example/video.mp4"></video>`
     };
     const api = {
       listKnowledge: vi.fn().mockResolvedValue([summary]),
@@ -38,6 +39,8 @@ describe("UserKnowledgePage", () => {
     const unsafeLink = within(dialog).getByText("危险链接").closest("a");
     expect(unsafeLink).not.toBeNull();
     expect(unsafeLink?.getAttribute("href")).not.toMatch(/^javascript:/i);
+		expect(dialog.querySelectorAll("video")).toHaveLength(1);
+		expect(dialog.querySelector("video")).toHaveAttribute("src", videoURL);
     const share = within(dialog).getByRole("link", { name: "公开分享" });
     expect(share).toHaveAttribute("href", summary.share_url);
     expect(share).toHaveAttribute("rel", "noopener noreferrer");

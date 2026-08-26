@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
@@ -523,6 +524,14 @@ func newTestAPIWithPaymentGateway(t *testing.T, gateway paymentGateway) (http.Ha
 }
 
 func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway) (http.Handler, *store.Store) {
+	return newTestAPIWithAttachmentOptions(t, function, protectInvitations, captchaVerifier, gateway, false)
+}
+
+func newTestAPIWithAttachments(t *testing.T) (http.Handler, *store.Store) {
+	return newTestAPIWithAttachmentOptions(t, nil, true, nil, nil, true)
+}
+
+func newTestAPIWithAttachmentOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool) (http.Handler, *store.Store) {
 	t.Helper()
 	database, err := store.OpenSQLite(fmt.Sprintf("file:http-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {
@@ -578,6 +587,17 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 	runtimeTracker := operations.NewTracker(fixedNow().Add(-time.Hour))
 	runtimeTracker.MarkSchedulerRun(fixedNow())
 	runtimeTracker.MarkMailRun(fixedNow())
+	var attachmentService *attachments.Service
+	if enableAttachments {
+		attachmentService, err = attachments.New(database, attachments.Options{
+			Root: t.TempDir(), SigningKey: bytes.Repeat([]byte{0x42}, 32), PanelURL: "https://panel.example.test",
+			ChunkSize: 4, MaxFileSize: 64, TotalQuota: 1 << 20, SignedURLTTL: 2 * time.Hour,
+			DraftTTL: 24 * time.Hour, TrashRetention: 7 * 24 * time.Hour, MaxPerArticle: 100,
+		})
+		if err != nil {
+			t.Fatalf("attachments.New() error = %v", err)
+		}
+	}
 	handler := New(Dependencies{
 		Store:                      database,
 		PasswordHasher:             hasher,
@@ -594,6 +614,7 @@ func newTestAPIWithOptions(t *testing.T, function func(*http.Request) (*http.Res
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
 		PaymentGateway:             gateway,
+		Attachments:                attachmentService,
 	})
 	return handler, database
 }

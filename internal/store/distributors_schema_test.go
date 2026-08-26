@@ -9,12 +9,12 @@ func TestDistributorSchemaEnforcesRolesRelationshipsAndHotIndexes(t *testing.T) 
 	database := newTestStore(t)
 	ctx := context.Background()
 
-	if CurrentSchemaVersion() != 34 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 34", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 35 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 35", CurrentSchemaVersion())
 	}
 	var version int
-	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 34 {
-		t.Fatalf("schema version = %d, err=%v, want 34", version, err)
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != CurrentSchemaVersion() {
+		t.Fatalf("schema version = %d, err=%v, want %d", version, err, CurrentSchemaVersion())
 	}
 
 	for _, table := range []string{"distributor_subscriptions", "distributor_hwid_devices"} {

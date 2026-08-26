@@ -10,7 +10,9 @@ export default defineConfig({
       "/healthz": "http://127.0.0.1:8080",
       "/client-download": "http://127.0.0.1:8080",
       "/client-link": "http://127.0.0.1:8080",
-      "/guide": "http://127.0.0.1:8080"
+      "/guide": "http://127.0.0.1:8080",
+      "/guide-attachments": "http://127.0.0.1:8080",
+      "/knowledge-attachments": "http://127.0.0.1:8080"
     }
   },
   preview: {
@@ -21,7 +23,9 @@ export default defineConfig({
       "/healthz": "http://127.0.0.1:8080",
       "/client-download": "http://127.0.0.1:8080",
       "/client-link": "http://127.0.0.1:8080",
-      "/guide": "http://127.0.0.1:8080"
+      "/guide": "http://127.0.0.1:8080",
+      "/guide-attachments": "http://127.0.0.1:8080",
+      "/knowledge-attachments": "http://127.0.0.1:8080"
     }
   },
   test: {

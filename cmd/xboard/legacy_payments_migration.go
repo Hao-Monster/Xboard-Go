@@ -137,7 +137,7 @@ func runLegacyPaymentsMigrationCommand(ctx context.Context, arguments []string, 
 	if rollbackPath == targetPath || rollbackPath == snapshot.Path {
 		return true, errors.New("rollback backup path must differ from the source and target databases")
 	}
-	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC())
+	createdManifest, err := backup.Create(ctx, targetDSN, rollbackPath, buildRevision, now().UTC(), configuredAttachmentRoot())
 	if err != nil {
 		return true, fmt.Errorf("create pre-import payment rollback backup: %w", err)
 	}

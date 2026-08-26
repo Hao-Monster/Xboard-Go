@@ -22,27 +22,42 @@ import (
 )
 
 const (
-	formatVersion       = 1
+	legacyFormatVersion = 1
+	bundleFormatVersion = 2
 	manifestName        = "manifest.json"
 	databaseName        = "database.sqlite"
+	attachmentIndexName = "attachments.json"
+	attachmentsPrefix   = "attachments/"
 	maxManifestBytes    = 64 << 10
+	maxAttachmentIndex  = 32 << 20
 	maxArchiveBytes     = 64 << 30
 	maxDatabaseBytes    = 64 << 30
+	maxAttachmentBytes  = 1 << 40
+	maxAttachmentFiles  = 1_000_000
 	maxRevisionBytes    = 256
 	backupFileMode      = 0o600
 	backupDirectoryMode = 0o700
 )
 
 type Manifest struct {
-	FormatVersion  int       `json:"format_version"`
-	CreatedAt      time.Time `json:"created_at"`
-	AppRevision    string    `json:"app_revision"`
-	SchemaVersion  int       `json:"schema_version"`
-	DatabaseSize   int64     `json:"database_size"`
-	DatabaseSHA256 string    `json:"database_sha256"`
+	FormatVersion    int       `json:"format_version"`
+	CreatedAt        time.Time `json:"created_at"`
+	AppRevision      string    `json:"app_revision"`
+	SchemaVersion    int       `json:"schema_version"`
+	DatabaseSize     int64     `json:"database_size"`
+	DatabaseSHA256   string    `json:"database_sha256"`
+	AttachmentCount  int       `json:"attachment_count,omitempty"`
+	AttachmentSize   int64     `json:"attachment_size,omitempty"`
+	AttachmentSHA256 string    `json:"attachment_index_sha256,omitempty"`
 }
 
-func Create(ctx context.Context, sourceDSN, outputPath, appRevision string, now time.Time) (Manifest, error) {
+type AttachmentManifest struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
+func Create(ctx context.Context, sourceDSN, outputPath, appRevision string, now time.Time, attachmentRoots ...string) (Manifest, error) {
 	if err := ctx.Err(); err != nil {
 		return Manifest{}, err
 	}
@@ -82,14 +97,42 @@ func Create(ctx context.Context, sourceDSN, outputPath, appRevision string, now 
 		return Manifest{}, fmt.Errorf("hash backup snapshot: %w", err)
 	}
 	manifest := Manifest{
-		FormatVersion: formatVersion, CreatedAt: now.UTC(), AppRevision: appRevision,
+		FormatVersion: legacyFormatVersion, CreatedAt: now.UTC(), AppRevision: appRevision,
 		SchemaVersion: schemaVersion, DatabaseSize: databaseSize, DatabaseSHA256: databaseDigest,
+	}
+	var attachmentRoot string
+	var attachmentEntries []AttachmentManifest
+	if len(attachmentRoots) > 1 {
+		return Manifest{}, errors.New("at most one attachment root may be provided")
+	}
+	if len(attachmentRoots) == 1 && strings.TrimSpace(attachmentRoots[0]) != "" {
+		attachmentRoot, err = validateAttachmentRoot(attachmentRoots[0])
+		if err != nil {
+			return Manifest{}, err
+		}
+		manifest.FormatVersion = bundleFormatVersion
+		attachmentEntries, manifest.AttachmentSize, err = readAttachmentManifest(ctx, snapshotPath, attachmentRoot)
+		if err != nil {
+			return Manifest{}, err
+		}
+		manifest.AttachmentCount = len(attachmentEntries)
+		encoded, err := json.Marshal(attachmentEntries)
+		if err != nil || len(encoded) > maxAttachmentIndex {
+			return Manifest{}, errors.New("attachment backup index exceeds the supported limit")
+		}
+		digest := sha256.Sum256(encoded)
+		manifest.AttachmentSHA256 = hex.EncodeToString(digest[:])
 	}
 	if err := validateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
+	if manifest.FormatVersion == bundleFormatVersion {
+		if err := validateAttachmentEntries(manifest, attachmentEntries); err != nil {
+			return Manifest{}, err
+		}
+	}
 
-	archivePath, err := writeArchive(ctx, filepath.Dir(outputPath), manifest, snapshotPath)
+	archivePath, err := writeArchive(ctx, filepath.Dir(outputPath), manifest, snapshotPath, attachmentRoot, attachmentEntries)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -107,14 +150,18 @@ func Verify(ctx context.Context, inputPath string) (Manifest, error) {
 	}
 	defer os.RemoveAll(directory)
 	databasePath := filepath.Join(directory, databaseName)
-	manifest, err := extractAndVerify(ctx, inputPath, databasePath)
+	attachmentPath := filepath.Join(directory, "attachments")
+	manifest, err := extractAndVerify(ctx, inputPath, databasePath, attachmentPath)
 	if err != nil {
 		return Manifest{}, err
 	}
 	return manifest, nil
 }
 
-func Restore(ctx context.Context, inputPath, outputPath string) (Manifest, error) {
+func Restore(ctx context.Context, inputPath, outputPath string, attachmentOutputs ...string) (Manifest, error) {
+	if len(attachmentOutputs) > 1 {
+		return Manifest{}, errors.New("at most one attachment output may be provided")
+	}
 	outputPath, err := prepareNewOutputPath(outputPath)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("prepare restore output: %w", err)
@@ -124,12 +171,39 @@ func Restore(ctx context.Context, inputPath, outputPath string) (Manifest, error
 		return Manifest{}, fmt.Errorf("reserve restore path: %w", err)
 	}
 	defer os.Remove(temporaryPath)
+	var attachmentOutput string
+	var temporaryAttachmentPath string
+	if len(attachmentOutputs) == 1 && strings.TrimSpace(attachmentOutputs[0]) != "" {
+		attachmentOutput, err = prepareNewDirectoryPath(attachmentOutputs[0])
+		if err != nil {
+			return Manifest{}, fmt.Errorf("prepare attachment restore output: %w", err)
+		}
+		temporaryAttachmentPath, err = unusedTemporaryDirectory(filepath.Dir(attachmentOutput), ".xboard-restore-attachments-*")
+		if err != nil {
+			return Manifest{}, fmt.Errorf("reserve attachment restore path: %w", err)
+		}
+		defer os.RemoveAll(temporaryAttachmentPath)
+	}
 
-	manifest, err := extractAndVerify(ctx, inputPath, temporaryPath)
+	manifest, err := extractAndVerify(ctx, inputPath, temporaryPath, temporaryAttachmentPath)
 	if err != nil {
 		return Manifest{}, err
 	}
+	if manifest.FormatVersion == bundleFormatVersion {
+		if attachmentOutput == "" {
+			return Manifest{}, errors.New("attachment bundle restore requires an attachment output path")
+		}
+		if err := os.Rename(temporaryAttachmentPath, attachmentOutput); err != nil {
+			return Manifest{}, fmt.Errorf("publish restored attachments: %w", err)
+		}
+		temporaryAttachmentPath = ""
+	} else if attachmentOutput != "" {
+		return Manifest{}, errors.New("legacy database-only backup does not contain an attachment bundle")
+	}
 	if err := publishNoReplace(temporaryPath, outputPath); err != nil {
+		if attachmentOutput != "" {
+			_ = os.RemoveAll(attachmentOutput)
+		}
 		return Manifest{}, fmt.Errorf("publish restored database: %w", err)
 	}
 	return manifest, nil
@@ -159,7 +233,7 @@ func createSQLiteSnapshot(ctx context.Context, sourceDSN, destinationPath string
 	return nil
 }
 
-func writeArchive(ctx context.Context, directory string, manifest Manifest, databasePath string) (string, error) {
+func writeArchive(ctx context.Context, directory string, manifest Manifest, databasePath, attachmentRoot string, attachments []AttachmentManifest) (string, error) {
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		return "", fmt.Errorf("encode backup manifest: %w", err)
@@ -210,6 +284,45 @@ func writeArchive(ctx context.Context, directory string, manifest Manifest, data
 	if err := database.Close(); err != nil {
 		return "", fmt.Errorf("close backup snapshot: %w", err)
 	}
+	if manifest.FormatVersion == bundleFormatVersion {
+		encoded, err := json.Marshal(attachments)
+		if err != nil {
+			return "", fmt.Errorf("encode backup attachment index: %w", err)
+		}
+		if err := writeEntry(attachmentIndexName, int64(len(encoded)), strings.NewReader(string(encoded))); err != nil {
+			return "", fmt.Errorf("write backup attachment index: %w", err)
+		}
+	}
+	for _, attachment := range attachments {
+		path, err := safeAttachmentPath(attachmentRoot, attachment.Path)
+		if err != nil {
+			return "", err
+		}
+		fileInfo, err := os.Lstat(path)
+		if err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Size() != attachment.Size {
+			return "", fmt.Errorf("attachment %q changed while creating the backup", attachment.Path)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return "", fmt.Errorf("open backup attachment %q: %w", attachment.Path, err)
+		}
+		openedInfo, statErr := file.Stat()
+		if statErr != nil || !os.SameFile(fileInfo, openedInfo) {
+			_ = file.Close()
+			return "", fmt.Errorf("attachment %q changed before it was archived", attachment.Path)
+		}
+		hash := sha256.New()
+		if err := writeEntry(attachmentsPrefix+attachment.Path, attachment.Size, io.TeeReader(file, hash)); err != nil {
+			_ = file.Close()
+			return "", fmt.Errorf("write backup attachment %q: %w", attachment.Path, err)
+		}
+		if err := file.Close(); err != nil {
+			return "", fmt.Errorf("close backup attachment %q: %w", attachment.Path, err)
+		}
+		if hex.EncodeToString(hash.Sum(nil)) != attachment.SHA256 {
+			return "", fmt.Errorf("attachment %q changed while it was archived", attachment.Path)
+		}
+	}
 	if err := tarWriter.Close(); err != nil {
 		return "", fmt.Errorf("finalize backup tar: %w", err)
 	}
@@ -226,7 +339,7 @@ func writeArchive(ctx context.Context, directory string, manifest Manifest, data
 	return path, nil
 }
 
-func extractAndVerify(ctx context.Context, inputPath, databasePath string) (Manifest, error) {
+func extractAndVerify(ctx context.Context, inputPath, databasePath, attachmentPath string) (Manifest, error) {
 	if err := ctx.Err(); err != nil {
 		return Manifest{}, err
 	}
@@ -275,6 +388,14 @@ func extractAndVerify(ctx context.Context, inputPath, databasePath string) (Mani
 	if err := validateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
+	if manifest.FormatVersion == bundleFormatVersion {
+		if strings.TrimSpace(attachmentPath) == "" {
+			return Manifest{}, errors.New("attachment bundle extraction requires a destination")
+		}
+		if err := os.Mkdir(attachmentPath, backupDirectoryMode); err != nil {
+			return Manifest{}, fmt.Errorf("create attachment extraction directory: %w", err)
+		}
+	}
 
 	databaseHeader, err := tarReader.Next()
 	if err != nil {
@@ -301,6 +422,65 @@ func extractAndVerify(ctx context.Context, inputPath, databasePath string) (Mani
 	}
 	if written != manifest.DatabaseSize || hex.EncodeToString(hash.Sum(nil)) != manifest.DatabaseSHA256 {
 		return Manifest{}, errors.New("backup database size or SHA-256 does not match the manifest")
+	}
+	attachments := []AttachmentManifest{}
+	if manifest.FormatVersion == bundleFormatVersion {
+		header, err := tarReader.Next()
+		if err != nil {
+			return Manifest{}, fmt.Errorf("read backup attachment index header: %w", err)
+		}
+		if header.Name != attachmentIndexName || header.Typeflag != tar.TypeReg || header.Size < 2 || header.Size > maxAttachmentIndex {
+			return Manifest{}, errors.New("backup attachment index is invalid")
+		}
+		encoded := make([]byte, header.Size)
+		if _, err := io.ReadFull(tarReader, encoded); err != nil {
+			return Manifest{}, fmt.Errorf("read backup attachment index: %w", err)
+		}
+		digest := sha256.Sum256(encoded)
+		if hex.EncodeToString(digest[:]) != manifest.AttachmentSHA256 {
+			return Manifest{}, errors.New("backup attachment index SHA-256 does not match the manifest")
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&attachments); err != nil {
+			return Manifest{}, fmt.Errorf("decode backup attachment index: %w", err)
+		}
+		var trailing json.RawMessage
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return Manifest{}, errors.New("backup attachment index contains trailing JSON values")
+		}
+		if err := validateAttachmentEntries(manifest, attachments); err != nil {
+			return Manifest{}, err
+		}
+	}
+	for _, attachment := range attachments {
+		header, err := tarReader.Next()
+		if err != nil {
+			return Manifest{}, fmt.Errorf("read backup attachment %q header: %w", attachment.Path, err)
+		}
+		if header.Name != attachmentsPrefix+attachment.Path || header.Typeflag != tar.TypeReg || header.Size != attachment.Size {
+			return Manifest{}, fmt.Errorf("backup attachment %q does not match the manifest", attachment.Path)
+		}
+		outputPath, err := safeAttachmentPath(attachmentPath, attachment.Path)
+		if err != nil {
+			return Manifest{}, err
+		}
+		if err := os.MkdirAll(filepath.Dir(outputPath), backupDirectoryMode); err != nil {
+			return Manifest{}, fmt.Errorf("create restored attachment directory: %w", err)
+		}
+		output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, backupFileMode)
+		if err != nil {
+			return Manifest{}, fmt.Errorf("create restored attachment %q: %w", attachment.Path, err)
+		}
+		hash := sha256.New()
+		copied, copyErr := io.CopyN(io.MultiWriter(output, hash), &contextReader{ctx: ctx, reader: tarReader}, attachment.Size)
+		closeErr := output.Close()
+		if copyErr != nil || closeErr != nil {
+			return Manifest{}, fmt.Errorf("extract backup attachment %q: %w", attachment.Path, errors.Join(copyErr, closeErr))
+		}
+		if copied != attachment.Size || hex.EncodeToString(hash.Sum(nil)) != attachment.SHA256 {
+			return Manifest{}, fmt.Errorf("backup attachment %q size or SHA-256 does not match the manifest", attachment.Path)
+		}
 	}
 	if _, err := tarReader.Next(); !errors.Is(err, io.EOF) {
 		if err == nil {
@@ -407,7 +587,7 @@ func validateSQLite(ctx context.Context, path string) (int, int64, error) {
 }
 
 func validateManifest(manifest Manifest) error {
-	if manifest.FormatVersion != formatVersion {
+	if manifest.FormatVersion != legacyFormatVersion && manifest.FormatVersion != bundleFormatVersion {
 		return fmt.Errorf("unsupported backup format version %d", manifest.FormatVersion)
 	}
 	if manifest.CreatedAt.IsZero() {
@@ -428,7 +608,156 @@ func validateManifest(manifest Manifest) error {
 	if _, err := hex.DecodeString(manifest.DatabaseSHA256); err != nil || manifest.DatabaseSHA256 != strings.ToLower(manifest.DatabaseSHA256) {
 		return errors.New("backup manifest database SHA-256 is invalid")
 	}
+	if manifest.FormatVersion == legacyFormatVersion {
+		if manifest.AttachmentCount != 0 || manifest.AttachmentSize != 0 || manifest.AttachmentSHA256 != "" {
+			return errors.New("legacy backup manifest must not contain attachments")
+		}
+		return nil
+	}
+	if manifest.AttachmentCount < 0 || manifest.AttachmentCount > maxAttachmentFiles || manifest.AttachmentSize < 0 || manifest.AttachmentSize > maxAttachmentBytes ||
+		len(manifest.AttachmentSHA256) != sha256.Size*2 || manifest.AttachmentSHA256 != strings.ToLower(manifest.AttachmentSHA256) {
+		return errors.New("backup manifest attachment totals are invalid")
+	}
+	if _, err := hex.DecodeString(manifest.AttachmentSHA256); err != nil {
+		return errors.New("backup manifest attachment index SHA-256 is invalid")
+	}
 	return nil
+}
+
+func validateAttachmentEntries(manifest Manifest, attachments []AttachmentManifest) error {
+	if manifest.AttachmentCount != len(attachments) {
+		return errors.New("backup attachment index count does not match the manifest")
+	}
+	var total int64
+	previous := ""
+	for _, attachment := range attachments {
+		if !validAttachmentRelativePath(attachment.Path) || attachment.Path <= previous || attachment.Size < 1 || attachment.Size > maxAttachmentBytes ||
+			len(attachment.SHA256) != sha256.Size*2 || attachment.SHA256 != strings.ToLower(attachment.SHA256) {
+			return errors.New("backup manifest contains an invalid attachment entry")
+		}
+		if _, err := hex.DecodeString(attachment.SHA256); err != nil || total > maxAttachmentBytes-attachment.Size {
+			return errors.New("backup manifest contains an invalid attachment entry")
+		}
+		total += attachment.Size
+		previous = attachment.Path
+	}
+	if total != manifest.AttachmentSize {
+		return errors.New("backup attachment index size does not match the manifest")
+	}
+	return nil
+}
+
+func readAttachmentManifest(ctx context.Context, databasePath, root string) ([]AttachmentManifest, int64, error) {
+	database, err := sql.Open("sqlite", "file:"+filepath.ToSlash(databasePath)+"?mode=ro&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, 0, fmt.Errorf("open attachment backup snapshot: %w", err)
+	}
+	database.SetMaxOpenConns(1)
+	defer database.Close()
+	var schemaVersion int
+	if err := database.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&schemaVersion); err != nil {
+		return nil, 0, fmt.Errorf("read attachment backup schema: %w", err)
+	}
+	if schemaVersion < 35 {
+		return []AttachmentManifest{}, 0, nil
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT path, size, sha256 FROM (
+			SELECT storage_path AS path, size, sha256 FROM knowledge_attachments
+			UNION ALL
+			SELECT u.temporary_path || '/chunks/' || c.chunk_index || '.part' AS path, c.size, c.sha256
+			FROM knowledge_attachment_uploads u
+			JOIN knowledge_attachment_chunks c ON c.upload_id = u.id
+			WHERE u.status <> 'completed'
+		) ORDER BY path
+	`)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read attachment backup metadata: %w", err)
+	}
+	defer rows.Close()
+	attachments := make([]AttachmentManifest, 0)
+	var total int64
+	for rows.Next() {
+		if len(attachments) >= maxAttachmentFiles {
+			return nil, 0, errors.New("attachment backup exceeds the file-count limit")
+		}
+		var attachment AttachmentManifest
+		if err := rows.Scan(&attachment.Path, &attachment.Size, &attachment.SHA256); err != nil {
+			return nil, 0, fmt.Errorf("scan attachment backup metadata: %w", err)
+		}
+		if !validAttachmentRelativePath(attachment.Path) || attachment.Size < 1 || attachment.Size > maxAttachmentBytes ||
+			len(attachment.SHA256) != sha256.Size*2 || attachment.SHA256 != strings.ToLower(attachment.SHA256) {
+			return nil, 0, fmt.Errorf("attachment %q has invalid backup metadata", attachment.Path)
+		}
+		path, err := safeAttachmentPath(root, attachment.Path)
+		if err != nil {
+			return nil, 0, err
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() != attachment.Size {
+			return nil, 0, fmt.Errorf("attachment %q is missing or does not match its recorded size", attachment.Path)
+		}
+		digest, err := fileSHA256(ctx, path)
+		if err != nil || digest != attachment.SHA256 {
+			return nil, 0, fmt.Errorf("attachment %q does not match its recorded SHA-256", attachment.Path)
+		}
+		if total > maxAttachmentBytes-attachment.Size {
+			return nil, 0, errors.New("attachment backup exceeds the size limit")
+		}
+		total += attachment.Size
+		attachments = append(attachments, attachment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate attachment backup metadata: %w", err)
+	}
+	return attachments, total, nil
+}
+
+func validateAttachmentRoot(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" || !filepath.IsAbs(path) {
+		return "", errors.New("attachment root must be an absolute directory")
+	}
+	absolute := filepath.Clean(path)
+	info, err := os.Lstat(absolute)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("attachment root must be an existing directory without symbolic links")
+	}
+	real, err := filepath.EvalSymlinks(absolute)
+	if err != nil || filepath.Clean(real) != absolute {
+		return "", errors.New("attachment root must not resolve through symbolic links")
+	}
+	return absolute, nil
+}
+
+func validAttachmentRelativePath(path string) bool {
+	if path == "" || len(path) > 512 || strings.Contains(path, `\`) || strings.ContainsRune(path, 0) || strings.HasPrefix(path, "/") {
+		return false
+	}
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	return clean == path && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func safeAttachmentPath(root, relative string) (string, error) {
+	if strings.TrimSpace(root) == "" || !validAttachmentRelativePath(relative) {
+		return "", errors.New("backup attachment path is unsafe")
+	}
+	root = filepath.Clean(root)
+	path := filepath.Clean(filepath.Join(root, filepath.FromSlash(relative)))
+	prefix := root + string(filepath.Separator)
+	if path == root || !strings.HasPrefix(path, prefix) {
+		return "", errors.New("backup attachment path escapes its root")
+	}
+	for current := filepath.Dir(path); current != root; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("backup attachment path contains an unsafe directory")
+		}
+	}
+	return path, nil
 }
 
 func fileSHA256(ctx context.Context, path string) (string, error) {
@@ -486,6 +815,26 @@ func prepareNewOutputPath(path string) (string, error) {
 	return absolute, nil
 }
 
+func prepareNewDirectoryPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("output path is required")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(absolute); err == nil {
+		return "", fmt.Errorf("destination already exists: %s", absolute)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(absolute), backupDirectoryMode); err != nil {
+		return "", err
+	}
+	return absolute, os.Chmod(filepath.Dir(absolute), backupDirectoryMode)
+}
+
 func unusedTemporaryPath(directory, pattern string) (string, error) {
 	file, err := os.CreateTemp(directory, pattern)
 	if err != nil {
@@ -494,6 +843,17 @@ func unusedTemporaryPath(directory, pattern string) (string, error) {
 	path := file.Name()
 	if err := file.Close(); err != nil {
 		_ = os.Remove(path)
+		return "", err
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func unusedTemporaryDirectory(directory, pattern string) (string, error) {
+	path, err := os.MkdirTemp(directory, pattern)
+	if err != nil {
 		return "", err
 	}
 	if err := os.Remove(path); err != nil {

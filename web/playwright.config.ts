@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const externalServer = process.env.XBOARD_E2E_EXTERNAL_SERVER === "true";
 const baseURL = process.env.XBOARD_E2E_BASE_URL ?? "http://127.0.0.1:4173";
+const attachmentRoot = join(tmpdir(), `xboard-go-e2e-attachments-${process.pid}`);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -48,6 +51,7 @@ export default defineConfig({
         XBOARD_BOOTSTRAP_ADMIN_EMAIL: "admin@e2e.test",
         XBOARD_BOOTSTRAP_ADMIN_PASSWORD: "e2e-admin-password-123",
         XBOARD_SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        XBOARD_ATTACHMENT_ROOT: attachmentRoot,
         XBOARD_CAPTCHA_ALLOW_INSECURE: "true",
         XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: "http://127.0.0.1:4199/recaptcha",
         XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: "http://127.0.0.1:4199/recaptcha-v3",
