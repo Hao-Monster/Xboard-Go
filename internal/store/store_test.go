@@ -438,7 +438,7 @@ func TestDeletingSchedulePreservesCurrentManualNodeState(t *testing.T) {
 	}
 }
 
-func newTestStore(t *testing.T) *Store {
+func newTestStore(t testing.TB) *Store {
 	t.Helper()
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	store, err := OpenSQLite(dsn)
@@ -455,6 +455,20 @@ func newTestStore(t *testing.T) *Store {
 func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TABLE order_entitlement_events;
+		DROP TABLE orders;
+		ALTER TABLE users DROP COLUMN balance;
+		ALTER TABLE users DROP COLUMN discount;
+		ALTER TABLE users DROP COLUMN commission_type;
+		ALTER TABLE users DROP COLUMN commission_rate;
+		ALTER TABLE users DROP COLUMN commission_balance;
+		ALTER TABLE app_settings DROP COLUMN plan_change_enable;
+		ALTER TABLE app_settings DROP COLUMN surplus_enable;
+		ALTER TABLE app_settings DROP COLUMN new_order_event_id;
+		ALTER TABLE app_settings DROP COLUMN renew_order_event_id;
+		ALTER TABLE app_settings DROP COLUMN change_order_event_id;
+		ALTER TABLE app_settings DROP COLUMN commission_first_time_enable;
+		ALTER TABLE app_settings DROP COLUMN invite_commission;
 		DROP TABLE subscription_templates;
 		DROP TABLE subscription_settings;
 		DROP INDEX idx_users_plan_capacity;

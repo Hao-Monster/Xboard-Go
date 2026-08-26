@@ -81,6 +81,25 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	}
 }
 
+func TestValidLegacyAdminPath(t *testing.T) {
+	t.Parallel()
+	tests := map[string]bool{
+		"admin":                 true,
+		"53815c85":              true,
+		"secure_path-01":        true,
+		"":                      false,
+		"../admin":              false,
+		"admin/path":            false,
+		"管理":                    false,
+		strings.Repeat("a", 65): false,
+	}
+	for value, expected := range tests {
+		if actual := validLegacyAdminPath(value); actual != expected {
+			t.Errorf("validLegacyAdminPath(%q) = %t, want %t", value, actual, expected)
+		}
+	}
+}
+
 func TestLoginRateLimitBlocksRepeatedFailures(t *testing.T) {
 	api, _ := newTestAPI(t)
 	for attempt := 1; attempt <= 6; attempt++ {

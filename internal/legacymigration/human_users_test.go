@@ -26,6 +26,8 @@ func TestReadHumanUsersSnapshotPreservesSupportedLegacyIdentityAndAccessState(t 
 		t.Fatalf("admin = %#v", admin)
 	}
 	if invited.ID != 2 || invited.InviteUserID == nil || *invited.InviteUserID != 1 || invited.TransferEnable != 1_000 ||
+		invited.Balance != 1_234 || invited.Discount == nil || *invited.Discount != 15 || invited.CommissionType != 2 ||
+		invited.CommissionRate == nil || *invited.CommissionRate != 20 || invited.CommissionBalance != 567 ||
 		invited.TrafficUpload != 10 || invited.TrafficDownload != 20 || invited.ExpiredAt == nil || *invited.ExpiredAt != 1_800_000_000 ||
 		invited.LastOnlineAt == nil || *invited.LastOnlineAt != 1_700_000_200 || invited.SpeedLimit != 50 || invited.DeviceLimit != 3 ||
 		invited.PlanID == nil || *invited.PlanID != 9 || invited.NextResetAt == nil || *invited.NextResetAt != 1_700_000_300 ||
@@ -49,7 +51,9 @@ func TestReadHumanUsersSnapshotRejectsLossyOrUnsafeLegacyState(t *testing.T) {
 	}{
 		{name: "staff", statement: `UPDATE v2_user SET is_staff = 1 WHERE id = 2`, contains: "unsupported"},
 		{name: "distributor", statement: `UPDATE v2_user SET is_distributor = 1 WHERE id = 2`, contains: "unsupported"},
-		{name: "finance", statement: `UPDATE v2_user SET balance = 1 WHERE id = 2`, contains: "unsupported"},
+		{name: "negative finance balance", statement: `UPDATE v2_user SET balance = -1 WHERE id = 2`, contains: "finance balances"},
+		{name: "fractional discount", statement: `UPDATE v2_user SET discount = 12.5 WHERE id = 2`, contains: "invalid discount"},
+		{name: "invalid commission type", statement: `UPDATE v2_user SET commission_type = 3 WHERE id = 2`, contains: "commission type"},
 		{name: "invalid plan", statement: `UPDATE v2_user SET plan_id = -9 WHERE id = 2`, contains: "invalid"},
 		{name: "invalid reset state", statement: `UPDATE v2_user SET reset_count = -1 WHERE id = 2`, contains: "reset count"},
 		{name: "last login ip", statement: `UPDATE v2_user SET last_login_ip = '203.0.113.4' WHERE id = 2`, contains: "unsupported"},
@@ -115,9 +119,10 @@ func createLegacyHumanUsersSnapshot(t *testing.T) string {
 		VALUES (1, 'admin@example.test', ?, 1, 1700000100, '11111111-1111-4111-8111-111111111111', 7,
 		        '11111111111111111111111111111111', 0, 1700000000, 1700000200);
 		INSERT INTO v2_user
-		(id, invite_user_id, email, password, u, d, transfer_enable, uuid, group_id, plan_id, speed_limit, token,
+		(id, invite_user_id, email, password, balance, discount, commission_type, commission_rate, commission_balance,
+		 u, d, transfer_enable, uuid, group_id, plan_id, speed_limit, token,
 		 expired_at, created_at, updated_at, device_limit, last_online_at, next_reset_at, last_reset_at, reset_count)
-		VALUES (2, 1, 'user@example.test', ?, 10, 20, 1000, '22222222-2222-4222-8222-222222222222', 7, 9, 50,
+		VALUES (2, 1, 'user@example.test', ?, 1234, 15, 2, 20, 567, 10, 20, 1000, '22222222-2222-4222-8222-222222222222', 7, 9, 50,
 		        '22222222222222222222222222222222', 1800000000, 1700000001, 1700000201, 3, 1700000200,
 		        1700000300, 1700000250, 2);
 	`, phpHash, phpHash); err != nil {

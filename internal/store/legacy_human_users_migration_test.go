@@ -26,6 +26,12 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 		t.Fatal(err)
 	}
 	input := validLegacyHumanUsersImport(t)
+	input.Users[1].Balance = 1_234
+	input.Users[1].Discount = intPointer(15)
+	input.Users[1].CommissionType = 2
+	input.Users[1].CommissionRate = intPointer(20)
+	input.Users[1].CommissionBalance = 567
+	input.Checksum = LegacyHumanUsersChecksum(input.Users)
 	report, err := database.ImportLegacyHumanUsers(ctx, input, time.Unix(400, 0))
 	if err != nil {
 		t.Fatalf("ImportLegacyHumanUsers() error = %v", err)
@@ -50,6 +56,15 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 	}
 	if inviterID != 10 || passwordHash != input.Users[1].PasswordHash || token != input.Users[1].SubscriptionToken {
 		t.Fatal("imported credential or invitation state differs from the source")
+	}
+	var balance, discount, commissionType, commissionRate, commissionBalance int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT balance, discount, commission_type, commission_rate, commission_balance FROM users WHERE id = 20
+	`).Scan(&balance, &discount, &commissionType, &commissionRate, &commissionBalance); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 1_234 || discount != 15 || commissionType != 2 || commissionRate != 20 || commissionBalance != 567 {
+		t.Fatalf("imported finance state = %d/%d/%d/%d/%d", balance, discount, commissionType, commissionRate, commissionBalance)
 	}
 	var encodedReport string
 	if err := database.db.QueryRowContext(ctx, `SELECT report_json FROM legacy_migration_runs WHERE slice = ?`, LegacyHumanUsersSlice).Scan(&encodedReport); err != nil {

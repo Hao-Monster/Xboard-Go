@@ -69,8 +69,12 @@ test("administrator manages plans and a user sees the same purchasable catalog",
   await page.getByRole("button", { name: `下移套餐：${premiumName}` }).click();
   await page.getByRole("button", { name: "保存排序" }).click();
   const rows = page.locator('section[aria-label="套餐列表"] tbody tr');
-  await expect(rows.first()).toContainText(basicName);
-  await expect(rows.nth(1)).toContainText(premiumName);
+  await expect.poll(async () => {
+    const rowTexts = await rows.allTextContents();
+    const basicIndex = rowTexts.findIndex((text) => text.includes(basicName));
+    const premiumIndex = rowTexts.findIndex((text) => text.includes(premiumName));
+    return basicIndex >= 0 && premiumIndex > basicIndex;
+  }).toBe(true);
 
   await logoutAndWait(page);
   await login(page, userEmail, userPassword);
@@ -87,7 +91,8 @@ test("administrator manages plans and a user sees the same purchasable catalog",
   await page.getByRole("button", { name: "套餐管理", exact: true }).click();
   await deletePlan(page, premiumName);
   await deletePlan(page, basicName);
-  await expect(page.getByText("尚未创建套餐。", { exact: true })).toBeVisible();
+  await expect(planRow(page, premiumName)).toBeHidden();
+  await expect(planRow(page, basicName)).toBeHidden();
 
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);

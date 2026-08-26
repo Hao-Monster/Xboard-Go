@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, PlanOffer, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -9,6 +9,7 @@ import { BrandMark } from "../../components/BrandMark";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { PlanCatalogPage } from "../plans/PlanCatalogPage";
 import { UserSubscriptionPage } from "../subscription/UserSubscriptionPage";
+import { UserOrdersPage } from "../orders/UserOrdersPage";
 
 interface UserPortalAPI {
   listVisibleNotices: (page?: number) => Promise<NoticePage>;
@@ -24,6 +25,11 @@ interface UserPortalAPI {
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
   listPlanOffers: () => Promise<PlanOffer[]>;
+  createOrder: (planID: number, period: PlanPeriod) => Promise<Order>;
+  listOrders: (status?: OrderStatus, limit?: number) => Promise<Order[]>;
+  getOrder: (tradeNo: string) => Promise<Order>;
+  checkoutOrder: (tradeNo: string) => Promise<Order>;
+  cancelOrder: (tradeNo: string) => Promise<Order>;
   getSubscription: () => Promise<UserSubscription>;
   getSubscriptionQR: () => Promise<SubscriptionQR>;
   resetSubscriptionSecurity: () => Promise<UserSubscription>;
@@ -38,7 +44,8 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
   initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
-  const [page, setPage] = useState<"subscription" | "plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
+  const [page, setPage] = useState<"subscription" | "plans" | "orders" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
+  const [openOrderTradeNo, setOpenOrderTradeNo] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState("");
 
   const logout = async () => {
@@ -57,6 +64,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
       <div className="admin-nav">
         <button className="nav-link" aria-current={page === "subscription" ? "page" : undefined} onClick={() => setPage("subscription")}>我的订阅</button>
         <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>订阅套餐</button>
+        <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>我的订单</button>
         <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
         <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>
         <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>我的工单</button>
@@ -67,7 +75,8 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
     </nav>
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
     {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
-    {page === "plans" && <PlanCatalogPage api={api} />}
+    {page === "plans" && <PlanCatalogPage api={api} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
+    {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
     {page === "notices" && <UserNoticesPage api={api} />}
     {page === "knowledge" && <UserKnowledgePage api={api} />}
     {page === "tickets" && <UserTicketsPage api={api} />}
@@ -76,7 +85,7 @@ export function UserPortal({ api, session, siteName, siteLogo, initialPage = "da
   </div>;
 }
 
-function portalPage(redirect: LoginLinkRedirect): "subscription" | "plans" | "notices" | "knowledge" | "tickets" | "clients" | "invitations" {
+function portalPage(redirect: LoginLinkRedirect): "subscription" | "plans" | "orders" | "notices" | "knowledge" | "tickets" | "clients" | "invitations" {
   switch (redirect) {
     case "invite": return "invitations";
     case "knowledge": return "knowledge";

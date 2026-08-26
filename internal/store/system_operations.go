@@ -19,8 +19,9 @@ func (s *Store) RecordAdminAudit(ctx context.Context, input AdminAuditInput, now
 	input.AdministratorEmail = strings.ToLower(strings.TrimSpace(input.AdministratorEmail))
 	input.Method = strings.ToUpper(strings.TrimSpace(input.Method))
 	input.Route = strings.TrimSpace(input.Route)
+	validRoute := strings.HasPrefix(input.Route, "/api/v1/admin/") || strings.HasPrefix(input.Route, "/api/v2/{secure_admin}/")
 	if input.AdministratorID < 1 || input.AdministratorEmail == "" || len(input.AdministratorEmail) > 320 ||
-		!isMutationMethod(input.Method) || !strings.HasPrefix(input.Route, "/api/v1/admin/") || len(input.Route) > 512 ||
+		!isMutationMethod(input.Method) || !validRoute || len(input.Route) > 512 ||
 		strings.ContainsAny(input.Route, "\r\n\x00") || input.StatusCode < 100 || input.StatusCode > 599 || now.IsZero() {
 		return ErrInvalidInput
 	}

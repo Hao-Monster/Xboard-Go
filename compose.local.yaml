@@ -11,6 +11,7 @@ services:
     environment:
       XBOARD_PANEL_URL: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
       XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_LEGACY_ADMIN_PATH:-admin}
       XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
       XBOARD_ALLOWED_ORIGINS: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
       XBOARD_BOOTSTRAP_ADMIN_EMAIL: ${XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL:-admin@xboard-go.local}

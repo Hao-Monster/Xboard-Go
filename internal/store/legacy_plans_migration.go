@@ -99,7 +99,7 @@ func ValidateLegacyPlansData(plans []LegacyPlan) error {
 		}
 		ids[plan.ID] = struct{}{}
 		for period, price := range plan.Prices {
-			if _, valid := planPricePeriods[period]; !valid || price <= 0 || price > maxPlanPriceCents {
+			if _, valid := planPricePeriods[period]; !valid || price < 0 || price > maxPlanPriceCents {
 				return fmt.Errorf("%w: invalid legacy plan id %d price", ErrInvalidInput, plan.ID)
 			}
 		}

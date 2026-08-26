@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -110,7 +111,7 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 			return nil, 0, fmt.Errorf("scan legacy human user: %w", err)
 		}
 		if err := validateUnsupportedLegacyHumanUserFields(user.ID, telegramID, passwordAlgorithm, passwordSalt,
-			balance, discount, commissionType, commissionRate, commissionBalance, legacyTime, isStaff, lastLoginIP,
+			legacyTime, isStaff, lastLoginIP,
 			remindExpire, remindTraffic, remarks, onlineCount, isDistributor, distributorName); err != nil {
 			return nil, 0, err
 		}
@@ -119,6 +120,31 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		}
 		user.Banned = banned == 1
 		user.IsAdmin = isAdmin == 1
+		if balance < 0 || commissionBalance < 0 {
+			return nil, 0, fmt.Errorf("legacy human user id %d has invalid finance balances", user.ID)
+		}
+		user.Balance = balance
+		user.CommissionBalance = commissionBalance
+		if discount.Valid {
+			value, ok := legacyPercent(discount.Float64)
+			if !ok {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid discount", user.ID)
+			}
+			user.Discount = &value
+		}
+		if commissionType.Valid {
+			if commissionType.Int64 < 0 || commissionType.Int64 > 2 {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid commission type", user.ID)
+			}
+			user.CommissionType = int(commissionType.Int64)
+		}
+		if commissionRate.Valid {
+			value, ok := legacyPercent(commissionRate.Float64)
+			if !ok {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid commission rate", user.ID)
+			}
+			user.CommissionRate = &value
+		}
 		user.InviteUserID = positiveNullableInt64(inviteUserID)
 		user.LastLoginAt = positiveNullableInt64(lastLoginAt)
 		user.GroupID = positiveNullableInt64(groupID)
@@ -159,13 +185,11 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 }
 
 func validateUnsupportedLegacyHumanUserFields(id int64, telegramID, passwordAlgorithm, passwordSalt sql.NullString,
-	balance int64, discount sql.NullFloat64, commissionType sql.NullInt64, commissionRate sql.NullFloat64,
-	commissionBalance, legacyTime, isStaff int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
+	legacyTime, isStaff int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
 	remarks sql.NullString, onlineCount sql.NullInt64, isDistributor int64, distributorName sql.NullString,
 ) error {
 	unsupported := telegramID.String != "" || passwordAlgorithm.String != "" || passwordSalt.String != "" ||
-		balance != 0 || discount.Valid && discount.Float64 != 0 || commissionType.Valid && commissionType.Int64 != 0 ||
-		commissionRate.Valid && commissionRate.Float64 != 0 || commissionBalance != 0 || legacyTime != 0 || isStaff != 0 ||
+		legacyTime != 0 || isStaff != 0 ||
 		lastLoginIP.String != "" || remindExpire != 1 || remindTraffic != 1 ||
 		strings.TrimSpace(remarks.String) != "" || onlineCount.Valid && onlineCount.Int64 != 0 ||
 		isDistributor != 0 || strings.TrimSpace(distributorName.String) != ""
@@ -173,6 +197,13 @@ func validateUnsupportedLegacyHumanUserFields(id int64, telegramID, passwordAlgo
 		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, or audit state", id)
 	}
 	return nil
+}
+
+func legacyPercent(value float64) (int, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 || math.Trunc(value) != value {
+		return 0, false
+	}
+	return int(value), true
 }
 
 func positiveNullableInt64(value sql.NullInt64) *int64 {

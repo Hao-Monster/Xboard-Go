@@ -31,6 +31,7 @@ func TestAdminAuditLogIsAppendOnlyFilteredAndDoesNotStoreRequestBodies(t *testin
 	for index, input := range []AdminAuditInput{
 		{AdministratorID: admin.ID, AdministratorEmail: admin.Email, Method: "PUT", Route: "/api/v1/admin/ticket-settings", StatusCode: 200},
 		{AdministratorID: admin.ID, AdministratorEmail: admin.Email, Method: "POST", Route: "/api/v1/admin/notices", StatusCode: 422},
+		{AdministratorID: admin.ID, AdministratorEmail: admin.Email, Method: "POST", Route: "/api/v2/{secure_admin}/order/assign", StatusCode: 200},
 	} {
 		if err := database.RecordAdminAudit(ctx, input, now.Add(time.Duration(index)*time.Second)); err != nil {
 			t.Fatalf("RecordAdminAudit(%d) error = %v", index, err)
@@ -49,6 +50,9 @@ func TestAdminAuditLogIsAppendOnlyFilteredAndDoesNotStoreRequestBodies(t *testin
 	}
 	if err := database.RecordAdminAudit(ctx, AdminAuditInput{AdministratorID: admin.ID, AdministratorEmail: admin.Email, Method: "GET", Route: "/api/v1/admin/users", StatusCode: 200}, now); err == nil {
 		t.Fatal("read-only method was accepted as an audit mutation")
+	}
+	if err := database.RecordAdminAudit(ctx, AdminAuditInput{AdministratorID: admin.ID, AdministratorEmail: admin.Email, Method: "POST", Route: "/api/v2/real-secret/order/assign", StatusCode: 200}, now); err == nil {
+		t.Fatal("unredacted legacy administrator route was accepted")
 	}
 }
 

@@ -13,12 +13,16 @@ import (
 	"time"
 )
 
-var immutableNodeReleaseRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
+var (
+	immutableNodeReleaseRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
+	legacyAdminPathRE      = regexp.MustCompile(`^[0-9A-Za-z_-]{1,64}$`)
+)
 
 type Config struct {
 	Address                string
 	DatabaseDSN            string
 	PanelURL               string
+	LegacyAdminPath        string
 	AllowedOrigins         []string
 	CookieSecure           bool
 	NodeRelease            string
@@ -94,6 +98,7 @@ func Load() (Config, error) {
 		Address:                envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:            DatabaseDSN(),
 		PanelURL:               panelURL,
+		LegacyAdminPath:        envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
 		CookieSecure:           cookieSecure,
 		NodeRelease:            envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
 		BootstrapAdminEmail:    strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
@@ -142,6 +147,9 @@ func Load() (Config, error) {
 	}
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
 		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.3")
+	}
+	if !legacyAdminPathRE.MatchString(config.LegacyAdminPath) {
+		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one URL-safe path segment of 1 to 64 characters")
 	}
 	parsedPanelURL, err := url.Parse(config.PanelURL)
 	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {

@@ -47,6 +47,7 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	t.Setenv("XBOARD_ADDRESS", "127.0.0.1:9090")
 	t.Setenv("XBOARD_DATABASE_DSN", "file:test.db")
 	t.Setenv("XBOARD_PANEL_URL", "https://panel.example.test")
+	t.Setenv("XBOARD_LEGACY_ADMIN_PATH", "53815c85")
 	t.Setenv("XBOARD_ALLOWED_ORIGINS", "https://panel.example.test, https://admin.example.test/")
 	t.Setenv("XBOARD_COOKIE_SECURE", "true")
 	t.Setenv("XBOARD_SCHEDULER_INTERVAL", "2s")
@@ -64,11 +65,22 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if settings.Address != "127.0.0.1:9090" || settings.DatabaseDSN != "file:test.db" || !settings.CookieSecure || settings.SchedulerInterval != 2*time.Second ||
-		!settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" {
+		settings.LegacyAdminPath != "53815c85" || !settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" {
 		t.Fatalf("unexpected settings: %#v", settings)
 	}
 	if len(settings.AllowedOrigins) != 2 || settings.AllowedOrigins[1] != "https://admin.example.test" {
 		t.Fatalf("allowed origins = %#v", settings.AllowedOrigins)
+	}
+}
+
+func TestLoadRejectsUnsafeLegacyAdminPath(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	for _, value := range []string{"/admin", "admin/order", "..", "admin path"} {
+		t.Setenv("XBOARD_LEGACY_ADMIN_PATH", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted unsafe legacy administrator path %q", value)
+		}
 	}
 }
 

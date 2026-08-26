@@ -42,6 +42,9 @@ var (
 	ErrInvalidCredential                      = errors.New("invalid machine credential")
 	ErrNodeNotLinked                          = errors.New("node is not linked to a machine")
 	ErrRuntimeNotConfigured                   = errors.New("node runtime is not configured")
+	ErrActiveOrderExists                      = fmt.Errorf("%w: an unpaid or processing order already exists", ErrConflict)
+	ErrOrderState                             = fmt.Errorf("%w: order state does not allow this operation", ErrConflict)
+	ErrPlanUnavailable                        = fmt.Errorf("%w: subscription plan is unavailable", ErrConflict)
 )
 
 const (
@@ -769,6 +772,100 @@ type ServerGroup struct {
 }
 
 type PlanPrices map[string]int64
+
+type OrderStatus int
+
+const (
+	OrderStatusPending OrderStatus = iota
+	OrderStatusProcessing
+	OrderStatusCancelled
+	OrderStatusCompleted
+	OrderStatusDiscounted
+)
+
+type OrderType int
+
+const (
+	OrderTypeNew OrderType = iota + 1
+	OrderTypeRenewal
+	OrderTypeUpgrade
+	OrderTypeResetTraffic
+)
+
+type Order struct {
+	ID                         int64       `json:"id"`
+	UserID                     int64       `json:"user_id"`
+	PlanID                     int64       `json:"plan_id"`
+	PaymentID                  *int64      `json:"payment_id"`
+	Period                     string      `json:"period"`
+	TradeNo                    string      `json:"trade_no"`
+	OriginalAmount             int64       `json:"original_amount"`
+	TotalAmount                int64       `json:"total_amount"`
+	HandlingAmount             *int64      `json:"handling_amount"`
+	BalanceAmount              int64       `json:"balance_amount"`
+	SurplusCredit              int64       `json:"surplus_credit"`
+	SurplusAmount              int64       `json:"surplus_amount"`
+	Type                       OrderType   `json:"type"`
+	Status                     OrderStatus `json:"status"`
+	SurplusOrderIDs            []int64     `json:"surplus_order_ids"`
+	CouponID                   *int64      `json:"coupon_id"`
+	CommissionStatus           *int        `json:"commission_status"`
+	InviteUserID               *int64      `json:"invite_user_id"`
+	ActualCommissionBalance    *int64      `json:"actual_commission_balance"`
+	CommissionRate             *int        `json:"commission_rate"`
+	CommissionAutoCheck        *bool       `json:"commission_auto_check"`
+	CommissionBalance          int64       `json:"commission_balance"`
+	DiscountAmount             int64       `json:"discount_amount"`
+	PaidAt                     *time.Time  `json:"paid_at"`
+	CallbackNo                 string      `json:"callback_no"`
+	DistributorOrderID         *int64      `json:"-"`
+	EntitlementExpiredAtBefore *time.Time  `json:"entitlement_expired_at_before"`
+	EntitlementExpiredAtAfter  *time.Time  `json:"entitlement_expired_at_after"`
+	CreatedAt                  time.Time   `json:"created_at"`
+	UpdatedAt                  time.Time   `json:"updated_at"`
+	Plan                       *Plan       `json:"plan,omitempty"`
+}
+
+type CreateOrderInput struct {
+	UserID int64
+	PlanID int64
+	Period string
+}
+
+type StaleOrderBatchResult struct {
+	Cancelled int `json:"cancelled"`
+	Completed int `json:"completed"`
+	Remaining int `json:"remaining"`
+}
+
+type AdminOrder struct {
+	Order
+	UserEmail string `json:"user_email"`
+	PlanName  string `json:"plan_name"`
+}
+
+type AdminOrderFilter struct {
+	Page     int
+	PageSize int
+	Status   *OrderStatus
+	Type     *OrderType
+	Period   string
+	Query    string
+}
+
+type AdminOrderPage struct {
+	Items    []AdminOrder `json:"items"`
+	Total    int64        `json:"total"`
+	Page     int          `json:"page"`
+	PageSize int          `json:"page_size"`
+}
+
+type AssignOrderInput struct {
+	Email       string
+	PlanID      int64
+	Period      string
+	TotalAmount int64
+}
 
 type Plan struct {
 	ID                 int64      `json:"id"`

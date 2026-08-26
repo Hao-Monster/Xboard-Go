@@ -177,6 +177,70 @@ export interface PlanOffer extends PlanDetails {
   can_renew: boolean;
 }
 
+export type OrderStatus = 0 | 1 | 2 | 3 | 4;
+export type OrderType = 1 | 2 | 3 | 4;
+
+export interface Order {
+  id: number;
+  user_id: number;
+  plan_id: number;
+  payment_id: number | null;
+  period: PlanPeriod;
+  trade_no: string;
+  original_amount: number;
+  total_amount: number;
+  handling_amount: number | null;
+  balance_amount: number;
+  surplus_credit: number;
+  surplus_amount: number;
+  type: OrderType;
+  status: OrderStatus;
+  surplus_order_ids: number[];
+  coupon_id: number | null;
+  commission_status: number | null;
+  invite_user_id: number | null;
+  actual_commission_balance: number | null;
+  commission_rate: number | null;
+  commission_auto_check: boolean | null;
+  commission_balance: number;
+  discount_amount: number;
+  paid_at: string | null;
+  callback_no: string | null;
+  entitlement_expired_at_before: string | null;
+  entitlement_expired_at_after: string | null;
+  created_at: string;
+  updated_at: string;
+  plan?: PlanDetails;
+}
+
+export interface AdminOrder extends Order {
+  user_email: string;
+  plan_name: string;
+}
+
+export interface AdminOrderPage {
+  items: AdminOrder[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminOrderQuery {
+  page?: number;
+  page_size?: number;
+  status?: OrderStatus;
+  type?: OrderType;
+  period?: PlanPeriod;
+  query?: string;
+}
+
+export interface AssignOrderInput {
+  email: string;
+  plan_id: number;
+  period: PlanPeriod;
+  total_amount: number;
+}
+
 export type RoutingAction = "block" | "direct" | "dns" | "proxy";
 
 export interface RoutingRule {
@@ -659,6 +723,11 @@ export interface AdminAPI {
   setPlanState: (id: number, revision: number, show: boolean, sell: boolean, renew: boolean) => Promise<Plan>;
   reorderPlans: (ids: number[]) => Promise<Plan[]>;
   deletePlan: (id: number) => Promise<void>;
+  listAdminOrders: (query?: AdminOrderQuery) => Promise<AdminOrderPage>;
+  getAdminOrder: (tradeNo: string) => Promise<AdminOrder>;
+  assignOrder: (input: AssignOrderInput) => Promise<Order>;
+  paidAdminOrder: (tradeNo: string) => Promise<Order>;
+  cancelAdminOrder: (tradeNo: string) => Promise<Order>;
   listRoutingRules: () => Promise<RoutingRule[]>;
   createRoutingRule: (input: RoutingRuleInput) => Promise<RoutingRule>;
   updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
@@ -919,6 +988,56 @@ export class APIClient implements AdminAPI {
 
   async listPlanOffers(): Promise<PlanOffer[]> {
     return this.request<PlanOffer[]>("/api/v1/plans");
+  }
+
+  async listOrders(status?: OrderStatus, limit = 100): Promise<Order[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status !== undefined) params.set("status", String(status));
+    return this.request<Order[]>(`/api/v1/orders?${params.toString()}`);
+  }
+
+  async createOrder(planID: number, period: PlanPeriod): Promise<Order> {
+    return this.request<Order>("/api/v1/orders", { method: "POST", body: { plan_id: planID, period } });
+  }
+
+  async getOrder(tradeNo: string): Promise<Order> {
+    return this.request<Order>(`/api/v1/orders/${encodeURIComponent(tradeNo)}`);
+  }
+
+  async checkoutOrder(tradeNo: string): Promise<Order> {
+    return this.request<Order>(`/api/v1/orders/${encodeURIComponent(tradeNo)}/checkout`, { method: "POST", body: {} });
+  }
+
+  async cancelOrder(tradeNo: string): Promise<Order> {
+    return this.request<Order>(`/api/v1/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
+  }
+
+  async listAdminOrders(query: AdminOrderQuery = {}): Promise<AdminOrderPage> {
+    const params = new URLSearchParams();
+    if (query.page !== undefined) params.set("page", String(query.page));
+    if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
+    if (query.status !== undefined) params.set("status", String(query.status));
+    if (query.type !== undefined) params.set("type", String(query.type));
+    if (query.period !== undefined) params.set("period", query.period);
+    if (query.query !== undefined && query.query !== "") params.set("query", query.query);
+    const suffix = params.size === 0 ? "" : `?${params.toString()}`;
+    return this.request<AdminOrderPage>(`/api/v1/admin/orders${suffix}`);
+  }
+
+  async getAdminOrder(tradeNo: string): Promise<AdminOrder> {
+    return this.request<AdminOrder>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}`);
+  }
+
+  async assignOrder(input: AssignOrderInput): Promise<Order> {
+    return this.request<Order>("/api/v1/admin/orders", { method: "POST", body: input });
+  }
+
+  async paidAdminOrder(tradeNo: string): Promise<Order> {
+    return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/paid`, { method: "POST", body: {} });
+  }
+
+  async cancelAdminOrder(tradeNo: string): Promise<Order> {
+    return this.request<Order>(`/api/v1/admin/orders/${encodeURIComponent(tradeNo)}/cancel`, { method: "POST", body: {} });
   }
 
   async listRoutingRules(): Promise<RoutingRule[]> {

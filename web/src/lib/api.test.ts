@@ -26,3 +26,40 @@ describe("APIClient CAPTCHA contracts", () => {
     ]);
   });
 });
+
+describe("APIClient order contracts", () => {
+  it("uses authoritative order routes, encoded trade numbers, integer cents, and CSRF on mutations", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=order-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({
+        path: raw,
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: headers.get("X-CSRF-Token")
+      });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+
+    await api.listOrders(0, 25);
+    await api.createOrder(7, "monthly");
+    await api.checkoutOrder("trade/with slash");
+    await api.cancelOrder("trade/with slash");
+    await api.listAdminOrders({ page: 2, page_size: 50, status: 3, type: 2, period: "yearly", query: "buyer@example.test" });
+    await api.assignOrder({ email: "buyer@example.test", plan_id: 7, period: "yearly", total_amount: 12_345 });
+    await api.paidAdminOrder("trade/with slash");
+
+    expect(requests).toEqual([
+      { path: "/api/v1/orders?limit=25&status=0", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/orders", method: "POST", body: { plan_id: 7, period: "monthly" }, csrf: "order-csrf" },
+      { path: "/api/v1/orders/trade%2Fwith%20slash/checkout", method: "POST", body: {}, csrf: "order-csrf" },
+      { path: "/api/v1/orders/trade%2Fwith%20slash/cancel", method: "POST", body: {}, csrf: "order-csrf" },
+      { path: "/api/v1/admin/orders?page=2&page_size=50&status=3&type=2&period=yearly&query=buyer%40example.test", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/orders", method: "POST", body: { email: "buyer@example.test", plan_id: 7, period: "yearly", total_amount: 12_345 }, csrf: "order-csrf" },
+      { path: "/api/v1/admin/orders/trade%2Fwith%20slash/paid", method: "POST", body: {}, csrf: "order-csrf" }
+    ]);
+  });
+});

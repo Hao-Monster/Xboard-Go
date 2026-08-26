@@ -193,9 +193,7 @@ func decodeLegacyPlanPrices(encoded string) (store.PlanPrices, error) {
 			return nil, fmt.Errorf("price %q must have at most two decimal places", period)
 		}
 		cents := rational.Num().Int64()
-		if cents > 0 {
-			result[period] = cents
-		}
+		result[period] = cents
 	}
 	return result, nil
 }
