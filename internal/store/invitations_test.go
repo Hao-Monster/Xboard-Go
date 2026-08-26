@@ -34,10 +34,7 @@ func TestSchemaV20MigrationPreservesV18DataAndAddsSecureLoginLinkDefaults(t *tes
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 25, 3, 0, 0, 0, time.UTC)
-	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "v18@example.test", PasswordHash: "preserved-hash"}, now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := createPreV33HumanUserFixture(t, database, "v18@example.test", "preserved-hash", now)
 	if _, err := database.db.ExecContext(ctx, `ALTER TABLE users DROP COLUMN last_login_at`); err != nil {
 		t.Fatal(err)
 	}

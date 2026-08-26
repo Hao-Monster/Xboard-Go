@@ -320,11 +320,12 @@ const planSelect = `
 	       COALESCE(uc.capacity_users, 0), p.revision, p.created_at, p.updated_at
 	FROM plans p
 	LEFT JOIN (
-		SELECT plan_id, COUNT(*) AS users_count,
-		       SUM(CASE WHEN expired_at IS NULL OR expired_at > ? THEN 1 ELSE 0 END) AS active_users_count,
+		SELECT plan_id,
+		       SUM(CASE WHEN account_kind = 'human' THEN 1 ELSE 0 END) AS users_count,
+		       SUM(CASE WHEN account_kind = 'human' AND (expired_at IS NULL OR expired_at > ?) THEN 1 ELSE 0 END) AS active_users_count,
 		       SUM(CASE WHEN expired_at IS NULL OR expired_at >= ? THEN 1 ELSE 0 END) AS capacity_users
 		FROM users
-		WHERE account_kind = 'human' AND plan_id IS NOT NULL
+		WHERE plan_id IS NOT NULL
 		GROUP BY plan_id
 	) uc ON uc.plan_id = p.id
 `

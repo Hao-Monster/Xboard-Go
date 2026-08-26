@@ -300,8 +300,8 @@ func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *te
 	if _, err := database.BootstrapAdmin(ctx, "migration-admin@example.test", "hash", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	admin, err := database.FindUserByEmail(ctx, "migration-admin@example.test")
-	if err != nil {
+	var admin User
+	if err := database.db.QueryRowContext(ctx, `SELECT id, email FROM users WHERE email = 'migration-admin@example.test'`).Scan(&admin.ID, &admin.Email); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.RecordAdminAudit(ctx, AdminAuditInput{

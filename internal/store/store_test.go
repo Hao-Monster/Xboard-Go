@@ -501,6 +501,7 @@ func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 
 func removeSchemaV32ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
+	removeSchemaV33ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
 		DROP TABLE gift_card_usages;
 		DROP TABLE gift_card_codes;
@@ -508,6 +509,61 @@ func removeSchemaV32ForMigrationTest(t *testing.T, database *Store) {
 	`); err != nil {
 		t.Fatalf("remove schema v32: %v", err)
 	}
+}
+
+func removeSchemaV33ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	removeSchemaV34ForMigrationTest(t, database)
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER trg_distributor_subscriptions_insert_guard;
+		DROP TRIGGER trg_distributor_subscriptions_update_guard;
+		DROP TRIGGER trg_orders_distributor_insert_guard;
+		DROP TRIGGER trg_orders_distributor_update_guard;
+		DROP TRIGGER trg_distributor_subscriptions_delete_restrict;
+		DROP TABLE distributor_hwid_devices;
+		DROP TABLE distributor_subscriptions;
+		DROP INDEX idx_orders_distributor_idempotency;
+		DROP INDEX idx_orders_distributor_settlement;
+		DROP INDEX idx_users_distributor;
+		ALTER TABLE users DROP COLUMN distributor_name;
+		ALTER TABLE users DROP COLUMN is_distributor;
+		ALTER TABLE users DROP COLUMN is_staff;
+	`); err != nil {
+		t.Fatalf("remove schema v33: %v", err)
+	}
+}
+
+func removeSchemaV34ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP INDEX idx_commission_logs_owner_created;
+		DROP INDEX idx_commission_logs_user;
+		DROP TABLE commission_logs;
+		ALTER TABLE app_settings DROP COLUMN commission_auto_check_enable;
+		ALTER TABLE app_settings DROP COLUMN withdraw_close_enable;
+		ALTER TABLE app_settings DROP COLUMN commission_distribution_enable;
+		ALTER TABLE app_settings DROP COLUMN commission_distribution_l1;
+		ALTER TABLE app_settings DROP COLUMN commission_distribution_l2;
+		ALTER TABLE app_settings DROP COLUMN commission_distribution_l3;
+	`); err != nil {
+		t.Fatalf("remove schema v34: %v", err)
+	}
+}
+
+func createPreV33HumanUserFixture(t testing.TB, database *Store, email, passwordHash string, now time.Time) AdminUser {
+	t.Helper()
+	result, err := database.db.ExecContext(context.Background(), `
+		INSERT INTO users (email, password_hash, is_admin, banned, account_kind, subscription_token, created_at, updated_at)
+		VALUES (?, ?, 0, 0, 'human', ?, ?, ?)
+	`, normalizeEmail(email), passwordHash, testSubscriptionToken(t), now.Unix(), now.Unix())
+	if err != nil {
+		t.Fatalf("create pre-v33 human fixture: %v", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read pre-v33 human fixture id: %v", err)
+	}
+	return AdminUser{ID: id, Email: normalizeEmail(email)}
 }
 
 func testSubscriptionToken(tb testing.TB) string {

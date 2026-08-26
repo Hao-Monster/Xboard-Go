@@ -94,7 +94,7 @@ func TestHandlerRejectsUnsafeMethodsAndMissingBuild(t *testing.T) {
 }
 
 func TestDynamicSubscriptionPathsAreDelegatedWithoutCatchingOrdinarySPARoutes(t *testing.T) {
-	token := "0123456789abcdef0123456789abcdef"
+	token := "0123456789abcdef0123456789abcdef" // gitleaks:allow -- deterministic route fixture
 	for _, test := range []struct {
 		path string
 		want bool

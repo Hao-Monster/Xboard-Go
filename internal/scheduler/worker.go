@@ -22,6 +22,7 @@ type Worker struct {
 	lastLoginFailureSweep      time.Time
 	lastTrafficResetSweep      time.Time
 	lastOrderSweep             time.Time
+	lastCommissionSweep        time.Time
 	tracker                    *operations.Tracker
 }
 
@@ -66,6 +67,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.pruneLoginFailures(ctx, now)
 	w.resetDueTraffic(ctx, now)
 	w.processOrders(ctx, now)
+	w.processCommissions(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -82,6 +84,25 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) processCommissions(ctx context.Context, now time.Time) {
+	// The legacy check:commission command runs every minute. Keep the same
+	// cadence while the store transaction guarantees exactly-once payout.
+	if !w.lastCommissionSweep.IsZero() && now.Sub(w.lastCommissionSweep) < time.Minute {
+		return
+	}
+	w.lastCommissionSweep = now
+	result, err := w.store.ProcessCommissions(ctx, now, 200)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("process invitation commissions", "error", err)
+		}
+		return
+	}
+	if result.Checked > 0 || result.Paid > 0 {
+		w.logger.Info("invitation commissions processed", "checked", result.Checked, "paid", result.Paid, "remaining", result.Remaining)
 	}
 }
 

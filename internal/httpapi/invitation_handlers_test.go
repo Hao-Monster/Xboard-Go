@@ -80,6 +80,23 @@ func TestInvitationHTTPGenerationPVRegistrationAndPrivacy(t *testing.T) {
 	if strings.Contains(summary.Body.String(), `"user_id"`) || strings.Contains(summary.Body.String(), `"code_digest"`) || strings.Contains(summary.Body.String(), `"code_cipher"`) {
 		t.Fatalf("summary leaked internal identifiers: %s", summary.Body)
 	}
+	if !containsAll(summary.Body.String(), `"valid_commission":0`, `"pending_commission":0`, `"commission_rate":10`, `"available_commission":0`) {
+		t.Fatalf("summary omitted legacy commission statistics: %s", summary.Body)
+	}
+	commissionLogs := owner.request(t, api, http.MethodGet, "/api/v1/invitations/commissions?page=1&page_size=10", "")
+	if commissionLogs.Code != http.StatusOK || !containsAll(commissionLogs.Body.String(), `"items":[]`, `"total":0`, `"page":1`, `"page_size":10`) {
+		t.Fatalf("empty commission logs status=%d body=%s", commissionLogs.Code, commissionLogs.Body)
+	}
+	invalidTransfer := owner.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":0}`)
+	assertAPIError(t, invalidTransfer, http.StatusUnprocessableEntity, "validation_failed", "划转金额必须大于 0")
+	legacyFetch := owner.request(t, api, http.MethodGet, "/api/v1/user/invite/fetch", "")
+	if legacyFetch.Code != http.StatusOK || !containsAll(legacyFetch.Body.String(), `"stat":[0,0,0,10,0]`, `"codes":[`) {
+		t.Fatalf("legacy invite fetch status=%d body=%s", legacyFetch.Code, legacyFetch.Body)
+	}
+	legacyDetails := owner.request(t, api, http.MethodGet, "/api/v1/user/invite/details?current=1&page_size=10", "")
+	if legacyDetails.Code != http.StatusOK || legacyDetails.Body.String() != `{"data":[],"total":0}`+"\n" {
+		t.Fatalf("legacy invite details status=%d body=%s", legacyDetails.Code, legacyDetails.Body)
+	}
 
 	updateInvitationPolicyHTTP(t, database, administrator.ID, true, 1, false, fixedNow().Add(time.Minute))
 	missing := plainAPIRequest(api, http.MethodPost, "/api/v1/auth/register", `{"email":"missing-invite@example.test","password":"password-123","password_confirmation":"password-123"}`)
@@ -152,6 +169,45 @@ func TestGuestInvitationForceAndProtectedSettings(t *testing.T) {
 	if guestPayload.Data.IsInviteForce != 1 {
 		t.Fatalf("guest invitation force=%d", guestPayload.Data.IsInviteForce)
 	}
+}
+
+func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.T) {
+	api, database := newTestAPI(t)
+	cookie := loginAdmin(t, api)
+	administrator, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateInvitationPolicyHTTP(t, database, administrator.ID, false, 2, false, fixedNow())
+
+	unsafeCookieGET := cookie.request(t, api, http.MethodGet, "/api/v1/user/invite/save", "")
+	if unsafeCookieGET.Code != http.StatusForbidden || !strings.Contains(unsafeCookieGET.Body.String(), "旧版邀请码生成仅支持访问令牌") {
+		t.Fatalf("cookie-authenticated legacy GET mutation status=%d body=%s", unsafeCookieGET.Code, unsafeCookieGET.Body)
+	}
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	created := bearerRequest(api, http.MethodGet, "/api/v1/user/invite/save", authorization, "")
+	if created.Code != http.StatusOK || !containsAll(created.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("bearer legacy invitation creation status=%d body=%s", created.Code, created.Body)
+	}
+	fetched := bearerRequest(api, http.MethodGet, "/api/v1/user/invite/fetch", authorization, "")
+	if fetched.Code != http.StatusOK || !containsAll(fetched.Body.String(), `"codes":[{`, `"stat":[0,0,0,10,0]`) {
+		t.Fatalf("bearer legacy invitation fetch status=%d body=%s", fetched.Code, fetched.Body)
+	}
+
+	wrongMediaType := bearerRequest(api, http.MethodPost, "/api/v1/user/transfer", authorization, `{"transfer_amount":1}`)
+	if wrongMediaType.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("JSON legacy transfer status=%d body=%s", wrongMediaType.Code, wrongMediaType.Body)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "佣金余额不足") {
+		t.Fatalf("form legacy transfer status=%d body=%s", response.Code, response.Body)
+	}
+	modernOverdraw := cookie.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":1}`)
+	assertAPIError(t, modernOverdraw, http.StatusConflict, "insufficient_commission", "佣金余额不足")
 }
 
 func TestInvitationViewRateLimitAndStrictInput(t *testing.T) {

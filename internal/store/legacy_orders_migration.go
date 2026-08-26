@@ -74,6 +74,11 @@ type LegacyOrdersImportReport struct {
 
 func LegacyOrdersChecksum(orders []LegacyOrder) string {
 	ordered := append([]LegacyOrder(nil), orders...)
+	// Distributor links are imported by the distributor slice after the financial
+	// orders and internal subscribers exist; the distributor slice checks them in full.
+	for index := range ordered {
+		ordered[index].DistributorOrderID = nil
+	}
 	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
 	if ordered == nil {
 		ordered = []LegacyOrder{}
@@ -277,7 +282,7 @@ func (s *Store) ImportLegacyOrders(ctx context.Context, input LegacyOrdersImport
 			order.SurplusCredit, order.SurplusAmount, order.Type, order.Status, string(surplusIDs), nullableInt64Value(order.CouponID),
 			nullableIntValue(order.CommissionStatus), nullableInt64Value(order.InviteUserID), nullableInt64Value(order.ActualCommissionBalance),
 			order.CommissionBalance, order.DiscountAmount, nullableInt64Value(order.PaidAt), nullableStringValue(order.CallbackNo),
-			nullableInt64Value(order.DistributorOrderID), nullableInt64Value(order.EntitlementExpiredAtBefore),
+			nil, nullableInt64Value(order.EntitlementExpiredAtBefore),
 			nullableInt64Value(order.EntitlementExpiredAtAfter), nullableStringValue(order.DistributorIdempotencyKey),
 			nullableInt64Value(order.DistributorSettledBy), order.CreatedAt, order.UpdatedAt,
 		); err != nil {

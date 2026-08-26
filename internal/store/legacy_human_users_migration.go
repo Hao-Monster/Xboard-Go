@@ -29,34 +29,37 @@ const (
 )
 
 type LegacyHumanUser struct {
-	ID                int64  `json:"id"`
-	InviteUserID      *int64 `json:"invite_user_id"`
-	Email             string `json:"email"`
-	PasswordHash      string `json:"password_hash"`
-	Balance           int64  `json:"balance"`
-	Discount          *int   `json:"discount"`
-	CommissionType    int    `json:"commission_type"`
-	CommissionRate    *int   `json:"commission_rate"`
-	CommissionBalance int64  `json:"commission_balance"`
-	TransferEnable    int64  `json:"transfer_enable"`
-	TrafficUpload     int64  `json:"traffic_upload"`
-	TrafficDownload   int64  `json:"traffic_download"`
-	Banned            bool   `json:"banned"`
-	IsAdmin           bool   `json:"is_admin"`
-	LastLoginAt       *int64 `json:"last_login_at"`
-	UUID              string `json:"uuid"`
-	GroupID           *int64 `json:"group_id"`
-	PlanID            *int64 `json:"plan_id"`
-	SpeedLimit        int    `json:"speed_limit"`
-	ExpiredAt         *int64 `json:"expired_at"`
-	DeviceLimit       int    `json:"device_limit"`
-	LastOnlineAt      *int64 `json:"last_online_at"`
-	NextResetAt       *int64 `json:"next_reset_at"`
-	LastResetAt       *int64 `json:"last_reset_at"`
-	ResetCount        int64  `json:"reset_count"`
-	SubscriptionToken string `json:"subscription_token"`
-	CreatedAt         int64  `json:"created_at"`
-	UpdatedAt         int64  `json:"updated_at"`
+	ID                int64   `json:"id"`
+	InviteUserID      *int64  `json:"invite_user_id"`
+	Email             string  `json:"email"`
+	PasswordHash      string  `json:"password_hash"`
+	Balance           int64   `json:"balance"`
+	Discount          *int    `json:"discount"`
+	CommissionType    int     `json:"commission_type"`
+	CommissionRate    *int    `json:"commission_rate"`
+	CommissionBalance int64   `json:"commission_balance"`
+	TransferEnable    int64   `json:"transfer_enable"`
+	TrafficUpload     int64   `json:"traffic_upload"`
+	TrafficDownload   int64   `json:"traffic_download"`
+	Banned            bool    `json:"banned"`
+	IsAdmin           bool    `json:"is_admin"`
+	IsStaff           bool    `json:"is_staff"`
+	IsDistributor     bool    `json:"is_distributor"`
+	DistributorName   *string `json:"distributor_name"`
+	LastLoginAt       *int64  `json:"last_login_at"`
+	UUID              string  `json:"uuid"`
+	GroupID           *int64  `json:"group_id"`
+	PlanID            *int64  `json:"plan_id"`
+	SpeedLimit        int     `json:"speed_limit"`
+	ExpiredAt         *int64  `json:"expired_at"`
+	DeviceLimit       int     `json:"device_limit"`
+	LastOnlineAt      *int64  `json:"last_online_at"`
+	NextResetAt       *int64  `json:"next_reset_at"`
+	LastResetAt       *int64  `json:"last_reset_at"`
+	ResetCount        int64   `json:"reset_count"`
+	SubscriptionToken string  `json:"subscription_token"`
+	CreatedAt         int64   `json:"created_at"`
+	UpdatedAt         int64   `json:"updated_at"`
 }
 
 type LegacyHumanUsersImport struct {
@@ -121,6 +124,22 @@ func LegacyHumanUsersChecksum(users []LegacyHumanUser) string {
 			canonical.writeInt64(int64(user.CommissionType))
 			canonical.writeIntPointer(user.CommissionRate)
 			canonical.writeInt64(user.CommissionBalance)
+		}
+	}
+	roleExtended := false
+	for _, user := range ordered {
+		if user.IsStaff || user.IsDistributor || user.DistributorName != nil {
+			roleExtended = true
+			break
+		}
+	}
+	if roleExtended {
+		canonical.writeString("roles-v1")
+		for _, user := range ordered {
+			canonical.writeInt64(user.ID)
+			canonical.writeBool(user.IsStaff)
+			canonical.writeBool(user.IsDistributor)
+			canonical.writeStringPointer(user.DistributorName)
 		}
 	}
 	return canonical.sum()
@@ -190,6 +209,17 @@ func (canonical *legacyHumanUsersDigest) writeIntPointer(value *int) {
 	}
 }
 
+func (canonical *legacyHumanUsersDigest) writeStringPointer(value *string) {
+	canonical.flag[0] = 0
+	if value != nil {
+		canonical.flag[0] = 1
+	}
+	_, _ = canonical.digest.Write(canonical.flag[:])
+	if value != nil {
+		canonical.writeString(*value)
+	}
+}
+
 func (canonical *legacyHumanUsersDigest) writeBool(value bool) {
 	canonical.flag[0] = 0
 	if value {
@@ -213,6 +243,7 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 	var totalBytes int64
 	var activeAdmins int
 	for _, user := range users {
+		distributorName, distributorNameErr := normalizedDistributorName(user.IsDistributor, user.DistributorName)
 		address, emailErr := mail.ParseAddress(user.Email)
 		if user.ID < 1 || user.Email == "" || len(user.Email) > 320 || normalizeEmail(user.Email) != user.Email ||
 			!utf8.ValidString(user.Email) || emailErr != nil || address.Address != user.Email ||
@@ -222,7 +253,7 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 			user.CommissionType < 0 || user.CommissionType > 2 || user.CommissionRate != nil && (*user.CommissionRate < 0 || *user.CommissionRate > 100) ||
 			user.TrafficUpload < 0 || user.TrafficDownload < 0 || user.SpeedLimit < 0 || user.DeviceLimit < 0 ||
 			user.DeviceLimit > 1_000 || !validLegacyUnixTimestamp(user.CreatedAt) || !validLegacyUnixTimestamp(user.UpdatedAt) ||
-			user.UpdatedAt < user.CreatedAt {
+			user.UpdatedAt < user.CreatedAt || distributorNameErr != nil || !equalOptionalStrings(distributorName, user.DistributorName) {
 			return fmt.Errorf("%w: invalid legacy human user id %d", ErrInvalidInput, user.ID)
 		}
 		parsedUUID, err := uuid.Parse(user.UUID)
@@ -261,6 +292,9 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 			activeAdmins++
 		}
 		totalBytes += int64(len(user.Email) + len(user.PasswordHash) + len(user.UUID) + len(user.SubscriptionToken))
+		if user.DistributorName != nil {
+			totalBytes += int64(len(*user.DistributorName))
+		}
 		if totalBytes > maxLegacyHumanUserBytes {
 			return fmt.Errorf("%w: legacy human users exceed the migration data limit", ErrInvalidInput)
 		}
@@ -276,6 +310,13 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		return fmt.Errorf("%w: legacy human users require an unbanned administrator", ErrInvalidInput)
 	}
 	return nil
+}
+
+func equalOptionalStrings(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func validLegacyUnixTimestamp(value int64) bool {
@@ -376,19 +417,24 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO users (
-			id, email, password_hash, is_admin, banned, account_kind, balance, discount, commission_type,
+			id, email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, balance, discount, commission_type,
 			commission_rate, commission_balance, uuid, group_id, plan_id, transfer_enable,
 			traffic_u, traffic_d, expired_at, speed_limit, device_limit, online_count, last_online_at,
 			last_login_at, next_reset_at, last_reset_at, reset_count, admin_revision, subscription_token,
 			invite_user_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?, ?, 'human',
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+			?, ?, ?, ?, ?, 1, ?, NULL, ?, ?
+		)
 	`)
 	if err != nil {
 		return LegacyHumanUsersImportReport{}, fmt.Errorf("prepare legacy human user import: %w", err)
 	}
 	defer statement.Close()
 	for _, user := range input.Users {
-		if _, err := statement.ExecContext(ctx, user.ID, user.Email, user.PasswordHash, user.IsAdmin, user.Banned,
+		if _, err := statement.ExecContext(ctx, user.ID, user.Email, user.PasswordHash, user.IsAdmin, user.IsStaff,
+			user.IsDistributor, nullableStringValue(user.DistributorName), user.Banned,
 			user.Balance, nullableIntValue(user.Discount), user.CommissionType, nullableIntValue(user.CommissionRate), user.CommissionBalance, user.UUID,
 			nullableInt64Value(user.GroupID), nullableInt64Value(user.PlanID), user.TransferEnable, user.TrafficUpload, user.TrafficDownload,
 			nullableInt64Value(user.ExpiredAt), user.SpeedLimit, user.DeviceLimit, nullableInt64Value(user.LastOnlineAt),
@@ -586,7 +632,7 @@ func nullableIntValue(value *int) any {
 func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, string, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, invite_user_id, email, password_hash, balance, discount, commission_type, commission_rate,
-		       commission_balance, transfer_enable, traffic_u, traffic_d, banned, is_admin,
+		       commission_balance, transfer_enable, traffic_u, traffic_d, banned, is_admin,is_staff,is_distributor,distributor_name,
 		       last_login_at, uuid, group_id, plan_id, speed_limit, expired_at, device_limit, online_count,
 		       last_online_at, next_reset_at, last_reset_at, reset_count, subscription_token,
 		       admin_revision, account_kind, created_at, updated_at
@@ -602,12 +648,14 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 		var user LegacyHumanUser
 		var inviteUserID, lastLoginAt, groupID, planID, expiredAt, lastOnlineAt, nextResetAt, lastResetAt sql.NullInt64
 		var discount, commissionRate sql.NullInt64
+		var distributorName sql.NullString
 		var onlineCount int
 		var revision int64
 		var accountKind string
 		if err := rows.Scan(&user.ID, &inviteUserID, &user.Email, &user.PasswordHash, &user.Balance, &discount,
 			&user.CommissionType, &commissionRate, &user.CommissionBalance, &user.TransferEnable,
-			&user.TrafficUpload, &user.TrafficDownload, &user.Banned, &user.IsAdmin, &lastLoginAt, &user.UUID,
+			&user.TrafficUpload, &user.TrafficDownload, &user.Banned, &user.IsAdmin, &user.IsStaff, &user.IsDistributor,
+			&distributorName, &lastLoginAt, &user.UUID,
 			&groupID, &planID, &user.SpeedLimit, &expiredAt, &user.DeviceLimit, &onlineCount, &lastOnlineAt,
 			&nextResetAt, &lastResetAt, &user.ResetCount,
 			&user.SubscriptionToken, &revision, &accountKind, &user.CreatedAt, &user.UpdatedAt); err != nil {
@@ -617,6 +665,7 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 			return 0, "", fmt.Errorf("imported legacy human user id %d has unexpected target state", user.ID)
 		}
 		user.InviteUserID = nullableInt64Pointer(inviteUserID)
+		user.DistributorName = nullableStringPointer(distributorName)
 		user.Discount = nullableIntPointer(discount)
 		user.CommissionRate = nullableIntPointer(commissionRate)
 		user.LastLoginAt = nullableInt64Pointer(lastLoginAt)

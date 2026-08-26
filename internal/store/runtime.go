@@ -738,6 +738,19 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 	`, input.NodeID, recordAt, totalUpload, totalDownload, input.Now.Unix(), input.Now.Unix()); err != nil {
 		return fmt.Errorf("update node traffic stats: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE distributor_subscriptions
+		SET connected_at = ?, connected_node_id = ?,
+			connected_node_name = (SELECT name FROM nodes WHERE id = ?),
+			revision = revision + 1, updated_at = ?
+		WHERE connected_at IS NULL AND config_issued_at IS NOT NULL
+		  AND subscriber_user_id IN (
+			SELECT user_id FROM node_report_traffic_stage
+			WHERE report_key = ? AND (upload > 0 OR download > 0)
+		  )
+	`, input.Now.Unix(), input.NodeID, input.NodeID, input.Now.Unix(), reportKey); err != nil {
+		return fmt.Errorf("record first distributor connection: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM node_report_traffic_stage WHERE report_key = ?`, reportKey); err != nil {
 		return fmt.Errorf("clear traffic stage: %w", err)
 	}

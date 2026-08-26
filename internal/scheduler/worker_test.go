@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -189,6 +190,80 @@ func TestWorkerCancelsOrdersAtLegacyTwoHourBoundaryAndThrottlesSweep(t *testing.
 	worker.processOrders(ctx, now.Add(time.Minute))
 	if !worker.lastOrderSweep.Equal(now.Add(time.Minute)) {
 		t.Fatalf("one-minute order sweep=%s", worker.lastOrderSweep)
+	}
+}
+
+func TestWorkerPaysMatureInvitationCommissionExactlyOnceAtLegacyMinuteCadence(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-commission-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	inviter, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-commission-inviter@example.test", PasswordHash: "hash",
+	}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := bytes.Repeat([]byte{0x34}, 32)
+	if _, err := database.CreateInvitationCode(ctx, inviter.ID, store.CreateInvitationCodeInput{
+		CodeDigest: digest, CodeCipher: bytes.Repeat([]byte{0x43}, 40),
+	}, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	buyer, err := database.RegisterUser(ctx, store.RegisterUserInput{
+		Email: "worker-commission-buyer@example.test", PasswordHash: "hash", InvitationCodeDigest: digest,
+	}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
+		Name: "Commission plan", TransferEnableGiB: 10, Prices: store.PlanPrices{"monthly": 1_000},
+	}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = database.SetPlanState(ctx, plan.ID, plan.Revision, store.PlanState{Show: true, Sell: true, Renew: true}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer.ID, PlanID: plan.ID, Period: "monthly",
+	}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, order.TradeNo, "worker-commission-callback", createdAt); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	maturedAt := createdAt.Add(72 * time.Hour)
+	worker.processCommissions(ctx, maturedAt)
+	worker.processCommissions(ctx, maturedAt.Add(30*time.Second))
+	if !worker.lastCommissionSweep.Equal(maturedAt) {
+		t.Fatalf("sub-minute commission sweep advanced to %s", worker.lastCommissionSweep)
+	}
+	summary, err := database.GetInvitationSummary(ctx, inviter.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.ValidCommission != 100 || summary.AvailableCommission != 100 || summary.PendingCommission != 0 {
+		t.Fatalf("commission summary after worker = %#v", summary)
+	}
+	logs, err := database.ListCommissionLogs(ctx, inviter.ID, 1, 10)
+	if err != nil || logs.Total != 1 || len(logs.Items) != 1 {
+		t.Fatalf("commission logs after worker = (%#v, %v)", logs, err)
+	}
+	worker.processCommissions(ctx, maturedAt.Add(time.Minute))
+	logs, err = database.ListCommissionLogs(ctx, inviter.ID, 1, 10)
+	if err != nil || logs.Total != 1 {
+		t.Fatalf("commission was paid more than once: (%#v, %v)", logs, err)
 	}
 }
 

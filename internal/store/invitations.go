@@ -125,11 +125,11 @@ func (s *Store) GetInvitationSummary(ctx context.Context, ownerID int64) (Invita
 	if err := rows.Err(); err != nil {
 		return InvitationSummary{}, fmt.Errorf("iterate invitation codes: %w", err)
 	}
-	var invitedCount int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE invite_user_id = ?`, ownerID).Scan(&invitedCount); err != nil {
-		return InvitationSummary{}, fmt.Errorf("count invited users: %w", err)
+	summary := InvitationSummary{Codes: codes}
+	if err := populateInvitationCommissionSummary(ctx, s.db, ownerID, &summary); err != nil {
+		return InvitationSummary{}, err
 	}
-	return InvitationSummary{Codes: codes, InvitedCount: invitedCount}, nil
+	return summary, nil
 }
 
 func (s *Store) CheckInvitationCode(ctx context.Context, codeDigest []byte) error {

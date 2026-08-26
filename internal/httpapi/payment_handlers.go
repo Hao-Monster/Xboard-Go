@@ -427,6 +427,10 @@ func userPaymentResponseOf(item store.Payment) userPaymentResponse {
 }
 
 func (s *server) legacyPaymentMethods(w http.ResponseWriter, r *http.Request) {
+	if session, ok := sessionFromContext(r.Context()); ok && session.IsDistributor {
+		writeLegacySuccess(w, http.StatusOK, []map[string]any{})
+		return
+	}
 	payments, err := s.store.ListEnabledPayments(r.Context())
 	if err != nil {
 		writeLegacyAdminPaymentError(w, err)

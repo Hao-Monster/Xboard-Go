@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -74,6 +75,19 @@ func ReadHumanUsersSnapshot(ctx context.Context, sourcePath string) (HumanUsersS
 }
 
 func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.LegacyHumanUser, int64, error) {
+	var hasDistributorOrders bool
+	if err := database.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'v2_distributor_order')
+	`).Scan(&hasDistributorOrders); err != nil {
+		return nil, 0, fmt.Errorf("inspect legacy distributor order table: %w", err)
+	}
+	where := ""
+	if hasDistributorOrders {
+		where = ` WHERE NOT EXISTS (
+			SELECT 1 FROM v2_distributor_order AS distributor_order
+			WHERE distributor_order.subscriber_user_id = legacy_user.id
+		)`
+	}
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, invite_user_id, telegram_id, email, password, password_algo, password_salt,
 		       balance, discount, commission_type, commission_rate, commission_balance, t, u, d,
@@ -81,8 +95,8 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		       group_id, plan_id, speed_limit, remind_expire, remind_traffic, token, expired_at,
 		       remarks, created_at, updated_at, device_limit, online_count, last_online_at, next_reset_at,
 		       last_reset_at, reset_count, is_distributor, distributor_name
-		FROM v2_user ORDER BY id
-	`)
+		FROM v2_user AS legacy_user
+	`+where+` ORDER BY id`)
 	if err != nil {
 		return nil, 0, fmt.Errorf("read legacy human users: %w", err)
 	}
@@ -111,15 +125,25 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 			return nil, 0, fmt.Errorf("scan legacy human user: %w", err)
 		}
 		if err := validateUnsupportedLegacyHumanUserFields(user.ID, telegramID, passwordAlgorithm, passwordSalt,
-			legacyTime, isStaff, lastLoginIP,
-			remindExpire, remindTraffic, remarks, onlineCount, isDistributor, distributorName); err != nil {
+			legacyTime, lastLoginIP, remindExpire, remindTraffic, remarks, onlineCount); err != nil {
 			return nil, 0, err
 		}
-		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 {
+		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 || isStaff != 0 && isStaff != 1 || isDistributor != 0 && isDistributor != 1 {
 			return nil, 0, fmt.Errorf("legacy human user id %d has an invalid boolean value", user.ID)
 		}
 		user.Banned = banned == 1
 		user.IsAdmin = isAdmin == 1
+		user.IsStaff = isStaff == 1
+		user.IsDistributor = isDistributor == 1
+		if user.IsDistributor {
+			value := strings.TrimSpace(distributorName.String)
+			if !distributorName.Valid || value == "" || value != distributorName.String || utf8.RuneCountInString(value) > 100 {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid distributor name", user.ID)
+			}
+			user.DistributorName = &value
+		} else if distributorName.Valid && strings.TrimSpace(distributorName.String) != "" {
+			return nil, 0, fmt.Errorf("legacy human user id %d has a distributor name without the role", user.ID)
+		}
 		if balance < 0 || commissionBalance < 0 {
 			return nil, 0, fmt.Errorf("legacy human user id %d has invalid finance balances", user.ID)
 		}
@@ -185,14 +209,13 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 }
 
 func validateUnsupportedLegacyHumanUserFields(id int64, telegramID, passwordAlgorithm, passwordSalt sql.NullString,
-	legacyTime, isStaff int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
-	remarks sql.NullString, onlineCount sql.NullInt64, isDistributor int64, distributorName sql.NullString,
+	legacyTime int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
+	remarks sql.NullString, onlineCount sql.NullInt64,
 ) error {
 	unsupported := telegramID.String != "" || passwordAlgorithm.String != "" || passwordSalt.String != "" ||
-		legacyTime != 0 || isStaff != 0 ||
+		legacyTime != 0 ||
 		lastLoginIP.String != "" || remindExpire != 1 || remindTraffic != 1 ||
-		strings.TrimSpace(remarks.String) != "" || onlineCount.Valid && onlineCount.Int64 != 0 ||
-		isDistributor != 0 || strings.TrimSpace(distributorName.String) != ""
+		strings.TrimSpace(remarks.String) != "" || onlineCount.Valid && onlineCount.Int64 != 0
 	if unsupported {
 		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, or audit state", id)
 	}

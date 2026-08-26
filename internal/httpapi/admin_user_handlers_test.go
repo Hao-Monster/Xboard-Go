@@ -102,7 +102,7 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 	for name, body := range map[string]string{
 		"weak password": `{"email":"weak@example.test","password":"short","group_id":7,"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false}`,
 		"invalid email": `{"email":"not-an-email","password":"secure-password-123","group_id":7,"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false}`,
-		"unknown field": `{"email":"safe@example.test","password":"secure-password-123","group_id":7,"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false,"is_admin":true}`,
+		"unknown field": `{"email":"safe@example.test","password":"secure-password-123","group_id":7,"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false,"unexpected":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", body)
@@ -127,6 +127,13 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 	if selfBan.Code != http.StatusUnprocessableEntity || !strings.Contains(selfBan.Body.String(), "cannot_ban_self") {
 		t.Fatalf("self ban status = %d; body=%s", selfBan.Code, selfBan.Body)
 	}
+	selfDemotion := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", detail.ID), fmt.Sprintf(`{
+		"revision":%d,"email":"admin@example.test","group_id":null,"transfer_enable":0,
+		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,"is_admin":false
+	}`, detail.Revision))
+	if selfDemotion.Code != http.StatusUnprocessableEntity || !strings.Contains(selfDemotion.Body.String(), "cannot_remove_admin_self") {
+		t.Fatalf("self demotion status = %d; body=%s", selfDemotion.Code, selfDemotion.Body)
+	}
 
 	missingRevision := admin.request(t, api, http.MethodPatch, "/api/v1/admin/users/999", `{
 		"email":"missing@example.test","group_id":null,"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false
@@ -137,6 +144,47 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 	invalidFilter := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?banned=maybe", "")
 	if invalidFilter.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid filter status = %d; body=%s", invalidFilter.Code, invalidFilter.Body)
+	}
+}
+
+func TestAdminDistributorRoleIsExposedAndRevokesLoginWhenDisabled(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+		"email":"dealer@example.test","password":"dealer-password-123","group_id":null,
+		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
+		"is_admin":false,"is_staff":true,"is_distributor":true,"distributor_name":"  华东渠道  "
+	}`)
+	if createdResponse.Code != http.StatusCreated {
+		t.Fatalf("create distributor status = %d body=%s", createdResponse.Code, createdResponse.Body)
+	}
+	var createdPayload struct {
+		Data store.AdminUser `json:"data"`
+	}
+	decodeResponse(t, createdResponse, &createdPayload)
+	created := createdPayload.Data
+	if !created.IsStaff || !created.IsDistributor || created.DistributorName == nil || *created.DistributorName != "华东渠道" {
+		t.Fatalf("created distributor = %#v", created)
+	}
+
+	dealer := loginAccount(t, api, "dealer@example.test", "dealer-password-123")
+	session := dealer.request(t, api, http.MethodGet, "/api/v1/auth/session", "")
+	if session.Code != http.StatusOK || !strings.Contains(session.Body.String(), `"is_distributor":true`) ||
+		!strings.Contains(session.Body.String(), `"distributor_name":"华东渠道"`) || !strings.Contains(session.Body.String(), `"is_staff":true`) {
+		t.Fatalf("distributor session status=%d body=%s", session.Code, session.Body)
+	}
+
+	updated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+		"revision":%d,"email":"dealer@example.test","group_id":null,"transfer_enable":0,
+		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
+		"is_admin":false,"is_staff":true,"is_distributor":false,"distributor_name":"不得保留"
+	}`, created.Revision))
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"is_distributor":false`) ||
+		!strings.Contains(updated.Body.String(), `"distributor_name":null`) {
+		t.Fatalf("disable distributor status=%d body=%s", updated.Code, updated.Body)
+	}
+	if staleSession := dealer.request(t, api, http.MethodGet, "/api/v1/auth/session", ""); staleSession.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled distributor session status=%d body=%s", staleSession.Code, staleSession.Body)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -39,7 +40,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserFilter) (Adm
 	}
 
 	query := `
-		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
+		SELECT id, email, is_admin, is_staff, is_distributor, distributor_name, banned, group_id, transfer_enable, traffic_u, traffic_d,
 		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users
@@ -111,7 +112,7 @@ func (s *Store) GetAdminUser(ctx context.Context, userID int64) (AdminUser, erro
 		return AdminUser{}, fmt.Errorf("%w: user id must be positive", ErrInvalidInput)
 	}
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
+		SELECT id, email, is_admin, is_staff, is_distributor, distributor_name, banned, group_id, transfer_enable, traffic_u, traffic_d,
 		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users WHERE id = ? AND account_kind = 'human'
@@ -127,6 +128,10 @@ func (s *Store) CreateAdminUser(ctx context.Context, input CreateAdminUserInput,
 	input.Email = normalizeEmail(input.Email)
 	if input.Email == "" || len(input.Email) > 320 || input.PasswordHash == "" || input.TransferEnable < 0 || input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 || (input.GroupID != nil && *input.GroupID < 1) {
 		return AdminUser{}, fmt.Errorf("%w: invalid user", ErrInvalidInput)
+	}
+	distributorName, err := normalizedDistributorName(input.IsDistributor, &input.DistributorName)
+	if err != nil {
+		return AdminUser{}, err
 	}
 	defer s.lockWrite()()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -150,10 +155,10 @@ func (s *Store) CreateAdminUser(ctx context.Context, input CreateAdminUserInput,
 	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
-			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
+			email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, uuid, group_id, transfer_enable,
 			expired_at, speed_limit, device_limit, subscription_token, created_at, updated_at
-		) VALUES (?, ?, 0, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, input.Email, input.PasswordHash, input.Banned, uuid.NewString(), groupID, input.TransferEnable,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, input.Email, input.PasswordHash, input.IsAdmin, input.IsStaff, input.IsDistributor, nullableStringValue(distributorName), input.Banned, uuid.NewString(), groupID, input.TransferEnable,
 		expiredAt, input.SpeedLimit, input.DeviceLimit, subscriptionToken, now.Unix(), now.Unix())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
@@ -196,6 +201,26 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if err := validateAdminUserGroup(ctx, tx, input.GroupID); err != nil {
 		return AdminUser{}, AdminUserMutation{}, err
 	}
+	isAdmin := existing.IsAdmin
+	if input.IsAdmin != nil {
+		isAdmin = *input.IsAdmin
+	}
+	isStaff := existing.IsStaff
+	if input.IsStaff != nil {
+		isStaff = *input.IsStaff
+	}
+	isDistributor := existing.IsDistributor
+	if input.IsDistributor != nil {
+		isDistributor = *input.IsDistributor
+	}
+	distributorNameInput := input.DistributorName
+	if distributorNameInput == nil {
+		distributorNameInput = existing.DistributorName
+	}
+	distributorName, err := normalizedDistributorName(isDistributor, distributorNameInput)
+	if err != nil {
+		return AdminUser{}, AdminUserMutation{}, err
+	}
 	var groupID, expiredAt any
 	if input.GroupID != nil {
 		groupID = *input.GroupID
@@ -205,10 +230,11 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users SET email = ?, group_id = ?, transfer_enable = ?, expired_at = ?, speed_limit = ?,
-			device_limit = ?, banned = ?, admin_revision = admin_revision + 1, updated_at = ?
+			device_limit = ?, banned = ?, is_admin = ?, is_staff = ?, is_distributor = ?, distributor_name = ?,
+			admin_revision = admin_revision + 1, updated_at = ?
 		WHERE id = ? AND account_kind = 'human' AND admin_revision = ?
 	`, input.Email, groupID, input.TransferEnable, expiredAt, input.SpeedLimit, input.DeviceLimit,
-		input.Banned, now.Unix(), userID, input.Revision)
+		input.Banned, isAdmin, isStaff, isDistributor, nullableStringValue(distributorName), now.Unix(), userID, input.Revision)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return AdminUser{}, AdminUserMutation{}, ErrEmailInUse
@@ -222,7 +248,8 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if changed != 1 {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
 	}
-	credentialsChanged := existing.Email != input.Email || (!existing.Banned && input.Banned)
+	credentialsChanged := existing.Email != input.Email || (!existing.Banned && input.Banned) ||
+		existing.IsAdmin != isAdmin || existing.IsStaff != isStaff || existing.IsDistributor != isDistributor
 	if credentialsChanged {
 		if err := revokeAllCredentialsTx(ctx, tx, userID, now); err != nil {
 			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("revoke user sessions: %w", err)
@@ -301,7 +328,7 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 
 func getAdminUserTx(ctx context.Context, tx *sql.Tx, userID int64) (AdminUser, error) {
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, email, is_admin, banned, group_id, transfer_enable, traffic_u, traffic_d,
+		SELECT id, email, is_admin, is_staff, is_distributor, distributor_name, banned, group_id, transfer_enable, traffic_u, traffic_d,
 		       expired_at, speed_limit, device_limit, online_count, last_online_at, last_login_at,
 		       admin_revision, created_at, updated_at
 		FROM users WHERE id = ? AND account_kind = 'human'
@@ -315,12 +342,16 @@ func getAdminUserTx(ctx context.Context, tx *sql.Tx, userID int64) (AdminUser, e
 
 func scanAdminUser(row rowScanner) (AdminUser, error) {
 	var user AdminUser
+	var distributorName sql.NullString
 	var groupID, expiredAt, lastOnlineAt, lastLoginAt sql.NullInt64
 	var createdAt, updatedAt int64
-	if err := row.Scan(&user.ID, &user.Email, &user.IsAdmin, &user.Banned, &groupID, &user.TransferEnable,
+	if err := row.Scan(&user.ID, &user.Email, &user.IsAdmin, &user.IsStaff, &user.IsDistributor, &distributorName, &user.Banned, &groupID, &user.TransferEnable,
 		&user.TrafficUpload, &user.TrafficDownload, &expiredAt, &user.SpeedLimit, &user.DeviceLimit,
 		&user.OnlineCount, &lastOnlineAt, &lastLoginAt, &user.Revision, &createdAt, &updatedAt); err != nil {
 		return AdminUser{}, err
+	}
+	if distributorName.Valid {
+		user.DistributorName = &distributorName.String
 	}
 	if groupID.Valid {
 		user.GroupID = &groupID.Int64
@@ -357,6 +388,20 @@ func validateAdminUserGroup(ctx context.Context, tx *sql.Tx, groupID *int64) err
 }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+
+func normalizedDistributorName(enabled bool, value *string) (*string, error) {
+	if !enabled {
+		return nil, nil
+	}
+	if value == nil {
+		return nil, fmt.Errorf("%w: distributor name is required", ErrInvalidInput)
+	}
+	name := strings.TrimSpace(*value)
+	if name == "" || !utf8.ValidString(name) || utf8.RuneCountInString(name) > 100 {
+		return nil, fmt.Errorf("%w: distributor name must contain 1 to 100 characters", ErrInvalidInput)
+	}
+	return &name, nil
+}
 
 func escapeLike(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)

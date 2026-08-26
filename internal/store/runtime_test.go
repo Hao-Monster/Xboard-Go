@@ -204,6 +204,84 @@ func TestNodeReportTrafficIsAtomicAndIdempotentAcrossConcurrency(t *testing.T) {
 	}
 }
 
+func TestNodeReportRecordsFirstDistributorConnectionAfterConfigIssued(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 26, 19, 0, 0, 0, time.UTC)
+	plan, distributor := createDistributorFixture(t, database, now)
+	created, err := database.CreateDistributorOrder(ctx, CreateDistributorOrderInput{
+		DistributorUserID: distributor.ID, PlanID: plan.ID, Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutConfig, err := database.CreateDistributorOrder(ctx, CreateDistributorOrderInput{
+		DistributorUserID: distributor.ID, PlanID: plan.ID, Period: "monthly",
+	}, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkDistributorSubscriptionClaimed(ctx, created.Subscription.ID, "192.0.2.1", "test-client", now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkDistributorConfigIssued(ctx, created.Subscription.ID, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	machine, _, err := database.CreateMachine(ctx, CreateMachineInput{Name: "distributor-connection-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createNode := func(name string) Node {
+		node, createErr := database.CreateNode(ctx, CreateNodeInput{
+			Name: name, Type: "vless", Host: name + ".example.test", Port: "443", Show: true, Enabled: true, MachineID: &machine.ID,
+		}, now)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, saveErr := database.SaveNodeRuntime(ctx, node.ID, SaveNodeRuntimeInput{
+			RateMicros: 1_000_000, GroupIDs: []int64{*plan.GroupID},
+			Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+		}, now); saveErr != nil {
+			t.Fatal(saveErr)
+		}
+		return node
+	}
+	firstNode := createNode("first-distributor-edge")
+	firstReportAt := now.Add(3 * time.Second)
+	if _, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID, NodeID: firstNode.ID, ReportID: "18c9ce5d-15c6-49c1-8e65-fe2d8ccaf732",
+		Traffic: map[int64]TrafficUsage{
+			created.Subscription.SubscriberUserID:       {Download: 1},
+			withoutConfig.Subscription.SubscriberUserID: {Upload: 1},
+		}, Now: firstReportAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	connected, err := database.GetDistributorOrderByTradeNo(ctx, distributor.ID, created.Order.TradeNo, firstReportAt)
+	if err != nil || connected.Subscription.ConnectedAt == nil || !connected.Subscription.ConnectedAt.Equal(firstReportAt) ||
+		connected.Subscription.ConnectedNodeID == nil || *connected.Subscription.ConnectedNodeID != firstNode.ID ||
+		connected.Subscription.ConnectedNodeName == nil || *connected.Subscription.ConnectedNodeName != firstNode.Name {
+		t.Fatalf("first connection = %#v err=%v", connected.Subscription, err)
+	}
+	pending, err := database.GetDistributorOrderByTradeNo(ctx, distributor.ID, withoutConfig.Order.TradeNo, firstReportAt)
+	if err != nil || pending.Subscription.ConnectedAt != nil {
+		t.Fatalf("connection before config issued = %#v err=%v", pending.Subscription, err)
+	}
+
+	secondNode := createNode("second-distributor-edge")
+	if _, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID, NodeID: secondNode.ID, ReportID: "8a4645ab-106d-45b2-a441-0d6b8b7cd845",
+		Traffic: map[int64]TrafficUsage{created.Subscription.SubscriberUserID: {Upload: 2}}, Now: now.Add(4 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := database.GetDistributorOrderByTradeNo(ctx, distributor.ID, created.Order.TradeNo, now.Add(4*time.Second))
+	if err != nil || unchanged.Subscription.ConnectedNodeID == nil || *unchanged.Subscription.ConnectedNodeID != firstNode.ID ||
+		unchanged.Subscription.ConnectedAt == nil || !unchanged.Subscription.ConnectedAt.Equal(firstReportAt) {
+		t.Fatalf("first connection was overwritten = %#v err=%v", unchanged.Subscription, err)
+	}
+}
+
 func TestNodeReportRejectsUsersOutsideNodeGroups(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

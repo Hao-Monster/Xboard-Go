@@ -26,6 +26,7 @@ func TestReadHumanUsersSnapshotPreservesSupportedLegacyIdentityAndAccessState(t 
 		t.Fatalf("admin = %#v", admin)
 	}
 	if invited.ID != 2 || invited.InviteUserID == nil || *invited.InviteUserID != 1 || invited.TransferEnable != 1_000 ||
+		!invited.IsStaff || !invited.IsDistributor || invited.DistributorName == nil || *invited.DistributorName != "测试渠道" ||
 		invited.Balance != 1_234 || invited.Discount == nil || *invited.Discount != 15 || invited.CommissionType != 2 ||
 		invited.CommissionRate == nil || *invited.CommissionRate != 20 || invited.CommissionBalance != 567 ||
 		invited.TrafficUpload != 10 || invited.TrafficDownload != 20 || invited.ExpiredAt == nil || *invited.ExpiredAt != 1_800_000_000 ||
@@ -49,8 +50,8 @@ func TestReadHumanUsersSnapshotRejectsLossyOrUnsafeLegacyState(t *testing.T) {
 		statement string
 		contains  string
 	}{
-		{name: "staff", statement: `UPDATE v2_user SET is_staff = 1 WHERE id = 2`, contains: "unsupported"},
-		{name: "distributor", statement: `UPDATE v2_user SET is_distributor = 1 WHERE id = 2`, contains: "unsupported"},
+		{name: "distributor without name", statement: `UPDATE v2_user SET is_distributor = 1, distributor_name = NULL WHERE id = 2`, contains: "distributor name"},
+		{name: "name without distributor", statement: `UPDATE v2_user SET is_distributor = 0, distributor_name = 'orphan' WHERE id = 2`, contains: "without the role"},
 		{name: "negative finance balance", statement: `UPDATE v2_user SET balance = -1 WHERE id = 2`, contains: "finance balances"},
 		{name: "fractional discount", statement: `UPDATE v2_user SET discount = 12.5 WHERE id = 2`, contains: "invalid discount"},
 		{name: "invalid commission type", statement: `UPDATE v2_user SET commission_type = 3 WHERE id = 2`, contains: "commission type"},
@@ -120,9 +121,9 @@ func createLegacyHumanUsersSnapshot(t *testing.T) string {
 		        '11111111111111111111111111111111', 0, 1700000000, 1700000200);
 		INSERT INTO v2_user
 		(id, invite_user_id, email, password, balance, discount, commission_type, commission_rate, commission_balance,
-		 u, d, transfer_enable, uuid, group_id, plan_id, speed_limit, token,
+		 u, d, transfer_enable, is_staff, is_distributor, distributor_name, uuid, group_id, plan_id, speed_limit, token,
 		 expired_at, created_at, updated_at, device_limit, last_online_at, next_reset_at, last_reset_at, reset_count)
-		VALUES (2, 1, 'user@example.test', ?, 1234, 15, 2, 20, 567, 10, 20, 1000, '22222222-2222-4222-8222-222222222222', 7, 9, 50,
+		VALUES (2, 1, 'user@example.test', ?, 1234, 15, 2, 20, 567, 10, 20, 1000, 1, 1, '测试渠道', '22222222-2222-4222-8222-222222222222', 7, 9, 50,
 		        '22222222222222222222222222222222', 1800000000, 1700000001, 1700000201, 3, 1700000200,
 		        1700000300, 1700000250, 2);
 	`, phpHash, phpHash); err != nil {

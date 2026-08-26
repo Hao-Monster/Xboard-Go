@@ -222,6 +222,8 @@ func (s *server) registerAccount(w http.ResponseWriter, r *http.Request, legacy 
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": user.ID, "email": user.Email, "is_admin": user.IsAdmin,
+		"is_staff": user.IsStaff, "is_distributor": user.IsDistributor,
+		"distributor_name": user.DistributorName,
 	})
 }
 

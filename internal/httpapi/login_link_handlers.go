@@ -297,7 +297,9 @@ func (s *server) exchangeLoginLinkToken(w http.ResponseWriter, r *http.Request, 
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"id": exchanged.User.ID, "email": exchanged.User.Email, "is_admin": exchanged.User.IsAdmin,
-		"redirect": exchanged.Redirect,
+		"is_staff": exchanged.User.IsStaff, "is_distributor": exchanged.User.IsDistributor,
+		"distributor_name": exchanged.User.DistributorName,
+		"redirect":         exchanged.Redirect,
 	})
 }
 

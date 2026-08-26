@@ -198,9 +198,11 @@ type legacyAdminOrderResponse struct {
 
 type legacyAdminOrderDetailResponse struct {
 	legacyAdminOrderResponse
-	InviteUser    map[string]any `json:"invite_user"`
-	CommissionLog []any          `json:"commission_log"`
-	SubscribeURL  *string        `json:"subscribe_url"`
+	InviteUser              map[string]any                 `json:"invite_user"`
+	CommissionLog           []any                          `json:"commission_log"`
+	SubscribeURL            *string                        `json:"subscribe_url"`
+	SubscriptionEntitlement *store.DistributorEntitlement  `json:"subscription_entitlement,omitempty"`
+	HWID                    *store.DistributorHWIDSettings `json:"hwid,omitempty"`
 }
 
 func legacyAdminOrderResponseOf(order store.AdminOrder) legacyAdminOrderResponse {
@@ -214,10 +216,25 @@ func legacyAdminOrderResponseOf(order store.AdminOrder) legacyAdminOrderResponse
 
 func (s *server) legacyListAdminOrders(w http.ResponseWriter, r *http.Request) {
 	filter := store.AdminOrderFilter{Page: 1, PageSize: 10}
+	distributorOnly := false
+	var distributorUserID *int64
+	var distributorSettlementStatus *store.DistributorSettlementStatus
+	distributorSearch := ""
 	if r.Method == http.MethodGet {
 		filter.Page = legacyPositiveInt(r.URL.Query().Get("current"), 1)
 		filter.PageSize = legacyPositiveInt(r.URL.Query().Get("pageSize"), 10)
 		filter.Query = strings.TrimSpace(r.URL.Query().Get("search"))
+		distributorSearch = filter.Query
+		distributorOnly, _ = strconv.ParseBool(r.URL.Query().Get("distributor_only"))
+		if raw := strings.TrimSpace(r.URL.Query().Get("distributor_user_id")); raw != "" {
+			if value, err := strconv.ParseInt(raw, 10, 64); err == nil && value > 0 {
+				distributorUserID = &value
+			}
+		}
+		if value, err := strconv.Atoi(r.URL.Query().Get("settlement_status")); err == nil && value >= 0 && value <= 1 {
+			status := store.DistributorSettlementStatus(value)
+			distributorSettlementStatus = &status
+		}
 	} else {
 		var input map[string]json.RawMessage
 		if !decodeJSON(w, r, &input) {
@@ -226,6 +243,17 @@ func (s *server) legacyListAdminOrders(w http.ResponseWriter, r *http.Request) {
 		filter.Page = legacyRawPositiveInt(input["current"], 1)
 		filter.PageSize = legacyRawPositiveInt(input["pageSize"], 10)
 		_ = json.Unmarshal(input["search"], &filter.Query)
+		distributorSearch = strings.TrimSpace(filter.Query)
+		_ = json.Unmarshal(input["distributor_only"], &distributorOnly)
+		var rawDistributorID int64
+		if json.Unmarshal(input["distributor_user_id"], &rawDistributorID) == nil && rawDistributorID > 0 {
+			distributorUserID = &rawDistributorID
+		}
+		var rawSettlement int
+		if json.Unmarshal(input["settlement_status"], &rawSettlement) == nil && rawSettlement >= 0 && rawSettlement <= 1 && len(input["settlement_status"]) > 0 && string(input["settlement_status"]) != "null" {
+			status := store.DistributorSettlementStatus(rawSettlement)
+			distributorSettlementStatus = &status
+		}
 		var filters []struct {
 			ID    string          `json:"id"`
 			Value json.RawMessage `json:"value"`
@@ -251,8 +279,37 @@ func (s *server) legacyListAdminOrders(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > 100 || len(filter.Query) > 128 {
+	maximumSearchLength := 128
+	if distributorOnly || distributorUserID != nil || distributorSettlementStatus != nil {
+		maximumSearchLength = 512
+	}
+	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > 100 || len(filter.Query) > maximumSearchLength {
 		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "分页或搜索条件格式无效")
+		return
+	}
+	if distributorOnly || distributorUserID != nil || distributorSettlementStatus != nil {
+		page, err := s.store.ListDistributorOrders(r.Context(), store.DistributorOrderFilter{
+			Page: filter.Page, PageSize: filter.PageSize, DistributorUserID: distributorUserID,
+			SettlementStatus: distributorSettlementStatus, Search: distributorSearch, IncludeTokenSearch: true,
+		}, s.now())
+		if err != nil {
+			writeLegacyAdminDistributorError(w, err)
+			return
+		}
+		items := make([]legacyAdminOrderResponse, 0, len(page.Items))
+		for _, item := range page.Items {
+			items = append(items, legacyAdminOrderResponse{
+				legacyOrderResponse: legacyDistributorOrderResponseOf(item),
+				User:                map[string]any{"id": item.Subscription.DistributorUserID, "email": item.DistributorEmail},
+			})
+		}
+		lastPage := int((page.Total + int64(page.PageSize) - 1) / int64(page.PageSize))
+		if lastPage < 1 {
+			lastPage = 1
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"total": page.Total, "current_page": page.Page, "per_page": page.PageSize, "last_page": lastPage, "data": items,
+		})
 		return
 	}
 	page, err := s.store.ListAdminOrders(r.Context(), filter)
@@ -314,6 +371,36 @@ func (s *server) legacyGetAdminOrder(w http.ResponseWriter, r *http.Request) {
 	response := legacyAdminOrderDetailResponse{
 		legacyAdminOrderResponse: legacyAdminOrderResponseOf(order),
 		CommissionLog:            make([]any, 0),
+	}
+	if order.DistributorOrderID != nil {
+		distributorOrder, distributorErr := s.store.GetDistributorOrderByID(r.Context(), order.ID, s.now())
+		if distributorErr != nil {
+			writeLegacyAdminDistributorError(w, distributorErr)
+			return
+		}
+		response.legacyOrderResponse = legacyDistributorOrderResponseOf(distributorOrder)
+		response.User = map[string]any{"id": distributorOrder.Subscription.DistributorUserID, "email": distributorOrder.DistributorEmail}
+		response.SubscriptionEntitlement = &distributorOrder.Entitlement
+		hwid, hwidErr := s.store.GetDistributorHWIDSettings(r.Context(), order.ID)
+		if hwidErr != nil {
+			writeLegacyAdminDistributorError(w, hwidErr)
+			return
+		}
+		response.HWID = &hwid
+		config, configErr := s.store.GetSubscriptionRenderConfig(r.Context(), "")
+		if configErr != nil {
+			writeLegacyAdminDistributorError(w, configErr)
+			return
+		}
+		base := strings.TrimRight(config.AppURL, "/")
+		if base == "" {
+			base = strings.TrimRight(s.panelURL, "/")
+		}
+		subscribeURL := base + "/" + config.Path + "/" + distributorOrder.Subscription.SubscriptionToken + "#" + distributorOrder.Subscription.OriginalTradeNo
+		response.SubscribeURL = &subscribeURL
+		response.Plan = legacyRawPlanResponse(plan)
+		writeLegacySuccess(w, http.StatusOK, response)
+		return
 	}
 	response.Plan = legacyRawPlanResponse(plan)
 	if order.InviteUserID != nil {
@@ -455,6 +542,26 @@ func (s *server) legacyListUserOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if session.IsDistributor {
+		settlementStatus, ok := optionalDistributorSettlementStatus(w, r.URL.Query().Get("settlement_status"))
+		if !ok {
+			return
+		}
+		page, err := s.store.ListDistributorOrders(r.Context(), store.DistributorOrderFilter{
+			Page: 1, PageSize: 200, DistributorUserID: &session.UserID, Status: status,
+			SettlementStatus: settlementStatus, Search: r.URL.Query().Get("search"),
+		}, s.now())
+		if err != nil {
+			writeLegacyDistributorError(w, err)
+			return
+		}
+		data := make([]legacyOrderResponse, 0, len(page.Items))
+		for _, order := range page.Items {
+			data = append(data, legacyDistributorOrderResponseOf(order))
+		}
+		writeLegacySuccess(w, http.StatusOK, data)
+		return
+	}
 	orders, err := s.store.ListUserOrders(r.Context(), session.UserID, status, 200)
 	if err != nil {
 		writeLegacyOrderStoreError(w, err)
@@ -469,15 +576,31 @@ func (s *server) legacyListUserOrders(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) legacyCreateOrder(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		PlanID     int64  `json:"plan_id"`
-		Period     string `json:"period"`
-		CouponCode string `json:"coupon_code,omitempty"`
+		PlanID       int64   `json:"plan_id"`
+		Period       string  `json:"period"`
+		CouponCode   string  `json:"coupon_code,omitempty"`
+		CustomerName *string `json:"customer_name,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
 	if !s.allowOrderMutation(w, r, session.UserID) {
+		return
+	}
+	if session.IsDistributor {
+		if strings.TrimSpace(input.CouponCode) != "" {
+			writeLegacyOrderFail(w, http.StatusBadRequest, "分销订单不支持优惠券或折扣")
+			return
+		}
+		order, err := s.store.CreateDistributorOrder(r.Context(), store.CreateDistributorOrderInput{
+			DistributorUserID: session.UserID, PlanID: input.PlanID, Period: input.Period, CustomerName: input.CustomerName,
+		}, s.now())
+		if err != nil {
+			writeLegacyDistributorError(w, err)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, order.Order.TradeNo)
 		return
 	}
 	order, err := s.store.CreateOrder(r.Context(), store.CreateOrderInput{UserID: session.UserID, PlanID: input.PlanID, Period: input.Period, CouponCode: input.CouponCode}, s.now())
@@ -490,6 +613,20 @@ func (s *server) legacyCreateOrder(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) legacyGetUserOrder(w http.ResponseWriter, r *http.Request) {
 	session, _ := sessionFromContext(r.Context())
+	if session.IsDistributor {
+		order, err := s.store.GetDistributorOrderByTradeNo(r.Context(), session.UserID, r.URL.Query().Get("trade_no"), s.now())
+		if err != nil {
+			writeLegacyDistributorError(w, err)
+			return
+		}
+		response := legacyDistributorOrderResponseOf(order)
+		tryOutPlanID := 0
+		response.TryOutPlanID = &tryOutPlanID
+		var payment map[string]any
+		response.Payment = &payment
+		writeLegacySuccess(w, http.StatusOK, response)
+		return
+	}
 	order, err := s.store.GetUserOrder(r.Context(), session.UserID, r.URL.Query().Get("trade_no"))
 	if err != nil {
 		writeLegacyOrderStoreError(w, err)
@@ -505,6 +642,15 @@ func (s *server) legacyGetUserOrder(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) legacyCheckUserOrder(w http.ResponseWriter, r *http.Request) {
 	session, _ := sessionFromContext(r.Context())
+	if session.IsDistributor {
+		order, err := s.store.GetDistributorOrderByTradeNo(r.Context(), session.UserID, r.URL.Query().Get("trade_no"), s.now())
+		if err != nil {
+			writeLegacyOrderFail(w, http.StatusForbidden, "分销商账号不能访问普通订单功能")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, order.Order.Status)
+		return
+	}
 	order, err := s.store.GetUserOrder(r.Context(), session.UserID, r.URL.Query().Get("trade_no"))
 	if err != nil {
 		writeLegacyOrderStoreError(w, err)
@@ -523,6 +669,15 @@ func (s *server) legacyCheckoutUserOrder(w http.ResponseWriter, r *http.Request)
 	}
 	session, _ := sessionFromContext(r.Context())
 	if !s.allowOrderMutation(w, r, session.UserID) {
+		return
+	}
+	if session.IsDistributor {
+		order, err := s.store.GetDistributorOrderByTradeNo(r.Context(), session.UserID, input.TradeNo, s.now())
+		if err != nil || order.Order.Status != store.OrderStatusCompleted {
+			writeLegacyOrderFail(w, http.StatusForbidden, "分销商账号不能访问普通订单功能")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"type": -1, "data": true})
 		return
 	}
 	order, err := s.store.GetUserOrder(r.Context(), session.UserID, input.TradeNo)
@@ -561,6 +716,10 @@ func (s *server) legacyCancelUserOrder(w http.ResponseWriter, r *http.Request) {
 	if !s.allowOrderMutation(w, r, session.UserID) {
 		return
 	}
+	if session.IsDistributor {
+		writeLegacyOrderFail(w, http.StatusForbidden, "分销商账号不能访问普通订单功能")
+		return
+	}
 	if _, err := s.store.CancelOrder(r.Context(), session.UserID, input.TradeNo, s.now()); err != nil {
 		writeLegacyOrderStoreError(w, err)
 		return
@@ -569,46 +728,66 @@ func (s *server) legacyCancelUserOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type legacyOrderResponse struct {
-	ID                         int64             `json:"id"`
-	UserID                     int64             `json:"user_id"`
-	PlanID                     int64             `json:"plan_id"`
-	PaymentID                  *int64            `json:"payment_id"`
-	Period                     string            `json:"period"`
-	TradeNo                    string            `json:"trade_no"`
-	TotalAmount                int64             `json:"total_amount"`
-	HandlingAmount             *int64            `json:"handling_amount"`
-	BalanceAmount              int64             `json:"balance_amount"`
-	SurplusCredit              int64             `json:"surplus_credit"`
-	SurplusAmount              int64             `json:"surplus_amount"`
-	Type                       store.OrderType   `json:"type"`
-	Status                     store.OrderStatus `json:"status"`
-	SurplusOrderIDs            []int64           `json:"surplus_order_ids"`
-	CouponID                   *int64            `json:"coupon_id"`
-	CommissionStatus           *int              `json:"commission_status"`
-	InviteUserID               *int64            `json:"invite_user_id"`
-	ActualCommissionBalance    *int64            `json:"actual_commission_balance"`
-	CommissionBalance          int64             `json:"commission_balance"`
-	DiscountAmount             int64             `json:"discount_amount"`
-	PaidAt                     *int64            `json:"paid_at"`
-	CallbackNo                 *string           `json:"callback_no"`
-	EntitlementExpiredAtBefore *int64            `json:"entitlement_expired_at_before"`
-	EntitlementExpiredAtAfter  *int64            `json:"entitlement_expired_at_after"`
-	CreatedAt                  int64             `json:"created_at"`
-	UpdatedAt                  int64             `json:"updated_at"`
-	TryOutPlanID               *int              `json:"try_out_plan_id,omitempty"`
-	Payment                    *map[string]any   `json:"payment,omitempty"`
-	IsDistributorOrder         bool              `json:"is_distributor_order"`
-	IsSubscriptionOrigin       bool              `json:"is_subscription_origin"`
-	OrderTypeLabel             string            `json:"order_type_label"`
-	CanViewSubscriptionQR      bool              `json:"can_view_subscription_qr"`
-	CanRenew                   bool              `json:"can_renew"`
-	Plan                       map[string]any    `json:"plan,omitempty"`
+	ID                         int64                              `json:"id"`
+	UserID                     int64                              `json:"user_id"`
+	PlanID                     int64                              `json:"plan_id"`
+	PaymentID                  *int64                             `json:"payment_id"`
+	Period                     string                             `json:"period"`
+	TradeNo                    string                             `json:"trade_no"`
+	OriginalAmount             int64                              `json:"original_amount"`
+	TotalAmount                int64                              `json:"total_amount"`
+	HandlingAmount             *int64                             `json:"handling_amount"`
+	BalanceAmount              int64                              `json:"balance_amount"`
+	SurplusCredit              int64                              `json:"surplus_credit"`
+	SurplusAmount              int64                              `json:"surplus_amount"`
+	Type                       store.OrderType                    `json:"type"`
+	Status                     store.OrderStatus                  `json:"status"`
+	SurplusOrderIDs            []int64                            `json:"surplus_order_ids"`
+	CouponID                   *int64                             `json:"coupon_id"`
+	CommissionStatus           *int                               `json:"commission_status"`
+	InviteUserID               *int64                             `json:"invite_user_id"`
+	ActualCommissionBalance    *int64                             `json:"actual_commission_balance"`
+	CommissionBalance          int64                              `json:"commission_balance"`
+	DiscountAmount             int64                              `json:"discount_amount"`
+	PaidAt                     *int64                             `json:"paid_at"`
+	CallbackNo                 *string                            `json:"callback_no"`
+	EntitlementExpiredAtBefore *int64                             `json:"entitlement_expired_at_before"`
+	EntitlementExpiredAtAfter  *int64                             `json:"entitlement_expired_at_after"`
+	CreatedAt                  int64                              `json:"created_at"`
+	UpdatedAt                  int64                              `json:"updated_at"`
+	TryOutPlanID               *int                               `json:"try_out_plan_id,omitempty"`
+	Payment                    *map[string]any                    `json:"payment,omitempty"`
+	IsDistributorOrder         bool                               `json:"is_distributor_order"`
+	IsSubscriptionOrigin       bool                               `json:"is_subscription_origin"`
+	OrderTypeLabel             string                             `json:"order_type_label"`
+	CanViewSubscriptionQR      bool                               `json:"can_view_subscription_qr"`
+	CanRenew                   bool                               `json:"can_renew"`
+	SubscriptionTradeNo        *string                            `json:"subscription_trade_no,omitempty"`
+	CustomerName               *string                            `json:"customer_name"`
+	Remark                     *string                            `json:"remark"`
+	PaymentLabel               *string                            `json:"payment_label,omitempty"`
+	DeliveryStatus             *store.DistributorDeliveryStatus   `json:"delivery_status,omitempty"`
+	SettlementStatus           *store.DistributorSettlementStatus `json:"settlement_status,omitempty"`
+	SettledAt                  *int64                             `json:"settled_at,omitempty"`
+	ConfigIssuedAt             *int64                             `json:"config_issued_at,omitempty"`
+	ConnectedAt                *int64                             `json:"connected_at,omitempty"`
+	ConnectedNodeID            *int64                             `json:"connected_node_id,omitempty"`
+	ConnectedNodeName          *string                            `json:"connected_node_name,omitempty"`
+	ClaimedAt                  *int64                             `json:"claimed_at,omitempty"`
+	ClosedAt                   *int64                             `json:"closed_at,omitempty"`
+	HWIDEnabled                *bool                              `json:"hwid_enabled,omitempty"`
+	HWIDLimit                  *int                               `json:"hwid_limit,omitempty"`
+	BoundDevices               []string                           `json:"bound_devices,omitempty"`
+	SubscriptionEntitlement    *store.DistributorEntitlement      `json:"subscription_entitlement,omitempty"`
+	Plan                       map[string]any                     `json:"plan,omitempty"`
+	DistributorEmail           *string                            `json:"distributor_email,omitempty"`
+	DistributorName            *string                            `json:"distributor_name,omitempty"`
 }
 
 func legacyOrderResponseOf(order store.Order) legacyOrderResponse {
 	response := legacyOrderResponse{
 		ID: order.ID, UserID: order.UserID, PlanID: order.PlanID, PaymentID: order.PaymentID,
-		Period: legacyOrderPeriod(order.Period), TradeNo: order.TradeNo, TotalAmount: order.TotalAmount,
+		Period: legacyOrderPeriod(order.Period), TradeNo: order.TradeNo, OriginalAmount: order.OriginalAmount, TotalAmount: order.TotalAmount,
 		HandlingAmount: order.HandlingAmount, BalanceAmount: order.BalanceAmount, SurplusCredit: order.SurplusCredit,
 		SurplusAmount: order.SurplusAmount, Type: order.Type, Status: order.Status,
 		SurplusOrderIDs: order.SurplusOrderIDs, CouponID: order.CouponID, CommissionStatus: order.CommissionStatus,
@@ -623,6 +802,51 @@ func legacyOrderResponseOf(order store.Order) legacyOrderResponse {
 		response.Plan = legacyOrderPlanResponse(order.Plan)
 	}
 	return response
+}
+
+func legacyDistributorOrderResponseOf(value store.DistributorOrder) legacyOrderResponse {
+	response := legacyOrderResponseOf(value.Order)
+	response.IsDistributorOrder = true
+	response.IsSubscriptionOrigin = value.IsSubscriptionOrigin
+	response.CanViewSubscriptionQR = value.CanViewSubscriptionQR
+	response.CanRenew = value.CanRenew
+	response.SubscriptionTradeNo = &value.Subscription.OriginalTradeNo
+	response.CustomerName = value.Subscription.CustomerName
+	response.Remark = value.Subscription.Remark
+	paymentLabel := "分销免支付"
+	response.PaymentLabel = &paymentLabel
+	deliveryStatus := value.Subscription.DeliveryStatus
+	response.DeliveryStatus = &deliveryStatus
+	settlementStatus := value.SettlementStatus
+	response.SettlementStatus = &settlementStatus
+	response.SettledAt = unixPointer(value.Order.PaidAt)
+	response.ConfigIssuedAt = unixPointer(value.Subscription.ConfigIssuedAt)
+	response.ConnectedAt = unixPointer(value.Subscription.ConnectedAt)
+	response.ConnectedNodeID = value.Subscription.ConnectedNodeID
+	response.ConnectedNodeName = value.Subscription.ConnectedNodeName
+	response.ClaimedAt = unixPointer(value.Subscription.ClaimedAt)
+	response.ClosedAt = unixPointer(value.Subscription.ClosedAt)
+	response.HWIDEnabled = &value.Subscription.HWIDEnabled
+	response.HWIDLimit = &value.Subscription.HWIDLimit
+	response.BoundDevices = value.BoundDevices
+	response.SubscriptionEntitlement = &value.Entitlement
+	response.Plan = map[string]any{"id": value.Order.PlanID, "name": value.PlanName}
+	response.DistributorEmail = &value.DistributorEmail
+	response.DistributorName = &value.DistributorName
+	return response
+}
+
+func optionalDistributorSettlementStatus(w http.ResponseWriter, raw string) (*store.DistributorSettlementStatus, bool) {
+	if raw == "" {
+		return nil, true
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 || value > 1 {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "结算状态格式无效")
+		return nil, false
+	}
+	status := store.DistributorSettlementStatus(value)
+	return &status, true
 }
 
 func legacyOrderPlanResponse(plan *store.Plan) map[string]any {
