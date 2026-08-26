@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 31
+const currentSchemaVersion = 32
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -258,6 +258,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v31: %w", err)
 		}
 		version = 31
+	}
+	if version < 32 {
+		if _, err := tx.ExecContext(ctx, schemaV32); err != nil {
+			return fmt.Errorf("apply schema v32: %w", err)
+		}
+		version = 32
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1377,4 +1383,101 @@ WHEN EXISTS (SELECT 1 FROM orders WHERE payment_id = OLD.id)
 BEGIN
     SELECT RAISE(ABORT, 'payment is referenced by an order or receipt');
 END;
+`
+
+const schemaV32 = `
+CREATE TABLE gift_card_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 255),
+    description TEXT NOT NULL DEFAULT '' CHECK (length(CAST(description AS BLOB)) <= 4096),
+    type INTEGER NOT NULL CHECK (type BETWEEN 1 AND 3),
+    status INTEGER NOT NULL DEFAULT 1 CHECK (status IN (0, 1)),
+    conditions_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        json_valid(conditions_json) AND json_type(conditions_json) = 'object'
+        AND length(CAST(conditions_json AS BLOB)) <= 16384
+    ),
+    rewards_json TEXT NOT NULL CHECK (
+        json_valid(rewards_json) AND json_type(rewards_json) = 'object'
+        AND length(CAST(rewards_json AS BLOB)) <= 65536
+    ),
+    limits_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        json_valid(limits_json) AND json_type(limits_json) = 'object'
+        AND length(CAST(limits_json AS BLOB)) <= 8192
+    ),
+    special_config_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        json_valid(special_config_json) AND json_type(special_config_json) = 'object'
+        AND length(CAST(special_config_json AS BLOB)) <= 8192
+    ),
+    icon TEXT NOT NULL DEFAULT '' CHECK (length(CAST(icon AS BLOB)) <= 255),
+    background_image TEXT NOT NULL DEFAULT '' CHECK (length(CAST(background_image AS BLOB)) <= 255),
+    theme TEXT NOT NULL DEFAULT '#1890ff' CHECK (length(CAST(theme AS BLOB)) = 7),
+    sort_position INTEGER NOT NULL DEFAULT 0 CHECK (sort_position BETWEEN 0 AND 1000000000),
+    admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+);
+CREATE INDEX idx_gift_templates_list ON gift_card_templates(sort_position, id);
+CREATE INDEX idx_gift_templates_active ON gift_card_templates(status, type, sort_position, id);
+
+CREATE TABLE gift_card_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL REFERENCES gift_card_templates(id) ON DELETE RESTRICT,
+    code TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (
+        length(code) BETWEEN 8 AND 32 AND code NOT GLOB '*[^A-Z0-9]*'
+    ),
+    batch_no TEXT NOT NULL CHECK (length(batch_no) BETWEEN 16 AND 40 AND batch_no NOT GLOB '*[^A-Za-z0-9_-]*'),
+    status INTEGER NOT NULL DEFAULT 0 CHECK (status BETWEEN 0 AND 3),
+    user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+    used_at INTEGER CHECK (used_at IS NULL OR used_at >= 0),
+    expires_at INTEGER CHECK (expires_at IS NULL OR expires_at >= 0),
+    actual_rewards_json TEXT CHECK (
+        actual_rewards_json IS NULL OR (
+            json_valid(actual_rewards_json) AND json_type(actual_rewards_json) = 'object'
+            AND length(CAST(actual_rewards_json AS BLOB)) <= 65536
+        )
+    ),
+    usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
+    max_usage INTEGER NOT NULL DEFAULT 1 CHECK (max_usage BETWEEN 1 AND 1000000000),
+    metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        json_valid(metadata_json) AND json_type(metadata_json) = 'object'
+        AND length(CAST(metadata_json AS BLOB)) <= 8192
+    ),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    CHECK (usage_count <= max_usage)
+);
+CREATE INDEX idx_gift_codes_list ON gift_card_codes(created_at DESC, id DESC);
+CREATE INDEX idx_gift_codes_template ON gift_card_codes(template_id, status, id);
+CREATE INDEX idx_gift_codes_batch ON gift_card_codes(batch_no, id);
+CREATE INDEX idx_gift_codes_user ON gift_card_codes(user_id, used_at DESC, id DESC) WHERE user_id IS NOT NULL;
+
+CREATE TABLE gift_card_usages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code_id INTEGER NOT NULL REFERENCES gift_card_codes(id) ON DELETE RESTRICT,
+    template_id INTEGER NOT NULL REFERENCES gift_card_templates(id) ON DELETE RESTRICT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    inviter_id INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+    rewards_json TEXT NOT NULL CHECK (
+        json_valid(rewards_json) AND json_type(rewards_json) = 'object'
+        AND length(CAST(rewards_json AS BLOB)) <= 65536
+    ),
+    inviter_rewards_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        json_valid(inviter_rewards_json) AND json_type(inviter_rewards_json) = 'object'
+        AND length(CAST(inviter_rewards_json AS BLOB)) <= 65536
+    ),
+    user_level_at_use INTEGER,
+    user_plan_id INTEGER REFERENCES plans(id) ON DELETE RESTRICT,
+    multiplier_basis_points INTEGER NOT NULL DEFAULT 10000 CHECK (multiplier_basis_points BETWEEN 0 AND 1000000),
+    ip_address TEXT NOT NULL DEFAULT '' CHECK (length(ip_address) <= 45),
+    user_agent TEXT NOT NULL DEFAULT '' CHECK (length(CAST(user_agent AS BLOB)) <= 1024),
+    notes TEXT NOT NULL DEFAULT '' CHECK (length(CAST(notes AS BLOB)) <= 4096),
+    traffic_reset_upload_before INTEGER CHECK (traffic_reset_upload_before IS NULL OR traffic_reset_upload_before >= 0),
+    traffic_reset_download_before INTEGER CHECK (traffic_reset_download_before IS NULL OR traffic_reset_download_before >= 0),
+    used_at INTEGER NOT NULL CHECK (used_at >= 0),
+    CHECK ((traffic_reset_upload_before IS NULL) = (traffic_reset_download_before IS NULL))
+);
+CREATE INDEX idx_gift_usages_user ON gift_card_usages(user_id, used_at DESC, id DESC);
+CREATE INDEX idx_gift_usages_code ON gift_card_usages(code_id, used_at DESC, id DESC);
+CREATE INDEX idx_gift_usages_template ON gift_card_usages(template_id, used_at DESC, id DESC);
 `

@@ -22,6 +22,7 @@ describe("UserPortal", () => {
       checkCoupon: vi.fn(), createOrder: vi.fn(), listOrders: vi.fn().mockResolvedValue([]), getOrder: vi.fn(), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(),
       getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
       getSubscriptionQR: vi.fn(), resetSubscriptionSecurity: vi.fn(),
+      checkGiftCard: vi.fn(), redeemGiftCard: vi.fn(), listMyGiftCardUsages: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 15 }),
       logout: vi.fn().mockResolvedValue(undefined)
     };
     const onSignedOut = vi.fn();
@@ -68,6 +69,7 @@ describe("UserPortal", () => {
       checkCoupon: vi.fn(), createOrder: vi.fn(), listOrders: vi.fn().mockResolvedValue([]), getOrder: vi.fn(), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(),
       getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
       getSubscriptionQR: vi.fn(), resetSubscriptionSecurity: vi.fn(),
+      checkGiftCard: vi.fn(), redeemGiftCard: vi.fn(), listMyGiftCardUsages: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 15 }),
       logout: vi.fn().mockRejectedValue(new Error("会话注销失败"))
     };
     const onSignedOut = vi.fn();

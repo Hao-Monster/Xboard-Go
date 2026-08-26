@@ -373,6 +373,116 @@ export interface CouponInput {
   ended_at: number;
 }
 
+export type GiftCardType = 1 | 2 | 3;
+export type GiftCardCodeStatus = 0 | 1 | 2 | 3;
+
+export interface GiftCardReward {
+  balance?: number;
+  transfer_enable?: number;
+  expire_days?: number;
+  device_limit?: number;
+  reset_package?: boolean;
+  plan_id?: number | null;
+  plan_validity_days?: number;
+  random_rewards?: Array<{ weight: number; rewards: Omit<GiftCardReward, "random_rewards" | "plan_id" | "plan_validity_days"> }>;
+}
+
+export interface GiftCardConditions {
+  new_user_max_days?: number | null;
+  new_user_only?: boolean;
+  paid_user_only?: boolean;
+  require_invite?: boolean;
+  allowed_plans?: number[];
+  disallowed_plans?: number[];
+}
+
+export interface GiftCardLimits {
+  max_use_per_user?: number;
+  cooldown_hours?: number;
+  invite_reward_basis_points?: number;
+}
+
+export interface GiftCardSpecialConfig {
+  started_at?: string | null;
+  ended_at?: string | null;
+  festival_multiplier_basis_points?: number;
+}
+
+export interface GiftCardTemplate {
+  id: number;
+  name: string;
+  description: string;
+  type: GiftCardType;
+  status: boolean;
+  conditions: GiftCardConditions;
+  rewards: GiftCardReward;
+  limits: GiftCardLimits;
+  special_config: GiftCardSpecialConfig;
+  icon: string;
+  background_image: string;
+  theme: string;
+  sort: number;
+  admin_id: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type GiftCardTemplateInput = Omit<GiftCardTemplate, "id" | "admin_id" | "revision" | "created_at" | "updated_at"> & { revision?: number };
+
+export interface GiftCardCode {
+  id: number;
+  template_id: number;
+  template_name?: string;
+  code: string;
+  batch_no: string;
+  status: GiftCardCodeStatus;
+  user_id: number | null;
+  used_at: string | null;
+  expires_at: string | null;
+  actual_rewards?: GiftCardReward;
+  usage_count: number;
+  max_usage: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GiftCardUsage {
+  id: number;
+  code_id: number;
+  code?: string;
+  template_id: number;
+  template_name?: string;
+  template_type?: GiftCardType;
+  user_id: number;
+  user_email?: string;
+  inviter_id: number | null;
+  inviter_email?: string;
+  rewards: GiftCardReward;
+  inviter_rewards: GiftCardReward;
+  user_level_at_use?: number | null;
+  user_plan_id: number | null;
+  multiplier_basis_points: number;
+  used_at: string;
+}
+
+export interface GiftCardPage<T> { items: T[]; total: number; page: number; page_size: number }
+export type GiftCardTemplatePage = GiftCardPage<GiftCardTemplate>;
+export type GiftCardCodePage = GiftCardPage<GiftCardCode>;
+export type GiftCardUsagePage = GiftCardPage<GiftCardUsage>;
+export interface GiftCardStatistics {
+  template_total: number;
+  active_templates: number;
+  code_total: number;
+  used_codes: number;
+  usage_total: number;
+  daily_usages: Array<{ date: string; count: number }>;
+  type_stats: Array<{ type: GiftCardType; count: number }>;
+}
+export interface GiftCardPreview { template: GiftCardTemplate; code_info: GiftCardCode; reward_preview: GiftCardReward; can_redeem: boolean; reason: string }
+export interface GiftCardRedeemResult { message: string; rewards: GiftCardReward; invite_rewards: GiftCardReward; template_name: string; usage: GiftCardUsage }
+export interface GiftCardCodeInput { code?: string; status?: GiftCardCodeStatus; expires_at?: number | null; max_usage?: number }
+
 export type RoutingAction = "block" | "direct" | "dns" | "proxy";
 
 export interface RoutingRule {
@@ -1263,6 +1373,87 @@ export class APIClient implements AdminAPI {
     return this.download("/api/v1/admin/coupons/batch", { ...input, code: "", count });
   }
 
+  async listGiftCardTemplates(page = 1, pageSize = 20, type?: GiftCardType, status?: boolean): Promise<GiftCardTemplatePage> {
+    const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (type !== undefined) query.set("type", String(type));
+    if (status !== undefined) query.set("status", String(status));
+    return this.request<GiftCardTemplatePage>(`/api/v1/admin/gift-card/templates?${query.toString()}`);
+  }
+
+  async createGiftCardTemplate(input: GiftCardTemplateInput): Promise<GiftCardTemplate> {
+    return this.request<GiftCardTemplate>("/api/v1/admin/gift-card/templates", { method: "POST", body: input });
+  }
+
+  async updateGiftCardTemplate(id: number, input: GiftCardTemplateInput): Promise<GiftCardTemplate> {
+    return this.request<GiftCardTemplate>(`/api/v1/admin/gift-card/templates/${id}`, { method: "PUT", body: input });
+  }
+
+  async deleteGiftCardTemplate(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/gift-card/templates/${id}`, { method: "DELETE" });
+  }
+
+  async generateGiftCardCodes(templateID: number, count: number, prefix: string, expiresAt: number | null, maxUsage: number): Promise<GiftCardCode[]> {
+    return this.request<GiftCardCode[]>("/api/v1/admin/gift-card/codes/generate", { method: "POST", body: { template_id: templateID, count, prefix, expires_at: expiresAt, max_usage: maxUsage } });
+  }
+
+  async generateGiftCardCodesCSV(templateID: number, count: number, prefix: string, expiresAt: number | null, maxUsage: number): Promise<Blob> {
+    return this.download("/api/v1/admin/gift-card/codes/generate", {
+      template_id: templateID, count, prefix, expires_at: expiresAt, max_usage: maxUsage, download_csv: true
+    });
+  }
+
+  async listGiftCardCodes(page = 1, pageSize = 20, search = "", templateID?: number, status?: GiftCardCodeStatus, batchNo = ""): Promise<GiftCardCodePage> {
+    const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (search.trim() !== "") query.set("query", search.trim());
+    if (templateID !== undefined) query.set("template_id", String(templateID));
+    if (status !== undefined) query.set("status", String(status));
+    if (batchNo.trim() !== "") query.set("batch_no", batchNo.trim());
+    return this.request<GiftCardCodePage>(`/api/v1/admin/gift-card/codes?${query.toString()}`);
+  }
+
+  async updateGiftCardCode(id: number, input: GiftCardCodeInput): Promise<GiftCardCode> {
+    return this.request<GiftCardCode>(`/api/v1/admin/gift-card/codes/${id}`, { method: "PATCH", body: input });
+  }
+
+  async exportGiftCardCodes(batchNo = ""): Promise<Blob> {
+    const query = new URLSearchParams();
+    if (batchNo.trim() !== "") query.set("batch_no", batchNo.trim());
+    const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+    return this.download(`/api/v1/admin/gift-card/codes/export${suffix}`);
+  }
+
+  async toggleGiftCardCode(id: number): Promise<GiftCardCode> {
+    return this.request<GiftCardCode>(`/api/v1/admin/gift-card/codes/${id}/toggle`, { method: "POST", body: {} });
+  }
+
+  async deleteGiftCardCode(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/gift-card/codes/${id}`, { method: "DELETE" });
+  }
+
+  async listGiftCardUsages(page = 1, pageSize = 20, userID?: number, templateID?: number, codeID?: number): Promise<GiftCardUsagePage> {
+    const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (userID !== undefined) query.set("user_id", String(userID));
+    if (templateID !== undefined) query.set("template_id", String(templateID));
+    if (codeID !== undefined) query.set("code_id", String(codeID));
+    return this.request<GiftCardUsagePage>(`/api/v1/admin/gift-card/usages?${query.toString()}`);
+  }
+
+  async getGiftCardStatistics(): Promise<GiftCardStatistics> {
+    return this.request<GiftCardStatistics>("/api/v1/admin/gift-card/statistics");
+  }
+
+  async checkGiftCard(code: string): Promise<GiftCardPreview> {
+    return this.request<GiftCardPreview>("/api/v1/user/gift-card/check", { method: "POST", body: { code } });
+  }
+
+  async redeemGiftCard(code: string): Promise<GiftCardRedeemResult> {
+    return this.request<GiftCardRedeemResult>("/api/v1/user/gift-card/redeem", { method: "POST", body: { code } });
+  }
+
+  async listMyGiftCardUsages(page = 1, pageSize = 15): Promise<GiftCardUsagePage> {
+    return this.request<GiftCardUsagePage>(`/api/v1/user/gift-card/history?page=${page}&page_size=${pageSize}`);
+  }
+
   async listRoutingRules(): Promise<RoutingRule[]> {
     return this.request<RoutingRule[]>("/api/v1/admin/routing-rules");
   }
@@ -1523,11 +1714,15 @@ export class APIClient implements AdminAPI {
     return payload.data;
   }
 
-  private async download(path: string, body: unknown): Promise<Blob> {
-    const headers = new Headers({ Accept: "text/csv", "Content-Type": "application/json" });
-    const csrf = readCookie("xboard_csrf");
-    if (csrf !== null) headers.set("X-CSRF-Token", csrf);
-    const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: JSON.stringify(body) });
+  private async download(path: string, body?: unknown): Promise<Blob> {
+    const method = body === undefined ? "GET" : "POST";
+    const headers = new Headers({ Accept: "text/csv" });
+    if (body !== undefined) headers.set("Content-Type", "application/json");
+    if (method !== "GET") {
+      const csrf = readCookie("xboard_csrf");
+      if (csrf !== null) headers.set("X-CSRF-Token", csrf);
+    }
+    const response = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
     if (!response.ok) {
       const payload = (await response.json()) as ErrorEnvelope;
       const error = payload.status === "fail" ? payload.error : { code: "request_failed", message: "请求失败" };

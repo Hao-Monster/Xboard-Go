@@ -456,6 +456,7 @@ func TestSchemaV31PreservesV30OrdersAndAddsPaymentConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(ctx, `
 		DROP TRIGGER trg_orders_payment_insert;
 		DROP TRIGGER trg_orders_payment_update;
@@ -482,7 +483,7 @@ func TestSchemaV31PreservesV30OrdersAndAddsPaymentConstraints(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name IN ('trg_orders_payment_insert','trg_orders_payment_update','trg_payments_delete_restrict')`).Scan(&triggerCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 31 || tradeNo != order.TradeNo || triggerCount != 3 {
+	if version != currentSchemaVersion || tradeNo != order.TradeNo || triggerCount != 3 {
 		t.Fatalf("migration version=%d trade=%q/%q triggers=%d", version, tradeNo, order.TradeNo, triggerCount)
 	}
 }

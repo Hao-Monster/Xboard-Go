@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -10,6 +10,7 @@ import { InvitationPage } from "../invitations/InvitationPage";
 import { PlanCatalogPage } from "../plans/PlanCatalogPage";
 import { UserSubscriptionPage } from "../subscription/UserSubscriptionPage";
 import { UserOrdersPage } from "../orders/UserOrdersPage";
+import { UserGiftCardPage } from "../giftcards/UserGiftCardPage";
 
 interface UserPortalAPI {
   listVisibleNotices: (page?: number) => Promise<NoticePage>;
@@ -35,6 +36,9 @@ interface UserPortalAPI {
   getSubscription: () => Promise<UserSubscription>;
   getSubscriptionQR: () => Promise<SubscriptionQR>;
   resetSubscriptionSecurity: () => Promise<UserSubscription>;
+  checkGiftCard: (code: string) => Promise<GiftCardPreview>;
+  redeemGiftCard: (code: string) => Promise<GiftCardRedeemResult>;
+  listMyGiftCardUsages: (page?: number, pageSize?: number) => Promise<GiftCardUsagePage>;
   logout: () => Promise<void>;
 }
 
@@ -47,7 +51,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
   initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
-  const [page, setPage] = useState<"subscription" | "plans" | "orders" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
+  const [page, setPage] = useState<"subscription" | "plans" | "orders" | "gift-cards" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
   const [openOrderTradeNo, setOpenOrderTradeNo] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState("");
 
@@ -68,6 +72,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
         <button className="nav-link" aria-current={page === "subscription" ? "page" : undefined} onClick={() => setPage("subscription")}>我的订阅</button>
         <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>订阅套餐</button>
         <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>我的订单</button>
+        <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => setPage("gift-cards")}>礼品卡</button>
         <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
         <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>
         <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>我的工单</button>
@@ -80,6 +85,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
     {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
     {page === "plans" && <PlanCatalogPage api={api} couponEnabled={couponEnabled} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
     {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
+    {page === "gift-cards" && <UserGiftCardPage api={api} />}
     {page === "notices" && <UserNoticesPage api={api} />}
     {page === "knowledge" && <UserKnowledgePage api={api} />}
     {page === "tickets" && <UserTicketsPage api={api} />}

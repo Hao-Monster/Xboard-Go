@@ -58,6 +58,14 @@ var (
 	ErrPaymentUnavailable                     = fmt.Errorf("%w: payment method is unavailable", ErrConflict)
 	ErrPaymentInProgress                      = fmt.Errorf("%w: payment checkout is already in progress", ErrConflict)
 	ErrPaymentMismatch                        = fmt.Errorf("%w: payment callback does not match the order", ErrConflict)
+	ErrGiftCardUnavailable                    = errors.New("gift card is unavailable")
+	ErrGiftCardExpired                        = errors.New("gift card has expired")
+	ErrGiftCardExhausted                      = errors.New("gift card is exhausted")
+	ErrGiftCardUserLimit                      = errors.New("gift card user limit reached")
+	ErrGiftCardCooldown                       = errors.New("gift card cooldown is active")
+	ErrGiftCardCondition                      = errors.New("gift card conditions are not satisfied")
+	ErrGiftCardActivePlan                     = errors.New("gift card plan reward requires no active plan")
+	ErrGiftCardReferenced                     = fmt.Errorf("%w: gift card is referenced by usage history", ErrConflict)
 )
 
 const (
