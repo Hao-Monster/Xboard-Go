@@ -94,6 +94,32 @@ describe("UsersPage", () => {
     await waitFor(() => expect(api.getAdminUser).toHaveBeenCalledWith(41));
     expect(within(dialog).getByLabelText("限速（Mbps，0 为不限速）")).toHaveValue(90);
   });
+
+  it("requires a distributor name and persists coexisting roles", async () => {
+    const distributor = { ...account, revision: 2, is_admin: true, is_staff: true, is_distributor: true, distributor_name: "星河分销" };
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account] });
+    api.updateAdminUser.mockResolvedValue(distributor);
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    await user.click(await screen.findByRole("button", { name: "编辑用户：alpha@example.test" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑用户" });
+
+    await user.click(within(dialog).getByLabelText("管理员"));
+    await user.click(within(dialog).getByLabelText("员工"));
+    await user.click(within(dialog).getByLabelText("分销商"));
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("必须填写分销商名称");
+    expect(api.updateAdminUser).not.toHaveBeenCalled();
+
+    await user.type(within(dialog).getByLabelText("分销商名称"), "星河分销");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledWith(account.id, expect.objectContaining({
+      is_admin: true, is_staff: true, is_distributor: true, distributor_name: "星河分销"
+    })));
+    expect(await screen.findByText("星河分销")).toBeVisible();
+    expect(screen.getByText(/管理员 · 员工 · 分销商/)).toBeVisible();
+  });
 });
 
 function baseAPI() {

@@ -18,6 +18,7 @@ interface ModalProps {
 export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
   const contentRef = useRef<HTMLElement>(null);
   useDialogFocus(contentRef, !suspended, onClose);
+  useDocumentScrollLock();
   useEffect(() => {
     if (contentRef.current !== null) {
       contentRef.current.inert = suspended;
@@ -38,6 +39,7 @@ export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
 export function Modal({ title, className = "", onClose, children }: ModalProps) {
   const contentRef = useRef<HTMLElement>(null);
   useDialogFocus(contentRef, true, onClose);
+  useDocumentScrollLock();
   return createPortal(
     <div className="overlay-layer modal-layer" data-testid="modal-layer">
       <button className="overlay-backdrop modal-backdrop" aria-label={`点击遮罩关闭${title}`} tabIndex={-1} onClick={onClose} />
@@ -47,6 +49,23 @@ export function Modal({ title, className = "", onClose, children }: ModalProps) 
     </div>,
     overlayRoot()
   );
+}
+
+let scrollLockDepth = 0;
+let previousBodyOverflow = "";
+
+function useDocumentScrollLock() {
+  useEffect(() => {
+    if (scrollLockDepth === 0) {
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    scrollLockDepth += 1;
+    return () => {
+      scrollLockDepth = Math.max(0, scrollLockDepth - 1);
+      if (scrollLockDepth === 0) document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
 }
 
 function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boolean, onClose: () => void) {

@@ -11,6 +11,31 @@ afterEach(() => {
 });
 
 describe("App public identity bootstrap", () => {
+	it("routes a distributor session to the dedicated allowlisted portal", async () => {
+		const requested: string[] = [];
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			requested.push(path);
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Distributor Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				id: 90, email: "seller@example.test", is_admin: false, is_staff: false, is_distributor: true, distributor_name: "星河分销"
+			} }));
+			if (path.endsWith("/api/v1/plans")) return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App />);
+		expect(await screen.findByRole("heading", { name: "购买订阅" }, { timeout: 5_000 })).toBeVisible();
+		expect(screen.getByText("星河分销")).toBeVisible();
+		expect(screen.queryByRole("button", { name: "我的订阅" })).not.toBeInTheDocument();
+		expect(requested.some((path) => path.includes("/api/v1/notices"))).toBe(false);
+	});
+
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
 		const token = "11111111111111111111111111111111";
 		let sessionRequested = false;
@@ -68,7 +93,8 @@ describe("App public identity bootstrap", () => {
 				requests.push({ path, method: init?.method ?? "GET", body: JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown });
 				return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 71, email: "linked@example.test", is_admin: false, redirect: "invite" } }));
 			}
-			if (path.endsWith("/api/v1/invitations")) return Promise.resolve(jsonResponse(200, { status: "success", data: { codes: [], invited_count: 0 } }));
+			if (path.endsWith("/api/v1/invitations")) return Promise.resolve(jsonResponse(200, { status: "success", data: { codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, available_commission: 0 } }));
+			if (path.includes("/api/v1/invitations/commissions")) return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 50 } }));
 			throw new Error(`unexpected fetch ${path}`);
 		}));
 

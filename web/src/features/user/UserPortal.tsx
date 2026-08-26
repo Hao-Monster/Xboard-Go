@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -25,6 +25,8 @@ interface UserPortalAPI {
   closeTicket: (id: number) => Promise<Ticket>;
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
+  listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
+  transferCommission: (amount: number) => Promise<CommissionTransferResult>;
   listPlanOffers: () => Promise<PlanOffer[]>;
   checkCoupon: (code: string, planID: number, period: PlanPeriod) => Promise<CouponQuote>;
   createOrder: (planID: number, period: PlanPeriod, couponCode?: string) => Promise<Order>;

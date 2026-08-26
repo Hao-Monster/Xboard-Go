@@ -127,7 +127,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 
   return <main className="page-shell">
     <header className="page-header">
-      <div><p className="eyebrow">Identity and access</p><h1>用户管理</h1><p className="muted">以游标分页管理用户访问状态；角色、财务与删除功能将在规则确认后单独实现。</p></div>
+      <div><p className="eyebrow">Identity and access</p><h1>用户管理</h1><p className="muted">以游标分页管理用户、访问状态和可并存的管理员、员工与分销商角色。</p></div>
       <button className="button primary" onClick={() => setCreating(true)}>新增用户</button>
     </header>
 
@@ -145,7 +145,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <table className="resource-table user-table">
           <thead><tr><th>用户</th><th>状态</th><th>权限组</th><th>流量</th><th>限制</th><th>操作</th></tr></thead>
           <tbody>{users.map((account) => <tr key={account.id}>
-            <td data-label="用户"><strong>{account.email}</strong><small className="muted">#{account.id}{account.is_admin ? " · 管理员" : ""}</small></td>
+            <td data-label="用户"><strong>{account.email}</strong><small className="muted">#{account.id}{roleSummary(account)}</small>{account.is_distributor && account.distributor_name && <small>{account.distributor_name}</small>}</td>
             <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.banned ? "已封禁" : "正常"}</span><small className="muted">在线 {account.online_count}</small><small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
             <td data-label="权限组">{account.group_id === null ? "未分组" : groupNames.get(account.group_id) ?? `#${account.group_id}`}</td>
             <td data-label="流量"><span>{formatBytes(account.traffic_upload + account.traffic_download)} / {formatBytes(account.transfer_enable)}</span></td>
@@ -175,6 +175,10 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
   const [speedLimit, setSpeedLimit] = useState(String(account?.speed_limit ?? 0));
   const [deviceLimit, setDeviceLimit] = useState(String(account?.device_limit ?? 0));
   const [banned, setBanned] = useState(account?.banned ?? false);
+  const [isAdmin, setIsAdmin] = useState(account?.is_admin ?? false);
+  const [isStaff, setIsStaff] = useState(account?.is_staff ?? false);
+  const [isDistributor, setIsDistributor] = useState(account?.is_distributor ?? false);
+  const [distributorName, setDistributorName] = useState(account?.distributor_name ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -183,15 +187,22 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
     setCurrent(value); setEmail(value.email); setGroupID(value.group_id === null ? "" : String(value.group_id));
     setTransferEnable(String(value.transfer_enable)); setExpiredAt(toLocalDateTime(value.expired_at));
     setSpeedLimit(String(value.speed_limit)); setDeviceLimit(String(value.device_limit)); setBanned(value.banned);
+    setIsAdmin(value.is_admin); setIsStaff(value.is_staff ?? false); setIsDistributor(value.is_distributor ?? false);
+    setDistributorName(value.distributor_name ?? "");
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isDistributor && distributorName.trim() === "") {
+      setError("启用分销商角色时必须填写分销商名称");
+      return;
+    }
     setBusy(true); setError(""); setConflict(false);
     const common = {
       email: email.trim(), group_id: groupID === "" ? null : Number(groupID), transfer_enable: Number(transferEnable),
       expired_at: expiredAt === "" ? null : new Date(expiredAt).toISOString(), speed_limit: Number(speedLimit),
-      device_limit: Number(deviceLimit), banned
+      device_limit: Number(deviceLimit), banned, is_admin: isAdmin, is_staff: isStaff,
+      is_distributor: isDistributor, distributor_name: isDistributor ? distributorName.trim() : null
     };
     try {
       const saved = editing && current !== undefined
@@ -228,8 +239,13 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
       <label>流量额度（字节）<input type="number" min="0" max={Number.MAX_SAFE_INTEGER} step="1" value={transferEnable} required onChange={(event) => setTransferEnable(event.target.value)} /></label>
       <label>到期时间（留空表示不限期）<input type="datetime-local" value={expiredAt} onChange={(event) => setExpiredAt(event.target.value)} /></label>
       <div className="time-grid"><label>限速（Mbps，0 为不限速）<input type="number" min="0" step="1" value={speedLimit} required onChange={(event) => setSpeedLimit(event.target.value)} /></label><label>设备数（0 为不限设备）<input type="number" min="0" max="1000" step="1" value={deviceLimit} required onChange={(event) => setDeviceLimit(event.target.value)} /></label></div>
+      <fieldset className="settings-fieldset"><legend>账号角色（可并存）</legend><div className="role-switch-grid">
+        <label className="switch-label"><input type="checkbox" checked={isAdmin} disabled={editing && current?.id === currentUserID} onChange={(event) => setIsAdmin(event.target.checked)} />管理员</label>
+        <label className="switch-label"><input type="checkbox" checked={isStaff} onChange={(event) => setIsStaff(event.target.checked)} />员工</label>
+        <label className="switch-label"><input type="checkbox" checked={isDistributor} onChange={(event) => { setIsDistributor(event.target.checked); if (!event.target.checked) setDistributorName(""); }} />分销商</label>
+      </div>{isDistributor && <label>分销商名称<input aria-label="分销商名称" value={distributorName} minLength={1} maxLength={100} aria-invalid={error.includes("分销商名称")} onChange={(event) => setDistributorName(event.target.value)} /></label>}</fieldset>
       <label className="switch-label"><input type="checkbox" checked={banned} disabled={editing && current?.id === currentUserID} onChange={(event) => setBanned(event.target.checked)} />封禁用户</label>
-      {editing && current?.id === currentUserID && <p className="muted small">为防止当前管理员锁定自己，此账号不能在本页封禁。</p>}
+      {editing && current?.id === currentUserID && <p className="muted small">为防止当前管理员锁定自己，此账号不能在本页封禁或移除管理员角色。</p>}
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
       <div className="form-actions">{conflict && <button className="button secondary" type="button" disabled={busy} onClick={() => void reload()}>加载最新状态</button>}<button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在保存…" : editing ? "保存" : "创建"}</button></div>
     </form>
@@ -293,4 +309,9 @@ function sortUsers(users: AdminUser[], query: AdminUserQuery): AdminUser[] {
 	return [...users].sort(query.email_prefix === undefined
 		? (left, right) => right.id - left.id
 		: (left, right) => left.email.localeCompare(right.email) || left.id - right.id);
+}
+
+function roleSummary(account: AdminUser): string {
+  const roles = [account.is_admin ? "管理员" : "", account.is_staff ? "员工" : "", account.is_distributor ? "分销商" : ""].filter(Boolean);
+  return roles.length === 0 ? "" : ` · ${roles.join(" · ")}`;
 }
