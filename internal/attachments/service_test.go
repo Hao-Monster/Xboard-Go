@@ -101,6 +101,28 @@ func TestStorageRootRejectsFilesystemRootAndSymlinks(t *testing.T) {
 	}
 }
 
+func TestSafePathRejectsTraversalAndNestedSymlinks(t *testing.T) {
+	service, _, _, _ := newAttachmentTestService(t, 32)
+	for _, candidate := range []string{"../outside", "objects/../../outside", "/absolute", `objects\escape`} {
+		if _, err := service.safePath(candidate); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("safePath(%q) error = %v, want ErrInvalidInput", candidate, err)
+		}
+	}
+
+	inside := filepath.Join(service.root, "objects")
+	if err := os.MkdirAll(inside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	link := filepath.Join(inside, "redirect")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("nested symlink unavailable: %v", err)
+	}
+	if _, err := service.safePath("objects/redirect/payload"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("safePath(nested symlink) error = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestListDraftKnowledgeAttachmentsUsesDraftScopeWithoutArticleID(t *testing.T) {
 	service, _, adminID, now := newAttachmentTestService(t, 32)
 	draftToken := testDraftToken("d")

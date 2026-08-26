@@ -390,33 +390,56 @@ func (s *Service) Open(ctx context.Context, attachmentUUID string) (*os.File, At
 }
 
 func (s *Service) safePath(relative string) (string, error) {
+	clean, err := safeRelativePath(relative)
+	if err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return "", fmt.Errorf("open attachment storage root: %w", err)
+	}
+	defer root.Close()
+	if err := verifyRootPathComponents(root, clean); err != nil {
+		return "", err
+	}
+	return filepath.Join(s.root, clean), nil
+}
+
+func safeRelativePath(relative string) (string, error) {
 	if relative == "" || filepath.IsAbs(relative) || strings.Contains(relative, "\\") {
 		return "", ErrInvalidInput
 	}
 	clean := filepath.Clean(filepath.FromSlash(relative))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	if !filepath.IsLocal(clean) {
 		return "", ErrInvalidInput
 	}
-	result := filepath.Join(s.root, clean)
-	relativeToRoot, err := filepath.Rel(s.root, result)
-	if err != nil || relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) {
-		return "", ErrInvalidInput
-	}
-	current := s.root
-	for _, component := range strings.Split(relativeToRoot, string(filepath.Separator)) {
-		current = filepath.Join(current, component)
-		info, statErr := os.Lstat(current)
-		if errors.Is(statErr, os.ErrNotExist) {
-			break
+	components := strings.Split(clean, string(filepath.Separator))
+	for index, component := range components {
+		base := filepath.Base(component)
+		if base == "." || base == ".." || base != component {
+			return "", ErrInvalidInput
 		}
-		if statErr != nil {
-			return "", fmt.Errorf("inspect attachment path: %w", statErr)
+		components[index] = base
+	}
+	return filepath.Join(components...), nil
+}
+
+func verifyRootPathComponents(root *os.Root, relative string) error {
+	current := ""
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, component)
+		info, err := root.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("inspect attachment path: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("%w: symbolic links are forbidden in attachment storage", ErrInvalidInput)
+			return fmt.Errorf("%w: symbolic links are forbidden in attachment storage", ErrInvalidInput)
 		}
 	}
-	return result, nil
+	return nil
 }
 
 func secureStorageRoot(value string) (string, error) {

@@ -85,25 +85,36 @@ func (s *Service) DropDraft(ctx context.Context, uploaderUserID int64, attachmen
 	if attachment.DraftTokenHash == nil || subtle.ConstantTimeCompare([]byte(*attachment.DraftTokenHash), []byte(digest)) != 1 {
 		return ErrNotFound
 	}
-	objectPath, err := s.safePath(attachment.StoragePath)
+	objectPath, err := safeRelativePath(attachment.StoragePath)
 	if err != nil {
 		return err
 	}
-	staging, err := s.safePath(filepath.ToSlash(filepath.Join("quarantine", "delete-"+attachmentUUID)))
+	staging, err := safeRelativePath(filepath.ToSlash(filepath.Join("quarantine", "delete-"+uuid.NewString())))
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(staging), 0o700); err != nil {
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return fmt.Errorf("open attachment storage root: %w", err)
+	}
+	defer root.Close()
+	if err := verifyRootPathComponents(root, objectPath); err != nil {
+		return err
+	}
+	if err := verifyRootPathComponents(root, staging); err != nil {
+		return err
+	}
+	if err := root.MkdirAll(filepath.Dir(staging), 0o700); err != nil {
 		return fmt.Errorf("create attachment delete staging: %w", err)
 	}
-	if err := os.Rename(objectPath, staging); err != nil {
+	if err := root.Rename(objectPath, staging); err != nil {
 		return fmt.Errorf("stage draft attachment deletion: %w", err)
 	}
 	if err := s.database.DeleteDraftKnowledgeAttachment(ctx, uploaderUserID, attachmentUUID, digest); err != nil {
-		_ = os.Rename(staging, objectPath)
+		_ = root.Rename(staging, objectPath)
 		return mapStoreError(err)
 	}
-	if err := os.Remove(staging); err != nil {
+	if err := root.Remove(staging); err != nil {
 		return fmt.Errorf("remove discarded draft attachment: %w", err)
 	}
 	return nil

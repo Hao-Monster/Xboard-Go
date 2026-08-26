@@ -307,7 +307,7 @@ function serializeHTMLNode(node: Node, context: { ordered?: boolean; index?: num
 }
 
 function normalizeMarkdown(value: string): string { return value.replaceAll("\u00a0", " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(); }
-function escapeMarkdownInline(value: string): string { return value.replaceAll("\\", "\\\\").replace(/([`*_[\]])/g, "\\$1"); }
+function escapeMarkdownInline(value: string): string { return value.replace(/([\\`*_[\]])/g, "\\$1"); }
 
 export function qrSVGToPNGFile(svg: string): Promise<File> {
   return new Promise((resolve, reject) => {
