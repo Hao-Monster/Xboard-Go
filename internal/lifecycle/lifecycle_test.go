@@ -362,6 +362,20 @@ func testBackupManifest(revision string) backup.Manifest {
 	}
 }
 
+func TestValidateBackupManifestAcceptsCurrentBundleFormat(t *testing.T) {
+	manifest := testBackupManifest(strings.Repeat("a", 40))
+	manifest.FormatVersion = 2
+	manifest.AttachmentSHA256 = strings.Repeat("b", 64)
+	if err := validateBackupManifest(manifest); err != nil {
+		t.Fatalf("validateBackupManifest() error = %v", err)
+	}
+
+	manifest.AttachmentSHA256 = ""
+	if err := validateBackupManifest(manifest); err == nil {
+		t.Fatal("validateBackupManifest() accepted incomplete bundle metadata")
+	}
+}
+
 func ptrManifest(manifest backup.Manifest) *backup.Manifest {
 	return &manifest
 }

@@ -624,6 +624,12 @@ func validateManifest(manifest Manifest) error {
 	return nil
 }
 
+// ValidateManifest validates the security-sensitive metadata shared with
+// lifecycle orchestration without reading or extracting a backup archive.
+func ValidateManifest(manifest Manifest) error {
+	return validateManifest(manifest)
+}
+
 func validateAttachmentEntries(manifest Manifest, attachments []AttachmentManifest) error {
 	if manifest.AttachmentCount != len(attachments) {
 		return errors.New("backup attachment index count does not match the manifest")

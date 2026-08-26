@@ -31,7 +31,6 @@ const (
 var (
 	imageIDPattern      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	revisionPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	sha256Pattern       = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	databasePattern     = regexp.MustCompile(`^file:/var/lib/xboard/[A-Za-z0-9._-]+\.db$`)
 	backupPattern       = regexp.MustCompile(`^/var/lib/xboard-backups/[A-Za-z0-9._-]+\.xbbackup$`)
 	databasePathPattern = regexp.MustCompile(`^/var/lib/xboard/[A-Za-z0-9._-]+\.db$`)
@@ -428,23 +427,11 @@ func validLifecycleStatus(status string) bool {
 }
 
 func validateBackupManifest(manifest backup.Manifest) error {
-	if manifest.FormatVersion != 1 {
-		return fmt.Errorf("unsupported backup format version %d", manifest.FormatVersion)
-	}
-	if manifest.CreatedAt.IsZero() {
-		return errors.New("backup creation time is required")
+	if err := backup.ValidateManifest(manifest); err != nil {
+		return err
 	}
 	if !revisionPattern.MatchString(manifest.AppRevision) {
 		return fmt.Errorf("invalid backup revision %q", manifest.AppRevision)
-	}
-	if manifest.SchemaVersion <= 0 {
-		return fmt.Errorf("invalid backup schema version %d", manifest.SchemaVersion)
-	}
-	if manifest.DatabaseSize < 0 {
-		return fmt.Errorf("invalid backup database size %d", manifest.DatabaseSize)
-	}
-	if !sha256Pattern.MatchString(manifest.DatabaseSHA256) {
-		return errors.New("invalid backup database SHA-256")
 	}
 	return nil
 }
