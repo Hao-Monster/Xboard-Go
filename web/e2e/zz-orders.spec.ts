@@ -14,12 +14,19 @@ test("free checkout and administrator order lifecycle work on every supported vi
   const unique = `${Date.now()}-${test.info().project.name}`;
   const userEmail = `order-user-${unique}@example.test`;
   const userPassword = "order-user-password-123";
-  const commissionUserEmail = `commission-user-${unique}@example.test`;
+  let commissionUserEmail = `commission-user-${unique}@example.test`;
+  let expectedInviterEmail = adminEmail;
   const planName = `E2E 免费订单套餐 ${unique}`;
 
   await login(page, adminEmail, adminPassword);
-	await createInvitedUser(page, userEmail, userPassword);
+  await createUser(page, userEmail, userPassword);
+  const reusableInvitee = await findReusableInvitedUser(page);
+  if (reusableInvitee === null) {
 	await createInvitedUser(page, commissionUserEmail, userPassword);
+  } else {
+	commissionUserEmail = reusableInvitee.email;
+	expectedInviterEmail = reusableInvitee.inviterEmail;
+  }
   await createFreePlan(page, planName);
 
   await logoutAndWait(page);
@@ -69,7 +76,7 @@ test("free checkout and administrator order lifecycle work on every supported vi
   await dialog.getByRole("button", { name: "标记已支付并开通", exact: true }).click();
   await expect(dialog.getByText("已完成", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "标记已支付并开通", exact: true })).toBeHidden();
-	await expect(dialog.getByText(adminEmail, { exact: true })).toBeVisible();
+	await expect(dialog.getByText(expectedInviterEmail, { exact: true })).toBeVisible();
 	await expect(dialog.getByText("manual_operation", { exact: true })).toBeVisible();
 	await expect(dialog.getByRole("link", { name: "打开订阅链接", exact: true })).toHaveAttribute("href", /\/s\//);
 	await expect(dialog.getByText("待确认", { exact: true })).toBeVisible();
@@ -102,6 +109,29 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible();
+}
+
+async function createUser(page: Page, email: string, password: string) {
+  await page.getByRole("button", { name: "用户管理", exact: true }).click();
+  await page.getByRole("button", { name: "新增用户", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新增用户" });
+  await dialog.getByLabel("邮箱", { exact: true }).fill(email);
+  await dialog.getByLabel("初始密码", { exact: true }).fill(password);
+  await dialog.getByLabel("流量额度（字节）", { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(page.getByText(email, { exact: true })).toBeVisible();
+}
+
+async function findReusableInvitedUser(page: Page): Promise<{ email: string; inviterEmail: string } | null> {
+  const response = await page.evaluate(async () => {
+    const result = await fetch("/api/v1/admin/users?email_prefix=il-&limit=100", { credentials: "same-origin" });
+    return { status: result.status, body: await result.text() };
+  });
+  expect(response.status, response.body).toBe(200);
+  const payload = JSON.parse(response.body) as { data?: { items?: Array<{ email?: string }> } };
+  const email = payload.data?.items?.find((item) => item.email?.startsWith("il-"))?.email;
+  if (email === undefined) return null;
+  return { email, inviterEmail: `io-${email.slice(3)}` };
 }
 
 async function createInvitedUser(page: Page, email: string, password: string) {
