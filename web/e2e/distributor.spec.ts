@@ -40,7 +40,7 @@ test("distributor purchase, delivery, renewal, administration, and settlement wo
   await expect(page.getByText("Valid commission", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Buy Subscription", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Distributor Center", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Confirmed — place order", exact: true })).toBeVisible();
+  await expect(page.getByRole("article").filter({ has: page.getByRole("heading", { name: planName, exact: true }) }).getByRole("button", { name: "Confirmed — place order", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "My Orders", exact: true }).click();
   await expect(page.getByRole("heading", { name: "My Orders", exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("Search by order or customer name", { exact: true })).toBeVisible();
@@ -84,7 +84,7 @@ test("distributor purchase, delivery, renewal, administration, and settlement wo
   await dialog.getByLabel("续费周期").selectOption("quarterly");
   await dialog.getByRole("button", { name: "确认续费", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "续费现有订阅" })).toBeHidden();
-  await expect(page.getByRole("row").filter({ hasText: `原始订单：${tradeNo}` })).toContainText("¥270.00");
+  await expect(page.getByRole("row").filter({ hasText: `原始订单: ${tradeNo}` })).toContainText("¥270.00");
 
   await page.getByPlaceholder("订单号或客户名称").fill(tradeNo);
   await page.getByRole("button", { name: "搜索", exact: true }).click();
