@@ -87,7 +87,8 @@ test("administrator manages plans and a user sees the same purchasable catalog",
   await page.getByRole("button", { name: "套餐管理", exact: true }).click();
   await deletePlan(page, premiumName);
   await deletePlan(page, basicName);
-  await expect(page.getByText("尚未创建套餐。", { exact: true })).toBeVisible();
+  await expect(planRow(page, premiumName)).toBeHidden();
+  await expect(planRow(page, basicName)).toBeHidden();
 
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);

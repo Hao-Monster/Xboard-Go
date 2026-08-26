@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Plan, PlanOffer, ServerGroup } from "../../lib/api";
+import type { Order, Plan, PlanOffer, ServerGroup } from "../../lib/api";
 import { PlanCatalogPage } from "./PlanCatalogPage";
 import { PlanManagementPage } from "./PlanManagementPage";
 
@@ -118,7 +118,11 @@ describe("PlanManagementPage", () => {
 describe("PlanCatalogPage", () => {
   it("renders unlimited capacity without the legacy false sold-out label", async () => {
     const offer: PlanOffer = { ...plan, content: "## 稳定套餐", prices: { monthly: 123, reset_traffic: 50 }, capacity_remaining: null, can_purchase: true, can_renew: false };
-    render(<PlanCatalogPage api={{ listPlanOffers: vi.fn().mockResolvedValue([offer]) }} />);
+    const order = { id: 1, trade_no: "2026082612345600000000001", plan_id: offer.id, period: "monthly", total_amount: 123, status: 0 } as Order;
+    const createOrder = vi.fn().mockResolvedValue(order);
+    const onOrderCreated = vi.fn();
+    const user = userEvent.setup();
+    render(<PlanCatalogPage api={{ listPlanOffers: vi.fn().mockResolvedValue([offer]), createOrder }} onOrderCreated={onOrderCreated} />);
     expect(await screen.findByRole("heading", { name: "Pro" })).toBeVisible();
     expect(screen.getByText("不限量")).toBeVisible();
     expect(screen.getByText("月付 ¥1.23")).toBeVisible();
@@ -126,6 +130,12 @@ describe("PlanCatalogPage", () => {
     expect(screen.getByRole("heading", { name: "稳定套餐" })).toBeVisible();
     expect(screen.getByText("可购买")).toBeVisible();
     expect(screen.queryByText(/sold out/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "立即订阅" }));
+    const dialog = screen.getByRole("dialog", { name: "配置订阅" });
+    expect(within(dialog).getByText("套餐标价")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "下单" }));
+    await waitFor(() => expect(createOrder).toHaveBeenCalledWith(offer.id, "monthly"));
+    expect(onOrderCreated).toHaveBeenCalledWith(order);
   });
 });
 
