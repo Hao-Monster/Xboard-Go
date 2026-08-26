@@ -88,7 +88,11 @@ test("administrator uploads, publishes, reopens, and removes a multi-chunk knowl
   await dialog.getByRole("listitem").filter({ hasText: fileName }).getByRole("button", { name: "移除" }).click();
   await expect(dialog.getByRole("listitem").filter({ hasText: fileName })).toHaveCount(0);
   await expect(dialog.getByLabel("内容")).not.toHaveValue(new RegExp(escapeRegExp(attachment.placeholder)));
+  const updatedResponse = page.waitForResponse((response) =>
+    response.request().method() === "PATCH" && new URL(response.url()).pathname === `/api/v1/admin/knowledge/${summary.id}`);
   await dialog.getByRole("button", { name: "提交" }).click();
+  expect((await updatedResponse).status()).toBe(200);
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByText(title, { exact: true })).toBeVisible();
 
   const removedDetail = await apiData<{ body: string }>(page, `/api/v1/admin/knowledge/${summary.id}`);
