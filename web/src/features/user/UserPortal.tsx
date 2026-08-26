@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserSession, UserSubscription } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CouponQuote, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -29,7 +29,8 @@ interface UserPortalAPI {
   createOrder: (planID: number, period: PlanPeriod, couponCode?: string) => Promise<Order>;
   listOrders: (status?: OrderStatus, limit?: number) => Promise<Order[]>;
   getOrder: (tradeNo: string) => Promise<Order>;
-  checkoutOrder: (tradeNo: string) => Promise<Order>;
+  listPaymentMethods: () => Promise<UserPaymentMethod[]>;
+  checkoutOrder: (tradeNo: string, paymentID?: number) => Promise<Order | PaymentCheckout>;
   cancelOrder: (tradeNo: string) => Promise<Order>;
   getSubscription: () => Promise<UserSubscription>;
   getSubscriptionQR: () => Promise<SubscriptionQR>;

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Modal } from "../../components/Overlay";
-import type { Order, OrderStatus } from "../../lib/api";
+import type { Order, OrderStatus, PaymentCheckout, UserPaymentMethod } from "../../lib/api";
 
 export interface UserOrdersAPI {
   listOrders: (status?: OrderStatus, limit?: number) => Promise<Order[]>;
   getOrder: (tradeNo: string) => Promise<Order>;
-  checkoutOrder: (tradeNo: string) => Promise<Order>;
+  listPaymentMethods: () => Promise<UserPaymentMethod[]>;
+  checkoutOrder: (tradeNo: string, paymentID?: number) => Promise<Order | PaymentCheckout>;
   cancelOrder: (tradeNo: string) => Promise<Order>;
 }
 
@@ -59,10 +60,10 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled }:
     return () => { active = false; };
   }, [api, initialTradeNo, onInitialHandled]);
 
-  const replace = (order: Order) => {
+  const replace = useCallback((order: Order) => {
     setOrders((current) => current.map((item) => item.id === order.id ? { ...item, ...order } : item));
     setSelected(order);
-  };
+  }, []);
 
   return <main className="page-shell resource-page order-page">
     <header className="page-header"><div><p className="eyebrow">Orders</p><h1>我的订单</h1><p className="muted">查看订单金额、支付状态与套餐开通结果。</p></div><button className="button secondary" disabled={loading} onClick={() => void load()}>{loading ? "正在刷新…" : "刷新"}</button></header>
@@ -79,23 +80,72 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled }:
 function OrderDetailDialog({ api, order, onUpdated, onClose }: { api: UserOrdersAPI; order: Order; onUpdated: (order: Order) => void; onClose: () => void }) {
   const [busy, setBusy] = useState<"checkout" | "cancel" | "">("");
   const [error, setError] = useState("");
+	const [methods, setMethods] = useState<UserPaymentMethod[]>([]);
+	const [methodsLoading, setMethodsLoading] = useState(order.status === 0 && order.total_amount > 0);
+	const [paymentID, setPaymentID] = useState<number | null>(null);
+	const [paymentResult, setPaymentResult] = useState<PaymentCheckout | null>(null);
+	useEffect(() => {
+		if (order.status !== 0 || order.total_amount <= 0) return;
+		let active = true;
+		void api.listPaymentMethods().then((result) => {
+			if (!active) return;
+			setMethods(result);
+			setPaymentID((current) => current ?? result[0]?.id ?? null);
+		}).catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
+			.finally(() => { if (active) setMethodsLoading(false); });
+		return () => { active = false; };
+	}, [api, order.status, order.total_amount]);
+	useEffect(() => {
+		if (paymentResult === null || order.status !== 0) return;
+		let active = true;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const poll = async () => {
+			try {
+				const current = await api.getOrder(order.trade_no);
+				if (!active) return;
+				if (current.status !== 0) {
+					setPaymentResult(null);
+					setError("");
+					onUpdated(current);
+					return;
+				}
+			} catch (cause) {
+				if (active) setError(messageOf(cause));
+			}
+			if (active) timer = setTimeout(() => void poll(), 2_000);
+		};
+		timer = setTimeout(() => void poll(), 2_000);
+		return () => { active = false; if (timer !== undefined) clearTimeout(timer); };
+	}, [api, onUpdated, order.status, order.trade_no, paymentResult]);
   const act = async (action: "checkout" | "cancel") => {
     if (busy !== "") return;
     setBusy(action);
     setError("");
     try {
-      onUpdated(action === "checkout" ? await api.checkoutOrder(order.trade_no) : await api.cancelOrder(order.trade_no));
+		if (action === "cancel") {
+			onUpdated(await api.cancelOrder(order.trade_no));
+			return;
+		}
+		const result = order.total_amount > 0
+			? await api.checkoutOrder(order.trade_no, paymentID ?? undefined)
+			: await api.checkoutOrder(order.trade_no);
+		if ("trade_no" in result) onUpdated(result); else { setPaymentResult(result); setBusy(""); }
     } catch (cause) {
       setError(messageOf(cause));
       setBusy("");
     }
   };
+	const selectedMethod = methods.find((method) => method.id === paymentID) ?? null;
+	const selectedFee = selectedMethod === null ? 0 : paymentHandlingFee(order.total_amount, selectedMethod);
   return <Modal title="订单详情" onClose={onClose}><div className="modal-header"><div><p className="eyebrow">Order detail</p><h2>订单详情</h2></div><button className="icon-button" aria-label="关闭订单详情" onClick={onClose}>×</button></div>
     <div className="detail-list order-detail-list"><div><span>订单号</span><strong className="monospace">{order.trade_no}</strong></div><div><span>套餐</span><strong>{order.plan?.name ?? `#${order.plan_id}`}</strong></div><div><span>类型</span><strong>{orderTypeLabel(order.type)} · {periodLabel(order.period)}</strong></div><div><span>状态</span><strong>{orderStatusLabel(order.status)}</strong></div><div><span>套餐标价</span><strong>¥{formatCents(order.original_amount)}</strong></div>{order.discount_amount > 0 && <div><span>优惠</span><strong>-¥{formatCents(order.discount_amount)}</strong></div>}{order.surplus_amount > 0 && <div><span>套餐折抵</span><strong>-¥{formatCents(order.surplus_amount)}</strong></div>}{order.balance_amount > 0 && <div><span>余额支付</span><strong>-¥{formatCents(order.balance_amount)}</strong></div>}<div><span>待支付</span><strong>¥{formatCents(order.total_amount + (order.handling_amount ?? 0))}</strong></div><div><span>创建时间</span><strong>{formatDate(order.created_at)}</strong></div>{order.paid_at !== null && <div><span>支付时间</span><strong>{formatDate(order.paid_at)}</strong></div>}</div>
-    {order.status === 0 && order.total_amount > 0 && <div className="alert" role="status">当前没有可用支付方式。你可以关闭订单，待支付方式配置后重新下单。</div>}
+	{order.status === 0 && order.total_amount > 0 && methodsLoading && <div className="alert" role="status">正在加载支付方式…</div>}
+	{order.status === 0 && order.total_amount > 0 && !methodsLoading && methods.length === 0 && <div className="alert" role="status">当前没有可用支付方式。你可以关闭订单，待支付方式配置后重新下单。</div>}
+	{order.status === 0 && order.total_amount > 0 && methods.length > 0 && paymentResult === null && <fieldset className="settings-fieldset payment-checkout-methods"><legend>选择支付方式</legend>{methods.map((method) => { const fee = paymentHandlingFee(order.total_amount, method); return <label className="payment-method-option" key={method.id}><input aria-label={method.name} type="radio" name="payment_method" checked={paymentID === method.id} onChange={() => setPaymentID(method.id)} /><span><strong>{method.name}</strong><small className="muted">{method.payment}</small></span><span>{fee === 0 ? "免手续费" : `手续费 ¥${formatCents(fee)}`}</span></label>; })}<div className="order-total"><span>合计支付</span><strong>¥{formatCents(order.total_amount + selectedFee)}</strong></div></fieldset>}
     {order.status === 0 && order.total_amount === 0 && <div className="alert success" role="status">该订单无需在线支付，可直接开通。</div>}
+	{paymentResult !== null && <div className="payment-result" role="status">{paymentResult.type === 0 && paymentResult.qr_code !== undefined && <img src={paymentResult.qr_code} alt="支付二维码" />}<strong>{paymentResult.type === 0 ? "请扫码完成支付" : "支付订单已创建"}</strong><span>应付 ¥{formatCents(paymentResult.total_amount)}</span><a className="button primary" href={safePaymentURL(paymentResult.data)}>{paymentResult.type === 0 ? "在当前设备打开支付链接" : "前往支付"}</a><small className="muted">支付完成后可刷新订单查看结果；重复点击不会重复创建渠道订单。</small></div>}
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
-    <div className="form-actions"><button className="button ghost" onClick={onClose}>关闭</button>{order.status === 0 && <button className="button secondary" disabled={busy !== ""} onClick={() => void act("cancel")}>{busy === "cancel" ? "正在关闭…" : "关闭订单"}</button>}{order.status === 0 && order.total_amount === 0 && <button className="button primary" disabled={busy !== ""} onClick={() => void act("checkout")}>{busy === "checkout" ? "正在开通…" : "立即开通"}</button>}</div>
+    <div className="form-actions"><button className="button ghost" onClick={onClose}>关闭</button>{order.status === 0 && paymentResult === null && <button className="button secondary" disabled={busy !== ""} onClick={() => void act("cancel")}>{busy === "cancel" ? "正在关闭…" : "关闭订单"}</button>}{order.status === 0 && order.total_amount === 0 && <button className="button primary" disabled={busy !== ""} onClick={() => void act("checkout")}>{busy === "checkout" ? "正在开通…" : "立即开通"}</button>}{order.status === 0 && order.total_amount > 0 && methods.length > 0 && paymentResult === null && <button className="button primary" disabled={busy !== "" || paymentID === null} onClick={() => void act("checkout")}>{busy === "checkout" ? "正在创建支付…" : "立即支付"}</button>}</div>
   </Modal>;
 }
 
@@ -104,4 +154,6 @@ export function orderTypeLabel(value: Order["type"]): string { return ({ 1: "新
 export function periodLabel(value: Order["period"]): string { return ({ monthly: "月付", quarterly: "季付", half_yearly: "半年付", yearly: "年付", two_yearly: "两年付", three_yearly: "三年付", onetime: "一次性", reset_traffic: "流量重置包" } as const)[value]; }
 export function formatCents(value: number): string { return `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}`; }
 export function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false }); }
+function paymentHandlingFee(amount: number, method: UserPaymentMethod): number { return Number((BigInt(amount) * BigInt(method.handling_fee_basis_points) + 5_000n) / 10_000n + BigInt(method.handling_fee_fixed)); }
+function safePaymentURL(value: string): string { try { const parsed = new URL(value); return parsed.protocol === "https:" ? parsed.toString() : "#"; } catch { return "#"; } }
 function messageOf(cause: unknown): string { return cause instanceof Error ? cause.message : "订单请求失败"; }

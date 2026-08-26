@@ -333,13 +333,38 @@ the default value. A canonical checksum independently verifies both coupons
 and the setting after the atomic import. Referenced coupon IDs must exist before
 the order slice is imported.
 
-Orders can then be imported after their referenced users, plans, and coupons. This slice
+Payment methods can be imported before orders. The command preserves provider
+IDs, callback UUIDs, display metadata, effective ordering, enabled state,
+integer-cent fixed fees, percentage fees to an exact hundredth of one percent,
+and timestamps. Provider configuration is validated against the six supported
+gateways and encrypted before it reaches the target database; the settings key
+is required and is never included in the rollback archive or command result.
+Legacy non-HTTPS remote gateway or notification endpoints, unknown fields,
+lossy percentage values, and malformed configurations are rejected before the
+backup or any target write:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-payments \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-payments.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The target payment table must be empty. The import verifies an encrypted
+source/target checksum, records a separate checksum of the normalized plaintext
+source without exposing its values, and is atomic and idempotent. Existing
+orders with payment references must all resolve after the import.
+
+Orders can then be imported after their referenced users, plans, coupons, and payments. This slice
 preserves order IDs, 25-digit trades, 32-character callback references, periods,
 types, statuses, integer-cent financial fields, balance and surplus deductions,
 coupon and payment references, referral attribution and commission state,
 entitlement-boundary timestamps, and distributor metadata. Coupon, payment,
 commission-settlement, and distributor domain tables are independently migrated;
-payment, commission-settlement, and distributor workflows remain future slices.
+commission-settlement and distributor workflows remain future slices.
 Historical completed orders remain historical records; the
 import deliberately does not fabricate entitlement events or replay account
 changes that were already applied by Xboard.
@@ -383,7 +408,7 @@ creating the standalone source snapshot or the command refuses to run.
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; payment providers, gift
-cards, commission settlement, distributor workflows, attachments, and other
+This remains a local/isolated-test workflow; gift cards, commission settlement,
+distributor workflows, attachments, and other
 remaining legacy domains still require separate mappings and migration
 evidence.

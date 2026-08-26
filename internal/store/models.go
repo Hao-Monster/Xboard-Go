@@ -53,6 +53,11 @@ var (
 	ErrCouponPeriodRestricted                 = errors.New("coupon is not valid for this period")
 	ErrCouponUserLimit                        = errors.New("coupon user limit reached")
 	ErrCouponReferenced                       = fmt.Errorf("%w: coupon is referenced by an order", ErrConflict)
+	ErrPaymentReferenced                      = fmt.Errorf("%w: payment is referenced by an order or receipt", ErrConflict)
+	ErrPaymentConfigInUse                     = fmt.Errorf("%w: payment provider configuration is used by an active checkout", ErrPaymentReferenced)
+	ErrPaymentUnavailable                     = fmt.Errorf("%w: payment method is unavailable", ErrConflict)
+	ErrPaymentInProgress                      = fmt.Errorf("%w: payment checkout is already in progress", ErrConflict)
+	ErrPaymentMismatch                        = fmt.Errorf("%w: payment callback does not match the order", ErrConflict)
 )
 
 const (
@@ -850,6 +855,111 @@ type CouponPage struct {
 	Total    int64    `json:"total"`
 	Page     int      `json:"page"`
 	PageSize int      `json:"page_size"`
+}
+
+type PaymentProvider string
+
+const (
+	PaymentProviderAlipayF2F    PaymentProvider = "AlipayF2F"
+	PaymentProviderBTCPay       PaymentProvider = "BTCPay"
+	PaymentProviderCoinPayments PaymentProvider = "CoinPayments"
+	PaymentProviderCoinbase     PaymentProvider = "Coinbase"
+	PaymentProviderEPay         PaymentProvider = "EPay"
+	PaymentProviderMGate        PaymentProvider = "MGate"
+)
+
+type Payment struct {
+	ID                     int64           `json:"id"`
+	UUID                   string          `json:"uuid"`
+	Provider               PaymentProvider `json:"payment"`
+	Name                   string          `json:"name"`
+	Icon                   string          `json:"icon,omitempty"`
+	ConfigCiphertext       []byte          `json:"-"`
+	NotifyDomain           string          `json:"notify_domain,omitempty"`
+	HandlingFeeFixed       int64           `json:"handling_fee_fixed"`
+	HandlingFeeBasisPoints int64           `json:"handling_fee_basis_points"`
+	Enabled                bool            `json:"enable"`
+	SortPosition           int             `json:"sort"`
+	Revision               int64           `json:"revision"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+}
+
+type SavePaymentInput struct {
+	Provider               PaymentProvider
+	Name                   string
+	Icon                   string
+	ConfigCiphertext       []byte
+	NotifyDomain           string
+	HandlingFeeFixed       int64
+	HandlingFeeBasisPoints int64
+	Enabled                bool
+}
+
+type PaymentFilter struct {
+	Page     int
+	PageSize int
+	Query    string
+	Provider PaymentProvider
+}
+
+type PaymentPage struct {
+	Items    []Payment `json:"items"`
+	Total    int64     `json:"total"`
+	Page     int       `json:"page"`
+	PageSize int       `json:"page_size"`
+}
+
+type PaymentCheckoutStatus int
+
+const (
+	PaymentCheckoutCreating PaymentCheckoutStatus = iota
+	PaymentCheckoutCreated
+	PaymentCheckoutFailed
+)
+
+type PaymentCheckoutAttempt struct {
+	ID             int64                 `json:"id"`
+	OrderID        int64                 `json:"order_id"`
+	PaymentID      int64                 `json:"payment_id"`
+	IdempotencyKey string                `json:"-"`
+	ExpectedAmount int64                 `json:"expected_amount"`
+	Currency       string                `json:"currency"`
+	Status         PaymentCheckoutStatus `json:"status"`
+	ExternalID     string                `json:"external_id,omitempty"`
+	ResponseType   *int                  `json:"type,omitempty"`
+	ResponseData   string                `json:"data,omitempty"`
+	ErrorCode      string                `json:"-"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      time.Time             `json:"updated_at"`
+}
+
+type StartPaymentCheckoutInput struct {
+	UserID    int64
+	TradeNo   string
+	PaymentID int64
+}
+
+type PaymentCheckoutStart struct {
+	Attempt PaymentCheckoutAttempt
+	Payment Payment
+	Order   Order
+	Cached  bool
+}
+
+type CompletePaymentWebhookInput struct {
+	PaymentID     int64
+	Provider      PaymentProvider
+	ExternalID    string
+	TradeNo       string
+	Amount        int64
+	Currency      string
+	PayloadSHA256 string
+}
+
+type StoredPaymentConfig struct {
+	Provider   PaymentProvider
+	Ciphertext []byte
 }
 
 type OrderStatus int

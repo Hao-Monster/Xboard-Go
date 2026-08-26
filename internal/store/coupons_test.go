@@ -279,7 +279,7 @@ func TestCouponCRUDRejectsDuplicateInvalidAndReferencedDeletion(t *testing.T) {
 	}
 }
 
-func TestSchemaV30PreservesV29OrdersAndAddsCouponConstraints(t *testing.T) {
+func TestSchemaV30ThroughV31PreservesV29OrdersAndAddsCouponConstraints(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Unix(100, 0)
@@ -289,6 +289,13 @@ func TestSchemaV30PreservesV29OrdersAndAddsCouponConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
+		DROP TRIGGER trg_orders_payment_insert;
+		DROP TRIGGER trg_orders_payment_update;
+		DROP TRIGGER trg_payments_delete_restrict;
+		DROP TABLE payment_webhook_receipts;
+		DROP TABLE payment_checkout_attempts;
+		DROP TABLE payments;
+		DROP INDEX idx_orders_payment_status;
 		DROP TRIGGER trg_orders_coupon_insert;
 		DROP TRIGGER trg_orders_coupon_update;
 		DROP TRIGGER trg_coupons_delete_restrict;
@@ -320,7 +327,7 @@ func TestSchemaV30PreservesV29OrdersAndAddsCouponConstraints(t *testing.T) {
 	`).Scan(&couponTriggerCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 30 || couponEnabled != 1 || tradeNo != order.TradeNo || couponTriggerCount != 3 {
+	if version != currentSchemaVersion || couponEnabled != 1 || tradeNo != order.TradeNo || couponTriggerCount != 3 {
 		t.Fatalf("migration version=%d enabled=%d trade=%q/%q triggers=%d", version, couponEnabled, tradeNo, order.TradeNo, couponTriggerCount)
 	}
 	if _, err := database.db.ExecContext(ctx, `INSERT INTO coupons (code,name,type,value,show,limit_plan_ids_json,limit_periods_json,started_at,ended_at,created_at,updated_at) VALUES ('P','p',2,101,1,'[]','[]',0,1,0,0)`); err == nil {

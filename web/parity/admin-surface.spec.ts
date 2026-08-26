@@ -128,6 +128,66 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go payment administration expose the same six core gateways and observable business fields", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/payment/fetch"));
+    await legacyPage.locator('a[href="#/config/payment"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await expect(legacyPage.getByRole("heading", { name: "支付配置", exact: true })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: /添加支付方式/ })).toBeVisible();
+    for (const column of ["ID", "启用", "显示名称", "支付接口", "通知地址", "操作"]) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `legacy payment column ${column}`).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: /添加支付方式/ }).click();
+    const legacyDialog = legacyPage.getByRole("dialog", { name: "添加支付方式" });
+    for (const field of ["显示名称*", "图标URL", "通知域名", "百分比手续费(%)", "固定手续费", "支付接口*"]) {
+      await expect(legacyDialog.getByText(field, { exact: true }).first(), `legacy payment field ${field}`).toBeVisible();
+    }
+    await legacyDialog.getByRole("combobox").click();
+    for (const provider of ["AlipayF2F", "BTCPay", "CoinPayments", "Coinbase", "EPay", "MGate"]) {
+      await expect(legacyPage.getByRole("option", { name: provider, exact: true })).toBeVisible();
+    }
+    const legacyForm = legacyPage.waitForResponse((response) => response.url().includes("/payment/getPaymentForm"));
+    await legacyPage.getByRole("option", { name: "EPay", exact: true }).click();
+    expect((await legacyForm).status()).toBe(200);
+    for (const field of ["支付网关地址", "商户ID", "通信密钥", "支付类型"]) {
+      await expect(legacyDialog.getByText(field, { exact: true }).first(), `legacy EPay field ${field}`).toBeVisible();
+    }
+    await legacyDialog.getByRole("button", { name: "取消", exact: true }).click();
+
+    await loginGo(goPage);
+    await goPage.getByRole("button", { name: "支付配置", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "支付配置", exact: true })).toBeVisible();
+    for (const column of ["ID", "启用", "显示名称", "支付接口", "手续费", "通知地址", "操作"]) {
+      await expect(goPage.getByText(column, { exact: true }).first(), `Go payment column ${column}`).toBeVisible();
+    }
+    await goPage.getByRole("button", { name: "添加支付方式", exact: true }).click();
+    const goDialog = goPage.getByRole("dialog", { name: "添加支付方式" });
+    for (const field of ["显示名称", "图标 URL", "通知域名", "百分比手续费（%）", "固定手续费（分）", "支付接口"]) {
+      await expect(goDialog.getByLabel(field, { exact: true }), `Go payment field ${field}`).toBeVisible();
+    }
+    const providerOptions = await goDialog.getByLabel("支付接口", { exact: true }).locator("option").evaluateAll((options) => options.map((option) => option.getAttribute("value")));
+    expect(providerOptions).toEqual(["AlipayF2F", "BTCPay", "CoinPayments", "Coinbase", "EPay", "MGate"]);
+    await goDialog.getByLabel("支付接口", { exact: true }).selectOption("EPay");
+    for (const field of ["支付网关地址", "商户ID", "通信密钥", "支付类型"]) {
+      await expect(goDialog.getByLabel(field, { exact: true }), `Go EPay field ${field}`).toBeVisible();
+    }
+    await goDialog.getByRole("button", { name: "取消", exact: true }).click();
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go coupon administration expose the same observable business fields", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });

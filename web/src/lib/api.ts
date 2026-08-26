@@ -241,6 +241,81 @@ export interface AssignOrderInput {
   total_amount: number;
 }
 
+export type PaymentProvider = "AlipayF2F" | "BTCPay" | "CoinPayments" | "Coinbase" | "EPay" | "MGate";
+
+export interface PaymentConfigField {
+  key: string;
+  label: string;
+  type: "text" | "url" | "password" | "textarea";
+  description?: string;
+  required: boolean;
+  secret: boolean;
+  options?: string[];
+}
+
+export interface PaymentProviderDefinition {
+  provider: PaymentProvider;
+  label: string;
+  fields: PaymentConfigField[];
+}
+
+export interface PaymentMethod {
+  id: number;
+  uuid: string;
+  payment: PaymentProvider;
+  name: string;
+  icon?: string;
+  notify_domain?: string;
+  handling_fee_fixed: number;
+  handling_fee_basis_points: number;
+  enable: boolean;
+  sort: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  config: Record<string, string>;
+  configured_fields: string[];
+  notify_url: string;
+}
+
+export interface UserPaymentMethod {
+  id: number;
+  name: string;
+  payment: PaymentProvider;
+  icon?: string;
+  handling_fee_fixed: number;
+  handling_fee_basis_points: number;
+}
+
+export interface PaymentMethodInput {
+  revision?: number;
+  payment: PaymentProvider;
+  name: string;
+  icon: string;
+  notify_domain: string;
+  handling_fee_fixed: number;
+  handling_fee_basis_points: number;
+  enable: boolean;
+  config: Record<string, string>;
+  clear_config_fields?: string[];
+}
+
+export interface PaymentPage {
+  items: PaymentMethod[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface PaymentCheckout {
+  type: 0 | 1;
+  data: string;
+  qr_code?: string;
+  payment_id: number;
+  handling_amount: number;
+  total_amount: number;
+}
+
 export type CouponType = 1 | 2;
 
 export interface Coupon {
@@ -783,6 +858,13 @@ export interface AdminAPI {
   setPlanState: (id: number, revision: number, show: boolean, sell: boolean, renew: boolean) => Promise<Plan>;
   reorderPlans: (ids: number[]) => Promise<Plan[]>;
   deletePlan: (id: number) => Promise<void>;
+  listPaymentProviders: () => Promise<PaymentProviderDefinition[]>;
+  listAdminPayments: (page?: number, pageSize?: number, query?: string) => Promise<PaymentPage>;
+  createPayment: (input: PaymentMethodInput) => Promise<PaymentMethod>;
+  updatePayment: (id: number, input: PaymentMethodInput) => Promise<PaymentMethod>;
+  setPaymentEnabled: (id: number, enable: boolean) => Promise<PaymentMethod>;
+  reorderPayments: (ids: number[]) => Promise<void>;
+  deletePayment: (id: number) => Promise<void>;
   listAdminOrders: (query?: AdminOrderQuery) => Promise<AdminOrderPage>;
   getAdminOrder: (tradeNo: string) => Promise<AdminOrder>;
   assignOrder: (input: AssignOrderInput) => Promise<Order>;
@@ -1052,6 +1134,36 @@ export class APIClient implements AdminAPI {
     await this.request<void>(`/api/v1/admin/plans/${id}`, { method: "DELETE" });
   }
 
+  async listPaymentProviders(): Promise<PaymentProviderDefinition[]> {
+    return this.request<PaymentProviderDefinition[]>("/api/v1/admin/payment-providers");
+  }
+
+  async listAdminPayments(page = 1, pageSize = 100, query = ""): Promise<PaymentPage> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (query !== "") params.set("query", query);
+    return this.request<PaymentPage>(`/api/v1/admin/payments?${params.toString()}`);
+  }
+
+  async createPayment(input: PaymentMethodInput): Promise<PaymentMethod> {
+    return this.request<PaymentMethod>("/api/v1/admin/payments", { method: "POST", body: input });
+  }
+
+  async updatePayment(id: number, input: PaymentMethodInput): Promise<PaymentMethod> {
+    return this.request<PaymentMethod>(`/api/v1/admin/payments/${id}`, { method: "PUT", body: input });
+  }
+
+  async setPaymentEnabled(id: number, enable: boolean): Promise<PaymentMethod> {
+    return this.request<PaymentMethod>(`/api/v1/admin/payments/${id}/enabled`, { method: "PATCH", body: { enable } });
+  }
+
+  async reorderPayments(ids: number[]): Promise<void> {
+    await this.request<void>("/api/v1/admin/payments/order", { method: "PUT", body: { ids } });
+  }
+
+  async deletePayment(id: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/payments/${id}`, { method: "DELETE" });
+  }
+
   async listPlanOffers(): Promise<PlanOffer[]> {
     return this.request<PlanOffer[]>("/api/v1/plans");
   }
@@ -1076,8 +1188,14 @@ export class APIClient implements AdminAPI {
     return this.request<Order>(`/api/v1/orders/${encodeURIComponent(tradeNo)}`);
   }
 
-  async checkoutOrder(tradeNo: string): Promise<Order> {
-    return this.request<Order>(`/api/v1/orders/${encodeURIComponent(tradeNo)}/checkout`, { method: "POST", body: {} });
+  async listPaymentMethods(): Promise<UserPaymentMethod[]> {
+    return this.request<UserPaymentMethod[]>("/api/v1/payments");
+  }
+
+  async checkoutOrder(tradeNo: string, paymentID?: number): Promise<Order | PaymentCheckout> {
+    return this.request<Order | PaymentCheckout>(`/api/v1/orders/${encodeURIComponent(tradeNo)}/checkout`, {
+      method: "POST", body: paymentID === undefined ? {} : { payment_id: paymentID }
+    });
   }
 
   async cancelOrder(tradeNo: string): Promise<Order> {
