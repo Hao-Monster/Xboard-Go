@@ -282,6 +282,12 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v1/user/order/checkout", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckoutUserOrder)))
 	root.Handle("POST /api/v1/user/order/cancel", api.requireLegacyBearer(http.HandlerFunc(api.legacyCancelUserOrder)))
 	root.Handle("POST /api/v1/user/coupon/check", api.requireLegacyBearer(http.HandlerFunc(api.legacyCheckUserCoupon)))
+	root.Handle("POST /api/v1/user/gift-card/check", api.requireSession(api.requireCSRF(http.HandlerFunc(api.giftCardCheckCompat))))
+	root.Handle("POST /api/v1/user/gift-card/redeem", api.requireSession(api.requireCSRF(http.HandlerFunc(api.giftCardRedeemCompat))))
+	root.Handle("GET /api/v1/user/gift-card/history", api.requireSession(http.HandlerFunc(api.giftCardHistoryCompat)))
+	root.Handle("GET /api/v1/user/gift-card/history/{usageID}", api.requireSession(http.HandlerFunc(api.giftCardHistoryDetail)))
+	root.Handle("GET /api/v1/user/gift-card/detail", api.requireSession(http.HandlerFunc(api.legacyGiftCardDetail)))
+	root.Handle("GET /api/v1/user/gift-card/types", api.requireSession(http.HandlerFunc(api.giftCardTypesCompat)))
 	root.Handle("GET /api/v1/subscription", api.requireSession(http.HandlerFunc(api.getUserSubscription)))
 	root.Handle("GET /api/v1/subscription/qr", api.requireSession(http.HandlerFunc(api.getUserSubscriptionQR)))
 	root.Handle("POST /api/v1/subscription/security/reset", api.requireSession(api.requireCSRF(http.HandlerFunc(api.resetUserSubscriptionSecurity))))
@@ -341,6 +347,25 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/show", api.legacyTogglePayment)
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/sort", api.legacyReorderPayments)
 	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/payment/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminPaymentMutations(api.recoverPanic(legacyAdminPayment)))))
+	legacyAdminGiftCard := http.NewServeMux()
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/create-template", api.legacyCreateGiftCardTemplate)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/update-template", api.legacyUpdateGiftCardTemplate)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/delete-template", api.legacyDeleteGiftCardTemplate)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/generate-codes", api.legacyGenerateGiftCardCodes)
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/codes", api.legacyGiftCardCodes)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/codes", api.legacyGiftCardCodes)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/toggle-code", api.legacyToggleGiftCardCode)
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/export-codes", api.legacyExportGiftCardCodes)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/update-code", api.legacyUpdateGiftCardCode)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/delete-code", api.legacyDeleteGiftCardCode)
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/usages", api.legacyGiftCardUsages)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/usages", api.legacyGiftCardUsages)
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
+	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
+	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/types", api.legacyGiftCardTypes)
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -385,6 +410,19 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/payments/{paymentID}", api.updateAdminPayment)
 	admin.HandleFunc("PATCH /api/v1/admin/payments/{paymentID}/enabled", api.setAdminPaymentEnabled)
 	admin.HandleFunc("DELETE /api/v1/admin/payments/{paymentID}", api.deleteAdminPayment)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/templates", api.listGiftCardTemplates)
+	admin.HandleFunc("POST /api/v1/admin/gift-card/templates", api.createGiftCardTemplate)
+	admin.HandleFunc("PUT /api/v1/admin/gift-card/templates/{templateID}", api.updateGiftCardTemplate)
+	admin.HandleFunc("DELETE /api/v1/admin/gift-card/templates/{templateID}", api.deleteGiftCardTemplate)
+	admin.HandleFunc("POST /api/v1/admin/gift-card/codes/generate", api.generateGiftCardCodes)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/codes", api.listGiftCardCodes)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/codes/export", api.exportGiftCardCodes)
+	admin.HandleFunc("PATCH /api/v1/admin/gift-card/codes/{codeID}", api.updateGiftCardCode)
+	admin.HandleFunc("POST /api/v1/admin/gift-card/codes/{codeID}/toggle", api.toggleGiftCardCode)
+	admin.HandleFunc("DELETE /api/v1/admin/gift-card/codes/{codeID}", api.deleteGiftCardCode)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/usages", api.listGiftCardUsages)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/statistics", api.giftCardStatistics)
+	admin.HandleFunc("GET /api/v1/admin/gift-card/types", api.giftCardTypes)
 	admin.HandleFunc("GET /api/v1/admin/routing-rules", api.listRoutingRules)
 	admin.HandleFunc("POST /api/v1/admin/routing-rules", api.createRoutingRule)
 	admin.HandleFunc("PATCH /api/v1/admin/routing-rules/{routeID}", api.updateRoutingRule)
@@ -538,6 +576,29 @@ func (s *server) auditLegacyAdminPaymentMutations(next http.Handler) http.Handle
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/payment/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminGiftCardMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mutation := r.Method == http.MethodPost && !strings.HasSuffix(r.URL.Path, "/templates") &&
+			!strings.HasSuffix(r.URL.Path, "/codes") && !strings.HasSuffix(r.URL.Path, "/usages") &&
+			!strings.HasSuffix(r.URL.Path, "/statistics")
+		if !mutation {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		action := r.URL.Path
+		if index := strings.LastIndex(action, "/gift-card/"); index >= 0 {
+			action = action[index+len("/gift-card/"):]
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/gift-card/"+action, recorder.statusCode())
 	})
 }
 

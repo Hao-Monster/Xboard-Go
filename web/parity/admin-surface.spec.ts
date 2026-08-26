@@ -249,6 +249,109 @@ test("legacy and Go coupon administration expose the same observable business fi
   }
 });
 
+test("legacy and Go gift-card administration expose the same four surfaces and business fields", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/gift-card/templates"));
+    await legacyPage.locator('a[href="#/finance/gift-card"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await expect(legacyPage.getByRole("heading", { name: "礼品卡管理", exact: true })).toBeVisible();
+    for (const tab of ["模板管理", "兑换码管理", "使用记录", "统计数据"]) {
+      await expect(legacyPage.getByText(tab, { exact: true }).last(), `legacy gift-card tab ${tab}`).toBeVisible();
+    }
+    for (const column of ["ID", "状态", "名称", "类型", "奖励内容", "排序", "创建时间", "操作"]) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `legacy gift-card template column ${column}`).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "添加模板", exact: true }).click();
+    const legacyTemplateDialog = legacyPage.getByRole("dialog").last();
+    for (const field of [
+      "模板名称", "类型", "描述", "排序", "状态", "奖励余额 (元)", "奖励流量 (GB)", "延长有效期 (天)", "增加设备数",
+      "重置当月流量", "新用户注册天数限制", "仅限新用户", "仅限付费用户", "需要邀请关系", "允许的套餐", "禁止的套餐",
+      "单用户最大使用次数", "同类卡冷却时间(小时)", "邀请人奖励比例", "活动开始时间", "活动结束时间", "节日奖励乘数", "图标", "背景图片"
+    ]) {
+      await expect(legacyTemplateDialog.getByText(field, { exact: true }).first(), `legacy gift-card field ${field}`).toBeVisible();
+    }
+    expect(await legacyTemplateDialog.locator("select option").allTextContents()).toEqual(["通用礼品卡", "套餐礼品卡", "盲盒礼品卡"]);
+    await legacyTemplateDialog.getByRole("button", { name: "取消", exact: true }).click();
+
+    await legacyPage.getByText("兑换码管理", { exact: true }).last().click();
+    for (const column of ["ID", "兑换码", "模板名称", "状态", "过期时间", "已用次数", "可用次数", "创建时间"]) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `legacy gift-card code column ${column}`).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "生成兑换码", exact: true }).click();
+    const legacyGenerator = legacyPage.getByRole("dialog").last();
+    for (const field of ["选择模板*", "生成数量*", "自定义前缀 (可选)", "有效期 (小时)*", "最大使用次数*", "导出CSV"]) {
+      await expect(legacyGenerator.getByText(field, { exact: true }).first(), `legacy code-generator field ${field}`).toBeVisible();
+    }
+    await legacyGenerator.getByRole("button", { name: "取消", exact: true }).click();
+    await legacyPage.getByText("使用记录", { exact: true }).last().click();
+    for (const column of ["ID", "兑换码", "用户邮箱", "模板名称", "使用时间"]) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `legacy gift-card usage column ${column}`).toBeVisible();
+    }
+    await legacyPage.getByText("统计数据", { exact: true }).last().click();
+    for (const metric of ["模板总数", "活跃模板数", "兑换码总数", "已使用兑换码"]) {
+      await expect(legacyPage.getByText(metric, { exact: true }).first(), `legacy gift-card metric ${metric}`).toBeVisible();
+    }
+
+    await loginGo(goPage);
+    await goPage.getByRole("button", { name: "礼品卡管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "礼品卡管理", exact: true })).toBeVisible();
+    for (const tab of ["模板管理", "兑换码管理", "使用记录", "统计数据"]) {
+      await expect(goPage.getByRole("button", { name: tab, exact: true }), `Go gift-card tab ${tab}`).toBeVisible();
+    }
+    for (const column of ["ID", "状态", "名称", "类型", "奖励内容", "排序", "创建时间", "操作"]) {
+      await expect(goPage.getByText(column, { exact: true }).first(), `Go gift-card template column ${column}`).toBeVisible();
+    }
+    await goPage.getByRole("button", { name: "添加模板", exact: true }).click();
+    const goTemplateDialog = goPage.getByRole("dialog", { name: "添加礼品卡模板" });
+    for (const field of [
+      "模板名称", "模板描述", "排序", "余额（元）", "流量（GB）", "有效期（天）", "设备数", "新用户最大注册天数",
+      "允许套餐 ID", "禁止套餐 ID", "每用户最多使用次数", "冷却时间（小时）", "邀请奖励比例", "活动开始时间", "活动结束时间",
+      "节日奖励倍率", "图标", "背景图片", "主题色"
+    ]) {
+      await expect(goTemplateDialog.getByLabel(field, { exact: true }), `Go gift-card field ${field}`).toBeVisible();
+    }
+    const goGiftCardType = goTemplateDialog.locator("select").first();
+    await expect(goGiftCardType, "Go gift-card field 礼品卡类型").toBeVisible();
+    expect(await goGiftCardType.locator("option").allTextContents()).toEqual(["通用礼品卡", "套餐礼品卡", "盲盒礼品卡"]);
+    for (const condition of ["启用模板", "重置已用流量", "仅新用户", "仅付费用户", "必须有邀请人"]) {
+      await expect(goTemplateDialog.getByText(condition, { exact: true }).first(), `Go gift-card condition ${condition}`).toBeVisible();
+    }
+    await goTemplateDialog.getByRole("button", { name: "取消", exact: true }).click();
+
+    await goPage.getByRole("button", { name: "兑换码管理", exact: true }).click();
+    for (const column of ["ID", "兑换码", "模板名称", "状态", "过期时间", "已用次数", "可用次数", "创建时间", "操作"]) {
+      await expect(goPage.getByText(column, { exact: true }).first(), `Go gift-card code column ${column}`).toBeVisible();
+    }
+    await goPage.getByRole("button", { name: "生成兑换码", exact: true }).click();
+    const goGenerator = goPage.getByTestId("modal-layer");
+    await expect(goGenerator.locator("select").first(), "Go code-generator field 礼品卡模板").toBeVisible();
+    for (const field of ["生成数量", "兑换码前缀", "有效期（小时）", "最大使用次数", "导出CSV"]) {
+      await expect(goGenerator.getByLabel(field, { exact: true }), `Go code-generator field ${field}`).toBeVisible();
+    }
+    await goGenerator.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "使用记录", exact: true }).click();
+    for (const column of ["ID", "兑换码", "用户邮箱", "模板名称", "使用时间"]) {
+      await expect(goPage.getByText(column, { exact: true }).first(), `Go gift-card usage column ${column}`).toBeVisible();
+    }
+    await goPage.getByRole("button", { name: "统计数据", exact: true }).click();
+    for (const metric of ["模板总数", "活跃模板数", "兑换码总数", "已使用兑换码"]) {
+      await expect(goPage.getByText(metric, { exact: true }).first(), `Go gift-card metric ${metric}`).toBeVisible();
+    }
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy system configuration exposes its observable sections and API groups", async ({ page }) => {
   const errors = watchErrors(page);
   await loginLegacy(page);

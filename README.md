@@ -333,6 +333,28 @@ the default value. A canonical checksum independently verifies both coupons
 and the setting after the atomic import. Referenced coupon IDs must exist before
 the order slice is imported.
 
+Gift cards can be imported after human accounts and plans. The slice preserves
+template, code, and usage IDs; normalized reward and eligibility rules; sharing
+limits; batch identity; code state; exact audit timestamps; applied rewards;
+legacy user-level and plan context; metadata; and exact multiplier basis points.
+Legacy code states are translated so a shared code marked "used" by Xboard
+remains redeemable while it still has remaining uses:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-gift-cards \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-gift-cards.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+All three target gift-card tables must be empty. Missing users, administrators,
+plans, templates, or codes; malformed or unknown JSON; lossy decimal rates;
+duplicate identifiers; oversized data; and conflicting snapshots are rejected
+before commit. Three independent canonical checksums verify the atomic import.
+
 Payment methods can be imported before orders. The command preserves provider
 IDs, callback UUIDs, display metadata, effective ordering, enabled state,
 integer-cent fixed fees, percentage fees to an exact hundredth of one percent,
@@ -408,7 +430,7 @@ creating the standalone source snapshot or the command refuses to run.
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; gift cards, commission settlement,
+This remains a local/isolated-test workflow; commission settlement,
 distributor workflows, attachments, and other
 remaining legacy domains still require separate mappings and migration
 evidence.

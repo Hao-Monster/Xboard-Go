@@ -454,6 +454,7 @@ func newTestStore(t testing.TB) *Store {
 
 func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
+	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
 		DROP TRIGGER trg_orders_payment_insert;
 		DROP TRIGGER trg_orders_payment_update;
@@ -495,6 +496,17 @@ func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 		DROP TABLE plans;
 	`); err != nil {
 		t.Fatalf("remove schema v27 for migration test: %v", err)
+	}
+}
+
+func removeSchemaV32ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TABLE gift_card_usages;
+		DROP TABLE gift_card_codes;
+		DROP TABLE gift_card_templates;
+	`); err != nil {
+		t.Fatalf("remove schema v32: %v", err)
 	}
 }
 

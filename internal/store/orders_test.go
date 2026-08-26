@@ -327,6 +327,7 @@ func TestSchemaV29PreservesV28DataAndAddsFinancialConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(ctx, `
 		DROP TRIGGER trg_orders_payment_insert;
 		DROP TRIGGER trg_orders_payment_update;

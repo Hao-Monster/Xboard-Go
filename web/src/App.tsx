@@ -21,6 +21,7 @@ import { CouponManagementPage } from "./features/coupons/CouponManagementPage";
 const api = new APIClient();
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
+const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
@@ -38,7 +39,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "payments" | "coupons" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -174,6 +175,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>订单管理</button>
           <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => setPage("payments")}>支付配置</button>
           <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => setPage("coupons")}>优惠券管理</button>
+          <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => setPage("gift-cards")}>礼品卡管理</button>
           <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => setPage("users")}>用户管理</button>
           <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>工单管理</button>
           <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => setPage("groups")}>权限组</button>
@@ -196,6 +198,7 @@ export function App() {
       {page === "orders" && <OrderManagementPage api={api} />}
       {page === "payments" && <PaymentManagementPage api={api} />}
       {page === "coupons" && <CouponManagementPage api={api} />}
+      {page === "gift-cards" && <Suspense fallback={<div className="app-loading">正在加载礼品卡管理…</div>}><GiftCardManagementPage api={api} /></Suspense>}
       {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
       {page === "tickets" && <TicketManagementPage api={api} />}
       {page === "groups" && <ServerGroupsPage api={api} />}
