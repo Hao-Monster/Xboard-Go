@@ -355,6 +355,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/assign", api.legacyAssignOrder)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/detail", api.legacyGetAdminOrder)
+	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/update", api.legacyUpdateAdminOrderCommissionStatus)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/paid", api.legacyPaidAdminOrder)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/cancel", api.legacyCancelAdminOrder)
 	legacyAdminOrder.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/order/export", api.exportAdminDistributorOrders)
@@ -436,6 +437,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/orders", api.listAdminOrders)
 	admin.HandleFunc("POST /api/v1/admin/orders", api.assignOrder)
 	admin.HandleFunc("GET /api/v1/admin/orders/{tradeNo}", api.getAdminOrder)
+	admin.HandleFunc("PATCH /api/v1/admin/orders/{tradeNo}/commission", api.updateAdminOrderCommissionStatus)
 	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/paid", api.paidAdminOrder)
 	admin.HandleFunc("POST /api/v1/admin/orders/{tradeNo}/cancel", api.cancelAdminOrder)
 	admin.HandleFunc("GET /api/v1/admin/distributors/options", api.listAdminDistributorOptions)
@@ -569,6 +571,8 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 			action = "assign"
 		case strings.HasSuffix(r.URL.Path, "/order/paid"):
 			action = "paid"
+		case strings.HasSuffix(r.URL.Path, "/order/update"):
+			action = "update"
 		case strings.HasSuffix(r.URL.Path, "/order/cancel"):
 			action = "cancel"
 		}

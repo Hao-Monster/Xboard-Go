@@ -194,6 +194,31 @@ h3 { margin-bottom: 12px; }
 .ticket-status-tabs { display: flex; gap: 8px; margin-top: 26px; }
 .order-page .ticket-status-tabs { flex-wrap: wrap; }
 .order-page .resource-table td small { display: block; margin-top: 5px; }
+.order-filter-bar { grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(120px, 1fr)) auto; }
+.order-multi-filter { position: relative; min-width: 0; }
+.order-multi-filter summary { position: relative; z-index: 21; display: flex; align-items: center; min-height: 42px; padding: 0 12px; border: 1px solid #343b49; border-radius: 9px; color: #d7dce6; background: #151923; font-size: .76rem; cursor: pointer; list-style-position: inside; white-space: nowrap; }
+.order-multi-filter[open] summary { border-color: #7188ce; }
+.order-multi-filter fieldset { position: absolute; z-index: 20; top: calc(100% + 7px); left: 0; display: grid; gap: 7px; min-width: max(100%, 180px); margin: 0; padding: 11px; border: 1px solid #3b4353; border-radius: 11px; background: #171b24; box-shadow: 0 16px 32px rgb(0 0 0 / 36%); }
+.order-multi-filter fieldset label { display: flex; align-items: center; gap: 8px; min-height: 28px; color: #d5dae4; font-size: .78rem; cursor: pointer; }
+.order-multi-filter fieldset input { width: auto; accent-color: #8fa8f5; }
+.order-filter-bar > .button { position: relative; z-index: 21; }
+.mobile-order-sort { display: none; }
+.table-sort-button { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; white-space: nowrap; }
+.table-sort-button:hover, .table-sort-button:focus-visible { color: #d8e0f4; outline: none; }
+.commission-status { display: inline-flex; border-radius: 999px; padding: 5px 9px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.commission-status.commission-0 { color: #f2d3a6; background: #49331d; }
+.commission-status.commission-1 { color: #b9c8ff; background: #242c43; }
+.commission-status.commission-2 { color: #9de7d0; background: #15372f; }
+.commission-status.commission-3, .commission-status.commission-none { color: #b7bdca; background: #292d36; }
+.commission-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid #303746; border-radius: 11px; background: #11151d; }
+.commission-actions > span { margin-right: auto; }
+.commission-log-section { margin: 16px 0; padding: 14px; border: 1px solid #303746; border-radius: 12px; background: #10131a; }
+.commission-log-section h3 { margin: 0 0 10px; font-size: .9rem; }
+.commission-log-section p { margin: 0; }
+.commission-log-section ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.commission-log-section li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; font-size: .76rem; }
+.commission-log-section li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commission-log-section time { color: #8f98a9; }
 .coupon-check-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 .coupon-quote strong { color: #b9f3d0; }
 .coupon-form .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
@@ -463,6 +488,14 @@ textarea { min-height: 100px; resize: vertical; }
 	.system-filter-bar { grid-template-columns: 1fr; }
 	.ticket-filter-bar { grid-template-columns: 1fr 1fr; }
 	.ticket-filter-bar .search-field, .ticket-filter-bar .button { grid-column: 1 / -1; }
+	.order-filter-bar { grid-template-columns: 1fr; }
+	.order-filter-bar .search-field, .order-filter-bar .button { grid-column: auto; }
+	.order-multi-filter fieldset { position: static; margin-top: 7px; }
+	.mobile-order-sort { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+	.mobile-order-sort label { display: grid; gap: 6px; color: #cbd0dc; font-size: .76rem; font-weight: 650; }
+	.mobile-order-sort .button { grid-column: auto; min-height: 42px; }
+	.commission-log-section li { grid-template-columns: 1fr auto; }
+	.commission-log-section time { grid-column: 1 / -1; }
 	.detail-list > div { grid-template-columns: minmax(92px, .7fr) minmax(0, 1.3fr); }
 	.ticket-detail-heading { flex-direction: column; }
 	.ticket-badges { justify-content: flex-start; }

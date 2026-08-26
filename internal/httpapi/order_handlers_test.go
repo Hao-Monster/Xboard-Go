@@ -2,13 +2,101 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t *testing.T) {
+	api, database := newTestAPI(t)
+	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 1_000})
+	admin := loginAdmin(t, api)
+	generated := admin.request(t, api, http.MethodPost, "/api/v1/invitations", `{}`)
+	if generated.Code != http.StatusOK {
+		t.Fatalf("generate invitation status=%d body=%s", generated.Code, generated.Body)
+	}
+	var generatedPayload struct {
+		Data struct {
+			Code string `json:"code"`
+		} `json:"data"`
+	}
+	decodeResponse(t, generated, &generatedPayload)
+	registrationBody, _ := json.Marshal(map[string]string{
+		"email": "order-parity-buyer@example.test", "password": "order-parity-password-123",
+		"password_confirmation": "order-parity-password-123", "invite_code": generatedPayload.Data.Code,
+	})
+	registered := plainAPIRequest(api, http.MethodPost, "/api/v1/auth/register", string(registrationBody))
+	if registered.Code != http.StatusOK {
+		t.Fatalf("register invited buyer status=%d body=%s", registered.Code, registered.Body)
+	}
+	buyer, err := database.FindUserByEmail(t.Context(), "order-parity-buyer@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(t.Context(), store.CreateOrderInput{UserID: buyer.ID, PlanID: plan.ID, Period: "monthly"}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err = database.CompleteOrder(t.Context(), order.TradeNo, "gateway-parity-callback", fixedNow().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.CommissionBalance <= 0 || order.InviteUserID == nil {
+		t.Fatalf("invited order omitted commission: %#v", order)
+	}
+
+	listed := admin.request(t, api, http.MethodGet,
+		"/api/v1/admin/orders?status=3&status=4&type=1&type=2&period=monthly&commission_status=0&sort_by=total_amount&sort_desc=false", "")
+	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), order.TradeNo, `"commission_status":0`) {
+		t.Fatalf("multi-filtered administrator orders status=%d body=%s", listed.Code, listed.Body)
+	}
+	injection := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders?sort_by=total_amount%20DESC%3B%20DROP%20TABLE%20orders", "")
+	if injection.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("untrusted sort status=%d body=%s", injection.Code, injection.Body)
+	}
+	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders/"+order.TradeNo, "")
+	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(),
+		`"callback_no":"gateway-parity-callback"`, `"invite_user":{"id":`, `"email":"admin@example.test"`,
+		`"commission_log":[]`, `"subscribe_url":"https://panel.example.test/s/`) {
+		t.Fatalf("administrator order detail status=%d body=%s", detail.Code, detail.Body)
+	}
+
+	updated := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
+	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"commission_status":3`,
+		`"invite_user":{"id":`, `"commission_log":[]`, `"subscribe_url":"https://panel.example.test/s/`) {
+		t.Fatalf("modern commission update status=%d body=%s", updated.Code, updated.Body)
+	}
+	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacyListed := bearerRequest(api, http.MethodPost, "/api/v2/admin/order/fetch", legacyAuthorization,
+		`{"current":1,"pageSize":20,"filter":[{"id":"status","value":[3,4]},{"id":"type","value":[1,2]},{"id":"period","value":["month_price"]},{"id":"commission_status","value":[3]}],"sort":[{"id":"total_amount","desc":false}]}`)
+	if legacyListed.Code != http.StatusOK || !strings.Contains(legacyListed.Body.String(), order.TradeNo) {
+		t.Fatalf("legacy multi-filtered orders status=%d body=%s", legacyListed.Code, legacyListed.Body)
+	}
+	legacyUpdated := bearerRequest(api, http.MethodPost, "/api/v2/admin/order/update", legacyAuthorization,
+		fmt.Sprintf(`{"trade_no":%q,"commission_status":1}`, order.TradeNo))
+	if legacyUpdated.Code != http.StatusOK || !containsAll(legacyUpdated.Body.String(), `"data":true`, `"status":"success"`) {
+		t.Fatalf("legacy commission update status=%d body=%s", legacyUpdated.Code, legacyUpdated.Body)
+	}
+
+	processed, err := database.ProcessCommissions(t.Context(), fixedNow().Add(73*time.Hour), 100)
+	if err != nil || processed.Paid != 1 {
+		t.Fatalf("ProcessCommissions() = (%#v, %v)", processed, err)
+	}
+	rollback := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":1}`)
+	if rollback.Code != http.StatusConflict || !containsAll(rollback.Body.String(), `"code":"order_state_conflict"`) {
+		t.Fatalf("paid commission rollback status=%d body=%s", rollback.Code, rollback.Body)
+	}
+	buyerClient := loginAs(t, api, "order-parity-buyer@example.test", "order-parity-password-123")
+	forbidden := buyerClient.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("non-administrator commission update status=%d body=%s", forbidden.Code, forbidden.Body)
+	}
+}
 
 func TestOrderAPICompletesFreeOrderAndEnforcesOwnershipAndCSRF(t *testing.T) {
 	api, database := newTestAPI(t)

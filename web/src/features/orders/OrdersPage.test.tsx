@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AdminOrder, Order, Plan } from "../../lib/api";
+import type { AdminOrderDetail, Order, Plan } from "../../lib/api";
 import { OrderManagementPage } from "./OrderManagementPage";
 import { UserOrdersPage } from "./UserOrdersPage";
 
@@ -91,21 +91,22 @@ describe("UserOrdersPage", () => {
 
 describe("OrderManagementPage", () => {
   it("filters, assigns integer-cent orders, and manually completes only pending orders", async () => {
-    const adminOrder = { ...pending, user_email: "buyer@example.test", plan_name: plan.name } satisfies AdminOrder;
-    const completed = { ...pending, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", callback_no: "manual_operation" };
+		const adminOrder = { ...pending, user_email: "buyer@example.test", plan_name: plan.name, invite_user: null, commission_log: [], subscribe_url: null } satisfies AdminOrderDetail;
+		const completed = { ...adminOrder, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", callback_no: "manual_operation", subscribe_url: "https://panel.example.test/s/token", invite_user: { id: 9, email: "inviter@example.test" }, commission_balance: 100 } satisfies AdminOrderDetail;
     const api = {
       listAdminOrders: vi.fn().mockResolvedValue({ items: [adminOrder], total: 1, page: 1, page_size: 20 }),
       getAdminOrder: vi.fn().mockResolvedValue(adminOrder), assignOrder: vi.fn().mockResolvedValue(pending),
-      paidAdminOrder: vi.fn().mockResolvedValue(completed), cancelAdminOrder: vi.fn(), listPlans: vi.fn().mockResolvedValue([plan])
+			paidAdminOrder: vi.fn().mockResolvedValue(completed), cancelAdminOrder: vi.fn(), updateAdminOrderCommissionStatus: vi.fn(), listPlans: vi.fn().mockResolvedValue([plan])
     };
     const user = userEvent.setup();
     render(<OrderManagementPage api={api} />);
 
     expect(await screen.findByText("buyer@example.test")).toBeVisible();
     await user.type(screen.getByRole("searchbox", { name: "搜索订单" }), "buyer");
-    await user.selectOptions(screen.getByLabelText("订单状态"), "0");
+		await user.click(screen.getByText("订单状态：全部"));
+		await user.click(screen.getByRole("checkbox", { name: "订单状态：待支付" }));
     await user.click(screen.getByRole("button", { name: "查询订单" }));
-    await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({ query: "buyer", status: 0 })));
+		await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({ query: "buyer", statuses: [0] })));
 
     await user.click(screen.getByRole("button", { name: "添加订单" }));
     const addDialog = screen.getByRole("dialog", { name: "添加订单" });
@@ -120,6 +121,8 @@ describe("OrderManagementPage", () => {
     await user.click(within(detail).getByRole("button", { name: "标记已支付并开通" }));
     await waitFor(() => expect(api.paidAdminOrder).toHaveBeenCalledWith(pending.trade_no));
     expect(within(detail).getByText("已完成")).toBeVisible();
+    expect(within(detail).getByRole("link", { name: "打开订阅链接" })).toHaveAttribute("href", completed.subscribe_url);
+    expect(within(detail).getByRole("button", { name: "设为发放中" })).toBeEnabled();
     expect(within(detail).queryByRole("button", { name: "标记已支付并开通" })).not.toBeInTheDocument();
   });
 
@@ -127,7 +130,7 @@ describe("OrderManagementPage", () => {
     const api = {
       listAdminOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       getAdminOrder: vi.fn(), assignOrder: vi.fn(), paidAdminOrder: vi.fn(), cancelAdminOrder: vi.fn(),
-      listPlans: vi.fn().mockResolvedValue([plan])
+			updateAdminOrderCommissionStatus: vi.fn(), listPlans: vi.fn().mockResolvedValue([plan])
     };
     const user = userEvent.setup();
     render(<OrderManagementPage api={api} />);
@@ -143,4 +146,54 @@ describe("OrderManagementPage", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("支付金额格式无效");
     expect(api.assignOrder).not.toHaveBeenCalled();
   });
+
+	it("matches legacy multi-filters, safe sorting, complete detail, and editable unpaid commission states", async () => {
+		const commissioned = {
+			...pending, status: 3 as const, original_amount: 1_500, total_amount: 1_000, balance_amount: 200,
+			discount_amount: 100, surplus_amount: 200, surplus_credit: 50, handling_amount: 25,
+			commission_status: 0, commission_balance: 100, actual_commission_balance: null,
+			paid_at: "2026-08-26T00:01:00Z", callback_no: "gateway-callback", updated_at: "2026-08-26T00:02:00Z",
+			user_email: "commissioned@example.test", plan_name: plan.name,
+			invite_user: { id: 9, email: "inviter@example.test" }, commission_log: [],
+			subscribe_url: "https://panel.example.test/s/token"
+		} satisfies AdminOrderDetail;
+		const invalid = { ...commissioned, commission_status: 3 as const };
+		const api = {
+			listAdminOrders: vi.fn().mockResolvedValue({ items: [commissioned], total: 1, page: 1, page_size: 20 }),
+			getAdminOrder: vi.fn().mockResolvedValue(commissioned), assignOrder: vi.fn(), paidAdminOrder: vi.fn(), cancelAdminOrder: vi.fn(),
+			updateAdminOrderCommissionStatus: vi.fn().mockResolvedValue(invalid), listPlans: vi.fn().mockResolvedValue([plan])
+		};
+		const user = userEvent.setup();
+		render(<OrderManagementPage api={api} />);
+
+		expect(await screen.findByText("commissioned@example.test")).toBeVisible();
+		await user.click(screen.getByText("订单状态：全部"));
+		await user.click(screen.getByRole("checkbox", { name: "订单状态：已完成" }));
+		await user.click(screen.getByRole("checkbox", { name: "订单状态：已折抵" }));
+		await user.click(screen.getByText("订单类型：全部"));
+		await user.click(screen.getByRole("checkbox", { name: "订单类型：新购" }));
+		await user.click(screen.getByRole("checkbox", { name: "订单类型：续费" }));
+		await user.click(screen.getByText("佣金状态：全部"));
+		await user.click(screen.getByRole("checkbox", { name: "佣金状态：待确认" }));
+		await user.click(screen.getByRole("button", { name: "查询订单" }));
+		await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({
+			statuses: [3, 4], types: [1, 2], commission_statuses: [0]
+		})));
+
+		await user.click(screen.getByRole("button", { name: "按订单金额排序" }));
+		await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({ sort_by: "total_amount", sort_desc: false })));
+		await user.selectOptions(screen.getByLabelText("订单排序字段"), "commission_balance");
+		await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({ sort_by: "commission_balance", sort_desc: false })));
+
+		await user.click(screen.getByRole("button", { name: `查看订单：${commissioned.trade_no}` }));
+		const detail = await screen.findByRole("dialog", { name: "订单详情" });
+		expect(within(detail).getByText("gateway-callback")).toBeVisible();
+		expect(within(detail).getByText("inviter@example.test")).toBeVisible();
+		expect(within(detail).getByRole("link", { name: "打开订阅链接" })).toHaveAttribute("href", commissioned.subscribe_url);
+		expect(within(detail).getByText("¥15.00")).toBeVisible();
+		expect(within(detail).getByText("¥0.25")).toBeVisible();
+		await user.click(within(detail).getByRole("button", { name: "设为无效" }));
+		await waitFor(() => expect(api.updateAdminOrderCommissionStatus).toHaveBeenCalledWith(commissioned.trade_no, 3));
+		expect(within(detail).getByText("无效")).toBeVisible();
+	});
 });

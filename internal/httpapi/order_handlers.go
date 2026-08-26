@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,17 +131,37 @@ func (s *server) listAdminOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	status, ok := optionalOrderStatus(w, r, "status")
+	statuses, ok := repeatedOrderStatuses(w, r, "status")
 	if !ok {
 		return
 	}
-	typeFilter, ok := optionalOrderType(w, r, "type")
+	types, ok := repeatedOrderTypes(w, r, "type")
 	if !ok {
 		return
+	}
+	commissionStatuses, ok := repeatedCommissionStatuses(w, r, "commission_status")
+	if !ok {
+		return
+	}
+	periods := r.URL.Query()["period"]
+	if len(periods) > 8 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "period 超出允许数量", nil)
+		return
+	}
+	sortBy := store.AdminOrderSortField(strings.TrimSpace(r.URL.Query().Get("sort_by")))
+	sortDescending := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("sort_desc")); raw != "" {
+		value, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "sort_desc 格式无效", nil)
+			return
+		}
+		sortDescending = value
 	}
 	pageResult, err := s.store.ListAdminOrders(r.Context(), store.AdminOrderFilter{
-		Page: page, PageSize: pageSize, Status: status, Type: typeFilter,
-		Period: r.URL.Query().Get("period"), Query: r.URL.Query().Get("query"),
+		Page: page, PageSize: pageSize, Statuses: statuses, Types: types,
+		Periods: periods, CommissionStatuses: commissionStatuses, Query: r.URL.Query().Get("query"),
+		SortBy: sortBy, SortDescending: sortDescending,
 	})
 	if err != nil {
 		handleOrderError(w, err)
@@ -150,12 +171,76 @@ func (s *server) listAdminOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getAdminOrder(w http.ResponseWriter, r *http.Request) {
-	order, err := s.store.GetAdminOrder(r.Context(), r.PathValue("tradeNo"))
+	order, err := s.readAdminOrderDetail(r.Context(), r.PathValue("tradeNo"))
 	if err != nil {
 		handleOrderError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, order)
+}
+
+func (s *server) updateAdminOrderCommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		CommissionStatus *int `json:"commission_status"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.CommissionStatus == nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "commission_status 为必填项", nil)
+		return
+	}
+	tradeNo := r.PathValue("tradeNo")
+	if _, err := s.store.UpdateAdminOrderCommissionStatus(r.Context(), tradeNo, *input.CommissionStatus, s.now()); err != nil {
+		handleOrderError(w, err)
+		return
+	}
+	order, err := s.readAdminOrderDetail(r.Context(), tradeNo)
+	if err != nil {
+		handleOrderError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, order)
+}
+
+func (s *server) readAdminOrderDetail(ctx context.Context, tradeNo string) (store.AdminOrderDetail, error) {
+	detail, err := s.store.GetAdminOrderDetail(ctx, tradeNo)
+	if err != nil {
+		return store.AdminOrderDetail{}, err
+	}
+	if err := s.attachAdminOrderSubscribeURL(ctx, &detail); err != nil {
+		return store.AdminOrderDetail{}, err
+	}
+	return detail, nil
+}
+
+func (s *server) attachAdminOrderSubscribeURL(ctx context.Context, detail *store.AdminOrderDetail) error {
+	if detail == nil || detail.Status != store.OrderStatusCompleted {
+		return nil
+	}
+	if detail.DistributorOrderID != nil {
+		distributorOrder, err := s.store.GetDistributorOrderByID(ctx, detail.ID, s.now())
+		if err != nil {
+			return err
+		}
+		config, err := s.store.GetSubscriptionRenderConfig(ctx, "")
+		if err != nil {
+			return err
+		}
+		base := strings.TrimRight(config.AppURL, "/")
+		if base == "" {
+			base = strings.TrimRight(s.panelURL, "/")
+		}
+		url := base + "/" + config.Path + "/" + distributorOrder.Subscription.SubscriptionToken + "#" + distributorOrder.Subscription.OriginalTradeNo
+		detail.SubscribeURL = &url
+		return nil
+	}
+	subscription, err := s.userSubscription(ctx, detail.UserID)
+	if err != nil {
+		return err
+	}
+	detail.SubscribeURL = &subscription.SubscribeURL
+	return nil
 }
 
 func (s *server) assignOrder(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +268,12 @@ func (s *server) paidAdminOrder(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	order, err := s.store.CompletePendingOrder(r.Context(), r.PathValue("tradeNo"), "manual_operation", s.now())
+	tradeNo := r.PathValue("tradeNo")
+	if _, err := s.store.CompletePendingOrder(r.Context(), tradeNo, "manual_operation", s.now()); err != nil {
+		handleOrderError(w, err)
+		return
+	}
+	order, err := s.readAdminOrderDetail(r.Context(), tradeNo)
 	if err != nil {
 		handleOrderError(w, err)
 		return
@@ -199,7 +289,7 @@ type legacyAdminOrderResponse struct {
 type legacyAdminOrderDetailResponse struct {
 	legacyAdminOrderResponse
 	InviteUser              map[string]any                 `json:"invite_user"`
-	CommissionLog           []any                          `json:"commission_log"`
+	CommissionLog           []store.CommissionLog          `json:"commission_log"`
 	SubscribeURL            *string                        `json:"subscribe_url"`
 	SubscriptionEntitlement *store.DistributorEntitlement  `json:"subscription_entitlement,omitempty"`
 	HWID                    *store.DistributorHWIDSettings `json:"hwid,omitempty"`
@@ -258,24 +348,95 @@ func (s *server) legacyListAdminOrders(w http.ResponseWriter, r *http.Request) {
 			ID    string          `json:"id"`
 			Value json.RawMessage `json:"value"`
 		}
-		_ = json.Unmarshal(input["filter"], &filters)
+		if raw := input["filter"]; len(raw) > 0 && string(raw) != "null" && json.Unmarshal(raw, &filters) != nil {
+			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "筛选条件格式无效")
+			return
+		}
 		for _, item := range filters {
-			value := legacyRawString(item.Value)
+			values := legacyRawStrings(item.Value)
 			switch item.ID {
 			case "status":
-				if parsed, err := strconv.Atoi(value); err == nil && parsed >= 0 && parsed <= 4 {
-					status := store.OrderStatus(parsed)
-					filter.Status = &status
+				if len(values) < 1 || len(values) > 5 {
+					writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "订单状态筛选格式无效")
+					return
+				}
+				for _, value := range values {
+					parsed, err := strconv.Atoi(value)
+					if err != nil || parsed < 0 || parsed > 4 {
+						writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "订单状态筛选格式无效")
+						return
+					}
+					filter.Statuses = append(filter.Statuses, store.OrderStatus(parsed))
 				}
 			case "type":
-				if parsed, err := strconv.Atoi(value); err == nil && parsed >= 1 && parsed <= 4 {
-					orderType := store.OrderType(parsed)
-					filter.Type = &orderType
+				if len(values) < 1 || len(values) > 4 {
+					writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "订单类型筛选格式无效")
+					return
+				}
+				for _, value := range values {
+					parsed, err := strconv.Atoi(value)
+					if err != nil || parsed < 1 || parsed > 4 {
+						writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "订单类型筛选格式无效")
+						return
+					}
+					filter.Types = append(filter.Types, store.OrderType(parsed))
 				}
 			case "period":
-				filter.Period = value
+				if len(values) < 1 || len(values) > 8 {
+					writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "付款周期筛选格式无效")
+					return
+				}
+				filter.Periods = append(filter.Periods, values...)
+			case "commission_status":
+				if len(values) < 1 || len(values) > 4 {
+					writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "佣金状态筛选格式无效")
+					return
+				}
+				for _, value := range values {
+					parsed, err := strconv.Atoi(value)
+					if err != nil || parsed < 0 || parsed > 3 {
+						writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "佣金状态筛选格式无效")
+						return
+					}
+					filter.CommissionStatuses = append(filter.CommissionStatuses, parsed)
+				}
 			case "trade_no", "user.email", "email":
-				filter.Query = value
+				if len(values) != 1 {
+					writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "搜索条件格式无效")
+					return
+				}
+				filter.Query = values[0]
+			default:
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "不支持的筛选字段")
+				return
+			}
+		}
+		var sorts []struct {
+			ID   string `json:"id"`
+			Desc bool   `json:"desc"`
+		}
+		if raw := input["sort"]; len(raw) > 0 && string(raw) != "null" {
+			if json.Unmarshal(raw, &sorts) != nil || len(sorts) > 1 {
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "排序条件格式无效")
+				return
+			}
+		}
+		if len(sorts) == 1 {
+			filter.SortDescending = sorts[0].Desc
+			switch sorts[0].ID {
+			case "created_at":
+				filter.SortBy = store.AdminOrderSortCreatedAt
+			case "total_amount":
+				filter.SortBy = store.AdminOrderSortTotalAmount
+			case "status":
+				filter.SortBy = store.AdminOrderSortStatus
+			case "commission_balance":
+				filter.SortBy = store.AdminOrderSortCommissionBalance
+			case "commission_status":
+				filter.SortBy = store.AdminOrderSortCommissionStatus
+			default:
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "不支持的排序字段")
+				return
 			}
 		}
 	}
@@ -358,11 +519,12 @@ func (s *server) legacyGetAdminOrder(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	order, err := s.store.GetAdminOrderByID(r.Context(), input.ID)
+	detail, err := s.store.GetAdminOrderDetailByID(r.Context(), input.ID)
 	if err != nil {
 		writeLegacyAdminOrderError(w, err)
 		return
 	}
+	order := detail.AdminOrder
 	plan, err := s.store.GetPlan(r.Context(), order.PlanID, s.now())
 	if err != nil {
 		writeLegacyAdminOrderError(w, err)
@@ -370,7 +532,10 @@ func (s *server) legacyGetAdminOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	response := legacyAdminOrderDetailResponse{
 		legacyAdminOrderResponse: legacyAdminOrderResponseOf(order),
-		CommissionLog:            make([]any, 0),
+		CommissionLog:            detail.CommissionLog,
+	}
+	if detail.InviteUser != nil {
+		response.InviteUser = map[string]any{"id": detail.InviteUser.ID, "email": detail.InviteUser.Email}
 	}
 	if order.DistributorOrderID != nil {
 		distributorOrder, distributorErr := s.store.GetDistributorOrderByID(r.Context(), order.ID, s.now())
@@ -403,14 +568,6 @@ func (s *server) legacyGetAdminOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Plan = legacyRawPlanResponse(plan)
-	if order.InviteUserID != nil {
-		inviter, findErr := s.store.FindUserByID(r.Context(), *order.InviteUserID)
-		if findErr != nil {
-			writeLegacyAdminOrderError(w, findErr)
-			return
-		}
-		response.InviteUser = map[string]any{"id": inviter.ID, "email": inviter.Email}
-	}
 	if order.Status == store.OrderStatusCompleted {
 		subscription, subscriptionErr := s.userSubscription(r.Context(), order.UserID)
 		if subscriptionErr != nil {
@@ -454,6 +611,25 @@ func (s *server) legacyPaidAdminOrder(w http.ResponseWriter, r *http.Request) {
 	writeLegacySuccess(w, http.StatusOK, true)
 }
 
+func (s *server) legacyUpdateAdminOrderCommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		TradeNo          string `json:"trade_no"`
+		CommissionStatus *int   `json:"commission_status"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.CommissionStatus == nil {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "佣金状态格式无效")
+		return
+	}
+	if _, err := s.store.UpdateAdminOrderCommissionStatus(r.Context(), input.TradeNo, *input.CommissionStatus, s.now()); err != nil {
+		writeLegacyAdminCommissionError(w, err)
+		return
+	}
+	writeLegacySuccess(w, http.StatusOK, true)
+}
+
 func (s *server) legacyCancelAdminOrder(w http.ResponseWriter, r *http.Request) {
 	tradeNo, ok := legacyAdminTradeNo(w, r)
 	if !ok {
@@ -491,6 +667,19 @@ func writeLegacyAdminOrderError(w http.ResponseWriter, err error) {
 	}
 }
 
+func writeLegacyAdminCommissionError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeLegacyOrderFail(w, http.StatusBadRequest, "订单不存在")
+	case errors.Is(err, store.ErrOrderState):
+		writeLegacyOrderFail(w, http.StatusBadRequest, "佣金已发放或当前订单不允许修改")
+	case errors.Is(err, store.ErrInvalidInput):
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "佣金状态格式无效")
+	default:
+		writeLegacyOrderFail(w, http.StatusInternalServerError, "更新失败")
+	}
+}
+
 func legacyPositiveInt(value string, fallback int) int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || parsed < 1 {
@@ -523,12 +712,29 @@ func legacyRawString(value json.RawMessage) string {
 	return ""
 }
 
+func legacyRawStrings(value json.RawMessage) []string {
+	var list []json.RawMessage
+	if json.Unmarshal(value, &list) == nil {
+		result := make([]string, 0, len(list))
+		for _, item := range list {
+			result = append(result, legacyRawString(item))
+		}
+		return result
+	}
+	return []string{legacyRawString(value)}
+}
+
 func (s *server) cancelAdminOrder(w http.ResponseWriter, r *http.Request) {
 	var input struct{}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	order, err := s.store.CancelAdminOrder(r.Context(), r.PathValue("tradeNo"), s.now())
+	tradeNo := r.PathValue("tradeNo")
+	if _, err := s.store.CancelAdminOrder(r.Context(), tradeNo, s.now()); err != nil {
+		handleOrderError(w, err)
+		return
+	}
+	order, err := s.readAdminOrderDetail(r.Context(), tradeNo)
 	if err != nil {
 		handleOrderError(w, err)
 		return
@@ -938,18 +1144,67 @@ func optionalOrderStatus(w http.ResponseWriter, r *http.Request, name string) (*
 	return &result, true
 }
 
-func optionalOrderType(w http.ResponseWriter, r *http.Request, name string) (*store.OrderType, bool) {
-	raw := strings.TrimSpace(r.URL.Query().Get(name))
-	if raw == "" {
+func repeatedOrderStatuses(w http.ResponseWriter, r *http.Request, name string) ([]store.OrderStatus, bool) {
+	values, exists := r.URL.Query()[name]
+	if !exists {
 		return nil, true
 	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value < int(store.OrderTypeNew) || value > int(store.OrderTypeResetTraffic) {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 格式无效", nil)
+	if len(values) < 1 || len(values) > 5 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 超出允许数量", nil)
 		return nil, false
 	}
-	result := store.OrderType(value)
-	return &result, true
+	result := make([]store.OrderStatus, 0, len(values))
+	for _, raw := range values {
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || value < int(store.OrderStatusPending) || value > int(store.OrderStatusDiscounted) {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 格式无效", nil)
+			return nil, false
+		}
+		result = append(result, store.OrderStatus(value))
+	}
+	return result, true
+}
+
+func repeatedOrderTypes(w http.ResponseWriter, r *http.Request, name string) ([]store.OrderType, bool) {
+	values, exists := r.URL.Query()[name]
+	if !exists {
+		return nil, true
+	}
+	if len(values) < 1 || len(values) > 4 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 超出允许数量", nil)
+		return nil, false
+	}
+	result := make([]store.OrderType, 0, len(values))
+	for _, raw := range values {
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || value < int(store.OrderTypeNew) || value > int(store.OrderTypeResetTraffic) {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 格式无效", nil)
+			return nil, false
+		}
+		result = append(result, store.OrderType(value))
+	}
+	return result, true
+}
+
+func repeatedCommissionStatuses(w http.ResponseWriter, r *http.Request, name string) ([]int, bool) {
+	values, exists := r.URL.Query()[name]
+	if !exists {
+		return nil, true
+	}
+	if len(values) < 1 || len(values) > 4 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 超出允许数量", nil)
+		return nil, false
+	}
+	result := make([]int, 0, len(values))
+	for _, raw := range values {
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || value < 0 || value > 3 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 格式无效", nil)
+			return nil, false
+		}
+		result = append(result, value)
+	}
+	return result, true
 }
 
 func orderQueryInt(w http.ResponseWriter, r *http.Request, name string, fallback, maximum int) (int, bool) {

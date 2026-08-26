@@ -29,7 +29,7 @@ func TestSchemaV35PreservesV34DataAndEnforcesAttachmentBoundaries(t *testing.T) 
 	if err := database.db.QueryRowContext(ctx, `SELECT app_name FROM app_settings WHERE id = 1`).Scan(&appName); err != nil {
 		t.Fatal(err)
 	}
-	if version != 35 || appName != "V34 board" {
+	if version != CurrentSchemaVersion() || appName != "V34 board" {
 		t.Fatalf("migration version=%d app=%q", version, appName)
 	}
 	for _, table := range []string{"knowledge_attachments", "knowledge_attachment_uploads", "knowledge_attachment_chunks"} {

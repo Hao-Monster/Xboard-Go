@@ -49,8 +49,10 @@ describe("APIClient order contracts", () => {
     await api.checkoutOrder("trade/with slash");
     await api.cancelOrder("trade/with slash");
     await api.listAdminOrders({ page: 2, page_size: 50, status: 3, type: 2, period: "yearly", query: "buyer@example.test" });
+		await api.listAdminOrders({ statuses: [3, 4], types: [1, 2], periods: ["monthly", "yearly"], commission_statuses: [0, 3], sort_by: "commission_balance", sort_desc: true });
     await api.assignOrder({ email: "buyer@example.test", plan_id: 7, period: "yearly", total_amount: 12_345 });
     await api.paidAdminOrder("trade/with slash");
+		await api.updateAdminOrderCommissionStatus("trade/with slash", 3);
 
     expect(requests).toEqual([
       { path: "/api/v1/orders?limit=25&status=0", method: "GET", body: undefined, csrf: null },
@@ -58,8 +60,10 @@ describe("APIClient order contracts", () => {
       { path: "/api/v1/orders/trade%2Fwith%20slash/checkout", method: "POST", body: {}, csrf: "order-csrf" },
       { path: "/api/v1/orders/trade%2Fwith%20slash/cancel", method: "POST", body: {}, csrf: "order-csrf" },
       { path: "/api/v1/admin/orders?page=2&page_size=50&status=3&type=2&period=yearly&query=buyer%40example.test", method: "GET", body: undefined, csrf: null },
+			{ path: "/api/v1/admin/orders?status=3&status=4&type=1&type=2&period=monthly&period=yearly&commission_status=0&commission_status=3&sort_by=commission_balance&sort_desc=true", method: "GET", body: undefined, csrf: null },
       { path: "/api/v1/admin/orders", method: "POST", body: { email: "buyer@example.test", plan_id: 7, period: "yearly", total_amount: 12_345 }, csrf: "order-csrf" },
-      { path: "/api/v1/admin/orders/trade%2Fwith%20slash/paid", method: "POST", body: {}, csrf: "order-csrf" }
+			{ path: "/api/v1/admin/orders/trade%2Fwith%20slash/paid", method: "POST", body: {}, csrf: "order-csrf" },
+			{ path: "/api/v1/admin/orders/trade%2Fwith%20slash/commission", method: "PATCH", body: { commission_status: 3 }, csrf: "order-csrf" }
     ]);
   });
 });

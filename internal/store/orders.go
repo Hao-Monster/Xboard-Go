@@ -299,6 +299,58 @@ func (s *Store) GetAdminOrderByID(ctx context.Context, orderID int64) (AdminOrde
 	return result, nil
 }
 
+func (s *Store) GetAdminOrderDetail(ctx context.Context, tradeNo string) (AdminOrderDetail, error) {
+	order, err := s.GetAdminOrder(ctx, tradeNo)
+	if err != nil {
+		return AdminOrderDetail{}, err
+	}
+	return s.populateAdminOrderDetail(ctx, order)
+}
+
+func (s *Store) GetAdminOrderDetailByID(ctx context.Context, orderID int64) (AdminOrderDetail, error) {
+	order, err := s.GetAdminOrderByID(ctx, orderID)
+	if err != nil {
+		return AdminOrderDetail{}, err
+	}
+	return s.populateAdminOrderDetail(ctx, order)
+}
+
+func (s *Store) populateAdminOrderDetail(ctx context.Context, order AdminOrder) (AdminOrderDetail, error) {
+	detail := AdminOrderDetail{AdminOrder: order, CommissionLog: make([]CommissionLog, 0)}
+	if order.InviteUserID != nil {
+		var inviter AdminOrderInviteUser
+		if err := s.db.QueryRowContext(ctx, `SELECT id, email FROM users WHERE id = ? AND account_kind = 'human'`, *order.InviteUserID).
+			Scan(&inviter.ID, &inviter.Email); errors.Is(err, sql.ErrNoRows) {
+			return AdminOrderDetail{}, ErrNotFound
+		} else if err != nil {
+			return AdminOrderDetail{}, fmt.Errorf("read administrator order inviter: %w", err)
+		}
+		detail.InviteUser = &inviter
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, order_id, invite_user_id, user_id, trade_no, order_amount, get_amount, created_at
+		FROM commission_logs WHERE order_id = ? ORDER BY created_at DESC, id DESC
+	`, order.ID)
+	if err != nil {
+		return AdminOrderDetail{}, fmt.Errorf("list administrator order commission log: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item CommissionLog
+		var createdAt int64
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.InviteUserID, &item.UserID, &item.TradeNo,
+			&item.OrderAmount, &item.GetAmount, &createdAt); err != nil {
+			return AdminOrderDetail{}, fmt.Errorf("scan administrator order commission log: %w", err)
+		}
+		item.CreatedAt = time.Unix(createdAt, 0).UTC()
+		detail.CommissionLog = append(detail.CommissionLog, item)
+	}
+	if err := rows.Err(); err != nil {
+		return AdminOrderDetail{}, fmt.Errorf("iterate administrator order commission log: %w", err)
+	}
+	return detail, nil
+}
+
 func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (AdminOrderPage, error) {
 	if filter.Page == 0 {
 		filter.Page = 1
@@ -306,44 +358,65 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (A
 	if filter.PageSize == 0 {
 		filter.PageSize = 20
 	}
-	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > 100 ||
-		filter.Status != nil && (*filter.Status < OrderStatusPending || *filter.Status > OrderStatusDiscounted) ||
-		filter.Type != nil && (*filter.Type < OrderTypeNew || *filter.Type > OrderTypeResetTraffic) || len(filter.Query) > 128 {
+	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > 100 || len(filter.Query) > 128 {
 		return AdminOrderPage{}, ErrInvalidInput
 	}
-	filter.Query = strings.TrimSpace(filter.Query)
-	filter.Period = strings.TrimSpace(filter.Period)
+	if err := normalizeAdminOrderFilter(&filter); err != nil {
+		return AdminOrderPage{}, err
+	}
 	where := ` WHERE 1 = 1`
-	arguments := make([]any, 0, 8)
-	if filter.Status != nil {
-		where += ` AND o.status = ?`
-		arguments = append(arguments, *filter.Status)
-	}
-	if filter.Type != nil {
-		where += ` AND o.type = ?`
-		arguments = append(arguments, *filter.Type)
-	}
-	if filter.Period != "" {
-		period, valid := normalizeOrderPeriod(filter.Period)
-		if !valid {
-			return AdminOrderPage{}, ErrInvalidInput
+	arguments := make([]any, 0, 16)
+	if len(filter.Statuses) > 0 {
+		where += ` AND o.status IN (` + adminOrderPlaceholders(len(filter.Statuses)) + `)`
+		for _, status := range filter.Statuses {
+			arguments = append(arguments, status)
 		}
-		where += ` AND o.period = ?`
-		arguments = append(arguments, period)
 	}
+	if len(filter.Types) > 0 {
+		where += ` AND o.type IN (` + adminOrderPlaceholders(len(filter.Types)) + `)`
+		for _, orderType := range filter.Types {
+			arguments = append(arguments, orderType)
+		}
+	}
+	if len(filter.Periods) > 0 {
+		where += ` AND o.period IN (` + adminOrderPlaceholders(len(filter.Periods)) + `)`
+		for _, period := range filter.Periods {
+			arguments = append(arguments, period)
+		}
+	}
+	if len(filter.CommissionStatuses) > 0 {
+		where += ` AND o.commission_status IN (` + adminOrderPlaceholders(len(filter.CommissionStatuses)) + `)`
+		for _, status := range filter.CommissionStatuses {
+			arguments = append(arguments, status)
+		}
+	}
+	queryNeedsUserJoin := false
 	if filter.Query != "" {
-		where += ` AND (o.trade_no = ? OR u.email LIKE ? ESCAPE '\')`
-		arguments = append(arguments, filter.Query, "%"+escapeOrderLike(filter.Query)+"%")
+		if validTradeNo(filter.Query) {
+			where += ` AND o.trade_no = ?`
+			arguments = append(arguments, filter.Query)
+		} else {
+			queryNeedsUserJoin = true
+			where += ` AND u.email LIKE ? ESCAPE '\'`
+			arguments = append(arguments, "%"+escapeOrderLike(filter.Query)+"%")
+		}
 	}
 	var page AdminOrderPage
 	page.Page, page.PageSize = filter.Page, filter.PageSize
+	countFrom := ` FROM orders o`
+	if queryNeedsUserJoin {
+		countFrom += ` JOIN users u ON u.id = o.user_id`
+	}
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id
-	`+where, arguments...).Scan(&page.Total); err != nil {
+		SELECT COUNT(*)`+countFrom+where, arguments...).Scan(&page.Total); err != nil {
 		return AdminOrderPage{}, fmt.Errorf("count administrator orders: %w", err)
 	}
 	queryArguments := append(append([]any(nil), arguments...), filter.PageSize, (filter.Page-1)*filter.PageSize)
-	rows, err := s.db.QueryContext(ctx, adminOrderSelect+where+` ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`, queryArguments...)
+	selectQuery := adminOrderSelect
+	if filter.Query == "" {
+		selectQuery = strings.Replace(selectQuery, "FROM orders o JOIN", "FROM orders o INDEXED BY "+adminOrderSortIndex(filter)+" JOIN", 1)
+	}
+	rows, err := s.db.QueryContext(ctx, selectQuery+where+adminOrderSortClause(filter)+` LIMIT ? OFFSET ?`, queryArguments...)
 	if err != nil {
 		return AdminOrderPage{}, fmt.Errorf("list administrator orders: %w", err)
 	}
@@ -363,6 +436,116 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (A
 		return AdminOrderPage{}, fmt.Errorf("iterate administrator orders: %w", err)
 	}
 	return page, nil
+}
+
+func adminOrderSortIndex(filter AdminOrderFilter) string {
+	return map[AdminOrderSortField]string{
+		"":                              "idx_orders_created",
+		AdminOrderSortCreatedAt:         "idx_orders_created",
+		AdminOrderSortTotalAmount:       "idx_orders_total_amount",
+		AdminOrderSortStatus:            "idx_orders_status",
+		AdminOrderSortCommissionBalance: "idx_orders_commission_balance",
+		AdminOrderSortCommissionStatus:  "idx_orders_commission_status",
+	}[filter.SortBy]
+}
+
+func normalizeAdminOrderFilter(filter *AdminOrderFilter) error {
+	if filter == nil || len(filter.Statuses) > 5 || len(filter.Types) > 4 || len(filter.Periods) > 8 || len(filter.CommissionStatuses) > 4 {
+		return ErrInvalidInput
+	}
+	filter.Query = strings.TrimSpace(filter.Query)
+	if filter.Status != nil {
+		filter.Statuses = append(filter.Statuses, *filter.Status)
+	}
+	if filter.Type != nil {
+		filter.Types = append(filter.Types, *filter.Type)
+	}
+	if period := strings.TrimSpace(filter.Period); period != "" {
+		filter.Periods = append(filter.Periods, period)
+	}
+
+	statusSeen := make(map[OrderStatus]struct{}, len(filter.Statuses))
+	statuses := make([]OrderStatus, 0, len(filter.Statuses))
+	for _, status := range filter.Statuses {
+		if status < OrderStatusPending || status > OrderStatusDiscounted {
+			return ErrInvalidInput
+		}
+		if _, exists := statusSeen[status]; !exists {
+			statusSeen[status] = struct{}{}
+			statuses = append(statuses, status)
+		}
+	}
+	filter.Statuses = statuses
+
+	typeSeen := make(map[OrderType]struct{}, len(filter.Types))
+	types := make([]OrderType, 0, len(filter.Types))
+	for _, orderType := range filter.Types {
+		if orderType < OrderTypeNew || orderType > OrderTypeResetTraffic {
+			return ErrInvalidInput
+		}
+		if _, exists := typeSeen[orderType]; !exists {
+			typeSeen[orderType] = struct{}{}
+			types = append(types, orderType)
+		}
+	}
+	filter.Types = types
+
+	periodSeen := make(map[string]struct{}, len(filter.Periods))
+	periods := make([]string, 0, len(filter.Periods))
+	for _, candidate := range filter.Periods {
+		period, valid := normalizeOrderPeriod(candidate)
+		if !valid {
+			return ErrInvalidInput
+		}
+		if _, exists := periodSeen[period]; !exists {
+			periodSeen[period] = struct{}{}
+			periods = append(periods, period)
+		}
+	}
+	filter.Periods = periods
+
+	commissionSeen := make(map[int]struct{}, len(filter.CommissionStatuses))
+	commissionStatuses := make([]int, 0, len(filter.CommissionStatuses))
+	for _, status := range filter.CommissionStatuses {
+		if status < 0 || status > 3 {
+			return ErrInvalidInput
+		}
+		if _, exists := commissionSeen[status]; !exists {
+			commissionSeen[status] = struct{}{}
+			commissionStatuses = append(commissionStatuses, status)
+		}
+	}
+	filter.CommissionStatuses = commissionStatuses
+
+	switch filter.SortBy {
+	case "", AdminOrderSortCreatedAt, AdminOrderSortTotalAmount, AdminOrderSortStatus,
+		AdminOrderSortCommissionBalance, AdminOrderSortCommissionStatus:
+		return nil
+	default:
+		return ErrInvalidInput
+	}
+}
+
+func adminOrderPlaceholders(count int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
+}
+
+func adminOrderSortClause(filter AdminOrderFilter) string {
+	column := "o.created_at"
+	if filter.SortBy != "" {
+		column = map[AdminOrderSortField]string{
+			AdminOrderSortCreatedAt:         "o.created_at",
+			AdminOrderSortTotalAmount:       "o.total_amount",
+			AdminOrderSortStatus:            "o.status",
+			AdminOrderSortCommissionBalance: "o.commission_balance",
+			AdminOrderSortCommissionStatus:  "o.commission_status",
+		}[filter.SortBy]
+	}
+	direction := "ASC"
+	if filter.SortBy == "" || filter.SortDescending {
+		direction = "DESC"
+	}
+	return " ORDER BY " + column + " " + direction + ", o.id " + direction
 }
 
 func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now time.Time) (Order, error) {
@@ -444,6 +627,50 @@ func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now tim
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit assigned order: %w", err)
+	}
+	return order, nil
+}
+
+// UpdateAdminOrderCommissionStatus preserves the administrator choices exposed
+// by legacy Xboard while making the paid state irreversible. Status 2 is owned
+// exclusively by ProcessCommissions after the ledger credit succeeds.
+func (s *Store) UpdateAdminOrderCommissionStatus(ctx context.Context, tradeNo string, next int, now time.Time) (Order, error) {
+	if !validTradeNo(tradeNo) || now.Unix() < 0 || next != 0 && next != 1 && next != 3 {
+		return Order{}, ErrInvalidInput
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Order{}, fmt.Errorf("begin administrator commission update: %w", err)
+	}
+	defer tx.Rollback()
+	order, err := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE o.trade_no = ?`, tradeNo))
+	if err != nil {
+		return Order{}, err
+	}
+	if order.Status != OrderStatusCompleted || order.CommissionStatus == nil || *order.CommissionStatus == 2 ||
+		order.InviteUserID == nil || order.CommissionBalance <= 0 {
+		return Order{}, ErrOrderState
+	}
+	current := *order.CommissionStatus
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders SET commission_status = ?, updated_at = ?
+		WHERE id = ? AND status = ? AND commission_status = ?
+	`, next, now.Unix(), order.ID, OrderStatusCompleted, current)
+	if err != nil {
+		return Order{}, fmt.Errorf("update administrator commission state: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return Order{}, fmt.Errorf("count administrator commission update: %w", err)
+	}
+	if updated != 1 {
+		return Order{}, ErrOrderState
+	}
+	order.CommissionStatus = &next
+	order.UpdatedAt = now.UTC()
+	if err := tx.Commit(); err != nil {
+		return Order{}, fmt.Errorf("commit administrator commission update: %w", err)
 	}
 	return order, nil
 }
