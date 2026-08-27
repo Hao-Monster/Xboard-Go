@@ -772,15 +772,33 @@ export interface AdminUser {
   distributor_name?: string | null;
   banned: boolean;
   group_id: number | null;
+  group_name: string | null;
+  plan_id: number | null;
+  plan_name: string | null;
+  invite_user_id: number | null;
+  invite_user_email: string | null;
   transfer_enable: number;
   traffic_upload: number;
   traffic_download: number;
+  traffic_used: number;
   expired_at: string | null;
   speed_limit: number;
   device_limit: number;
   online_count: number;
   last_online_at: string | null;
   last_login_at: string | null;
+  balance: number;
+  commission_type: number;
+  commission_rate: number | null;
+  commission_balance: number;
+  discount: number | null;
+  next_reset_at: string | null;
+  last_reset_at: string | null;
+  reset_count: number;
+  telegram_id: number | null;
+  remind_expire: boolean;
+  remind_traffic: boolean;
+  remarks: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -789,6 +807,9 @@ export interface AdminUser {
 export interface AdminUserPage {
   items: AdminUser[];
   next_cursor?: string;
+  total?: number;
+  page?: number;
+  page_size?: number;
 }
 
 export type TicketLevel = 0 | 1 | 2;
@@ -1113,6 +1134,19 @@ export interface AdminUserQuery {
   email_prefix?: string;
   banned?: boolean;
   group_id?: number;
+  page?: number;
+  page_size?: number;
+  sort_by?: AdminUserSort;
+  sort_desc?: boolean;
+  filters?: AdminUserFilter[];
+}
+
+export type AdminUserSort = "id" | "online_count" | "banned" | "traffic_used" | "transfer_enable" | "expired_at" | "balance" | "commission_balance" | "created_at";
+export type AdminUserFilterOperator = "eq" | "neq" | "contains" | "gt" | "gte" | "lt" | "lte" | "in" | "is_null" | "not_null";
+export interface AdminUserFilter {
+  field: string;
+  operator: AdminUserFilterOperator;
+  value?: string | number | boolean | Array<string | number | boolean>;
 }
 
 export interface AdminUserCreateInput {
@@ -1771,12 +1805,32 @@ export class APIClient implements AdminAPI {
   }
 
   async listAdminUsers(query: AdminUserQuery = {}): Promise<AdminUserPage> {
+    if ((query.filters?.length ?? 0) > 0) {
+      return this.request<AdminUserPage>("/api/v1/admin/users/query", {
+        method: "POST",
+        body: {
+          page: query.page ?? 1,
+          page_size: query.page_size ?? 50,
+          sort_by: query.sort_by ?? "id",
+          sort_desc: query.sort_desc ?? true,
+          email_prefix: query.email_prefix ?? "",
+          banned: query.banned,
+          group_id: query.group_id,
+          filters: query.filters
+        }
+      });
+    }
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set("limit", String(query.limit));
     if (query.cursor !== undefined && query.cursor !== "") params.set("cursor", query.cursor);
     if (query.email_prefix !== undefined && query.email_prefix !== "") params.set("email_prefix", query.email_prefix);
     if (query.banned !== undefined) params.set("banned", String(query.banned));
     if (query.group_id !== undefined) params.set("group_id", String(query.group_id));
+    if (query.page !== undefined) params.set("page", String(query.page));
+    if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
+    if (query.sort_by !== undefined) params.set("sort_by", query.sort_by);
+    if (query.sort_desc !== undefined) params.set("sort_desc", String(query.sort_desc));
+    if (query.filters !== undefined && query.filters.length > 0) params.set("filters", JSON.stringify(query.filters));
     const suffix = params.size === 0 ? "" : `?${params.toString()}`;
     return this.request<AdminUserPage>(`/api/v1/admin/users${suffix}`);
   }

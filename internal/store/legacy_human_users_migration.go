@@ -57,6 +57,10 @@ type LegacyHumanUser struct {
 	NextResetAt       *int64  `json:"next_reset_at"`
 	LastResetAt       *int64  `json:"last_reset_at"`
 	ResetCount        int64   `json:"reset_count"`
+	TelegramID        *int64  `json:"telegram_id"`
+	RemindExpire      *bool   `json:"remind_expire"`
+	RemindTraffic     *bool   `json:"remind_traffic"`
+	Remarks           *string `json:"remarks"`
 	SubscriptionToken string  `json:"subscription_token"`
 	CreatedAt         int64   `json:"created_at"`
 	UpdatedAt         int64   `json:"updated_at"`
@@ -140,6 +144,24 @@ func LegacyHumanUsersChecksum(users []LegacyHumanUser) string {
 			canonical.writeBool(user.IsStaff)
 			canonical.writeBool(user.IsDistributor)
 			canonical.writeStringPointer(user.DistributorName)
+		}
+	}
+	directoryExtended := false
+	for _, user := range ordered {
+		if user.TelegramID != nil || user.RemindExpire != nil && !*user.RemindExpire ||
+			user.RemindTraffic != nil && !*user.RemindTraffic || user.Remarks != nil {
+			directoryExtended = true
+			break
+		}
+	}
+	if directoryExtended {
+		canonical.writeString("directory-v1")
+		for _, user := range ordered {
+			canonical.writeInt64(user.ID)
+			canonical.writePointer(user.TelegramID)
+			canonical.writeLegacyReminder(user.RemindExpire)
+			canonical.writeLegacyReminder(user.RemindTraffic)
+			canonical.writeStringPointer(user.Remarks)
 		}
 	}
 	return canonical.sum()
@@ -228,6 +250,25 @@ func (canonical *legacyHumanUsersDigest) writeBool(value bool) {
 	_, _ = canonical.digest.Write(canonical.flag[:])
 }
 
+func (canonical *legacyHumanUsersDigest) writeBoolPointer(value *bool) {
+	canonical.flag[0] = 0
+	if value != nil {
+		canonical.flag[0] = 1
+	}
+	_, _ = canonical.digest.Write(canonical.flag[:])
+	if value != nil {
+		canonical.writeBool(*value)
+	}
+}
+
+func (canonical *legacyHumanUsersDigest) writeLegacyReminder(value *bool) {
+	if value == nil || *value {
+		canonical.writeBoolPointer(nil)
+		return
+	}
+	canonical.writeBoolPointer(value)
+}
+
 func (canonical *legacyHumanUsersDigest) sum() string {
 	return hex.EncodeToString(canonical.digest.Sum(nil))
 }
@@ -265,12 +306,16 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		}
 		if user.GroupID != nil && *user.GroupID < 1 || user.InviteUserID != nil && (*user.InviteUserID < 1 || *user.InviteUserID == user.ID) ||
 			user.PlanID != nil && *user.PlanID < 1 || user.ResetCount < 0 ||
+			user.TelegramID != nil && *user.TelegramID < 1 ||
 			user.ExpiredAt != nil && !validLegacyUnixTimestamp(*user.ExpiredAt) ||
 			user.LastOnlineAt != nil && !validLegacyUnixTimestamp(*user.LastOnlineAt) ||
 			user.LastLoginAt != nil && !validLegacyUnixTimestamp(*user.LastLoginAt) ||
 			user.NextResetAt != nil && !validLegacyUnixTimestamp(*user.NextResetAt) ||
 			user.LastResetAt != nil && !validLegacyUnixTimestamp(*user.LastResetAt) {
 			return fmt.Errorf("%w: legacy human user id %d has an invalid reference or timestamp", ErrInvalidInput, user.ID)
+		}
+		if user.Remarks != nil && (*user.Remarks == "" || len(*user.Remarks) > 4096 || !utf8.ValidString(*user.Remarks)) {
+			return fmt.Errorf("%w: legacy human user id %d has invalid remarks", ErrInvalidInput, user.ID)
 		}
 		if _, exists := ids[user.ID]; exists {
 			return fmt.Errorf("%w: duplicate legacy human user id %d", ErrInvalidInput, user.ID)
@@ -294,6 +339,9 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		totalBytes += int64(len(user.Email) + len(user.PasswordHash) + len(user.UUID) + len(user.SubscriptionToken))
 		if user.DistributorName != nil {
 			totalBytes += int64(len(*user.DistributorName))
+		}
+		if user.Remarks != nil {
+			totalBytes += int64(len(*user.Remarks))
 		}
 		if totalBytes > maxLegacyHumanUserBytes {
 			return fmt.Errorf("%w: legacy human users exceed the migration data limit", ErrInvalidInput)
@@ -420,12 +468,13 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 			id, email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, balance, discount, commission_type,
 			commission_rate, commission_balance, uuid, group_id, plan_id, transfer_enable,
 			traffic_u, traffic_d, expired_at, speed_limit, device_limit, online_count, last_online_at,
-			last_login_at, next_reset_at, last_reset_at, reset_count, admin_revision, subscription_token,
+			last_login_at, next_reset_at, last_reset_at, reset_count, telegram_id, remind_expire, remind_traffic, remarks,
+			admin_revision, subscription_token,
 			invite_user_id, created_at, updated_at
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?, ?, 'human',
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-			?, ?, ?, ?, ?, 1, ?, NULL, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?
 		)
 	`)
 	if err != nil {
@@ -439,7 +488,8 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 			nullableInt64Value(user.GroupID), nullableInt64Value(user.PlanID), user.TransferEnable, user.TrafficUpload, user.TrafficDownload,
 			nullableInt64Value(user.ExpiredAt), user.SpeedLimit, user.DeviceLimit, nullableInt64Value(user.LastOnlineAt),
 			nullableInt64Value(user.LastLoginAt), nullableInt64Value(user.NextResetAt), nullableInt64Value(user.LastResetAt),
-			user.ResetCount, user.SubscriptionToken, user.CreatedAt, user.UpdatedAt); err != nil {
+			user.ResetCount, nullableInt64Value(user.TelegramID), legacyReminderValue(user.RemindExpire), legacyReminderValue(user.RemindTraffic),
+			nullableStringValue(user.Remarks), user.SubscriptionToken, user.CreatedAt, user.UpdatedAt); err != nil {
 			return LegacyHumanUsersImportReport{}, fmt.Errorf("import legacy human user id %d: %w", user.ID, err)
 		}
 	}
@@ -502,8 +552,10 @@ func validateReplaceableBootstrapAdmin(ctx context.Context, tx *sql.Tx) (int64, 
 	var id int64
 	var isAdmin, banned bool
 	var kind string
-	var runtimeUUID sql.NullString
+	var runtimeUUID, remarks sql.NullString
 	var groupID, planID, expiredAt, lastOnlineAt, inviteUserID, nextResetAt, lastResetAt sql.NullInt64
+	var telegramID sql.NullInt64
+	var remindExpire, remindTraffic bool
 	var resetCount int64
 	var transfer, upload, download, balance, commissionBalance int64
 	var discount, commissionRate sql.NullInt64
@@ -513,17 +565,18 @@ func validateReplaceableBootstrapAdmin(ctx context.Context, tx *sql.Tx) (int64, 
 		SELECT id, is_admin, banned, account_kind, uuid, group_id, plan_id, balance, discount, commission_type,
 		       commission_rate, commission_balance, transfer_enable, traffic_u, traffic_d,
 		       expired_at, speed_limit, device_limit, online_count, last_online_at, invite_user_id,
-		       next_reset_at, last_reset_at, reset_count
+		       next_reset_at, last_reset_at, reset_count, telegram_id, remind_expire, remind_traffic, remarks
 		FROM users
 	`).Scan(&id, &isAdmin, &banned, &kind, &runtimeUUID, &groupID, &planID, &balance, &discount, &commissionType,
 		&commissionRate, &commissionBalance, &transfer, &upload, &download,
-		&expiredAt, &speed, &devices, &online, &lastOnlineAt, &inviteUserID, &nextResetAt, &lastResetAt, &resetCount); err != nil {
+		&expiredAt, &speed, &devices, &online, &lastOnlineAt, &inviteUserID, &nextResetAt, &lastResetAt, &resetCount,
+		&telegramID, &remindExpire, &remindTraffic, &remarks); err != nil {
 		return 0, fmt.Errorf("inspect bootstrap administrator: %w", err)
 	}
 	if !isAdmin || banned || kind != AccountKindHuman || runtimeUUID.Valid || groupID.Valid || planID.Valid || expiredAt.Valid || lastOnlineAt.Valid ||
 		inviteUserID.Valid || nextResetAt.Valid || lastResetAt.Valid || resetCount != 0 || transfer != 0 || upload != 0 || download != 0 ||
 		balance != 0 || discount.Valid || commissionType != 0 || commissionRate.Valid || commissionBalance != 0 ||
-		speed != 0 || devices != 0 || online != 0 {
+		speed != 0 || devices != 0 || online != 0 || telegramID.Valid || !remindExpire || !remindTraffic || remarks.Valid {
 		return 0, fmt.Errorf("%w: target user is not a replaceable bootstrap administrator", ErrConflict)
 	}
 	return id, nil
@@ -629,12 +682,17 @@ func nullableIntValue(value *int) any {
 	return *value
 }
 
+func legacyReminderValue(value *bool) bool {
+	return value == nil || *value
+}
+
 func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, string, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, invite_user_id, email, password_hash, balance, discount, commission_type, commission_rate,
 		       commission_balance, transfer_enable, traffic_u, traffic_d, banned, is_admin,is_staff,is_distributor,distributor_name,
 		       last_login_at, uuid, group_id, plan_id, speed_limit, expired_at, device_limit, online_count,
-		       last_online_at, next_reset_at, last_reset_at, reset_count, subscription_token,
+		       last_online_at, next_reset_at, last_reset_at, reset_count, telegram_id, remind_expire, remind_traffic, remarks,
+		       subscription_token,
 		       admin_revision, account_kind, created_at, updated_at
 		FROM users WHERE account_kind = 'human' ORDER BY id
 	`)
@@ -648,7 +706,9 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 		var user LegacyHumanUser
 		var inviteUserID, lastLoginAt, groupID, planID, expiredAt, lastOnlineAt, nextResetAt, lastResetAt sql.NullInt64
 		var discount, commissionRate sql.NullInt64
-		var distributorName sql.NullString
+		var distributorName, remarks sql.NullString
+		var telegramID sql.NullInt64
+		var remindExpire, remindTraffic bool
 		var onlineCount int
 		var revision int64
 		var accountKind string
@@ -657,7 +717,7 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 			&user.TrafficUpload, &user.TrafficDownload, &user.Banned, &user.IsAdmin, &user.IsStaff, &user.IsDistributor,
 			&distributorName, &lastLoginAt, &user.UUID,
 			&groupID, &planID, &user.SpeedLimit, &expiredAt, &user.DeviceLimit, &onlineCount, &lastOnlineAt,
-			&nextResetAt, &lastResetAt, &user.ResetCount,
+			&nextResetAt, &lastResetAt, &user.ResetCount, &telegramID, &remindExpire, &remindTraffic, &remarks,
 			&user.SubscriptionToken, &revision, &accountKind, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return 0, "", fmt.Errorf("scan imported legacy human user: %w", err)
 		}
@@ -675,6 +735,16 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 		user.LastOnlineAt = nullableInt64Pointer(lastOnlineAt)
 		user.NextResetAt = nullableInt64Pointer(nextResetAt)
 		user.LastResetAt = nullableInt64Pointer(lastResetAt)
+		user.TelegramID = nullableInt64Pointer(telegramID)
+		if !remindExpire {
+			value := false
+			user.RemindExpire = &value
+		}
+		if !remindTraffic {
+			value := false
+			user.RemindTraffic = &value
+		}
+		user.Remarks = nullableStringPointer(remarks)
 		users = append(users, user)
 		count++
 	}

@@ -631,40 +631,128 @@ const (
 )
 
 type AdminUser struct {
-	ID              int64      `json:"id"`
-	Email           string     `json:"email"`
-	IsAdmin         bool       `json:"is_admin"`
-	IsStaff         bool       `json:"is_staff"`
-	IsDistributor   bool       `json:"is_distributor"`
-	DistributorName *string    `json:"distributor_name"`
-	Banned          bool       `json:"banned"`
-	GroupID         *int64     `json:"group_id"`
-	TransferEnable  int64      `json:"transfer_enable"`
-	TrafficUpload   int64      `json:"traffic_upload"`
-	TrafficDownload int64      `json:"traffic_download"`
-	ExpiredAt       *time.Time `json:"expired_at"`
-	SpeedLimit      int        `json:"speed_limit"`
-	DeviceLimit     int        `json:"device_limit"`
-	OnlineCount     int        `json:"online_count"`
-	LastOnlineAt    *time.Time `json:"last_online_at"`
-	LastLoginAt     *time.Time `json:"last_login_at"`
-	Revision        int64      `json:"revision"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID                int64      `json:"id"`
+	Email             string     `json:"email"`
+	IsAdmin           bool       `json:"is_admin"`
+	IsStaff           bool       `json:"is_staff"`
+	IsDistributor     bool       `json:"is_distributor"`
+	DistributorName   *string    `json:"distributor_name"`
+	Banned            bool       `json:"banned"`
+	GroupID           *int64     `json:"group_id"`
+	GroupName         *string    `json:"group_name"`
+	PlanID            *int64     `json:"plan_id"`
+	PlanName          *string    `json:"plan_name"`
+	InviteUserID      *int64     `json:"invite_user_id"`
+	InviteUserEmail   *string    `json:"invite_user_email"`
+	TransferEnable    int64      `json:"transfer_enable"`
+	TrafficUpload     int64      `json:"traffic_upload"`
+	TrafficDownload   int64      `json:"traffic_download"`
+	TrafficUsed       int64      `json:"traffic_used"`
+	ExpiredAt         *time.Time `json:"expired_at"`
+	SpeedLimit        int        `json:"speed_limit"`
+	DeviceLimit       int        `json:"device_limit"`
+	OnlineCount       int        `json:"online_count"`
+	LastOnlineAt      *time.Time `json:"last_online_at"`
+	LastLoginAt       *time.Time `json:"last_login_at"`
+	Balance           int64      `json:"balance"`
+	CommissionType    int        `json:"commission_type"`
+	CommissionRate    *int       `json:"commission_rate"`
+	CommissionBalance int64      `json:"commission_balance"`
+	Discount          *int       `json:"discount"`
+	NextResetAt       *time.Time `json:"next_reset_at"`
+	LastResetAt       *time.Time `json:"last_reset_at"`
+	ResetCount        int        `json:"reset_count"`
+	TelegramID        *int64     `json:"telegram_id"`
+	RemindExpire      bool       `json:"remind_expire"`
+	RemindTraffic     bool       `json:"remind_traffic"`
+	Remarks           *string    `json:"remarks"`
+	Revision          int64      `json:"revision"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 type AdminUserPage struct {
 	Items      []AdminUser `json:"items"`
 	NextCursor string      `json:"next_cursor,omitempty"`
+	Total      int64       `json:"total"`
+	Page       int         `json:"page"`
+	PageSize   int         `json:"page_size"`
 }
 
 type AdminUserFilter struct {
-	Limit       int
-	Cursor      string
-	EmailPrefix string
-	Banned      *bool
-	GroupID     *int64
+	Limit          int
+	Cursor         string
+	EmailPrefix    string
+	Banned         *bool
+	GroupID        *int64
+	Page           int
+	PageSize       int
+	SortBy         AdminUserSort
+	SortDescending bool
+	Sorts          []AdminUserSortRule
+	Rules          []AdminUserFilterRule
 }
+
+type AdminUserSortRule struct {
+	Field      AdminUserSort
+	Descending bool
+}
+
+type AdminUserSort string
+
+const (
+	AdminUserSortID                AdminUserSort = "id"
+	AdminUserSortOnlineCount       AdminUserSort = "online_count"
+	AdminUserSortBanned            AdminUserSort = "banned"
+	AdminUserSortTrafficUsed       AdminUserSort = "traffic_used"
+	AdminUserSortTransferEnable    AdminUserSort = "transfer_enable"
+	AdminUserSortExpiredAt         AdminUserSort = "expired_at"
+	AdminUserSortBalance           AdminUserSort = "balance"
+	AdminUserSortCommissionBalance AdminUserSort = "commission_balance"
+	AdminUserSortCreatedAt         AdminUserSort = "created_at"
+)
+
+type AdminUserFilterRule struct {
+	Field    string
+	Operator string
+	Values   []string
+}
+
+const (
+	AdminUserFieldID                = "id"
+	AdminUserFieldEmail             = "email"
+	AdminUserFieldPlanID            = "plan_id"
+	AdminUserFieldGroupID           = "group_id"
+	AdminUserFieldTransferEnable    = "transfer_enable"
+	AdminUserFieldTrafficUsed       = "traffic_used"
+	AdminUserFieldOnlineCount       = "online_count"
+	AdminUserFieldExpiredAt         = "expired_at"
+	AdminUserFieldUUID              = "uuid"
+	AdminUserFieldSubscriptionToken = "subscription_token"
+	AdminUserFieldBanned            = "banned"
+	AdminUserFieldRemarks           = "remarks"
+	AdminUserFieldInviteUserID      = "invite_user_id"
+	AdminUserFieldInviteUserEmail   = "invite_user_email"
+	AdminUserFieldIsAdmin           = "is_admin"
+	AdminUserFieldIsStaff           = "is_staff"
+	AdminUserFieldIsDistributor     = "is_distributor"
+	AdminUserFieldBalance           = "balance"
+	AdminUserFieldCommissionBalance = "commission_balance"
+	AdminUserFieldCreatedAt         = "created_at"
+)
+
+const (
+	AdminUserOperatorEqual          = "eq"
+	AdminUserOperatorNotEqual       = "neq"
+	AdminUserOperatorContains       = "contains"
+	AdminUserOperatorGreater        = "gt"
+	AdminUserOperatorGreaterOrEqual = "gte"
+	AdminUserOperatorLess           = "lt"
+	AdminUserOperatorLessOrEqual    = "lte"
+	AdminUserOperatorIn             = "in"
+	AdminUserOperatorIsNull         = "is_null"
+	AdminUserOperatorNotNull        = "not_null"
+)
 
 type CreateAdminUserInput struct {
 	Email           string

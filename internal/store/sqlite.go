@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 36
+const currentSchemaVersion = 37
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -288,6 +288,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v36: %w", err)
 		}
 		version = 36
+	}
+	if version < 37 {
+		if err := applySchemaV37(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v37: %w", err)
+		}
+		version = 37
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1817,3 +1823,49 @@ CREATE INDEX IF NOT EXISTS idx_orders_commission_status_created
 CREATE INDEX IF NOT EXISTS idx_orders_admin_filters
     ON orders(status, type, period, commission_status);
 `
+
+const schemaV37 = `
+CREATE INDEX IF NOT EXISTS idx_users_directory_plan_id
+    ON users(account_kind, plan_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_expired_at
+    ON users(account_kind, expired_at, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_online_count
+    ON users(account_kind, online_count, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_total_used
+    ON users(account_kind, (traffic_u + traffic_d), id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_transfer_enable
+    ON users(account_kind, transfer_enable, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_balance
+    ON users(account_kind, balance, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_commission_balance
+    ON users(account_kind, commission_balance, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_directory_created_at
+    ON users(account_kind, created_at, id DESC);
+`
+
+func applySchemaV37(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"telegram_id", `ALTER TABLE users ADD COLUMN telegram_id INTEGER CHECK (telegram_id IS NULL OR telegram_id > 0)`},
+		{"remind_expire", `ALTER TABLE users ADD COLUMN remind_expire INTEGER NOT NULL DEFAULT 1 CHECK (remind_expire IN (0, 1))`},
+		{"remind_traffic", `ALTER TABLE users ADD COLUMN remind_traffic INTEGER NOT NULL DEFAULT 1 CHECK (remind_traffic IN (0, 1))`},
+		{"remarks", `ALTER TABLE users ADD COLUMN remarks TEXT CHECK (remarks IS NULL OR length(CAST(remarks AS BLOB)) <= 4096)`},
+	}
+	for _, column := range columns {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('users') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect users.%s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add users.%s: %w", column.name, err)
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, schemaV37); err != nil {
+		return fmt.Errorf("add user directory indexes: %w", err)
+	}
+	return nil
+}

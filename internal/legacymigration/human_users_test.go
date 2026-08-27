@@ -32,7 +32,9 @@ func TestReadHumanUsersSnapshotPreservesSupportedLegacyIdentityAndAccessState(t 
 		invited.TrafficUpload != 10 || invited.TrafficDownload != 20 || invited.ExpiredAt == nil || *invited.ExpiredAt != 1_800_000_000 ||
 		invited.LastOnlineAt == nil || *invited.LastOnlineAt != 1_700_000_200 || invited.SpeedLimit != 50 || invited.DeviceLimit != 3 ||
 		invited.PlanID == nil || *invited.PlanID != 9 || invited.NextResetAt == nil || *invited.NextResetAt != 1_700_000_300 ||
-		invited.LastResetAt == nil || *invited.LastResetAt != 1_700_000_250 || invited.ResetCount != 2 {
+		invited.LastResetAt == nil || *invited.LastResetAt != 1_700_000_250 || invited.ResetCount != 2 ||
+		invited.TelegramID == nil || *invited.TelegramID != 6_000_000_002 || invited.RemindExpire == nil || *invited.RemindExpire ||
+		invited.RemindTraffic != nil || invited.Remarks == nil || *invited.Remarks != "重点客户" {
 		t.Fatalf("invited user = %#v", invited)
 	}
 	if !strings.HasPrefix(admin.PasswordHash, "$2y$10$") || strings.Contains(snapshot.Checksum, admin.PasswordHash) {
@@ -58,6 +60,8 @@ func TestReadHumanUsersSnapshotRejectsLossyOrUnsafeLegacyState(t *testing.T) {
 		{name: "invalid plan", statement: `UPDATE v2_user SET plan_id = -9 WHERE id = 2`, contains: "invalid"},
 		{name: "invalid reset state", statement: `UPDATE v2_user SET reset_count = -1 WHERE id = 2`, contains: "reset count"},
 		{name: "last login ip", statement: `UPDATE v2_user SET last_login_ip = '203.0.113.4' WHERE id = 2`, contains: "unsupported"},
+		{name: "invalid telegram", statement: `UPDATE v2_user SET telegram_id = -1 WHERE id = 2`, contains: "telegram"},
+		{name: "oversized remarks", statement: `UPDATE v2_user SET remarks = printf('%0*d', 4097, 0) WHERE id = 2`, contains: "remarks"},
 		{name: "email normalization", statement: `UPDATE v2_user SET email = ' Upper@Example.Test ' WHERE id = 2`, contains: "invalid"},
 		{name: "missing inviter", statement: `UPDATE v2_user SET invite_user_id = 999 WHERE id = 2`, contains: "missing inviter"},
 		{name: "weak bcrypt", statement: `UPDATE v2_user SET password = '` + string(weakHash) + `' WHERE id = 2`, contains: "invalid"},
@@ -122,10 +126,11 @@ func createLegacyHumanUsersSnapshot(t *testing.T) string {
 		INSERT INTO v2_user
 		(id, invite_user_id, email, password, balance, discount, commission_type, commission_rate, commission_balance,
 		 u, d, transfer_enable, is_staff, is_distributor, distributor_name, uuid, group_id, plan_id, speed_limit, token,
-		 expired_at, created_at, updated_at, device_limit, last_online_at, next_reset_at, last_reset_at, reset_count)
+		 expired_at, created_at, updated_at, device_limit, last_online_at, next_reset_at, last_reset_at, reset_count,
+		 telegram_id, remind_expire, remarks)
 		VALUES (2, 1, 'user@example.test', ?, 1234, 15, 2, 20, 567, 10, 20, 1000, 1, 1, '测试渠道', '22222222-2222-4222-8222-222222222222', 7, 9, 50,
 		        '22222222222222222222222222222222', 1800000000, 1700000001, 1700000201, 3, 1700000200,
-		        1700000300, 1700000250, 2);
+		        1700000300, 1700000250, 2, 6000000002, 0, '重点客户');
 	`, phpHash, phpHash); err != nil {
 		_ = database.Close()
 		t.Fatal(err)

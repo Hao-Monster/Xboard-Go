@@ -31,6 +31,12 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 	input.Users[1].CommissionType = 2
 	input.Users[1].CommissionRate = intPointer(20)
 	input.Users[1].CommissionBalance = 567
+	telegramID := int64(6_000_000_020)
+	remindExpire := false
+	remarks := "重点客户"
+	input.Users[1].TelegramID = &telegramID
+	input.Users[1].RemindExpire = &remindExpire
+	input.Users[1].Remarks = &remarks
 	input.Checksum = LegacyHumanUsersChecksum(input.Users)
 	report, err := database.ImportLegacyHumanUsers(ctx, input, time.Unix(400, 0))
 	if err != nil {
@@ -65,6 +71,11 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 	}
 	if balance != 1_234 || discount != 15 || commissionType != 2 || commissionRate != 20 || commissionBalance != 567 {
 		t.Fatalf("imported finance state = %d/%d/%d/%d/%d", balance, discount, commissionType, commissionRate, commissionBalance)
+	}
+	detail, err := database.GetAdminUser(ctx, 20)
+	if err != nil || detail.TelegramID == nil || *detail.TelegramID != telegramID || detail.RemindExpire || !detail.RemindTraffic ||
+		detail.Remarks == nil || *detail.Remarks != remarks {
+		t.Fatalf("imported directory state = (%#v, %v)", detail, err)
 	}
 	var encodedReport string
 	if err := database.db.QueryRowContext(ctx, `SELECT report_json FROM legacy_migration_runs WHERE slice = ?`, LegacyHumanUsersSlice).Scan(&encodedReport); err != nil {
@@ -126,6 +137,17 @@ func TestImportLegacyHumanUsersPreservesPlanAndTrafficResetState(t *testing.T) {
 	}
 	if planID != 77 || next != nextResetAt || last != lastResetAt || resetCount != 3 {
 		t.Fatalf("plan/reset state = %d/%d/%d/%d", planID, next, last, resetCount)
+	}
+}
+
+func TestLegacyHumanUsersChecksumNormalizesEnabledReminderDefaults(t *testing.T) {
+	input := validLegacyHumanUsersImport(t)
+	baseline := input.Checksum
+	enabled := true
+	input.Users[0].RemindExpire = &enabled
+	input.Users[0].RemindTraffic = &enabled
+	if checksum := LegacyHumanUsersChecksum(input.Users); checksum != baseline {
+		t.Fatalf("enabled reminder defaults changed legacy checksum: got %s want %s", checksum, baseline)
 	}
 }
 

@@ -329,6 +329,8 @@ func TestSchemaV29PreservesV28DataAndAddsFinancialConstraints(t *testing.T) {
 	}
 	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(ctx, `
+		DROP INDEX idx_users_directory_balance;
+		DROP INDEX idx_users_directory_commission_balance;
 		DROP TRIGGER trg_orders_payment_insert;
 		DROP TRIGGER trg_orders_payment_update;
 		DROP TRIGGER trg_payments_delete_restrict;

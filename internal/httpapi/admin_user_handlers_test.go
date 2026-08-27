@@ -5,12 +5,72 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+func TestAdminUserPagedQueryAndLegacyFetchAreAllowlistedAndSecretFree(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	for _, body := range []string{
+		`{"email":"directory-alpha@example.test","password":"secure-password-123","group_id":7,"transfer_enable":1000,"speed_limit":0,"device_limit":0,"banned":false}`,
+		`{"email":"directory-beta@example.test","password":"secure-password-123","group_id":8,"transfer_enable":2000,"speed_limit":0,"device_limit":0,"banned":false}`,
+		`{"email":"other@example.test","password":"secure-password-123","group_id":7,"transfer_enable":3000,"speed_limit":0,"device_limit":0,"banned":true}`,
+	} {
+		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", body)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("create directory fixture status=%d body=%s", response.Code, response.Body)
+		}
+	}
+	filters := url.QueryEscape(`[{"field":"email","operator":"contains","value":"directory"},{"field":"banned","operator":"eq","value":false}]`)
+	response := admin.request(t, api, http.MethodGet,
+		"/api/v1/admin/users?page=1&page_size=1&sort_by=transfer_enable&sort_desc=true&filters="+filters, "")
+	if response.Code != http.StatusOK || !containsAll(response.Body.String(),
+		`"total":2`, `"page":1`, `"page_size":1`, `directory-beta@example.test`, `"traffic_used":0`, `"group_name":"Test group 8"`) {
+		t.Fatalf("modern paged directory status=%d body=%s", response.Code, response.Body)
+	}
+	if containsAll(response.Body.String(), `"subscription_token"`) || containsAll(response.Body.String(), `"subscribe_url"`) || containsAll(response.Body.String(), `"uuid"`) {
+		t.Fatalf("modern directory exposed subscription secrets: %s", response.Body)
+	}
+	postQuery := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/query",
+		`{"page":1,"page_size":20,"sort_by":"id","sort_desc":true,"email_prefix":"","banned":false,"group_id":null,"filters":[{"field":"subscription_token","operator":"eq","value":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}`)
+	if postQuery.Code != http.StatusOK || !containsAll(postQuery.Body.String(), `"items":[]`, `"total":0`, `"page":1`, `"page_size":20`) {
+		t.Fatalf("modern POST query status=%d body=%s", postQuery.Code, postQuery.Body)
+	}
+	if containsAll(postQuery.Body.String(), `0123456789abcdef`) {
+		t.Fatalf("modern POST query reflected secret: %s", postQuery.Body)
+	}
+	for _, path := range []string{
+		"/api/v1/admin/users?page=1&page_size=20&sort_by=id%20DESC%3BDELETE%20FROM%20users",
+		"/api/v1/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"password_hash","operator":"eq","value":"hash"}]`),
+		"/api/v1/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"subscription_token","operator":"eq","value":"secret"}]`),
+	} {
+		invalid := admin.request(t, api, http.MethodGet, path, "")
+		if invalid.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("unsafe query %q status=%d body=%s", path, invalid.Code, invalid.Body)
+		}
+	}
+
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacy := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/fetch", authorization,
+		`{"current":1,"pageSize":1,"filter":[{"id":"email","value":"directory"},{"id":"transfer_enable","value":"gt:1500"},{"id":"banned","value":false}],"sort":[{"id":"banned","desc":false},{"id":"transfer_enable","desc":true}]}`)
+	if legacy.Code != http.StatusOK || !containsAll(legacy.Body.String(),
+		`"total":1`, `"current_page":1`, `"per_page":1`, `directory-beta@example.test`, `"total_used":0`, `"group":{"id":8,"name":"Test group 8"}`) {
+		t.Fatalf("legacy directory status=%d body=%s", legacy.Code, legacy.Body)
+	}
+	if containsAll(legacy.Body.String(), `"token"`) || containsAll(legacy.Body.String(), `"subscribe_url"`) || containsAll(legacy.Body.String(), `"uuid"`) {
+		t.Fatalf("legacy directory exposed subscription secrets: %s", legacy.Body)
+	}
+	legacyUnsafe := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/fetch", authorization,
+		`{"current":1,"pageSize":20,"filter":[{"id":"password_hash","value":"hash"}]}`)
+	if legacyUnsafe.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("legacy unsafe filter status=%d body=%s", legacyUnsafe.Code, legacyUnsafe.Body)
+	}
+}
 
 func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 	api, database := newTestAPI(t)
@@ -246,6 +306,15 @@ func TestAdminUserPasswordResetRevokesExistingLogin(t *testing.T) {
 	forbidden := userClient.request(t, api, http.MethodGet, "/api/v1/admin/users", "")
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("non-admin directory status = %d; body=%s", forbidden.Code, forbidden.Body)
+	}
+	forbiddenQuery := userClient.request(t, api, http.MethodPost, "/api/v1/admin/users/query", `{"page":1,"page_size":20,"filters":[]}`)
+	if forbiddenQuery.Code != http.StatusForbidden {
+		t.Fatalf("non-admin query status = %d; body=%s", forbiddenQuery.Code, forbiddenQuery.Body)
+	}
+	userAuthorization := loginLegacyBearer(t, api, "session-user@example.test", "session-password-123").Authorization
+	forbiddenLegacy := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/fetch", userAuthorization, `{"current":1,"pageSize":20}`)
+	if forbiddenLegacy.Code != http.StatusForbidden {
+		t.Fatalf("non-admin legacy directory status = %d; body=%s", forbiddenLegacy.Code, forbiddenLegacy.Body)
 	}
 
 	reset := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/users/%d/password", payload.Data.ID), fmt.Sprintf(`{"revision":%d,"new_password":"rotated-password-123"}`, payload.Data.Revision))

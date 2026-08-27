@@ -367,6 +367,9 @@ func TestAdminUserDirectoryQueryPlansUseIndexes(t *testing.T) {
 		{"banned", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' AND banned = ? AND id < ? ORDER BY id DESC LIMIT ?`, []any{1, 1_000_000, 51}},
 		{"group", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' AND group_id = ? AND id < ? ORDER BY id DESC LIMIT ?`, []any{7, 1_000_000, 51}},
 		{"email-prefix", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' AND email LIKE ? ESCAPE '\\' ORDER BY email COLLATE NOCASE, id LIMIT ?`, []any{"alpha%", 51}},
+		{"plan", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' AND plan_id = ? ORDER BY id DESC LIMIT ?`, []any{7, 51}},
+		{"balance-sort", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' ORDER BY balance DESC, id DESC LIMIT ?`, []any{51}},
+		{"traffic-used-sort", `EXPLAIN QUERY PLAN SELECT id FROM users WHERE account_kind = 'human' ORDER BY (traffic_u + traffic_d) DESC, id DESC LIMIT ?`, []any{51}},
 	}
 	for _, test := range queries {
 		t.Run(test.name, func(t *testing.T) {
@@ -415,14 +418,15 @@ func BenchmarkListAdminUsers100K(b *testing.B) {
 		b.Fatal(err)
 	}
 	statement, err := tx.PrepareContext(ctx, `
-		INSERT INTO users (email, password_hash, account_kind, banned, group_id, transfer_enable, uuid, subscription_token, created_at, updated_at)
-		VALUES (?, 'hash', 'human', ?, ?, 1000, ?, ?, ?, ?)
+		INSERT INTO users (email, password_hash, account_kind, banned, group_id, transfer_enable, traffic_u, traffic_d, balance, commission_balance, online_count, uuid, subscription_token, created_at, updated_at)
+		VALUES (?, 'hash', 'human', ?, ?, 1000000, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		b.Fatal(err)
 	}
 	for index := 0; index < 100_000; index++ {
 		_, err := statement.ExecContext(ctx, fmt.Sprintf("bench-%06d@example.test", index), index%2, 7+index%3,
+			index*3, index*5, index*11, index*7, index%25,
 			fmt.Sprintf("00000000-0000-4000-8000-%012d", index), testSubscriptionToken(b), now, now)
 		if err != nil {
 			b.Fatal(err)
@@ -447,6 +451,31 @@ func BenchmarkListAdminUsers100K(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
 			if _, err := database.ListAdminUsers(ctx, AdminUserFilter{Limit: 50, EmailPrefix: "bench-000"}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("paged-balance-sort", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if _, err := database.ListAdminUsers(ctx, AdminUserFilter{
+				Page: 1, PageSize: 50, SortBy: AdminUserSortBalance, SortDescending: true,
+				Rules: []AdminUserFilterRule{{Field: AdminUserFieldBalance, Operator: AdminUserOperatorGreaterOrEqual, Values: []string{"0"}}},
+			}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("paged-multi-filter", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if _, err := database.ListAdminUsers(ctx, AdminUserFilter{
+				Page: 1, PageSize: 50, SortBy: AdminUserSortTrafficUsed, SortDescending: true,
+				Rules: []AdminUserFilterRule{
+					{Field: AdminUserFieldBanned, Operator: AdminUserOperatorEqual, Values: []string{"true"}},
+					{Field: AdminUserFieldTrafficUsed, Operator: AdminUserOperatorGreater, Values: []string{"400000"}},
+				},
+			}); err != nil {
 				b.Fatal(err)
 			}
 		}

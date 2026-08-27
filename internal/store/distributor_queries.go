@@ -11,12 +11,9 @@ import (
 )
 
 func (s *Store) ListDistributorOptions(ctx context.Context) ([]AdminUser, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id,email,is_admin,is_staff,is_distributor,distributor_name,banned,group_id,transfer_enable,traffic_u,traffic_d,
-		       expired_at,speed_limit,device_limit,online_count,last_online_at,last_login_at,admin_revision,created_at,updated_at
-		FROM users
-		WHERE account_kind = 'human' AND is_distributor = 1
-		ORDER BY banned ASC,COALESCE(NULLIF(distributor_name,''),email) COLLATE NOCASE,id
+	rows, err := s.db.QueryContext(ctx, adminUserSelect+adminUserFrom+`
+		WHERE u.account_kind = 'human' AND u.is_distributor = 1
+		ORDER BY u.banned ASC,COALESCE(NULLIF(u.distributor_name,''),u.email) COLLATE NOCASE,u.id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list distributor options: %w", err)
