@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -440,8 +439,7 @@ func TestDeletingSchedulePreservesCurrentManualNodeState(t *testing.T) {
 
 func newTestStore(t testing.TB) *Store {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
-	store, err := OpenSQLite(dsn)
+	store, err := OpenSQLite(cloneMigratedTestDatabase(t))
 	if err != nil {
 		t.Fatalf("OpenSQLite() error = %v", err)
 	}
