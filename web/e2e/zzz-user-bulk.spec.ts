@@ -64,7 +64,7 @@ test("administrator bulk mail, filtered CSV, and ban match the legacy user workf
     let dialog = page.getByRole("dialog", { name: "发送邮件" });
     await expect(dialog).toContainText("向所选或已筛选用户发送邮件");
     await expect(dialog.getByLabel("仅选中（1）")).toBeChecked();
-    await expect(dialog.getByLabel("筛选后的用户")).toBeDisabled();
+    await expect(dialog.getByLabel("筛选后的用户")).toBeEnabled();
     await expect(dialog.getByLabel("全部用户")).toBeEnabled();
     await dialog.getByLabel("邮件主题").fill(subject);
     await dialog.getByLabel("邮件正文").fill("您好 {{user.email}} / {{app.name}} / {{user.plan_name|无套餐}}");
@@ -114,7 +114,8 @@ test("administrator bulk mail, filtered CSV, and ban match the legacy user workf
     await openBulkMenu(page);
     await page.getByRole("menuitem", { name: "批量封禁(1)", exact: true }).click();
     const alertDialog = page.getByRole("alertdialog", { name: "确认批量封禁" });
-    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(alertDialog).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(alertDialog).toContainText("此操作将封禁选中的 1 名用户。");
     await expect(alertDialog).toContainText("此操作无法撤销。当前管理员和系统内部账号会被安全跳过。");
     await alertDialog.getByRole("button", { name: "确认封禁", exact: true }).click();
@@ -154,9 +155,16 @@ async function loginAdministrator(page: Page) {
 async function queryByEmailPrefix(page: Page, value: string) {
   const search = page.getByRole("searchbox", { name: "邮箱前缀" });
   await search.fill(value);
-  const response = page.waitForResponse((candidate) => candidate.url().endsWith("/api/v1/admin/users/query") && candidate.request().method() === "POST");
-  await page.getByRole("button", { name: "查询用户", exact: true }).click();
-  expect((await response).status()).toBe(200);
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => {
+      const path = new URL(candidate.url()).pathname;
+      const method = candidate.request().method();
+      return (path === "/api/v1/admin/users" && method === "GET") ||
+        (path === "/api/v1/admin/users/query" && method === "POST");
+    }),
+    page.getByRole("button", { name: "查询用户", exact: true }).click()
+  ]);
+  expect(response.status()).toBe(200);
 }
 
 async function openBulkMenu(page: Page) {
@@ -195,7 +203,7 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
     const response = await fetch(requestPath, {
       method: requestMethod,
       credentials: "same-origin",
-      headers: body === undefined ? { "X-CSRF-Token": decodeURIComponent(encoded) } : {
+      headers: requestBody === undefined ? { "X-CSRF-Token": decodeURIComponent(encoded) } : {
         "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded)
       },
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)

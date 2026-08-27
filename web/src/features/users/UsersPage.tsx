@@ -389,8 +389,8 @@ function AdminUserBulkBanDialog({ api, selectedUserIDs, query, scope, onClose, o
   const confirm = async () => {
     setBusy(true);
     setError("");
-    if (idempotencyKey.current === "") idempotencyKey.current = globalThis.crypto.randomUUID();
     try {
+      if (idempotencyKey.current === "") idempotencyKey.current = secureRandomUUID();
       onCompleted(await api.banAdminUsers(adminUserBulkScopeInput(scope, selectedUserIDs, query), idempotencyKey.current));
     } catch (cause) {
       setError(errorMessage(cause));
@@ -609,8 +609,8 @@ function UserTrafficResetDialog({ api, account, onClose, onReset }: { api: Users
 		event.preventDefault();
 		setSaving(true);
 		setError("");
-		if (idempotencyKey.current === "") idempotencyKey.current = globalThis.crypto.randomUUID();
 		try {
+			if (idempotencyKey.current === "") idempotencyKey.current = secureRandomUUID();
 			const next = await api.resetAdminUserTraffic(account.id, reason.trim(), idempotencyKey.current);
 			setResult(next);
 			onReset();
@@ -1108,6 +1108,19 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.download = safeFilename;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function secureRandomUUID(): string {
+  const cryptoAPI = globalThis.crypto;
+  if (typeof cryptoAPI?.randomUUID === "function") return cryptoAPI.randomUUID();
+  if (typeof cryptoAPI?.getRandomValues !== "function") {
+    throw new Error("当前浏览器无法安全生成请求标识，请使用支持 Web Crypto 的浏览器");
+  }
+  const bytes = cryptoAPI.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function roleSummary(account: AdminUser): string {

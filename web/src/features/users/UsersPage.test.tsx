@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { APIError, type AdminUser, type AdminUserBulkJob, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
-import { generatedUsersCSV, UsersPage } from "./UsersPage";
+import { generatedUsersCSV, secureRandomUUID, UsersPage } from "./UsersPage";
 
 const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
 const groupTwo: ServerGroup = { ...group, id: 8, name: "Enterprise", users_count: 0 };
@@ -29,6 +29,20 @@ const bulkJob: AdminUserBulkJob = {
 };
 
 describe("UsersPage", () => {
+  it("uses Web Crypto bytes when randomUUID is unavailable", () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.fill(0);
+      return bytes;
+    });
+    vi.stubGlobal("crypto", { getRandomValues });
+    try {
+      expect(secureRandomUUID()).toBe("00000000-0000-4000-8000-000000000000");
+      expect(getRandomValues).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("uses stable server pages and keeps quick filters on page navigation", async () => {
     const beta = { ...account, id: 40, email: "beta@example.test" };
     const api = baseAPI();
