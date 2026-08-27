@@ -78,7 +78,9 @@ func TestRunCommandImportsLegacyHumanUsersWithExplicitReplacementAndIndependentR
 		t.Fatal(closeErr)
 	}
 	if findErr != nil || detailErr != nil || user.ID != 41 || user.PasswordHash != legacyHash || !user.IsAdmin ||
-		detail.LastLoginAt == nil || !detail.LastLoginAt.Equal(time.Unix(1_700_000_100, 0).UTC()) {
+		detail.LastLoginAt == nil || !detail.LastLoginAt.Equal(time.Unix(1_700_000_100, 0).UTC()) ||
+		detail.TelegramID == nil || *detail.TelegramID != 6_000_000_041 || detail.RemindExpire || !detail.RemindTraffic ||
+		detail.Remarks == nil || *detail.Remarks != "迁移保留备注" {
 		t.Fatalf("target user=(%#v,%#v) errors=(%v,%v)", user, detail, findErr, detailErr)
 	}
 
@@ -169,9 +171,10 @@ func createLegacyHumanUsersCLIInput(t *testing.T, directory string) (string, str
 	phpHash := "$2y$" + string(hash[4:])
 	if _, err := database.Exec(`
 		INSERT INTO v2_user
-		(id, email, password, is_admin, last_login_at, uuid, token, expired_at, created_at, updated_at)
+		(id, email, password, is_admin, last_login_at, uuid, token, expired_at, created_at, updated_at,
+		 telegram_id, remind_expire, remarks)
 		VALUES (41, 'legacy-admin@example.test', ?, 1, 1700000100, '11111111-1111-4111-8111-111111111111',
-		        '11111111111111111111111111111111', 0, 1700000000, 1700000200)
+		        '11111111111111111111111111111111', 0, 1700000000, 1700000200, 6000000041, 0, '迁移保留备注')
 	`, phpHash); err != nil {
 		_ = database.Close()
 		t.Fatal(err)

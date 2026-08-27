@@ -34,7 +34,7 @@ func TestSchemaV36AddsAdministratorOrderQueryIndexes(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT app_name FROM app_settings WHERE id = 1`).Scan(&appName); err != nil {
 		t.Fatal(err)
 	}
-	if version != 36 || appName != "V35 order board" {
+	if version != CurrentSchemaVersion() || appName != "V35 order board" {
 		t.Fatalf("migration version=%d app=%q", version, appName)
 	}
 	for _, index := range []string{

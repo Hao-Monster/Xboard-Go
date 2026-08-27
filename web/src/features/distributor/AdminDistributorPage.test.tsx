@@ -7,8 +7,11 @@ import { AdminDistributorPage } from "./AdminDistributorPage";
 
 const distributor: AdminUser = {
   id: 9, email: "seller@example.test", is_admin: false, is_staff: false, is_distributor: true, distributor_name: "星河分销", banned: false,
-  group_id: null, transfer_enable: 0, traffic_upload: 0, traffic_download: 0, expired_at: null, speed_limit: 0, device_limit: 0,
-  online_count: 0, last_online_at: null, last_login_at: null, revision: 1, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z"
+  group_id: null, group_name: null, plan_id: null, plan_name: null, invite_user_id: null, invite_user_email: null,
+  transfer_enable: 0, traffic_upload: 0, traffic_download: 0, traffic_used: 0, expired_at: null, speed_limit: 0, device_limit: 0,
+  online_count: 0, last_online_at: null, last_login_at: null, balance: 0, commission_type: 0, commission_rate: null,
+  commission_balance: 0, discount: null, next_reset_at: null, last_reset_at: null, reset_count: 0, telegram_id: null,
+  remind_expire: true, remind_traffic: true, remarks: null, revision: 1, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z"
 };
 const device = { id: 6, hwid: "ABCDEF123456", device_os: "Android", os_version: "15", device_model: "Pixel 7", user_agent: null, ip_address: "192.0.2.1", first_seen_at: "2026-08-26T00:00:00Z", last_seen_at: "2026-08-26T01:00:00Z" };
 const order = makeOrder();

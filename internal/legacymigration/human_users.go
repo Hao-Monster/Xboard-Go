@@ -111,7 +111,8 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		var user store.LegacyHumanUser
 		var inviteUserID, lastLoginAt, groupID, planID, speedLimit, expiredAt, deviceLimit, onlineCount sql.NullInt64
 		var lastOnlineAt, nextResetAt, lastResetAt, resetCount sql.NullInt64
-		var telegramID, passwordAlgorithm, passwordSalt, lastLoginIP, remarks, distributorName sql.NullString
+		var telegramID sql.NullInt64
+		var passwordAlgorithm, passwordSalt, lastLoginIP, remarks, distributorName sql.NullString
 		var discount, commissionRate sql.NullFloat64
 		var balance, commissionBalance, legacyTime int64
 		var commissionType sql.NullInt64
@@ -124,17 +125,37 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 			&onlineCount, &lastOnlineAt, &nextResetAt, &lastResetAt, &resetCount, &isDistributor, &distributorName); err != nil {
 			return nil, 0, fmt.Errorf("scan legacy human user: %w", err)
 		}
-		if err := validateUnsupportedLegacyHumanUserFields(user.ID, telegramID, passwordAlgorithm, passwordSalt,
-			legacyTime, lastLoginIP, remindExpire, remindTraffic, remarks, onlineCount); err != nil {
+		if err := validateUnsupportedLegacyHumanUserFields(user.ID, passwordAlgorithm, passwordSalt,
+			legacyTime, lastLoginIP, onlineCount); err != nil {
 			return nil, 0, err
 		}
-		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 || isStaff != 0 && isStaff != 1 || isDistributor != 0 && isDistributor != 1 {
+		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 || isStaff != 0 && isStaff != 1 ||
+			isDistributor != 0 && isDistributor != 1 || remindExpire != 0 && remindExpire != 1 || remindTraffic != 0 && remindTraffic != 1 {
 			return nil, 0, fmt.Errorf("legacy human user id %d has an invalid boolean value", user.ID)
 		}
 		user.Banned = banned == 1
 		user.IsAdmin = isAdmin == 1
 		user.IsStaff = isStaff == 1
 		user.IsDistributor = isDistributor == 1
+		if telegramID.Valid {
+			if telegramID.Int64 < 1 {
+				return nil, 0, fmt.Errorf("legacy human user id %d has an invalid telegram id", user.ID)
+			}
+			value := telegramID.Int64
+			user.TelegramID = &value
+		}
+		if remindExpire == 0 {
+			value := false
+			user.RemindExpire = &value
+		}
+		if remindTraffic == 0 {
+			value := false
+			user.RemindTraffic = &value
+		}
+		if remarks.Valid && remarks.String != "" {
+			value := remarks.String
+			user.Remarks = &value
+		}
 		if user.IsDistributor {
 			value := strings.TrimSpace(distributorName.String)
 			if !distributorName.Valid || value == "" || value != distributorName.String || utf8.RuneCountInString(value) > 100 {
@@ -208,14 +229,11 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 	return users, bytesRead, nil
 }
 
-func validateUnsupportedLegacyHumanUserFields(id int64, telegramID, passwordAlgorithm, passwordSalt sql.NullString,
-	legacyTime int64, lastLoginIP sql.NullString, remindExpire, remindTraffic int64,
-	remarks sql.NullString, onlineCount sql.NullInt64,
+func validateUnsupportedLegacyHumanUserFields(id int64, passwordAlgorithm, passwordSalt sql.NullString,
+	legacyTime int64, lastLoginIP sql.NullString, onlineCount sql.NullInt64,
 ) error {
-	unsupported := telegramID.String != "" || passwordAlgorithm.String != "" || passwordSalt.String != "" ||
-		legacyTime != 0 ||
-		lastLoginIP.String != "" || remindExpire != 1 || remindTraffic != 1 ||
-		strings.TrimSpace(remarks.String) != "" || onlineCount.Valid && onlineCount.Int64 != 0
+	unsupported := passwordAlgorithm.String != "" || passwordSalt.String != "" || legacyTime != 0 ||
+		lastLoginIP.String != "" || onlineCount.Valid && onlineCount.Int64 != 0
 	if unsupported {
 		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, or audit state", id)
 	}

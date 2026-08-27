@@ -128,6 +128,41 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go user directories expose the same core table and query surface", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/user/fetch"));
+    await legacyPage.locator('a[href="#/user/manage"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/users?"));
+    await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
+    expect((await goFetch).status()).toBe(200);
+
+    const columns = ["ID", "邮箱", "在线设备", "状态", "订阅", "权限组", "已用流量", "总流量", "到期时间", "余额", "佣金", "注册时间", "操作"];
+    for (const column of columns) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `旧 Xboard：${column}`).toBeVisible();
+      await expect(goPage.getByRole("table", { name: "用户列表" }).getByRole("columnheader", { name: column }), `Go：${column}`).toBeVisible();
+    }
+    await expect(legacyPage.getByRole("button", { name: "高级筛选", exact: true })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "高级筛选", exact: true })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: "创建用户", exact: true })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "新增用户", exact: true })).toBeVisible();
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go payment administration expose the same six core gateways and observable business fields", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });

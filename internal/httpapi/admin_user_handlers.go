@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -41,12 +42,386 @@ func (s *server) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.GroupID = &value
 	}
+	if !parseAdminUserPageQuery(w, r, &filter) {
+		return
+	}
 	page, err := s.store.ListAdminUsers(r.Context(), filter)
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	writeSuccess(w, http.StatusOK, page)
+}
+
+type adminUserFilterWire struct {
+	Field    string          `json:"field"`
+	Operator string          `json:"operator"`
+	Value    json.RawMessage `json:"value"`
+}
+
+func parseAdminUserPageQuery(w http.ResponseWriter, r *http.Request, filter *store.AdminUserFilter) bool {
+	query := r.URL.Query()
+	paged := query.Get("page") != "" || query.Get("page_size") != "" || query.Get("sort_by") != "" || query.Get("filters") != "" || query.Get("sort_desc") != ""
+	if !paged {
+		return true
+	}
+	page, ok := orderQueryInt(w, r, "page", 1, 1_000_000)
+	if !ok {
+		return false
+	}
+	pageSize, ok := orderQueryInt(w, r, "page_size", 50, 200)
+	if !ok {
+		return false
+	}
+	filter.Page, filter.PageSize = page, pageSize
+	filter.SortBy = store.AdminUserSort(strings.TrimSpace(query.Get("sort_by")))
+	if raw := query.Get("sort_desc"); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "sort_desc 必须是 true 或 false", map[string]string{"sort_desc": "格式无效"})
+			return false
+		}
+		filter.SortDescending = value
+	}
+	raw := query.Get("filters")
+	if raw == "" {
+		return true
+	}
+	if len(raw) > 8192 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选条件过长", map[string]string{"filters": "最多 8192 字节"})
+		return false
+	}
+	var wires []adminUserFilterWire
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&wires); err != nil || len(wires) > 10 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选条件格式无效", map[string]string{"filters": "格式无效或条件过多"})
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选条件格式无效", map[string]string{"filters": "只能提交一个 JSON 数组"})
+		return false
+	}
+	for _, wire := range wires {
+		if wire.Field == store.AdminUserFieldUUID || wire.Field == store.AdminUserFieldSubscriptionToken {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "敏感凭据筛选必须使用 POST 查询接口", map[string]string{"filters": "请使用 /api/v1/admin/users/query"})
+			return false
+		}
+	}
+	return appendAdminUserWireFilters(w, filter, wires)
+}
+
+func appendAdminUserWireFilters(w http.ResponseWriter, filter *store.AdminUserFilter, wires []adminUserFilterWire) bool {
+	for _, wire := range wires {
+		values, ok := adminUserWireValues(wire.Value, wire.Operator)
+		if !ok || strings.TrimSpace(wire.Field) == "" || strings.TrimSpace(wire.Operator) == "" {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选条件格式无效", map[string]string{"filters": "字段、操作符或值无效"})
+			return false
+		}
+		filter.Rules = append(filter.Rules, store.AdminUserFilterRule{
+			Field: strings.TrimSpace(wire.Field), Operator: strings.TrimSpace(wire.Operator), Values: values,
+		})
+	}
+	return true
+}
+
+func (s *server) queryAdminUsers(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Page        int                   `json:"page"`
+		PageSize    int                   `json:"page_size"`
+		SortBy      store.AdminUserSort   `json:"sort_by"`
+		SortDesc    bool                  `json:"sort_desc"`
+		EmailPrefix string                `json:"email_prefix"`
+		Banned      *bool                 `json:"banned"`
+		GroupID     *int64                `json:"group_id"`
+		Filters     []adminUserFilterWire `json:"filters"`
+	}
+	if !decodeJSONLimit(w, r, &input, 16*1024) {
+		return
+	}
+	if len(input.Filters) > 10 || input.Page < 1 || input.Page > 1_000_000 || input.PageSize < 1 || input.PageSize > 200 ||
+		input.GroupID != nil && *input.GroupID < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "用户查询参数超出允许范围", nil)
+		return
+	}
+	filter := store.AdminUserFilter{
+		Page: input.Page, PageSize: input.PageSize, SortBy: input.SortBy, SortDescending: input.SortDesc,
+		EmailPrefix: input.EmailPrefix, Banned: input.Banned, GroupID: input.GroupID,
+	}
+	if !appendAdminUserWireFilters(w, &filter, input.Filters) {
+		return
+	}
+	page, err := s.store.ListAdminUsers(r.Context(), filter)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, page)
+}
+
+func adminUserWireValues(raw json.RawMessage, operator string) ([]string, bool) {
+	if operator == store.AdminUserOperatorIsNull || operator == store.AdminUserOperatorNotNull {
+		return nil, len(raw) == 0 || string(raw) == "null"
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, false
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(raw, &list) == nil {
+		if len(list) < 1 || len(list) > 20 {
+			return nil, false
+		}
+		values := make([]string, 0, len(list))
+		for _, item := range list {
+			value, ok := adminUserWireScalar(item)
+			if !ok {
+				return nil, false
+			}
+			values = append(values, value)
+		}
+		return values, true
+	}
+	value, ok := adminUserWireScalar(raw)
+	if !ok {
+		return nil, false
+	}
+	return []string{value}, true
+}
+
+func adminUserWireScalar(raw json.RawMessage) (string, bool) {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text, true
+	}
+	var number json.Number
+	if json.Unmarshal(raw, &number) == nil {
+		return number.String(), true
+	}
+	var boolean bool
+	if json.Unmarshal(raw, &boolean) == nil {
+		return strconv.FormatBool(boolean), true
+	}
+	return "", false
+}
+
+func (s *server) legacyListAdminUsers(w http.ResponseWriter, r *http.Request) {
+	filter := store.AdminUserFilter{Page: 1, PageSize: 10}
+	if r.Method == http.MethodGet {
+		filter.Page = legacyPositiveInt(r.URL.Query().Get("current"), 1)
+		filter.PageSize = legacyPositiveInt(r.URL.Query().Get("pageSize"), 10)
+		if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
+			filter.Rules = append(filter.Rules, store.AdminUserFilterRule{
+				Field: store.AdminUserFieldEmail, Operator: store.AdminUserOperatorContains, Values: []string{search},
+			})
+		}
+	} else {
+		var input map[string]json.RawMessage
+		if !decodeJSON(w, r, &input) {
+			return
+		}
+		filter.Page = legacyRawPositiveInt(input["current"], 1)
+		filter.PageSize = legacyRawPositiveInt(input["pageSize"], 10)
+		var filters []struct {
+			ID    string          `json:"id"`
+			Value json.RawMessage `json:"value"`
+		}
+		if raw := input["filter"]; len(raw) > 0 && string(raw) != "null" {
+			if json.Unmarshal(raw, &filters) != nil || len(filters) > 10 {
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "筛选条件格式无效")
+				return
+			}
+		}
+		for _, item := range filters {
+			rule, ok := legacyAdminUserRule(item.ID, item.Value)
+			if !ok {
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "不支持的用户筛选条件")
+				return
+			}
+			filter.Rules = append(filter.Rules, rule)
+		}
+		var sorts []struct {
+			ID   string `json:"id"`
+			Desc bool   `json:"desc"`
+		}
+		if raw := input["sort"]; len(raw) > 0 && string(raw) != "null" {
+			if json.Unmarshal(raw, &sorts) != nil || len(sorts) > 3 {
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "排序条件格式无效")
+				return
+			}
+		}
+		for _, sortInput := range sorts {
+			sortBy, ok := legacyAdminUserSort(sortInput.ID)
+			if !ok {
+				writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "不支持的用户排序字段")
+				return
+			}
+			filter.Sorts = append(filter.Sorts, store.AdminUserSortRule{Field: sortBy, Descending: sortInput.Desc})
+		}
+	}
+	if filter.PageSize < 1 || filter.PageSize > 200 || filter.Page < 1 {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "分页参数格式无效")
+		return
+	}
+	page, err := s.store.ListAdminUsers(r.Context(), filter)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidInput) {
+			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户筛选或排序参数无效")
+		} else {
+			writeLegacyOrderFail(w, http.StatusInternalServerError, "用户列表请求失败")
+		}
+		return
+	}
+	items := make([]map[string]any, 0, len(page.Items))
+	for _, user := range page.Items {
+		items = append(items, legacyAdminUserResponse(user))
+	}
+	lastPage := int((page.Total + int64(page.PageSize) - 1) / int64(page.PageSize))
+	if lastPage < 1 {
+		lastPage = 1
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total": page.Total, "current_page": page.Page, "per_page": page.PageSize, "last_page": lastPage, "data": items,
+	})
+}
+
+func legacyAdminUserRule(field string, raw json.RawMessage) (store.AdminUserFilterRule, bool) {
+	fieldMap := map[string]string{
+		"id": store.AdminUserFieldID, "email": store.AdminUserFieldEmail, "plan_id": store.AdminUserFieldPlanID,
+		"plan.id":  store.AdminUserFieldPlanID,
+		"group_id": store.AdminUserFieldGroupID, "group_ids": store.AdminUserFieldGroupID,
+		"group.id":        store.AdminUserFieldGroupID,
+		"transfer_enable": store.AdminUserFieldTransferEnable, "d": store.AdminUserFieldTrafficUsed,
+		"total_used": store.AdminUserFieldTrafficUsed, "online_count": store.AdminUserFieldOnlineCount,
+		"expired_at": store.AdminUserFieldExpiredAt, "uuid": store.AdminUserFieldUUID,
+		"token": store.AdminUserFieldSubscriptionToken, "banned": store.AdminUserFieldBanned,
+		"remarks": store.AdminUserFieldRemarks, "invite_user_id": store.AdminUserFieldInviteUserID, "invite_user.id": store.AdminUserFieldInviteUserID,
+		"invite_by_email": store.AdminUserFieldInviteUserEmail, "invite_user.email": store.AdminUserFieldInviteUserEmail,
+		"is_admin": store.AdminUserFieldIsAdmin, "is_staff": store.AdminUserFieldIsStaff,
+		"is_distributor": store.AdminUserFieldIsDistributor, "balance": store.AdminUserFieldBalance,
+		"commission_balance": store.AdminUserFieldCommissionBalance, "created_at": store.AdminUserFieldCreatedAt,
+	}
+	mapped, exists := fieldMap[strings.TrimSpace(field)]
+	if !exists {
+		return store.AdminUserFilterRule{}, false
+	}
+	values, ok := legacyAdminUserValues(raw)
+	if !ok || len(values) < 1 || len(values) > 20 {
+		return store.AdminUserFilterRule{}, false
+	}
+	operator := store.AdminUserOperatorContains
+	if len(values) > 1 {
+		operator = store.AdminUserOperatorIn
+	} else if separator := strings.IndexByte(values[0], ':'); separator > 0 {
+		legacyOperator := strings.ToLower(strings.TrimSpace(values[0][:separator]))
+		values[0] = strings.TrimSpace(values[0][separator+1:])
+		operatorMap := map[string]string{
+			"is": store.AdminUserOperatorEqual, "eq": store.AdminUserOperatorEqual, "=": store.AdminUserOperatorEqual,
+			"not": store.AdminUserOperatorNotEqual, "neq": store.AdminUserOperatorNotEqual, "!=": store.AdminUserOperatorNotEqual,
+			"gt": store.AdminUserOperatorGreater, ">": store.AdminUserOperatorGreater,
+			"gte": store.AdminUserOperatorGreaterOrEqual, ">=": store.AdminUserOperatorGreaterOrEqual,
+			"lt": store.AdminUserOperatorLess, "<": store.AdminUserOperatorLess,
+			"lte": store.AdminUserOperatorLessOrEqual, "<=": store.AdminUserOperatorLessOrEqual,
+			"like": store.AdminUserOperatorContains, "模糊": store.AdminUserOperatorContains,
+		}
+		var ok bool
+		operator, ok = operatorMap[legacyOperator]
+		if !ok {
+			return store.AdminUserFilterRule{}, false
+		}
+	} else if legacyAdminUserNumericOrBooleanField(mapped) {
+		operator = store.AdminUserOperatorEqual
+	}
+	if (mapped == store.AdminUserFieldUUID || mapped == store.AdminUserFieldSubscriptionToken) && operator != store.AdminUserOperatorEqual && operator != store.AdminUserOperatorIn {
+		return store.AdminUserFilterRule{}, false
+	}
+	return store.AdminUserFilterRule{Field: mapped, Operator: operator, Values: values}, true
+}
+
+func legacyAdminUserValues(raw json.RawMessage) ([]string, bool) {
+	var list []json.RawMessage
+	if json.Unmarshal(raw, &list) == nil {
+		if len(list) < 1 || len(list) > 20 {
+			return nil, false
+		}
+		values := make([]string, 0, len(list))
+		for _, item := range list {
+			value, ok := adminUserWireScalar(item)
+			if !ok {
+				return nil, false
+			}
+			values = append(values, value)
+		}
+		return values, true
+	}
+	value, ok := adminUserWireScalar(raw)
+	if !ok {
+		return nil, false
+	}
+	return []string{value}, true
+}
+
+func legacyAdminUserNumericOrBooleanField(field string) bool {
+	switch field {
+	case store.AdminUserFieldID, store.AdminUserFieldPlanID, store.AdminUserFieldGroupID, store.AdminUserFieldTransferEnable,
+		store.AdminUserFieldTrafficUsed, store.AdminUserFieldOnlineCount, store.AdminUserFieldExpiredAt,
+		store.AdminUserFieldBanned, store.AdminUserFieldInviteUserID, store.AdminUserFieldIsAdmin,
+		store.AdminUserFieldIsStaff, store.AdminUserFieldIsDistributor, store.AdminUserFieldBalance,
+		store.AdminUserFieldCommissionBalance, store.AdminUserFieldCreatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+func legacyAdminUserSort(value string) (store.AdminUserSort, bool) {
+	sorts := map[string]store.AdminUserSort{
+		"id": store.AdminUserSortID, "online_count": store.AdminUserSortOnlineCount, "banned": store.AdminUserSortBanned,
+		"total_used": store.AdminUserSortTrafficUsed, "d": store.AdminUserSortTrafficUsed,
+		"transfer_enable": store.AdminUserSortTransferEnable, "expired_at": store.AdminUserSortExpiredAt,
+		"balance": store.AdminUserSortBalance, "commission_balance": store.AdminUserSortCommissionBalance,
+		"created_at": store.AdminUserSortCreatedAt,
+	}
+	sortBy, ok := sorts[strings.TrimSpace(value)]
+	return sortBy, ok
+}
+
+func legacyAdminUserResponse(user store.AdminUser) map[string]any {
+	result := map[string]any{
+		"id": user.ID, "email": user.Email, "is_admin": user.IsAdmin, "is_staff": user.IsStaff,
+		"is_distributor": user.IsDistributor, "distributor_name": user.DistributorName, "banned": user.Banned,
+		"group_id": user.GroupID, "plan_id": user.PlanID, "invite_user_id": user.InviteUserID,
+		"transfer_enable": user.TransferEnable, "u": user.TrafficUpload, "d": user.TrafficDownload, "total_used": user.TrafficUsed,
+		"expired_at": legacyAdminUserUnix(user.ExpiredAt), "speed_limit": user.SpeedLimit, "device_limit": user.DeviceLimit,
+		"online_count": user.OnlineCount, "last_online_at": legacyAdminUserUnix(user.LastOnlineAt), "last_login_at": legacyAdminUserUnix(user.LastLoginAt),
+		"balance": float64(user.Balance) / 100, "commission_type": user.CommissionType, "commission_rate": user.CommissionRate,
+		"commission_balance": float64(user.CommissionBalance) / 100, "discount": user.Discount,
+		"next_reset_at": legacyAdminUserUnix(user.NextResetAt), "last_reset_at": legacyAdminUserUnix(user.LastResetAt), "reset_count": user.ResetCount,
+		"telegram_id": user.TelegramID, "remind_expire": user.RemindExpire, "remind_traffic": user.RemindTraffic, "remarks": user.Remarks,
+		"created_at": user.CreatedAt.Unix(), "updated_at": user.UpdatedAt.Unix(),
+	}
+	if user.GroupID != nil && user.GroupName != nil {
+		result["group"] = map[string]any{"id": *user.GroupID, "name": *user.GroupName}
+	} else {
+		result["group"] = nil
+	}
+	if user.PlanID != nil && user.PlanName != nil {
+		result["plan"] = map[string]any{"id": *user.PlanID, "name": *user.PlanName}
+	} else {
+		result["plan"] = nil
+	}
+	if user.InviteUserID != nil && user.InviteUserEmail != nil {
+		result["invite_user"] = map[string]any{"id": *user.InviteUserID, "email": *user.InviteUserEmail}
+	} else {
+		result["invite_user"] = nil
+	}
+	return result
+}
+
+func legacyAdminUserUnix(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+	return value.Unix()
 }
 
 func (s *server) getAdminUser(w http.ResponseWriter, r *http.Request) {

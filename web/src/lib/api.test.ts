@@ -68,6 +68,42 @@ describe("APIClient order contracts", () => {
   });
 });
 
+describe("APIClient administrator user contracts", () => {
+  it("encodes bounded pagination, allowlisted sort, quick filters, and structured advanced filters", async () => {
+    let requested = "";
+    let method = "";
+    let body: unknown;
+    let csrf = "";
+    document.cookie = "xboard_csrf=user-query-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      requested = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      method = init?.method ?? "GET";
+      body = typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined;
+      csrf = new Headers(init?.headers).get("X-CSRF-Token") ?? "";
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: { items: [], total: 0, page: 2, page_size: 50 } }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    await api.listAdminUsers({
+      page: 2, page_size: 50, sort_by: "balance", sort_desc: true, email_prefix: "vip", banned: false, group_id: 7,
+      filters: [
+        { field: "remarks", operator: "contains", value: "重点" },
+        { field: "id", operator: "in", value: [41, 42] }
+      ]
+    });
+
+    expect(requested).toBe("/api/v1/admin/users/query");
+    expect(method).toBe("POST");
+    expect(csrf).toBe("user-query-csrf");
+    expect(body).toEqual({
+      page: 2, page_size: 50, sort_by: "balance", sort_desc: true, email_prefix: "vip", banned: false, group_id: 7,
+      filters: [
+        { field: "remarks", operator: "contains", value: "重点" },
+        { field: "id", operator: "in", value: [41, 42] }
+      ]
+    });
+  });
+});
+
 describe("APIClient payment contracts", () => {
   it("uses session-protected reads and CSRF-protected administrator and checkout mutations", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

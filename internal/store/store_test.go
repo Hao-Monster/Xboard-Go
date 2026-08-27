@@ -454,6 +454,14 @@ func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP INDEX idx_users_directory_plan_id;
+		DROP INDEX idx_users_directory_expired_at;
+		DROP INDEX idx_users_directory_online_count;
+		DROP INDEX idx_users_directory_total_used;
+		DROP INDEX idx_users_directory_transfer_enable;
+		DROP INDEX idx_users_directory_balance;
+		DROP INDEX idx_users_directory_commission_balance;
+		DROP INDEX idx_users_directory_created_at;
 		DROP TRIGGER trg_orders_payment_insert;
 		DROP TRIGGER trg_orders_payment_update;
 		DROP TRIGGER trg_payments_delete_restrict;
