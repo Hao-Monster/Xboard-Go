@@ -956,6 +956,7 @@ func generatedAdminUserIdentities(input adminUserGenerateRequest) ([]string, []s
 	}
 	if count < 1 || count > maxAdminUserGenerateCount {
 		fields["count"] = "必须在 1 到 500 之间"
+		return nil, nil, fields, nil
 	}
 	if mode != adminUserGenerateSingle && input.Password != nil && *input.Password != "" {
 		fields["password"] = "批量账号不能共用密码；留空后将为每个账号生成独立强密码"
