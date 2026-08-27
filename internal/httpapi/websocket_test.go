@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/gorilla/websocket"
 )
@@ -609,29 +608,8 @@ func TestWebSocketUnregisterFencesDeviceCleanupAgainstReconnect(t *testing.T) {
 
 func newWebSocketTestAPI(t *testing.T) (http.Handler, *store.Store, context.CancelFunc) {
 	t.Helper()
-	database, err := store.OpenSQLite(fmt.Sprintf("file:ws-%s?mode=memory&cache=shared", t.Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	if err := database.Migrate(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	for index := 1; index <= 9; index++ {
-		if _, err := database.CreateServerGroup(context.Background(), fmt.Sprintf("Test group %d", index), fixedNow()); err != nil {
-			t.Fatalf("CreateServerGroup(%d) error = %v", index, err)
-		}
-	}
-	hasher := security.NewPasswordHasher(security.PasswordParams{
-		MemoryKiB: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
-	})
-	passwordHash, err := hasher.Hash("admin-password-123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.BootstrapAdmin(context.Background(), "admin@example.test", passwordHash, fixedNow()); err != nil {
-		t.Fatal(err)
-	}
+	database := cloneHTTPAPITestDatabase(t)
+	hasher := newHTTPAPITestPasswordHasher()
 	ctx, cancel := context.WithCancel(context.Background())
 	handler := New(Dependencies{
 		Context: ctx, Store: database, PasswordHasher: hasher, Now: fixedNow,
