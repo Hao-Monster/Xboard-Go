@@ -49,6 +49,7 @@ var (
 	ErrActiveOrderExists                      = fmt.Errorf("%w: an unpaid or processing order already exists", ErrConflict)
 	ErrOrderState                             = fmt.Errorf("%w: order state does not allow this operation", ErrConflict)
 	ErrPlanUnavailable                        = fmt.Errorf("%w: subscription plan is unavailable", ErrConflict)
+	ErrTrafficResetUnavailable                = fmt.Errorf("%w: user traffic reset is unavailable", ErrConflict)
 	ErrCouponInvalid                          = errors.New("invalid coupon")
 	ErrCouponNotStarted                       = errors.New("coupon has not started")
 	ErrCouponExpired                          = errors.New("coupon has expired")
@@ -823,6 +824,70 @@ type AdminUserMutation struct {
 	AccessStateCleared bool
 }
 
+type AdminUserTrafficResetInput struct {
+	UserID          int64
+	AdministratorID int64
+	Reason          string
+	IdempotencyKey  string
+}
+
+type AdminUserTrafficResetResult struct {
+	UserID         int64      `json:"user_id"`
+	Email          string     `json:"email"`
+	UploadBefore   int64      `json:"upload_before"`
+	DownloadBefore int64      `json:"download_before"`
+	UploadAfter    int64      `json:"upload_after"`
+	DownloadAfter  int64      `json:"download_after"`
+	ResetCount     int        `json:"reset_count"`
+	ResetAt        time.Time  `json:"reset_at"`
+	NextResetAt    *time.Time `json:"next_reset_at"`
+	Reason         string     `json:"reason"`
+	Idempotent     bool       `json:"idempotent"`
+	UUID           string     `json:"-"`
+	GroupID        *int64     `json:"-"`
+	ResetMethod    int        `json:"-"`
+}
+
+type AdminUserTrafficResetLog struct {
+	ID                 int64      `json:"id"`
+	UserID             int64      `json:"user_id"`
+	PlanID             *int64     `json:"plan_id"`
+	ScheduledFor       *time.Time `json:"scheduled_for"`
+	ResetAt            time.Time  `json:"reset_at"`
+	UploadBefore       int64      `json:"upload_before"`
+	DownloadBefore     int64      `json:"download_before"`
+	UploadAfter        int64      `json:"upload_after"`
+	DownloadAfter      int64      `json:"download_after"`
+	ResetCount         int        `json:"reset_count"`
+	TriggerSource      string     `json:"trigger_source"`
+	Reason             string     `json:"reason"`
+	AdministratorID    *int64     `json:"administrator_id"`
+	AdministratorEmail *string    `json:"administrator_email"`
+	ResetMethod        int        `json:"-"`
+}
+
+type AdminUserTrafficResetPage struct {
+	Items    []AdminUserTrafficResetLog `json:"items"`
+	Total    int64                      `json:"total"`
+	Page     int                        `json:"page"`
+	PageSize int                        `json:"page_size"`
+}
+
+type AdminUserTrafficStat struct {
+	RateMicros int64     `json:"rate_micros"`
+	RecordAt   time.Time `json:"record_at"`
+	RecordType string    `json:"record_type"`
+	Upload     int64     `json:"upload"`
+	Download   int64     `json:"download"`
+}
+
+type AdminUserTrafficStatPage struct {
+	Items    []AdminUserTrafficStat `json:"items"`
+	Total    int64                  `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"page_size"`
+}
+
 type SessionUser struct {
 	UserID          int64
 	Email           string
@@ -1411,6 +1476,7 @@ const (
 type AdminOrderFilter struct {
 	Page               int
 	PageSize           int
+	UserID             *int64
 	Status             *OrderStatus
 	Type               *OrderType
 	Period             string
@@ -1431,6 +1497,7 @@ type AdminOrderPage struct {
 }
 
 type AssignOrderInput struct {
+	UserID      *int64
 	Email       string
 	PlanID      int64
 	Period      string

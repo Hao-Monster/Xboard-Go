@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { adminEmail, adminPassword } from "./support";
 
-test("administrator creates and changes a user's access state", async ({ page }) => {
+test("administrator creates and changes a user's access state", async ({ page, context }) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -12,6 +12,7 @@ test("administrator creates and changes a user's access state", async ({ page })
   });
 
   await page.goto("/");
+	await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url() || "http://127.0.0.1:4173").origin });
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -144,6 +145,54 @@ test("administrator creates and changes a user's access state", async ({ page })
 	await expect(dialog).toContainText("¥45.67");
 	await expect(dialog).toContainText("¥8.09");
 	await expect(dialog).toContainText("到期提醒开启 · 流量提醒开启");
+	const subscriptionRequestPromise = page.waitForRequest((request) => request.url().includes("/subscription-url"));
+	await dialog.getByRole("button", { name: "复制订阅 URL" }).click();
+	const subscriptionRequest = await subscriptionRequestPromise;
+	expect(subscriptionRequest.method()).toBe("GET");
+	await expect(dialog.getByRole("status")).toContainText("订阅地址已复制");
+	const copiedSubscriptionURL = await page.evaluate(() => navigator.clipboard.readText());
+	expect(copiedSubscriptionURL).toContain("/api/v1/client/subscribe?token=");
+	await dialog.getByRole("button", { name: "关闭" }).last().click();
+
+	await page.getByRole("button", { name: `用户操作：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户操作" });
+	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await dialog.getByRole("button", { name: "分配订单" }).click();
+	dialog = page.getByRole("dialog", { name: "分配订单" });
+	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await expect(dialog.getByLabel("用户邮箱")).toHaveValue(email);
+	await expect(dialog.getByLabel("用户邮箱")).toHaveAttribute("readonly", "");
+	await dialog.getByLabel("订阅套餐").selectOption({ label: planName });
+	await dialog.getByLabel("支付金额（CNY）").fill("2.50");
+	const assignedOrderResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/orders$/.test(new URL(response.url()).pathname));
+	await dialog.getByRole("button", { name: "创建订单" }).click();
+	const assignedOrderResponse = await assignedOrderResponsePromise;
+	expect(assignedOrderResponse.status(), await assignedOrderResponse.text()).toBe(201);
+	await expect(dialog).toBeHidden();
+
+	await page.getByRole("button", { name: `用户操作：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户操作" });
+	await dialog.getByRole("button", { name: "TA 的订单" }).click();
+	dialog = page.getByRole("dialog", { name: "用户关联记录" });
+	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await expect(dialog).toContainText(planName);
+	await dialog.getByRole("button", { name: "关闭关联记录面板" }).click();
+
+	await page.getByRole("button", { name: `用户操作：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户操作" });
+	await dialog.getByRole("button", { name: "重置流量" }).click();
+	dialog = page.getByRole("dialog", { name: "重置流量" });
+	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await dialog.getByLabel("重置原因（可选）").fill("E2E U4 manual reset");
+	const resetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/traffic-reset$/.test(new URL(request.url()).pathname));
+	await dialog.getByRole("button", { name: "确认重置流量" }).click();
+	const resetRequest = await resetRequestPromise;
+	expect(resetRequest.headers()["idempotency-key"]).toBeTruthy();
+	expect(resetRequest.postDataJSON()).toEqual({ reason: "E2E U4 manual reset" });
+	await expect(dialog.getByRole("status")).toContainText("流量已重置");
+	await dialog.getByRole("tab", { name: "重置历史" }).click();
+	await expect(dialog).toContainText("E2E U4 manual reset");
+	await expect(dialog).toContainText(adminEmail);
 	await dialog.getByRole("button", { name: "关闭" }).last().click();
 
 	await page.getByRole("button", { name: `编辑用户：${email}` }).click();

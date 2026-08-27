@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 37
+const currentSchemaVersion = 38
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -294,6 +294,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v37: %w", err)
 		}
 		version = 37
+	}
+	if version < 38 {
+		if _, err := tx.ExecContext(ctx, schemaV38); err != nil {
+			return fmt.Errorf("apply schema v38: %w", err)
+		}
+		version = 38
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1869,3 +1875,55 @@ func applySchemaV37(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
+const schemaV38 = `
+DROP INDEX idx_traffic_reset_logs_user;
+ALTER TABLE traffic_reset_logs RENAME TO traffic_reset_logs_v27;
+
+CREATE TABLE traffic_reset_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id INTEGER REFERENCES plans(id) ON DELETE SET NULL,
+    scheduled_for INTEGER CHECK (scheduled_for IS NULL OR scheduled_for >= 0),
+    reset_at INTEGER NOT NULL CHECK (reset_at >= 0 AND (scheduled_for IS NULL OR reset_at >= scheduled_for)),
+    upload_before INTEGER NOT NULL CHECK (upload_before >= 0),
+    download_before INTEGER NOT NULL CHECK (download_before >= 0),
+    upload_after INTEGER NOT NULL DEFAULT 0 CHECK (upload_after >= 0),
+    download_after INTEGER NOT NULL DEFAULT 0 CHECK (download_after >= 0),
+    reset_count INTEGER NOT NULL CHECK (reset_count > 0),
+    trigger_source TEXT NOT NULL DEFAULT 'scheduled' CHECK (trigger_source IN ('scheduled', 'manual')),
+    reason TEXT CHECK (reason IS NULL OR length(reason) <= 255),
+    administrator_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    administrator_email TEXT CHECK (administrator_email IS NULL OR length(CAST(administrator_email AS BLOB)) BETWEEN 3 AND 320),
+    idempotency_key TEXT CHECK (
+        idempotency_key IS NULL OR (
+            length(idempotency_key) BETWEEN 8 AND 128
+            AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+        )
+    ),
+    CHECK (
+        (trigger_source = 'scheduled' AND scheduled_for IS NOT NULL AND administrator_id IS NULL
+            AND administrator_email IS NULL AND idempotency_key IS NULL)
+        OR
+        (trigger_source = 'manual' AND scheduled_for IS NULL AND administrator_email IS NOT NULL
+            AND idempotency_key IS NOT NULL)
+    )
+);
+
+INSERT INTO traffic_reset_logs (
+    id, user_id, plan_id, scheduled_for, reset_at, upload_before, download_before,
+    upload_after, download_after, reset_count, trigger_source
+)
+SELECT id, user_id, plan_id, scheduled_for, reset_at, upload_before, download_before,
+       0, 0, reset_count, 'scheduled'
+FROM traffic_reset_logs_v27;
+
+DROP TABLE traffic_reset_logs_v27;
+CREATE INDEX idx_traffic_reset_logs_user ON traffic_reset_logs(user_id, reset_at DESC, id DESC);
+CREATE UNIQUE INDEX idx_traffic_reset_logs_scheduled
+    ON traffic_reset_logs(user_id, scheduled_for) WHERE trigger_source = 'scheduled';
+CREATE UNIQUE INDEX idx_traffic_reset_logs_manual_idempotency
+    ON traffic_reset_logs(administrator_id, idempotency_key) WHERE trigger_source = 'manual';
+CREATE INDEX IF NOT EXISTS idx_user_traffic_stats_user_record
+    ON user_traffic_stats(user_id, record_at DESC, record_type DESC, rate_micros DESC);
+`
