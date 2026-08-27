@@ -127,6 +127,10 @@ h3 { margin-bottom: 12px; }
 .user-detail-field { display: grid; gap: 5px; min-width: 0; padding: 11px; border: 1px solid #303746; border-radius: 10px; background: #12161e; }
 .user-detail-field.wide { grid-column: 1 / -1; }
 .user-detail-field strong { overflow-wrap: anywhere; font-size: .85rem; }
+.user-generation-result { width: min(900px, 85vw); max-width: 100%; }
+.user-credential-table-wrap { max-height: 55vh; overflow: auto; }
+.user-credential-table { min-width: 900px; }
+.user-credential-table code { overflow-wrap: anywhere; font-size: .75rem; }
 .status-badge { display: inline-flex; border-radius: 999px; padding: 5px 9px; font-size: .72rem; font-weight: 700; }
 .status-badge.enabled { color: #8ee8cb; background: #15362f; }
 .status-badge.blocked { color: #ffc0be; background: #492326; }

@@ -764,11 +764,20 @@ type CreateAdminUserInput struct {
 	IsDistributor   bool
 	DistributorName string
 	GroupID         *int64
+	PlanID          *int64
 	TransferEnable  int64
 	ExpiredAt       *time.Time
 	SpeedLimit      int
 	DeviceLimit     int
 	Banned          bool
+}
+
+// CreatedAdminUser keeps one-time subscription credentials separate from the
+// ordinary administrator directory DTO, which must never expose them.
+type CreatedAdminUser struct {
+	User              AdminUser
+	UUID              string
+	SubscriptionToken string
 }
 
 type UpdateAdminUserInput struct {

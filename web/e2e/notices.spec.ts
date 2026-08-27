@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator manages ordered notices and a user reads only visible safe markdown", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -18,13 +18,7 @@ test("administrator manages ordered notices and a user reads only visible safe m
   const hiddenTitle = `Hidden notice ${unique}`;
 
   await login(page, adminEmail, adminPassword);
-  await page.getByRole("button", { name: "用户管理", exact: true }).click();
-  await page.getByRole("button", { name: "新增用户" }).click();
-  let dialog = page.getByRole("dialog", { name: "新增用户" });
-  await dialog.getByLabel("邮箱").fill(userEmail);
-  await dialog.getByLabel("初始密码").fill(userPassword);
-  await dialog.getByRole("button", { name: "创建" }).click();
-  await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
+  await createAdminUserFixture(page, { email: userEmail, password: userPassword });
 
   await page.getByRole("button", { name: "公告管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "公告管理" })).toBeVisible();
@@ -37,7 +31,7 @@ test("administrator manages ordered notices and a user reads only visible safe m
   await expect(page.getByRole("button", { name: `显示公告：${hiddenTitle}` })).toBeVisible();
 
   await page.getByRole("button", { name: `编辑公告：${visibleTitle}` }).click();
-  dialog = page.getByRole("dialog", { name: "编辑公告" });
+  let dialog = page.getByRole("dialog", { name: "编辑公告" });
   await dialog.getByLabel("标题").fill(revisedTitle);
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText(revisedTitle, { exact: true })).toBeVisible();

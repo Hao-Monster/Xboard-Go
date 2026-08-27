@@ -89,6 +89,7 @@ type server struct {
 	subscriptionFailures       *attemptLimiter
 	subscriptionResetRequests  *requestLimitGroup
 	passwordHashSlots          chan struct{}
+	adminUserGenerationSlots   chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
 	handshakeRequests          *requestLimitGroup
@@ -194,6 +195,7 @@ func New(dependencies Dependencies) http.Handler {
 		subscriptionFailures:       newAttemptLimiter(1_200, 15*time.Minute),
 		subscriptionResetRequests:  newRequestLimitGroup(60, 6),
 		passwordHashSlots:          make(chan struct{}, 2),
+		adminUserGenerationSlots:   make(chan struct{}, 1),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
 		handshakeRequests:          newRequestLimitGroup(60, 20),
@@ -371,6 +373,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))))
 	legacyAdminCoupon := http.NewServeMux()
 	legacyAdminCoupon.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
@@ -513,6 +516,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/tickets/{ticketID}/close", api.closeAdminTicket)
 	admin.HandleFunc("GET /api/v1/admin/users", api.listAdminUsers)
 	admin.HandleFunc("POST /api/v1/admin/users", api.createAdminUser)
+	admin.HandleFunc("POST /api/v1/admin/users/generate", api.generateAdminUsers)
 	admin.HandleFunc("POST /api/v1/admin/users/query", api.queryAdminUsers)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)
 	admin.HandleFunc("PATCH /api/v1/admin/users/{userID}", api.updateAdminUser)
@@ -596,7 +600,14 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 
 func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/user/update") {
+		action := ""
+		for _, candidate := range []string{"update", "generate"} {
+			if strings.HasSuffix(r.URL.Path, "/user/"+candidate) {
+				action = candidate
+				break
+			}
+		}
+		if r.Method != http.MethodPost || action == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -606,7 +617,7 @@ func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 		if !ok {
 			return
 		}
-		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/user/update", recorder.statusCode())
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/user/"+action, recorder.statusCode())
 	})
 }
 

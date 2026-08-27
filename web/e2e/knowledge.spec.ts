@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait, publicAppName } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait, publicAppName } from "./support";
 
 test("administrator manages knowledge while active, inactive, and public readers receive the correct content", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -132,14 +132,7 @@ async function readAdminKnowledge(page: Page): Promise<KnowledgeSnapshotItem[]> 
 }
 
 async function createUser(page: Page, email: string, password: string, transfer: string) {
-  await page.getByRole("button", { name: "用户管理", exact: true }).click();
-  await page.getByRole("button", { name: "新增用户" }).click();
-  const dialog = page.getByRole("dialog", { name: "新增用户" });
-  await dialog.getByLabel("邮箱").fill(email);
-  await dialog.getByLabel("初始密码").fill(password);
-  await dialog.getByLabel("流量额度（字节）").fill(transfer);
-  await dialog.getByRole("button", { name: "创建" }).click();
-  await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await createAdminUserFixture(page, { email, password, transferEnable: Number(transfer) });
 }
 
 async function createKnowledge(page: Page, title: string, body: string, show: boolean) {

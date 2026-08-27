@@ -295,6 +295,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     listAdminUsers: vi.fn().mockResolvedValue({ items: [] }),
     getAdminUser: vi.fn(),
     createAdminUser: vi.fn(),
+    generateAdminUsers: vi.fn(),
     updateAdminUser: vi.fn(),
     resetAdminUserPassword: vi.fn(),
     listAdminTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),

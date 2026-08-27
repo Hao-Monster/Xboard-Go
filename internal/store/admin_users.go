@@ -23,6 +23,7 @@ const (
 	maxAdminUserCounter      = int64(9_007_199_254_740_991)
 	maxAdminUserMoney        = int64(9_000_000_000_000_000)
 	maxAdminUserRemarksBytes = 4_096
+	maxAdminUserBatchSize    = 500
 )
 
 func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserFilter) (AdminUserPage, error) {
@@ -388,59 +389,165 @@ func (s *Store) GetAdminUser(ctx context.Context, userID int64) (AdminUser, erro
 }
 
 func (s *Store) CreateAdminUser(ctx context.Context, input CreateAdminUserInput, now time.Time) (AdminUser, error) {
-	input.Email = normalizeEmail(input.Email)
-	if input.Email == "" || len(input.Email) > 320 || input.PasswordHash == "" || input.TransferEnable < 0 || input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 || (input.GroupID != nil && *input.GroupID < 1) {
-		return AdminUser{}, fmt.Errorf("%w: invalid user", ErrInvalidInput)
-	}
-	distributorName, err := normalizedDistributorName(input.IsDistributor, &input.DistributorName)
+	created, err := s.CreateAdminUsers(ctx, []CreateAdminUserInput{input}, now)
 	if err != nil {
 		return AdminUser{}, err
 	}
+	return created[0].User, nil
+}
+
+// CreateAdminUsers creates one bounded batch in a single transaction. Password
+// hashing intentionally happens before this method so the global SQLite write
+// lock is held only for validation and inserts, not for expensive Argon2 work.
+func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserInput, now time.Time) ([]CreatedAdminUser, error) {
+	if len(inputs) < 1 || len(inputs) > maxAdminUserBatchSize {
+		return nil, fmt.Errorf("%w: user batch size must be between 1 and %d", ErrInvalidInput, maxAdminUserBatchSize)
+	}
+	normalized := make([]CreateAdminUserInput, len(inputs))
+	distributorNames := make([]*string, len(inputs))
+	seenEmails := make(map[string]struct{}, len(inputs))
+	for index, input := range inputs {
+		input.Email = normalizeEmail(input.Email)
+		if input.Email == "" || len(input.Email) > 320 || input.PasswordHash == "" || len(input.PasswordHash) > 512 ||
+			!validAdminUserCounter(input.TransferEnable) || input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 ||
+			(input.GroupID != nil && *input.GroupID < 1) || (input.PlanID != nil && *input.PlanID < 1) ||
+			(input.ExpiredAt != nil && (input.ExpiredAt.Unix() < 0 || input.ExpiredAt.Year() > 9999)) {
+			return nil, fmt.Errorf("%w: invalid user at batch index %d", ErrInvalidInput, index)
+		}
+		if _, exists := seenEmails[input.Email]; exists {
+			return nil, ErrEmailInUse
+		}
+		seenEmails[input.Email] = struct{}{}
+		distributorName, err := normalizedDistributorName(input.IsDistributor, &input.DistributorName)
+		if err != nil {
+			return nil, err
+		}
+		normalized[index] = input
+		distributorNames[index] = distributorName
+	}
+
 	defer s.lockWrite()()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return AdminUser{}, fmt.Errorf("begin create user: %w", err)
+		return nil, fmt.Errorf("begin create users: %w", err)
 	}
 	defer tx.Rollback()
-	if err := validateAdminUserGroup(ctx, tx, input.GroupID); err != nil {
-		return AdminUser{}, err
+
+	type planEntitlement struct {
+		groupID        *int64
+		transferEnable int64
+		speedLimit     int
+		deviceLimit    int
+		resetMethod    *int
 	}
-	var groupID, expiredAt any
-	if input.GroupID != nil {
-		groupID = *input.GroupID
-	}
-	if input.ExpiredAt != nil {
-		expiredAt = input.ExpiredAt.Unix()
-	}
-	subscriptionToken, err := newSubscriptionToken()
-	if err != nil {
-		return AdminUser{}, err
-	}
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO users (
-			email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind, uuid, group_id, transfer_enable,
-			expired_at, speed_limit, device_limit, subscription_token, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, input.Email, input.PasswordHash, input.IsAdmin, input.IsStaff, input.IsDistributor, nullableStringValue(distributorName), input.Banned, uuid.NewString(), groupID, input.TransferEnable,
-		expiredAt, input.SpeedLimit, input.DeviceLimit, subscriptionToken, now.Unix(), now.Unix())
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			return AdminUser{}, ErrEmailInUse
+	plans := make(map[int64]planEntitlement)
+	groupChecks := make(map[int64]error)
+	systemResetMethod := 0
+	hasSystemResetMethod := false
+	created := make([]CreatedAdminUser, len(normalized))
+	userIDs := make([]int64, len(normalized))
+
+	for index, input := range normalized {
+		groupID := cloneInt64(input.GroupID)
+		planID := cloneInt64(input.PlanID)
+		transferEnable := input.TransferEnable
+		speedLimit := input.SpeedLimit
+		deviceLimit := input.DeviceLimit
+		var nextResetAt *time.Time
+		if planID != nil {
+			entitlement, exists := plans[*planID]
+			if !exists {
+				var planGroup, planSpeed, planDevices, planReset sql.NullInt64
+				var planTransferGiB int64
+				if err := tx.QueryRowContext(ctx, `
+					SELECT group_id, transfer_enable_gib, speed_limit, device_limit, reset_traffic_method
+					FROM plans WHERE id = ?
+				`, *planID).Scan(&planGroup, &planTransferGiB, &planSpeed, &planDevices, &planReset); errors.Is(err, sql.ErrNoRows) {
+					return nil, ErrAdminUserPlanNotFound
+				} else if err != nil {
+					return nil, fmt.Errorf("read create user plan entitlement: %w", err)
+				}
+				entitlement = planEntitlement{
+					groupID: nullableInt64Pointer(planGroup), transferEnable: planTransferGiB * bytesPerGiB,
+					speedLimit: optionalAdminUserLimit(planSpeed), deviceLimit: optionalAdminUserLimit(planDevices),
+					resetMethod: nullableIntPointer(planReset),
+				}
+				plans[*planID] = entitlement
+			}
+			groupID = cloneInt64(entitlement.groupID)
+			transferEnable = entitlement.transferEnable
+			speedLimit = entitlement.speedLimit
+			deviceLimit = entitlement.deviceLimit
+			if !hasSystemResetMethod {
+				systemResetMethod, err = readSystemTrafficResetMethod(ctx, tx)
+				if err != nil {
+					return nil, err
+				}
+				hasSystemResetMethod = true
+			}
+			nextResetAt = CalculateNextTrafficReset(entitlement.resetMethod, systemResetMethod, input.ExpiredAt, now)
+		} else if groupID != nil {
+			if cached, checked := groupChecks[*groupID]; checked {
+				if cached != nil {
+					return nil, cached
+				}
+			} else {
+				checkErr := validateAdminUserGroup(ctx, tx, groupID)
+				groupChecks[*groupID] = checkErr
+				if checkErr != nil {
+					return nil, checkErr
+				}
+			}
 		}
-		return AdminUser{}, fmt.Errorf("create user: %w", err)
+
+		subscriptionToken, err := newSubscriptionToken()
+		if err != nil {
+			return nil, err
+		}
+		generatedUUID, err := uuid.NewRandom()
+		if err != nil {
+			return nil, fmt.Errorf("generate user uuid: %w", err)
+		}
+		userUUID := generatedUUID.String()
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO users (
+				email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind,
+				uuid, group_id, plan_id, transfer_enable, expired_at, speed_limit, device_limit, subscription_token,
+				next_reset_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, input.Email, input.PasswordHash, input.IsAdmin, input.IsStaff, input.IsDistributor,
+			nullableStringValue(distributorNames[index]), input.Banned, userUUID, nullableInt64Value(groupID),
+			nullableInt64Value(planID), transferEnable, nullableTimeUnix(input.ExpiredAt), speedLimit, deviceLimit,
+			subscriptionToken, nullableTimeUnix(nextResetAt), now.Unix(), now.Unix())
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unique") {
+				return nil, ErrEmailInUse
+			}
+			return nil, fmt.Errorf("create user at batch index %d: %w", index, err)
+		}
+		userID, err := result.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("read created user id at batch index %d: %w", index, err)
+		}
+		userIDs[index] = userID
+		created[index] = CreatedAdminUser{UUID: userUUID, SubscriptionToken: subscriptionToken}
 	}
-	userID, err := result.LastInsertId()
+
+	users, err := getAdminUsersTx(ctx, tx, userIDs)
 	if err != nil {
-		return AdminUser{}, fmt.Errorf("read created user id: %w", err)
+		return nil, err
 	}
-	user, err := getAdminUserTx(ctx, tx, userID)
-	if err != nil {
-		return AdminUser{}, err
+	for index, userID := range userIDs {
+		user, exists := users[userID]
+		if !exists {
+			return nil, fmt.Errorf("read created user %d: %w", userID, ErrNotFound)
+		}
+		created[index].User = user
 	}
 	if err := tx.Commit(); err != nil {
-		return AdminUser{}, fmt.Errorf("commit create user: %w", err)
+		return nil, fmt.Errorf("commit create users: %w", err)
 	}
-	return user, nil
+	return created, nil
 }
 
 func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateAdminUserInput, now time.Time) (AdminUser, AdminUserMutation, error) {
@@ -730,6 +837,34 @@ func getAdminUserTx(ctx context.Context, tx *sql.Tx, userID int64) (AdminUser, e
 		return AdminUser{}, ErrNotFound
 	}
 	return user, err
+}
+
+func getAdminUsersTx(ctx context.Context, tx *sql.Tx, userIDs []int64) (map[int64]AdminUser, error) {
+	if len(userIDs) < 1 || len(userIDs) > maxAdminUserBatchSize {
+		return nil, fmt.Errorf("%w: invalid created user id batch", ErrInvalidInput)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(userIDs)), ",")
+	arguments := make([]any, len(userIDs))
+	for index, userID := range userIDs {
+		arguments[index] = userID
+	}
+	rows, err := tx.QueryContext(ctx, adminUserSelect+adminUserFrom+` WHERE u.account_kind = 'human' AND u.id IN (`+placeholders+`)`, arguments...)
+	if err != nil {
+		return nil, fmt.Errorf("read created users: %w", err)
+	}
+	defer rows.Close()
+	users := make(map[int64]AdminUser, len(userIDs))
+	for rows.Next() {
+		user, err := scanAdminUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users[user.ID] = user
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate created users: %w", err)
+	}
+	return users, nil
 }
 
 func scanAdminUser(row rowScanner) (AdminUser, error) {

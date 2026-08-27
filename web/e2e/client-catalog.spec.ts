@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator configures client actions and a user browses secure platform downloads", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -10,12 +10,7 @@ test("administrator configures client actions and a user browses secure platform
   const password = "client-user-password-123";
 
   await login(page, adminEmail, adminPassword);
-  await page.getByRole("button", { name: "用户管理", exact: true }).click();
-  await page.getByRole("button", { name: "新增用户" }).click();
-  let dialog = page.getByRole("dialog", { name: "新增用户" });
-  await dialog.getByLabel("邮箱").fill(email);
-  await dialog.getByLabel("初始密码").fill(password);
-  await dialog.getByRole("button", { name: "创建" }).click();
+  await createAdminUserFixture(page, { email, password });
 
   await page.getByRole("button", { name: "客户端管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "客户端管理" })).toBeVisible();
@@ -44,7 +39,7 @@ test("administrator configures client actions and a user browses secure platform
   expect(redirect.headers()["referrer-policy"]).toBe("no-referrer");
   await expect(card.getByRole("link", { name: "网盘下载" })).toHaveAttribute("rel", "noopener noreferrer");
   await card.getByRole("button", { name: "扫码下载" }).click();
-  dialog = page.getByRole("dialog", { name: "扫码下载 Karing" });
+  const dialog = page.getByRole("dialog", { name: "扫码下载 Karing" });
   await expect(dialog.getByRole("img", { name: "Karing 下载二维码" })).toHaveAttribute("src", /^data:image\/svg\+xml;base64,/);
   await dialog.getByRole("button", { name: "关闭扫码下载 Karing" }).click();
 

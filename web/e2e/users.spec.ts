@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { adminEmail, adminPassword } from "./support";
 
@@ -48,14 +49,53 @@ test("administrator creates and changes a user's access state", async ({ page })
   await page.getByRole("button", { name: "新增用户" }).click();
   dialog = page.getByRole("dialog", { name: "新增用户" });
   await dialog.getByLabel("邮箱").fill(email);
-  await dialog.getByLabel("初始密码").fill("e2e-user-password-123");
-  await dialog.getByLabel("流量额度（字节）").fill("1073741824");
-  await dialog.getByLabel("限速（Mbps，0 为不限速）").fill("25");
-  await dialog.getByLabel("设备数（0 为不限设备）").fill("2");
+  await dialog.getByLabel(/初始密码/).fill("e2e-user-password-123");
+  await dialog.getByLabel("订阅计划").selectOption({ label: planName });
+  const singleResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/api/v1/admin/users/generate"));
   await dialog.getByRole("button", { name: "创建" }).click();
+  const singleResponse = await singleResponsePromise;
+  expect(singleResponse.status(), await singleResponse.text()).toBe(201);
+  await expect(dialog.getByRole("status")).toContainText("明文密码只在本窗口保留");
+  const credentialTable = dialog.getByRole("table", { name: "一次性账号凭据" });
+  await expect(credentialTable).toContainText(email);
+  await expect(credentialTable).toContainText("e2e-user-password-123");
+  const downloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "下载安全 CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("users.csv");
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  if (downloadPath === null) throw new Error("generated credential download has no local path");
+  const csv = await readFile(downloadPath, "utf8");
+  expect(csv.startsWith("\uFEFF\"账号\",\"密码\"")).toBe(true);
+  expect(csv).toContain(email);
+  await dialog.getByRole("button", { name: "完成" }).click();
   await expect(page.getByText(email, { exact: true })).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: email }).getByText("最后登录 从未", { exact: true })).toBeVisible();
-  await expect(page.getByRole("row").filter({ hasText: email })).toContainText("0 / 2");
+  await expect(page.getByRole("row").filter({ hasText: email })).toContainText("0 / 4");
+
+  const batchPrefix = `e2e-batch-${unique}`;
+  await page.getByRole("button", { name: "新增用户" }).click();
+  dialog = page.getByRole("dialog", { name: "新增用户" });
+  await dialog.getByLabel("生成方式").selectOption("prefixed_batch");
+  await expect(dialog.getByLabel(/初始密码/)).toHaveCount(0);
+  await dialog.getByLabel("账号前缀").fill(batchPrefix);
+  await dialog.getByLabel("邮箱域").fill("example.test");
+  await dialog.getByLabel(/生成数量/).fill("2");
+  await dialog.getByLabel("订阅计划").selectOption({ label: planName });
+  const batchRequestPromise = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/api/v1/admin/users/generate"));
+  await dialog.getByRole("button", { name: "生成账号" }).click();
+  const batchRequest = await batchRequestPromise;
+  expect(batchRequest.postDataJSON()).toMatchObject({
+    mode: "prefixed_batch", email_prefix: batchPrefix, email_domain: "example.test", count: 2
+  });
+  const batchCredentialRows = dialog.getByRole("table", { name: "一次性账号凭据" }).locator("tbody tr");
+  await expect(batchCredentialRows).toHaveCount(2);
+  await expect(dialog).toContainText(`${batchPrefix}_1@example.test`);
+  await expect(dialog).toContainText(`${batchPrefix}_2@example.test`);
+  const batchPasswords = await batchCredentialRows.locator("td:nth-child(2) code").allTextContents();
+  expect(new Set(batchPasswords).size).toBe(2);
+  await dialog.getByRole("button", { name: "完成" }).click();
 
   await page.getByRole("button", { name: `查看详情：${email}` }).click();
   dialog = page.getByRole("dialog", { name: "用户详情" });

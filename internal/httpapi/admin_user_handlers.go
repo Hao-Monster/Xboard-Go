@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +12,11 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -747,6 +751,416 @@ func (s *server) createAdminUser(w http.ResponseWriter, r *http.Request) {
 		s.hub.NotifyUserMutation(r.Context(), user.ID, "", nil, user.GroupID, false)
 	}
 	writeSuccess(w, http.StatusCreated, user)
+}
+
+const (
+	adminUserGenerateSingle        = "single"
+	adminUserGenerateRandomBatch   = "random_batch"
+	adminUserGeneratePrefixedBatch = "prefixed_batch"
+	maxAdminUserGenerateCount      = 500
+	generatedPasswordBytes         = 16
+	randomEmailLocalBytes          = 10
+)
+
+type adminUserGenerateRequest struct {
+	Mode            string     `json:"mode"`
+	Email           string     `json:"email"`
+	EmailPrefix     string     `json:"email_prefix"`
+	EmailDomain     string     `json:"email_domain"`
+	Count           int        `json:"count"`
+	Password        *string    `json:"password"`
+	PlanID          *int64     `json:"plan_id"`
+	ExpiredAt       *time.Time `json:"expired_at"`
+	DownloadCSV     bool       `json:"download_csv"`
+	IsDistributor   bool       `json:"is_distributor"`
+	DistributorName *string    `json:"distributor_name"`
+}
+
+type adminUserGeneratedCredential struct {
+	ID           int64      `json:"id"`
+	Email        string     `json:"email"`
+	Password     string     `json:"password"`
+	ExpiredAt    *time.Time `json:"expired_at"`
+	UUID         string     `json:"uuid"`
+	CreatedAt    time.Time  `json:"created_at"`
+	SubscribeURL string     `json:"subscribe_url"`
+}
+
+func (s *server) generateAdminUsers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var input adminUserGenerateRequest
+	if !decodeJSONLimit(w, r, &input, 32*1024) {
+		return
+	}
+	s.generateAdminUsersFromRequest(w, r, input, false)
+}
+
+type legacyAdminUserGenerateRequest struct {
+	EmailPrefix     string             `json:"email_prefix"`
+	EmailSuffix     string             `json:"email_suffix"`
+	Password        string             `json:"password"`
+	ExpiredAt       *int64             `json:"expired_at"`
+	PlanID          *int64             `json:"plan_id"`
+	GenerateCount   *int               `json:"generate_count"`
+	DownloadCSV     legacyOptionalBool `json:"download_csv"`
+	IsDistributor   legacyOptionalBool `json:"is_distributor"`
+	DistributorName *string            `json:"distributor_name"`
+}
+
+func (s *server) legacyGenerateAdminUsers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var legacyInput legacyAdminUserGenerateRequest
+	if !decodeJSONLimit(w, r, &legacyInput, 32*1024) {
+		return
+	}
+	prefix := strings.TrimSpace(legacyInput.EmailPrefix)
+	suffix := strings.TrimSpace(legacyInput.EmailSuffix)
+	input := adminUserGenerateRequest{
+		EmailPrefix: prefix, EmailDomain: suffix, Password: &legacyInput.Password,
+		PlanID: legacyInput.PlanID, IsDistributor: legacyInput.IsDistributor.Value,
+		DistributorName: legacyInput.DistributorName, DownloadCSV: legacyInput.DownloadCSV.Value,
+	}
+	if legacyInput.ExpiredAt != nil {
+		value := time.Unix(*legacyInput.ExpiredAt, 0).UTC()
+		input.ExpiredAt = &value
+	}
+	if legacyInput.GenerateCount != nil && *legacyInput.GenerateCount > 0 {
+		input.Count = *legacyInput.GenerateCount
+		if prefix == "" {
+			input.Mode = adminUserGenerateRandomBatch
+		} else {
+			input.Mode = adminUserGeneratePrefixedBatch
+		}
+	} else {
+		input.Mode = adminUserGenerateSingle
+		input.Email = prefix + "@" + suffix
+	}
+	s.generateAdminUsersFromRequest(w, r, input, true)
+}
+
+func (s *server) generateAdminUsersFromRequest(w http.ResponseWriter, r *http.Request, input adminUserGenerateRequest, legacy bool) {
+	emails, plaintexts, fields, err := generatedAdminUserIdentities(input)
+	if err != nil {
+		s.writeAdminUserGenerateError(w, err, legacy)
+		return
+	}
+	for field, message := range validateDistributorRoleFields(input.IsDistributor, input.DistributorName, true) {
+		fields[field] = message
+	}
+	if input.PlanID != nil && *input.PlanID < 1 {
+		fields["plan_id"] = "必须是正整数或 null"
+	}
+	if input.ExpiredAt != nil && (input.ExpiredAt.Unix() < 0 || input.ExpiredAt.Year() > 9999) {
+		fields["expired_at"] = "时间超出允许范围"
+	}
+	if len(fields) > 0 {
+		if legacy {
+			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户生成参数格式无效")
+		} else {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查用户生成参数", fields)
+		}
+		return
+	}
+	// Xboard's generator creates distributor identities without a subscription;
+	// do not silently grant a plan when the role is selected together with one.
+	if input.IsDistributor {
+		input.PlanID = nil
+	}
+
+	config, err := s.store.GetSubscriptionRenderConfig(r.Context(), "")
+	if err != nil {
+		s.writeAdminUserGenerateError(w, err, legacy)
+		return
+	}
+	if input.PlanID != nil {
+		if _, err := s.store.GetPlan(r.Context(), *input.PlanID, s.now()); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				err = store.ErrAdminUserPlanNotFound
+			}
+			s.writeAdminUserGenerateError(w, err, legacy)
+			return
+		}
+	}
+	releaseGeneration, accepted := s.beginAdminUserGeneration()
+	if !accepted {
+		w.Header().Set("Retry-After", "5")
+		if legacy {
+			writeLegacyOrderFail(w, http.StatusTooManyRequests, "用户生成任务正在执行，请稍后重试")
+		} else {
+			writeAPIError(w, http.StatusTooManyRequests, "user_generation_busy", "已有用户生成任务正在执行，请稍后重试", nil)
+		}
+		return
+	}
+	defer releaseGeneration()
+	hashes, err := s.hashAdminUserPasswords(r.Context(), plaintexts)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		s.writeAdminUserGenerateError(w, err, legacy)
+		return
+	}
+	distributorName := ""
+	if input.DistributorName != nil {
+		distributorName = *input.DistributorName
+	}
+	storeInputs := make([]store.CreateAdminUserInput, len(emails))
+	for index, email := range emails {
+		storeInputs[index] = store.CreateAdminUserInput{
+			Email: email, PasswordHash: hashes[index], IsDistributor: input.IsDistributor,
+			DistributorName: distributorName, PlanID: input.PlanID, ExpiredAt: input.ExpiredAt,
+		}
+	}
+	created, err := s.store.CreateAdminUsers(r.Context(), storeInputs, s.now())
+	if err != nil {
+		s.writeAdminUserGenerateError(w, err, legacy)
+		return
+	}
+	credentials := make([]adminUserGeneratedCredential, len(created))
+	appURL := strings.TrimRight(config.AppURL, "/")
+	if appURL == "" {
+		appURL = s.panelURL
+	}
+	for index, item := range created {
+		credentials[index] = adminUserGeneratedCredential{
+			ID: item.User.ID, Email: item.User.Email, Password: plaintexts[index], ExpiredAt: item.User.ExpiredAt,
+			UUID: item.UUID, CreatedAt: item.User.CreatedAt,
+			SubscribeURL: appURL + "/" + config.Path + "/" + item.SubscriptionToken,
+		}
+		if s.hub != nil {
+			s.hub.NotifyUserMutation(r.Context(), item.User.ID, "", nil, item.User.GroupID, false)
+		}
+	}
+	if input.DownloadCSV {
+		writeAdminUserCredentialsCSV(w, credentials)
+		return
+	}
+	if legacy {
+		writeJSON(w, http.StatusOK, map[string]any{"code": 0, "message": "批量生成成功", "data": credentials})
+		return
+	}
+	writeSuccess(w, http.StatusCreated, map[string]any{"items": credentials})
+}
+
+func generatedAdminUserIdentities(input adminUserGenerateRequest) ([]string, []string, map[string]string, error) {
+	fields := map[string]string{}
+	mode := strings.TrimSpace(input.Mode)
+	count := input.Count
+	if mode == adminUserGenerateSingle {
+		count = 1
+		if input.Count != 0 && input.Count != 1 {
+			fields["count"] = "单个模式数量必须为 1"
+		}
+	} else if mode != adminUserGenerateRandomBatch && mode != adminUserGeneratePrefixedBatch {
+		fields["mode"] = "必须是 single、random_batch 或 prefixed_batch"
+	}
+	if count < 1 || count > maxAdminUserGenerateCount {
+		fields["count"] = "必须在 1 到 500 之间"
+		return nil, nil, fields, nil
+	}
+	if mode != adminUserGenerateSingle && input.Password != nil && *input.Password != "" {
+		fields["password"] = "批量账号不能共用密码；留空后将为每个账号生成独立强密码"
+	}
+	if len(fields) > 0 {
+		return nil, nil, fields, nil
+	}
+
+	emails := make([]string, count)
+	passwords := make([]string, count)
+	domain := strings.ToLower(strings.TrimSpace(input.EmailDomain))
+	prefix := strings.ToLower(strings.TrimSpace(input.EmailPrefix))
+	if mode != adminUserGenerateSingle {
+		probe := "x@" + domain
+		address, err := mail.ParseAddress(probe)
+		if err != nil || address.Address != probe || len(probe) > 320 {
+			fields["email_domain"] = "邮箱域格式无效"
+			return nil, nil, fields, nil
+		}
+		if mode == adminUserGeneratePrefixedBatch && prefix == "" {
+			fields["email_prefix"] = "账号前缀不能为空"
+			return nil, nil, fields, nil
+		}
+	}
+	for index := 0; index < count; index++ {
+		var email string
+		switch mode {
+		case adminUserGenerateSingle:
+			email = strings.ToLower(strings.TrimSpace(input.Email))
+		case adminUserGenerateRandomBatch:
+			local, err := security.NewRandomHex(randomEmailLocalBytes)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("generate random user email: %w", err)
+			}
+			email = local + "@" + domain
+		case adminUserGeneratePrefixedBatch:
+			email = fmt.Sprintf("%s_%d@%s", prefix, index+1, domain)
+		}
+		address, err := mail.ParseAddress(email)
+		if err != nil || address.Address != email || len(email) > 320 {
+			if mode == adminUserGenerateSingle {
+				fields["email"] = "邮箱格式无效"
+			} else {
+				fields["email_prefix"] = "账号前缀与域组合后不是有效邮箱"
+			}
+			return nil, nil, fields, nil
+		}
+		emails[index] = email
+		if mode == adminUserGenerateSingle && input.Password != nil && *input.Password != "" {
+			passwords[index] = *input.Password
+			if len(passwords[index]) < 12 {
+				fields["password"] = "至少需要 12 个字符"
+			} else if len(passwords[index]) > 1024 {
+				fields["password"] = "不得超过 1024 个字符"
+			}
+		} else {
+			password, err := security.NewRandomHex(generatedPasswordBytes)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("generate initial password: %w", err)
+			}
+			passwords[index] = password
+		}
+	}
+	return emails, passwords, fields, nil
+}
+
+func (s *server) hashAdminUserPasswords(ctx context.Context, plaintexts []string) ([]string, error) {
+	if len(plaintexts) < 1 || len(plaintexts) > maxAdminUserGenerateCount {
+		return nil, fmt.Errorf("invalid password batch")
+	}
+	workerCount := min(2, len(plaintexts)) // Default Argon2id uses 64 MiB per worker.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type passwordJob struct {
+		index int
+		value string
+	}
+	jobs := make(chan passwordJob)
+	hashes := make([]string, len(plaintexts))
+	errChannel := make(chan error, 1)
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer workers.Done()
+			for job := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				releaseHash, err := s.waitForPasswordHashSlot(ctx)
+				if err != nil {
+					return
+				}
+				hash, err := s.passwordHasher.Hash(job.value)
+				releaseHash()
+				if err != nil {
+					select {
+					case errChannel <- err:
+						cancel()
+					default:
+					}
+					return
+				}
+				hashes[job.index] = hash
+			}
+		}()
+	}
+sendLoop:
+	for index, plaintext := range plaintexts {
+		select {
+		case jobs <- passwordJob{index: index, value: plaintext}:
+		case <-ctx.Done():
+			break sendLoop
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	select {
+	case err := <-errChannel:
+		return nil, err
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return hashes, nil
+}
+
+func (s *server) beginAdminUserGeneration() (func(), bool) {
+	select {
+	case s.adminUserGenerationSlots <- struct{}{}:
+		return func() { <-s.adminUserGenerationSlots }, true
+	default:
+		return func() {}, false
+	}
+}
+
+func (s *server) waitForPasswordHashSlot(ctx context.Context) (func(), error) {
+	select {
+	case s.passwordHashSlots <- struct{}{}:
+		return func() { <-s.passwordHashSlots }, nil
+	case <-ctx.Done():
+		return func() {}, ctx.Err()
+	}
+}
+
+func (s *server) writeAdminUserGenerateError(w http.ResponseWriter, err error, legacy bool) {
+	knownClientError := errors.Is(err, store.ErrEmailInUse) || errors.Is(err, store.ErrAdminUserPlanNotFound) || errors.Is(err, store.ErrInvalidInput)
+	if !knownClientError && s.logger != nil {
+		// Do not log the request or generated identities: they can contain
+		// one-time plaintext credentials. The store error chain is sanitized
+		// to operation names and bounded batch indexes.
+		s.logger.Error("generate administrator users", "legacy", legacy, "error", err)
+	}
+	if legacy {
+		switch {
+		case errors.Is(err, store.ErrEmailInUse):
+			writeLegacyOrderFail(w, http.StatusConflict, "邮箱已存在于系统中")
+		case errors.Is(err, store.ErrAdminUserPlanNotFound), errors.Is(err, store.ErrInvalidInput):
+			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户生成参数格式无效")
+		default:
+			writeLegacyOrderFail(w, http.StatusInternalServerError, "生成失败")
+		}
+		return
+	}
+	switch {
+	case errors.Is(err, store.ErrEmailInUse):
+		writeAPIError(w, http.StatusConflict, "email_in_use", "至少一个邮箱已被使用，未创建任何账号", map[string]string{"email": "邮箱已被使用"})
+	case errors.Is(err, store.ErrAdminUserPlanNotFound):
+		writeAPIError(w, http.StatusUnprocessableEntity, "plan_not_found", "订阅计划不存在，未创建任何账号", map[string]string{"plan_id": "订阅计划不存在"})
+	case errors.Is(err, store.ErrInvalidInput):
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "用户生成参数无效", nil)
+	default:
+		writeAPIError(w, http.StatusInternalServerError, "user_generation_failed", "用户生成失败，未创建任何账号", nil)
+	}
+}
+
+func writeAdminUserCredentialsCSV(w http.ResponseWriter, credentials []adminUserGeneratedCredential) {
+	var output bytes.Buffer
+	_, _ = output.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(&output)
+	_ = writer.Write([]string{"账号", "密码", "过期时间", "UUID", "创建时间", "订阅地址"})
+	for _, credential := range credentials {
+		expiredAt := "长期有效"
+		if credential.ExpiredAt != nil {
+			expiredAt = credential.ExpiredAt.UTC().Format("2006-01-02 15:04:05")
+		}
+		_ = writer.Write([]string{
+			safeCSVCell(credential.Email), safeCSVCell(credential.Password), expiredAt,
+			safeCSVCell(credential.UUID), credential.CreatedAt.UTC().Format("2006-01-02 15:04:05"),
+			safeCSVCell(credential.SubscribeURL),
+		})
+	}
+	writer.Flush()
+	if writer.Error() != nil {
+		writeAPIError(w, http.StatusInternalServerError, "csv_generation_failed", "CSV 生成失败", nil)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="users.csv"`)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.Itoa(output.Len()))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(output.Bytes())
 }
 
 func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
