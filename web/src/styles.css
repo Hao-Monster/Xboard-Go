@@ -308,6 +308,8 @@ h3 { margin-bottom: 12px; }
 .subscription-template-tabs button { min-height: 36px; border: 1px solid #353d4c; border-radius: 999px; padding: 0 13px; color: #aeb6c7; background: #171c25; }
 .subscription-template-tabs button:hover { background: #222936; }
 .subscription-template-tabs button.active { color: #dfe5ff; border-color: #52628d; background: #2a3554; }
+.user-operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
+.user-operation-grid .button { justify-content: flex-start; min-height: 42px; }
 .subscription-template-field { display: grid; gap: 8px; color: #cbd0dc; font-size: .84rem; font-weight: 650; }
 .subscription-template-field textarea { min-height: 440px; tab-size: 2; white-space: pre; overflow: auto; font-size: .78rem; line-height: 1.55; }
 .subscription-overview-card, .subscription-action-card { margin-top: 26px; border: 1px solid #2d3340; border-radius: 17px; padding: 24px; background: linear-gradient(145deg, rgb(26 31 42 / 94%), rgb(16 19 27 / 94%)); box-shadow: 0 14px 35px rgb(0 0 0 / 20%); }
@@ -488,6 +490,7 @@ textarea { min-height: 100px; resize: vertical; }
 .login-terms a { color: #9db8ff; }
 
 @media (max-width: 720px) {
+	.user-operation-grid { grid-template-columns: 1fr; }
   .topbar { height: auto; min-height: 64px; flex-wrap: wrap; padding: 10px 16px; }
   .admin-nav { order: 3; width: 100%; overflow-x: auto; }
   .nav-link { flex: 1 0 auto; }

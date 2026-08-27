@@ -102,6 +102,40 @@ describe("APIClient administrator user contracts", () => {
       ]
     });
   });
+
+	it("uses server-scoped user operation routes and preserves the reset idempotency key", async () => {
+		const requests: Array<{ path: string; method: string; body?: unknown; idempotencyKey: string | null }> = [];
+		document.cookie = "xboard_csrf=user-operation-csrf; path=/";
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+			const headers = new Headers(init?.headers);
+			requests.push({
+				path, method: init?.method ?? "GET",
+				body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+				idempotencyKey: headers.get("Idempotency-Key")
+			});
+			return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+		}));
+		const api = new APIClient();
+
+		await api.getAdminUserSubscriptionURL(41);
+		await api.listAdminUserOrders(41, 2, 20);
+		await api.assignAdminUserOrder(41, { plan_id: 3, period: "monthly", total_amount: 2500 });
+		await api.listAdminUserInvitations(41, 1, 20);
+		await api.listAdminUserTraffic(41, 1, 20);
+		await api.listAdminUserTrafficResets(41, 1, 20);
+		await api.resetAdminUserTraffic(41, "customer request", "u4-browser-reset-0001");
+
+		expect(requests).toEqual([
+			{ path: "/api/v1/admin/users/41/subscription-url", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/orders?page=2&page_size=20", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/orders", method: "POST", body: { plan_id: 3, period: "monthly", total_amount: 2500 }, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/invitations?page=1&page_size=20", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/traffic?page=1&page_size=20", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/traffic-resets?page=1&page_size=20", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/traffic-reset", method: "POST", body: { reason: "customer request" }, idempotencyKey: "u4-browser-reset-0001" }
+		]);
+	});
 });
 
 describe("APIClient payment contracts", () => {

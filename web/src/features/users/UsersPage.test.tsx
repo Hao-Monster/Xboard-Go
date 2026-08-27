@@ -149,6 +149,82 @@ describe("UsersPage", () => {
     await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(4));
   });
 
+	it("copies the explicit subscription URL and exposes server-scoped legacy user operations without stacked overlays", async () => {
+		const api = baseAPI();
+		api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+		api.getAdminUserSubscriptionURL.mockResolvedValue({ subscribe_url: "https://panel.example.test/api/v1/client/subscribe?token=explicit-secret" });
+		api.listAdminUserOrders.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+		api.listAdminUserInvitations.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+		api.listAdminUserTraffic.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+		api.listAdminUserTrafficResets.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+		api.assignAdminUserOrder.mockResolvedValue({});
+		api.resetAdminUserTraffic.mockResolvedValue({
+			user_id: account.id, email: account.email, upload_before: 100, download_before: 200,
+			upload_after: 0, download_after: 0, reset_count: 5, reset_at: "2026-08-28T04:00:00Z",
+			next_reset_at: "2026-09-01T00:00:00Z", reason: "客服确认", idempotent: false
+		});
+		const user = userEvent.setup();
+		const writeText = vi.spyOn(navigator.clipboard, "writeText");
+		render(<UsersPage api={api} currentUserID={1} />);
+		expect(await screen.findByText(account.email)).toBeVisible();
+
+		await user.click(screen.getByRole("button", { name: `查看详情：${account.email}` }));
+		const detail = screen.getByRole("dialog", { name: "用户详情" });
+		await user.click(within(detail).getByRole("button", { name: "复制订阅 URL" }));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://panel.example.test/api/v1/client/subscribe?token=explicit-secret"));
+		expect(within(detail).getByRole("status")).toHaveTextContent("订阅地址已复制");
+		expect(within(detail).queryByText("explicit-secret")).not.toBeInTheDocument();
+		await user.click(within(detail).getByRole("button", { name: /^关闭$/ }));
+
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		let operations = screen.getByRole("dialog", { name: "用户操作" });
+		for (const action of ["分配订单", "TA 的订单", "TA 的邀请", "TA 的流量记录", "重置流量"]) {
+			expect(within(operations).getByRole("button", { name: action })).toBeVisible();
+		}
+		await user.click(within(operations).getByRole("button", { name: "TA 的订单" }));
+		const related = await screen.findByRole("dialog", { name: "用户关联记录" });
+		expect(screen.getAllByRole("dialog")).toHaveLength(1);
+		await waitFor(() => expect(api.listAdminUserOrders).toHaveBeenCalledWith(account.id, 1, 20));
+		await user.click(within(related).getByRole("button", { name: "关闭关联记录面板" }));
+
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		operations = screen.getByRole("dialog", { name: "用户操作" });
+		await user.click(within(operations).getByRole("button", { name: "重置流量" }));
+		const reset = await screen.findByRole("dialog", { name: "重置流量" });
+		expect(screen.getAllByRole("dialog")).toHaveLength(1);
+		await user.type(within(reset).getByLabelText("重置原因（可选）"), "客服确认");
+		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
+		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledWith(account.id, "客服确认", expect.any(String)));
+		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
+	});
+
+	it("reuses the traffic reset idempotency key after a retryable request failure", async () => {
+		const api = baseAPI();
+		api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+		api.resetAdminUserTraffic
+			.mockRejectedValueOnce(new Error("临时网络错误"))
+			.mockResolvedValueOnce({
+				user_id: account.id, email: account.email, upload_before: 100, download_before: 200,
+				upload_after: 0, download_after: 0, reset_count: 5, reset_at: "2026-08-28T04:00:00Z",
+				next_reset_at: null, reason: "重试验证", idempotent: true
+			});
+		const user = userEvent.setup();
+		render(<UsersPage api={api} currentUserID={1} />);
+		expect(await screen.findByText(account.email)).toBeVisible();
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		await user.click(within(screen.getByRole("dialog", { name: "用户操作" })).getByRole("button", { name: "重置流量" }));
+		const reset = screen.getByRole("dialog", { name: "重置流量" });
+		await user.type(within(reset).getByLabelText("重置原因（可选）"), "重试验证");
+		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
+		expect(await within(reset).findByRole("alert")).toHaveTextContent("临时网络错误");
+		const firstKey = api.resetAdminUserTraffic.mock.calls[0]?.[2];
+		expect(firstKey).toEqual(expect.any(String));
+		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
+		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledTimes(2));
+		expect(api.resetAdminUserTraffic.mock.calls[1]?.[2]).toBe(firstKey);
+		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
+	});
+
   it("exports a fixed UTF-8 CSV and neutralizes spreadsheet formulas", () => {
     const credential: AdminUserGeneratedCredential = {
       id: 1, email: " =cmd@example.test", password: "\t=WEBSERVICE()", expired_at: null,
@@ -317,6 +393,8 @@ describe("UsersPage", () => {
 function baseAPI() {
   return {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
+		getAdminUserSubscriptionURL: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
+		listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
     listServerGroups: vi.fn().mockResolvedValue([group, groupTwo]), listPlans: vi.fn().mockResolvedValue([plan, planTwo])
   };
 }

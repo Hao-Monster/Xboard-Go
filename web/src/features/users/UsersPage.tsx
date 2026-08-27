@@ -3,6 +3,7 @@ import { Modal } from "../../components/Overlay";
 import {
   APIError,
   type AdminAPI,
+	type AdminOrderPage,
   type AdminUserFilter,
   type AdminUserFilterOperator,
   type AdminUserGeneratedCredential,
@@ -13,13 +14,21 @@ import {
   type AdminUserQuery,
   type AdminUserSort,
   type AdminUserUpdateInput,
+	type AdminUserTrafficReset,
+	type AdminUserTrafficResetPage,
+	type AdminUserTrafficStatPage,
   type Plan,
   type ServerGroup
 } from "../../lib/api";
+import { AssignOrderDialog } from "../orders/OrderManagementPage";
 
 type UsersAPI = Pick<AdminAPI,
-  "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" | "listServerGroups" | "listPlans"
+  "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" |
+	"getAdminUserSubscriptionURL" | "listAdminUserOrders" | "assignAdminUserOrder" | "listAdminUserInvitations" |
+	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans"
 >;
+
+type UserRelatedTab = "orders" | "invitations" | "traffic";
 
 const userTimestampFormatter = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" });
 const defaultUserQuery: AdminUserQuery = { page: 1, page_size: 20, sort_by: "id", sort_desc: true };
@@ -50,6 +59,10 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const [viewing, setViewing] = useState<AdminUser | null>(null);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [resetting, setResetting] = useState<AdminUser | null>(null);
+	const [operating, setOperating] = useState<AdminUser | null>(null);
+	const [assigning, setAssigning] = useState<AdminUser | null>(null);
+	const [related, setRelated] = useState<{ account: AdminUser; tab: UserRelatedTab } | null>(null);
+	const [trafficResetting, setTrafficResetting] = useState<AdminUser | null>(null);
   const requestVersion = useRef(0);
   const nextFilterID = useRef(1);
 
@@ -198,16 +211,27 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
             <td data-label="余额">{formatMoney(account.balance)}</td>
             <td data-label="佣金">{formatMoney(account.commission_balance)}<small className="muted">{commissionLabel(account)}</small></td>
             <td data-label="注册时间">{formatTimestamp(account.created_at)}</td>
-            <td data-label="操作"><div className="row-actions"><button className="button ghost compact" aria-label={`查看详情：${account.email}`} onClick={() => setViewing(account)}>详情</button><button className="button ghost compact" aria-label={`编辑用户：${account.email}`} onClick={() => setEditing(account)}>编辑</button><button className="button ghost compact" aria-label={`重置密码：${account.email}`} onClick={() => setResetting(account)}>重置密码</button></div></td>
+            <td data-label="操作"><div className="row-actions"><button className="button ghost compact" aria-label={`查看详情：${account.email}`} onClick={() => setViewing(account)}>详情</button><button className="button ghost compact" aria-label={`编辑用户：${account.email}`} onClick={() => setEditing(account)}>编辑</button><button className="button ghost compact" aria-label={`重置密码：${account.email}`} onClick={() => setResetting(account)}>重置密码</button><button className="button ghost compact" aria-label={`用户操作：${account.email}`} onClick={() => setOperating(account)}>用户操作</button></div></td>
           </tr>)}</tbody>
         </table>
         <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>上一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>下一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
       </div>}
 
     {creating && <UserGenerator api={api} plans={plans} onClose={() => setCreating(false)} onGenerated={() => void runQuery(appliedQuery)} />}
-    {viewing !== null && <UserDetail account={viewing} onClose={() => setViewing(null)} />}
+    {viewing !== null && <UserDetail api={api} account={viewing} onClose={() => setViewing(null)} />}
     {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
     {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { setResetting(null); void runQuery(appliedQuery); }} />}
+		{operating !== null && <UserOperationsDialog account={operating} onClose={() => setOperating(null)}
+			onAssign={() => { setAssigning(operating); setOperating(null); }}
+			onPassword={() => { setResetting(operating); setOperating(null); }}
+			onRelated={(tab) => { setRelated({ account: operating, tab }); setOperating(null); }}
+			onTrafficReset={() => { setTrafficResetting(operating); setOperating(null); }} />}
+		{assigning !== null && <AssignOrderDialog api={null} plans={plans} initialEmail={assigning.email}
+			onAssign={(input) => api.assignAdminUserOrder(assigning.id, input)} onClose={() => setAssigning(null)}
+			onCreated={() => { setAssigning(null); void runQuery(appliedQuery); }} />}
+		{related !== null && <UserRelatedDialog api={api} account={related.account} initialTab={related.tab} onClose={() => setRelated(null)} />}
+		{trafficResetting !== null && <UserTrafficResetDialog api={api} account={trafficResetting} onClose={() => setTrafficResetting(null)}
+			onReset={() => void runQuery(appliedQuery)} />}
   </main>;
 }
 
@@ -216,7 +240,18 @@ function SortableHeader({ label, field, query, onSort }: { label: string; field:
   return <th scope="col" aria-label={label} aria-sort={active ? query.sort_desc ? "descending" : "ascending" : "none"}><button type="button" className="table-sort" aria-label={`按${label}排序`} onClick={() => onSort(field)}>{label}{active ? query.sort_desc ? " ↓" : " ↑" : ""}</button></th>;
 }
 
-function UserDetail({ account, onClose }: { account: AdminUser; onClose: () => void }) {
+function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUser; onClose: () => void }) {
+	const [copyState, setCopyState] = useState<"" | "copying" | "copied" | "error">("");
+	const copySubscriptionURL = async () => {
+		setCopyState("copying");
+		try {
+			const result = await api.getAdminUserSubscriptionURL(account.id);
+			await navigator.clipboard.writeText(result.subscribe_url);
+			setCopyState("copied");
+		} catch {
+			setCopyState("error");
+		}
+	};
   return <Modal title="用户详情" onClose={onClose}>
     <ModalHeader title="用户详情" onClose={onClose} />
     <div className="user-detail-grid">
@@ -235,8 +270,134 @@ function UserDetail({ account, onClose }: { account: AdminUser; onClose: () => v
       <DetailField label="最后登录 / 在线" value={`${formatTimestamp(account.last_login_at)} / ${formatTimestamp(account.last_online_at)}`} />
       <DetailField label="注册 / 更新" value={`${formatTimestamp(account.created_at)} / ${formatTimestamp(account.updated_at)}`} wide />
     </div>
-    <div className="form-actions"><button className="button primary" type="button" onClick={onClose}>关闭</button></div>
+		{copyState === "copied" && <div className="alert success" role="status">订阅地址已复制；页面不会展示或缓存该凭据。</div>}
+		{copyState === "error" && <div className="alert error" role="alert">复制失败，请检查浏览器剪贴板权限后重试。</div>}
+    <div className="form-actions"><button className="button secondary" type="button" disabled={copyState === "copying"} onClick={() => void copySubscriptionURL()}>{copyState === "copying" ? "正在复制…" : "复制订阅 URL"}</button><button className="button primary" type="button" onClick={onClose}>关闭</button></div>
   </Modal>;
+}
+
+function UserOperationsDialog({ account, onClose, onAssign, onPassword, onRelated, onTrafficReset }: {
+	account: AdminUser;
+	onClose: () => void;
+	onAssign: () => void;
+	onPassword: () => void;
+	onRelated: (tab: UserRelatedTab) => void;
+	onTrafficReset: () => void;
+}) {
+	return <Modal title="用户操作" onClose={onClose}>
+		<ModalHeader title="用户操作" onClose={onClose} />
+		<p className="muted">当前用户：<strong>{account.email}</strong></p>
+		<div className="user-operation-grid">
+			<button className="button secondary" type="button" onClick={onAssign}>分配订单</button>
+			<button className="button secondary" type="button" onClick={() => onRelated("orders")}>TA 的订单</button>
+			<button className="button secondary" type="button" onClick={() => onRelated("invitations")}>TA 的邀请</button>
+			<button className="button secondary" type="button" onClick={() => onRelated("traffic")}>TA 的流量记录</button>
+			<button className="button secondary" type="button" onClick={onTrafficReset}>重置流量</button>
+			<button className="button secondary" type="button" onClick={onPassword}>重置密码</button>
+		</div>
+		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button></div>
+	</Modal>;
+}
+
+type UserRelatedResult =
+	| { tab: "orders"; page: AdminOrderPage }
+	| { tab: "invitations"; page: Awaited<ReturnType<UsersAPI["listAdminUserInvitations"]>> }
+	| { tab: "traffic"; page: AdminUserTrafficStatPage };
+
+function UserRelatedDialog({ api, account, initialTab, onClose }: { api: UsersAPI; account: AdminUser; initialTab: UserRelatedTab; onClose: () => void }) {
+	const [tab, setTab] = useState<UserRelatedTab>(initialTab);
+	const [pageNumber, setPageNumber] = useState(1);
+	const [result, setResult] = useState<UserRelatedResult | null>(null);
+	const [error, setError] = useState("");
+	useEffect(() => {
+		let active = true;
+		let request: Promise<UserRelatedResult>;
+		if (tab === "orders") request = api.listAdminUserOrders(account.id, pageNumber, 20).then((page): UserRelatedResult => ({ tab: "orders", page }));
+		else if (tab === "invitations") request = api.listAdminUserInvitations(account.id, pageNumber, 20).then((page): UserRelatedResult => ({ tab: "invitations", page }));
+		else request = api.listAdminUserTraffic(account.id, pageNumber, 20).then((page): UserRelatedResult => ({ tab: "traffic", page }));
+		void request.then((next) => { if (active) setResult(next); })
+			.catch((cause: unknown) => { if (active) setError(errorMessage(cause)); });
+		return () => { active = false; };
+	}, [account.id, api, pageNumber, tab]);
+	const selectTab = (next: UserRelatedTab) => { setTab(next); setPageNumber(1); setResult(null); setError(""); };
+	const selectPage = (next: number) => { setPageNumber(next); setResult(null); setError(""); };
+	const page = result?.tab === tab ? result.page : null;
+	const total = page?.total ?? 0;
+	const loading = page === null && error === "";
+	return <Modal title="用户关联记录" className="wide-modal" onClose={onClose}>
+		<ModalHeader title="用户关联记录" onClose={onClose} />
+		<p className="muted">当前用户：<strong>{account.email}</strong></p>
+		<div className="subscription-template-tabs" role="tablist" aria-label="用户关联记录类型">
+			<button type="button" role="tab" aria-selected={tab === "orders"} className={tab === "orders" ? "active" : ""} onClick={() => selectTab("orders")}>TA 的订单</button>
+			<button type="button" role="tab" aria-selected={tab === "invitations"} className={tab === "invitations" ? "active" : ""} onClick={() => selectTab("invitations")}>TA 的邀请</button>
+			<button type="button" role="tab" aria-selected={tab === "traffic"} className={tab === "traffic" ? "active" : ""} onClick={() => selectTab("traffic")}>TA 的流量记录</button>
+		</div>
+		{loading && <div className="alert" role="status">正在读取关联记录…</div>}
+		{error !== "" && <div className="alert error" role="alert">{error}</div>}
+		{!loading && error === "" && total === 0 && <div className="empty-card">暂无相关记录。</div>}
+		{!loading && error === "" && result?.tab === "orders" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>订单号</th><th>套餐</th><th>金额</th><th>状态</th><th>创建时间</th></tr></thead><tbody>{result.page.items.map((order) => <tr key={order.id}><td className="monospace">{order.trade_no}</td><td>{order.plan_name}</td><td>{formatMoney(order.total_amount)}</td><td>{adminOrderStatusLabel(order.status)}</td><td>{formatTimestamp(order.created_at)}</td></tr>)}</tbody></table>}
+		{!loading && error === "" && result?.tab === "invitations" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>ID</th><th>邮箱</th><th>状态</th><th>注册时间</th></tr></thead><tbody>{result.page.items.map((user) => <tr key={user.id}><td>#{user.id}</td><td>{user.email}</td><td>{user.banned ? "已封禁" : "正常"}</td><td>{formatTimestamp(user.created_at)}</td></tr>)}</tbody></table>}
+		{!loading && error === "" && result?.tab === "traffic" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>时间</th><th>上行</th><th>下行</th><th>倍率</th><th>总计</th></tr></thead><tbody>{result.page.items.map((item) => <tr key={`${item.record_at}-${item.record_type}-${item.rate_micros}`}><td>{formatTimestamp(item.record_at)}</td><td>{formatBytes(item.upload)}</td><td>{formatBytes(item.download)}</td><td>{formatRate(item.rate_micros)}</td><td>{formatBytes(item.upload + item.download)}</td></tr>)}</tbody></table>}
+		{total > 20 && <div className="pagination-footer"><button className="button ghost compact" type="button" disabled={loading || pageNumber <= 1} onClick={() => selectPage(pageNumber - 1)}>上一页</button><span>第 {pageNumber} 页</span><button className="button ghost compact" type="button" disabled={loading || pageNumber*20 >= total} onClick={() => selectPage(pageNumber + 1)}>下一页</button></div>}
+		<div className="form-actions"><button className="button primary" type="button" aria-label="关闭关联记录面板" onClick={onClose}>关闭</button></div>
+	</Modal>;
+}
+
+function UserTrafficResetDialog({ api, account, onClose, onReset }: { api: UsersAPI; account: AdminUser; onClose: () => void; onReset: () => void }) {
+	const [tab, setTab] = useState<"reset" | "history">("reset");
+	const [reason, setReason] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [result, setResult] = useState<AdminUserTrafficReset | null>(null);
+	const [history, setHistory] = useState<AdminUserTrafficResetPage | null>(null);
+	const [error, setError] = useState("");
+	const idempotencyKey = useRef("");
+	useEffect(() => {
+		if (tab !== "history") return undefined;
+		let active = true;
+		void api.listAdminUserTrafficResets(account.id, 1, 20)
+			.then((page) => { if (active) setHistory(page); })
+			.catch((cause: unknown) => { if (active) setError(errorMessage(cause)); });
+		return () => { active = false; };
+	}, [account.id, api, tab, result]);
+	const submit = async (event: FormEvent) => {
+		event.preventDefault();
+		setSaving(true);
+		setError("");
+		if (idempotencyKey.current === "") idempotencyKey.current = globalThis.crypto.randomUUID();
+		try {
+			const next = await api.resetAdminUserTraffic(account.id, reason.trim(), idempotencyKey.current);
+			setResult(next);
+			onReset();
+		} catch (cause) {
+			setError(errorMessage(cause));
+		} finally {
+			setSaving(false);
+		}
+	};
+	return <Modal title="重置流量" onClose={onClose}>
+		<ModalHeader title="重置流量" onClose={onClose} />
+		<div className="subscription-template-tabs" role="tablist" aria-label="流量重置视图">
+			<button type="button" role="tab" aria-selected={tab === "reset"} className={tab === "reset" ? "active" : ""} onClick={() => setTab("reset")}>重置流量</button>
+			<button type="button" role="tab" aria-selected={tab === "history"} className={tab === "history" ? "active" : ""} onClick={() => { setError(""); setTab("history"); }}>重置历史</button>
+		</div>
+		{tab === "reset" && <form className="form-stack" onSubmit={(event) => void submit(event)}>
+			<div className="user-detail-grid"><DetailField label="用户邮箱" value={account.email} /><DetailField label="已用流量" value={formatBytes(account.traffic_upload + account.traffic_download)} /><DetailField label="总流量" value={formatBytes(account.transfer_enable)} /><DetailField label="到期时间" value={account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)} /></div>
+			<div className="alert warning">此操作不可撤销，将同时把上行和下行流量清零，并记录管理员、原因和重置前后值。</div>
+			<label>重置原因（可选）<textarea value={reason} maxLength={255} disabled={result !== null} onChange={(event) => setReason(event.target.value)} /></label>
+			{result !== null && <div className="alert success" role="status">流量已重置：{formatBytes(result.upload_before + result.download_before)} → 0 B。</div>}
+			{error !== "" && <div className="alert error" role="alert">{error}</div>}
+			<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button><button className="button primary" type="submit" disabled={saving || result !== null}>{saving ? "正在重置…" : "确认重置流量"}</button></div>
+		</form>}
+		{tab === "history" && <>{error !== "" && <div className="alert error" role="alert">{error}</div>}{history === null ? <div className="alert" role="status">正在读取重置历史…</div> : history.items.length === 0 ? <div className="empty-card">暂无重置历史。</div> : <table className="resource-table"><thead><tr><th>时间</th><th>来源</th><th>重置前</th><th>原因</th><th>操作人</th></tr></thead><tbody>{history.items.map((item) => <tr key={item.id}><td>{formatTimestamp(item.reset_at)}</td><td>{item.trigger_source === "manual" ? "手工" : "定时"}</td><td>{formatBytes(item.upload_before + item.download_before)}</td><td>{item.reason || "—"}</td><td>{item.administrator_email ?? "系统"}</td></tr>)}</tbody></table>}<div className="form-actions"><button className="button primary" type="button" onClick={onClose}>关闭</button></div></>}
+	</Modal>;
+}
+
+function adminOrderStatusLabel(status: number): string {
+	return ["待支付", "开通中", "已取消", "已完成", "已折抵"][status] ?? `状态 ${status}`;
+}
+
+function formatRate(rateMicros: number): string {
+	return `${(rateMicros / 1_000_000).toFixed(2).replace(/\.00$/, "")}×`;
 }
 
 function DetailField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {

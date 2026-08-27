@@ -87,6 +87,12 @@ var requiredSchemaColumnsV37 = map[string][]string{
 	"users": {"telegram_id", "remind_expire", "remind_traffic", "remarks"},
 }
 
+var requiredSchemaColumnsV38 = map[string][]string{
+	"traffic_reset_logs": {
+		"upload_after", "download_after", "trigger_source", "reason", "administrator_id", "administrator_email", "idempotency_key",
+	},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -138,6 +144,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 37 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV37); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 38 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV38); err != nil {
 			return err
 		}
 	}

@@ -366,6 +366,10 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (A
 	}
 	where := ` WHERE 1 = 1`
 	arguments := make([]any, 0, 16)
+	if filter.UserID != nil {
+		where += ` AND o.user_id = ?`
+		arguments = append(arguments, *filter.UserID)
+	}
 	if len(filter.Statuses) > 0 {
 		where += ` AND o.status IN (` + adminOrderPlaceholders(len(filter.Statuses)) + `)`
 		for _, status := range filter.Statuses {
@@ -414,7 +418,9 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (A
 	queryArguments := append(append([]any(nil), arguments...), filter.PageSize, (filter.Page-1)*filter.PageSize)
 	selectQuery := adminOrderSelect
 	if filter.Query == "" {
-		selectQuery = strings.Replace(selectQuery, "FROM orders o JOIN", "FROM orders o INDEXED BY "+adminOrderSortIndex(filter)+" JOIN", 1)
+		if index := adminOrderSortIndex(filter); index != "" {
+			selectQuery = strings.Replace(selectQuery, "FROM orders o JOIN", "FROM orders o INDEXED BY "+index+" JOIN", 1)
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, selectQuery+where+adminOrderSortClause(filter)+` LIMIT ? OFFSET ?`, queryArguments...)
 	if err != nil {
@@ -439,6 +445,12 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderFilter) (A
 }
 
 func adminOrderSortIndex(filter AdminOrderFilter) string {
+	if filter.UserID != nil {
+		if filter.SortBy == "" || filter.SortBy == AdminOrderSortCreatedAt {
+			return "idx_orders_user_created"
+		}
+		return ""
+	}
 	return map[AdminOrderSortField]string{
 		"":                              "idx_orders_created",
 		AdminOrderSortCreatedAt:         "idx_orders_created",
@@ -451,6 +463,9 @@ func adminOrderSortIndex(filter AdminOrderFilter) string {
 
 func normalizeAdminOrderFilter(filter *AdminOrderFilter) error {
 	if filter == nil || len(filter.Statuses) > 5 || len(filter.Types) > 4 || len(filter.Periods) > 8 || len(filter.CommissionStatuses) > 4 {
+		return ErrInvalidInput
+	}
+	if filter.UserID != nil && *filter.UserID < 1 {
 		return ErrInvalidInput
 	}
 	filter.Query = strings.TrimSpace(filter.Query)
@@ -551,7 +566,10 @@ func adminOrderSortClause(filter AdminOrderFilter) string {
 func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now time.Time) (Order, error) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	period, valid := normalizeOrderPeriod(input.Period)
-	if input.Email == "" || input.PlanID < 1 || !valid || input.TotalAmount < 0 || input.TotalAmount > maxOrderMoneyCents {
+	hasUserID := input.UserID != nil
+	hasEmail := input.Email != ""
+	if hasUserID == hasEmail || hasUserID && *input.UserID < 1 || input.PlanID < 1 || !valid ||
+		input.TotalAmount < 0 || input.TotalAmount > maxOrderMoneyCents {
 		return Order{}, ErrInvalidInput
 	}
 	tradeNo, err := newAssignedOrderTradeNo()
@@ -565,7 +583,13 @@ func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now tim
 	}
 	defer tx.Rollback()
 	var userID int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ? AND account_kind = 'human'`, input.Email).Scan(&userID); errors.Is(err, sql.ErrNoRows) {
+	var row *sql.Row
+	if hasUserID {
+		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ? AND account_kind = 'human'`, *input.UserID)
+	} else {
+		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ? AND account_kind = 'human'`, input.Email)
+	}
+	if err := row.Scan(&userID); errors.Is(err, sql.ErrNoRows) {
 		return Order{}, ErrNotFound
 	} else if err != nil {
 		return Order{}, fmt.Errorf("find assigned order user: %w", err)

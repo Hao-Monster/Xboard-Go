@@ -163,6 +163,117 @@ test("legacy and Go user directories expose the same core table and query surfac
   }
 });
 
+test("legacy and Go user operation surfaces preserve related records and clickable traffic reset flows", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    const fixtureSuffix = Date.now();
+    const fixtureEmail = `parity-u4-${fixtureSuffix}@example.test`;
+    const createdPlanResponse = await goAdminRequest(goPage, "/api/v1/admin/plans", "POST", {
+      group_id: null, transfer_enable: 10, name: `Parity U4 ${fixtureSuffix}`, speed_limit: null,
+      content: "U4 parity fixture", reset_traffic_method: 1, capacity_limit: null,
+      prices: { monthly: 100 }, device_limit: null, tags: ["parity"]
+    });
+    expect(createdPlanResponse.status, createdPlanResponse.body).toBe(201);
+    const createdPlan = readObjectProperty(JSON.parse(createdPlanResponse.body) as unknown, "data");
+    const generatedUserResponse = await goAdminRequest(goPage, "/api/v1/admin/users/generate", "POST", {
+      mode: "single", email: fixtureEmail, count: 1, password: `parity-u4-password-${fixtureSuffix}`,
+      plan_id: Number(readProperty(createdPlan, "id")),
+      expired_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000).toISOString(),
+      download_csv: false, is_distributor: false
+    });
+    expect(generatedUserResponse.status, generatedUserResponse.body).toBe(201);
+
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/user/fetch"));
+    await legacyPage.locator('a[href="#/user/manage"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    const legacyOperation = legacyPage.locator('button[aria-label="操作"]').first();
+    await legacyOperation.click();
+    for (const action of [
+      "编辑", "分配订单", "复制订阅URL", "重置UUID及订阅URL",
+      "TA的订单", "TA的邀请", "TA的流量记录", "重置流量", "删除"
+    ]) {
+      await expect(legacyPage.getByRole("menuitem", { name: action, exact: true }), `旧 Xboard：${action}`).toBeVisible();
+    }
+    await legacyPage.getByRole("menuitem", { name: "重置流量", exact: true }).click();
+    const legacyReset = legacyPage.locator('[role="dialog"]:visible').last();
+    await expect(legacyReset.getByText("流量重置", { exact: true })).toBeVisible();
+    await expect(legacyReset.getByRole("tab", { name: "重置流量", exact: true })).toBeVisible();
+    await expect(legacyReset.getByRole("tab", { name: "重置历史", exact: true })).toBeVisible();
+    await expect(legacyReset.locator("textarea")).toBeEditable();
+    await expect(legacyReset.getByRole("button", { name: "确认重置", exact: true })).toBeEnabled();
+    await legacyReset.getByRole("button", { name: "Close", exact: true }).click();
+
+    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/users?"));
+    await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
+    expect((await goFetch).status()).toBe(200);
+    const goTable = goPage.getByRole("table", { name: "用户列表" });
+    const goRow = goTable.getByRole("row").filter({ hasText: fixtureEmail });
+    await expect(goRow).toBeVisible();
+
+    await goRow.getByRole("button", { name: `查看详情：${fixtureEmail}`, exact: true }).click();
+    const detail = goPage.getByRole("dialog", { name: "用户详情" });
+    await expect(detail.getByRole("button", { name: "复制订阅 URL", exact: true })).toBeVisible();
+    await expect(detail).not.toContainText("/api/v1/client/subscribe?token=");
+    await detail.getByRole("button", { name: "关闭", exact: true }).click();
+
+    const openOperations = async () => {
+      await goRow.getByRole("button", { name: `用户操作：${fixtureEmail}`, exact: true }).click();
+      const dialog = goPage.getByRole("dialog", { name: "用户操作" });
+      await expect(dialog).toBeVisible();
+      await expect(goPage.locator('[role="dialog"]:visible')).toHaveCount(1);
+      return dialog;
+    };
+    let operations = await openOperations();
+    for (const action of ["分配订单", "TA 的订单", "TA 的邀请", "TA 的流量记录", "重置流量", "重置密码"]) {
+      await expect(operations.getByRole("button", { name: action, exact: true }), `Go：${action}`).toBeVisible();
+    }
+
+    await operations.getByRole("button", { name: "分配订单", exact: true }).click();
+    const assignment = goPage.getByRole("dialog", { name: "分配订单" });
+    await expect(goPage.locator('[role="dialog"]:visible')).toHaveCount(1);
+    await expect(assignment.getByLabel("用户邮箱")).toHaveAttribute("readonly", "");
+    await assignment.getByRole("button", { name: "取消", exact: true }).click();
+
+    operations = await openOperations();
+    await operations.getByRole("button", { name: "TA 的订单", exact: true }).click();
+    const related = goPage.getByRole("dialog", { name: "用户关联记录" });
+    await expect(goPage.locator('[role="dialog"]:visible')).toHaveCount(1);
+    for (const tab of ["TA 的订单", "TA 的邀请", "TA 的流量记录"]) {
+      const button = related.getByRole("tab", { name: tab, exact: true });
+      await button.click();
+      await expect(button).toHaveAttribute("aria-selected", "true");
+    }
+    await related.getByRole("button", { name: "关闭关联记录面板", exact: true }).click();
+
+    operations = await openOperations();
+    await operations.getByRole("button", { name: "重置流量", exact: true }).click();
+    const goReset = goPage.getByRole("dialog", { name: "重置流量" });
+    await expect(goPage.locator('[role="dialog"]:visible')).toHaveCount(1);
+    await expect(goReset.getByLabel("重置原因（可选）")).toBeEditable();
+    await expect(goReset.getByRole("button", { name: "确认重置流量", exact: true })).toBeEnabled();
+    const historyTab = goReset.getByRole("tab", { name: "重置历史", exact: true });
+    await historyTab.click();
+    await expect(historyTab).toHaveAttribute("aria-selected", "true");
+    const resetTab = goReset.getByRole("tab", { name: "重置流量", exact: true });
+    await resetTab.click();
+    await expect(resetTab).toHaveAttribute("aria-selected", "true");
+    await expect(goPage.locator('[role="dialog"]:visible')).toHaveCount(1);
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go user generators preserve single and batch concepts with approved credential hardening", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });

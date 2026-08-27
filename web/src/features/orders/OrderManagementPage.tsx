@@ -158,8 +158,15 @@ function SortableHeader({ label, field, applied, onSort }: {
 	</th>;
 }
 
-function AssignOrderDialog({ api, plans, onClose, onCreated }: { api: OrderManagementAPI; plans: Plan[]; onClose: () => void; onCreated: () => void }) {
-  const [email, setEmail] = useState("");
+export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onClose, onCreated }: {
+	api: Pick<OrderManagementAPI, "assignOrder"> | null;
+	plans: Plan[];
+	initialEmail?: string;
+	onAssign?: (input: Omit<AssignOrderInput, "email">) => Promise<unknown>;
+	onClose: () => void;
+	onCreated: () => void;
+}) {
+  const [email, setEmail] = useState(initialEmail);
   const [planID, setPlanID] = useState(plans[0]?.id ?? 0);
   const [period, setPeriod] = useState<PlanPeriod>("monthly");
   const [amount, setAmount] = useState("0.00");
@@ -174,7 +181,12 @@ function AssignOrderDialog({ api, plans, onClose, onCreated }: { api: OrderManag
     setSaving(true);
     setError("");
     try {
-      await api.assignOrder({ email: email.trim(), plan_id: planID, period: effectivePeriod, total_amount: parseCNY(amount) });
+		const input = { plan_id: planID, period: effectivePeriod, total_amount: parseCNY(amount) };
+		if (onAssign === undefined) {
+			if (api === null) throw new Error("订单分配接口不可用");
+			await api.assignOrder({ email: email.trim(), ...input });
+		}
+		else await onAssign(input);
       onCreated();
     } catch (cause) {
       setError(messageOf(cause));
@@ -187,7 +199,8 @@ function AssignOrderDialog({ api, plans, onClose, onCreated }: { api: OrderManag
     const first = periods.find(([value]) => next?.prices[value] !== undefined);
     if (first !== undefined) setPeriod(first[0]);
   };
-  return <Modal title="添加订单" onClose={onClose}><div className="modal-header"><h2>添加订单</h2><button className="icon-button" aria-label="关闭添加订单" onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>用户邮箱<input type="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>订阅套餐<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>付款周期<select value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>支付金额（CNY）<input inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><p className="small muted">管理员分配订单沿用旧 Xboard 规则：金额由管理员明确指定，不自动使用套餐标价或用户余额。</p>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : "创建订单"}</button></div></form></Modal>;
+  const title = onAssign === undefined ? "添加订单" : "分配订单";
+  return <Modal title={title} onClose={onClose}><div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>用户邮箱<input type="email" required maxLength={254} readOnly={onAssign !== undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>订阅套餐<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>付款周期<select value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>支付金额（CNY）<input inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><p className="small muted">管理员分配订单沿用旧 Xboard 规则：金额由管理员明确指定，不自动使用套餐标价或用户余额。</p>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : "创建订单"}</button></div></form></Modal>;
 }
 
 function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: OrderManagementAPI; order: AdminOrderDetail; onClose: () => void; onUpdated: (order: AdminOrderDetail) => void }) {

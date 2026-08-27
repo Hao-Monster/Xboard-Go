@@ -812,6 +812,65 @@ export interface AdminUserPage {
   page_size?: number;
 }
 
+export interface AdminUserSubscriptionURL {
+	subscribe_url: string;
+}
+
+export interface AdminUserTrafficReset {
+	user_id: number;
+	email: string;
+	upload_before: number;
+	download_before: number;
+	upload_after: number;
+	download_after: number;
+	reset_count: number;
+	reset_at: string;
+	next_reset_at: string | null;
+	reason: string;
+	idempotent: boolean;
+}
+
+export interface AdminUserTrafficResetLog {
+	id: number;
+	user_id: number;
+	plan_id: number | null;
+	scheduled_for: string | null;
+	reset_at: string;
+	upload_before: number;
+	download_before: number;
+	upload_after: number;
+	download_after: number;
+	reset_count: number;
+	trigger_source: "scheduled" | "manual";
+	reason: string;
+	administrator_id: number | null;
+	administrator_email: string | null;
+}
+
+export interface AdminUserTrafficResetPage {
+	items: AdminUserTrafficResetLog[];
+	total: number;
+	page: number;
+	page_size: number;
+}
+
+export interface AdminUserTrafficStat {
+	rate_micros: number;
+	record_at: string;
+	record_type: "d" | "m";
+	upload: number;
+	download: number;
+}
+
+export interface AdminUserTrafficStatPage {
+	items: AdminUserTrafficStat[];
+	total: number;
+	page: number;
+	page_size: number;
+}
+
+export type AssignAdminUserOrderInput = Omit<AssignOrderInput, "email">;
+
 export type TicketLevel = 0 | 1 | 2;
 export type TicketStatus = 0 | 1;
 export type TicketReplyStatus = 0 | 1;
@@ -1276,6 +1335,13 @@ export interface AdminAPI {
   generateAdminUsers: (input: AdminUserGenerateInput) => Promise<AdminUserGenerationResult>;
   updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
   resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
+	getAdminUserSubscriptionURL: (id: number) => Promise<AdminUserSubscriptionURL>;
+	listAdminUserOrders: (id: number, page?: number, pageSize?: number) => Promise<AdminOrderPage>;
+	assignAdminUserOrder: (id: number, input: AssignAdminUserOrderInput) => Promise<Order>;
+	listAdminUserInvitations: (id: number, page?: number, pageSize?: number) => Promise<AdminUserPage>;
+	listAdminUserTraffic: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficStatPage>;
+	listAdminUserTrafficResets: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficResetPage>;
+	resetAdminUserTraffic: (id: number, reason: string, idempotencyKey: string) => Promise<AdminUserTrafficReset>;
   listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
   getAdminTicket: (id: number) => Promise<Ticket>;
   replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
@@ -1901,6 +1967,36 @@ export class APIClient implements AdminAPI {
     });
   }
 
+	async getAdminUserSubscriptionURL(id: number): Promise<AdminUserSubscriptionURL> {
+		return this.request<AdminUserSubscriptionURL>(`/api/v1/admin/users/${id}/subscription-url`);
+	}
+
+	async listAdminUserOrders(id: number, page = 1, pageSize = 20): Promise<AdminOrderPage> {
+		return this.request<AdminOrderPage>(`/api/v1/admin/users/${id}/orders?page=${page}&page_size=${pageSize}`);
+	}
+
+	async assignAdminUserOrder(id: number, input: AssignAdminUserOrderInput): Promise<Order> {
+		return this.request<Order>(`/api/v1/admin/users/${id}/orders`, { method: "POST", body: input });
+	}
+
+	async listAdminUserInvitations(id: number, page = 1, pageSize = 20): Promise<AdminUserPage> {
+		return this.request<AdminUserPage>(`/api/v1/admin/users/${id}/invitations?page=${page}&page_size=${pageSize}`);
+	}
+
+	async listAdminUserTraffic(id: number, page = 1, pageSize = 20): Promise<AdminUserTrafficStatPage> {
+		return this.request<AdminUserTrafficStatPage>(`/api/v1/admin/users/${id}/traffic?page=${page}&page_size=${pageSize}`);
+	}
+
+	async listAdminUserTrafficResets(id: number, page = 1, pageSize = 20): Promise<AdminUserTrafficResetPage> {
+		return this.request<AdminUserTrafficResetPage>(`/api/v1/admin/users/${id}/traffic-resets?page=${page}&page_size=${pageSize}`);
+	}
+
+	async resetAdminUserTraffic(id: number, reason: string, idempotencyKey: string): Promise<AdminUserTrafficReset> {
+		return this.request<AdminUserTrafficReset>(`/api/v1/admin/users/${id}/traffic-reset`, {
+			method: "POST", body: { reason }, headers: { "Idempotency-Key": idempotencyKey }
+		});
+	}
+
   async listTickets(page = 1, pageSize = 20): Promise<TicketPage> {
     return this.request<TicketPage>(`/api/v1/tickets?page=${page}&page_size=${pageSize}`);
   }
@@ -2136,12 +2232,13 @@ export class APIClient implements AdminAPI {
     return this.request<ClientCatalogQR>(`/api/v1/client-catalog/qr?${query.toString()}`);
   }
 
-  private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
     const method = options.method ?? "GET";
     const headers = new Headers({ Accept: "application/json" });
     if (options.body !== undefined) {
       headers.set("Content-Type", "application/json");
     }
+		for (const [name, value] of Object.entries(options.headers ?? {})) headers.set(name, value);
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
       const csrf = readCookie("xboard_csrf");
       if (csrf !== null) {

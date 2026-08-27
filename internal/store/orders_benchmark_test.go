@@ -12,6 +12,12 @@ func BenchmarkListAdminOrders100K(b *testing.B) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	plan, userID := createOrderFixture(b, database, now, PlanPrices{"monthly": 1_000}, nil)
+	other, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "orders-benchmark-other@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		b.Fatal(err)
+	}
 	tx, err := database.db.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
@@ -26,13 +32,17 @@ func BenchmarkListAdminOrders100K(b *testing.B) {
 		b.Fatal(err)
 	}
 	for index := 0; index < 100_000; index++ {
+		orderUserID := other.ID
+		if index%100 == 0 {
+			orderUserID = userID
+		}
 		createdAt := now.Unix() + int64(index)
 		period, orderType, status, commissionStatus := "monthly", OrderTypeNew, OrderStatusCompleted, 0
 		if index%2 == 1 {
 			period, orderType, status, commissionStatus = "yearly", OrderTypeRenewal, OrderStatusDiscounted, 1
 		}
 		amount := int64(100 + index%10_000)
-		if _, err := statement.ExecContext(ctx, userID, plan.ID, period, fmt.Sprintf("%025d", index+1), amount, amount,
+		if _, err := statement.ExecContext(ctx, orderUserID, plan.ID, period, fmt.Sprintf("%025d", index+1), amount, amount,
 			orderType, status, commissionStatus, amount/10, createdAt, createdAt); err != nil {
 			b.Fatal(err)
 		}
@@ -58,6 +68,9 @@ func BenchmarkListAdminOrders100K(b *testing.B) {
 			Page: 1, PageSize: 20, CommissionStatuses: []int{0, 1},
 			SortBy: AdminOrderSortCommissionBalance, SortDescending: true,
 		}, total: 100_000},
+		"user-scoped-latest": {filter: AdminOrderFilter{
+			Page: 1, PageSize: 20, UserID: &userID,
+		}, total: 1_000},
 	} {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()

@@ -374,6 +374,11 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))))
+	legacyAdminTrafficReset := http.NewServeMux()
+	legacyAdminTrafficReset.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/reset-user", api.legacyResetAdminUserTraffic)
+	legacyAdminTrafficReset.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/user/{userID}/history", api.legacyListAdminUserTrafficResets)
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminTrafficResetMutations(api.recoverPanic(legacyAdminTrafficReset)))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/stat/getStatUser", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUserTraffic))))
 	legacyAdminCoupon := http.NewServeMux()
 	legacyAdminCoupon.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
@@ -521,6 +526,13 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)
 	admin.HandleFunc("PATCH /api/v1/admin/users/{userID}", api.updateAdminUser)
 	admin.HandleFunc("PUT /api/v1/admin/users/{userID}/password", api.resetAdminUserPassword)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/subscription-url", api.getAdminUserSubscriptionURL)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/orders", api.listAdminUserOrders)
+	admin.HandleFunc("POST /api/v1/admin/users/{userID}/orders", api.assignAdminUserOrder)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/invitations", api.listAdminUserInvitations)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/traffic", api.listAdminUserTraffic)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/traffic-resets", api.listAdminUserTrafficResets)
+	admin.HandleFunc("POST /api/v1/admin/users/{userID}/traffic-reset", api.resetAdminUserTraffic)
 	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}/activation-schedule", api.getActivationSchedule)
 	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}/activation-schedule", api.saveActivationSchedule)
 	admin.HandleFunc("DELETE /api/v1/admin/nodes/{nodeID}/activation-schedule", api.deleteActivationSchedule)
@@ -618,6 +630,22 @@ func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/user/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminTrafficResetMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/traffic-reset/reset-user") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/traffic-reset/reset-user", recorder.statusCode())
 	})
 }
 
