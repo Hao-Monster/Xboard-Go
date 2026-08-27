@@ -370,6 +370,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/distributor/options", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyAdminDistributorOptions))))
 	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))))
 	legacyAdminCoupon := http.NewServeMux()
 	legacyAdminCoupon.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
@@ -590,6 +591,22 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/order/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/user/update") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/user/update", recorder.statusCode())
 	})
 }
 

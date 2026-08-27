@@ -163,6 +163,124 @@ test("legacy and Go user directories expose the same core table and query surfac
   }
 });
 
+test("legacy and Go user editors preserve the same profile concepts and explicit unit conversions", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  let legacyUpdate: Record<string, unknown> | undefined;
+  let goUpdate: Record<string, unknown> | undefined;
+  let goLegacyAuthorization = "";
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await legacyPage.route(/\/api\/v2\/[^/]+\/user\/update(?:\?.*)?$/, async (route) => {
+      legacyUpdate = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
+    });
+    await goPage.route(/\/api\/v1\/admin\/users\/\d+(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      goUpdate = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
+    });
+
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/user/fetch"));
+    await legacyPage.locator('a[href="#/user/manage"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
+
+    await legacyPage.getByRole("button", { name: "操作", exact: true }).last().click();
+    await legacyPage.getByRole("menuitem", { name: "编辑", exact: true }).click();
+    const legacyDialog = legacyPage.locator('[role="dialog"]:visible').last();
+    await expect(legacyDialog).toBeVisible();
+    await goPage.locator('button[aria-label^="编辑用户："]').last().click();
+    const goDialog = goPage.getByRole("dialog", { name: "编辑用户" });
+    await expect(goDialog).toBeVisible();
+
+    const fields = [
+      ["邮箱", "邮箱"], ["邀请人邮箱", "邀请人邮箱（留空表示无）"], ["密码", "新密码（留空不修改）"],
+      ["余额", "余额（元）"], ["佣金余额", "佣金余额（元）"], ["已用上行", "已用上行流量（GiB）"],
+      ["已用下行", "已用下行流量（GiB）"], ["流量", "流量额度（GiB）"], ["到期时间", "到期时间（留空表示不限期）"],
+      ["订阅计划", "套餐"], ["佣金类型", "佣金类型"], ["推荐返利比例", "佣金比例（留空使用系统默认）"],
+      ["专享折扣比例", "专享折扣（留空使用系统默认）"], ["限速", "限速（Mbps，0 为不限速）"],
+      ["设备限制", "设备数（0 为不限设备）"], ["是否管理员", "管理员"], ["是否员工", "员工"], ["备注", "备注"]
+    ] as const;
+    for (const [legacyLabel, goLabel] of fields) {
+      await expect(legacyDialog.getByText(legacyLabel, { exact: true }).first(), `legacy editor field ${legacyLabel}`).toBeVisible();
+      const goControl = goLabel === "套餐" || goLabel === "佣金类型"
+        ? goDialog.getByRole("combobox", { name: goLabel, exact: true })
+        : goDialog.getByLabel(goLabel, { exact: true });
+      await expect(goControl, `Go editor field ${goLabel}`).toBeVisible();
+    }
+    await expect(legacyDialog.getByText("账户状态", { exact: true })).toBeVisible();
+    await expect(goDialog.getByLabel("封禁用户", { exact: true })).toBeVisible();
+    await expect(legacyDialog.getByText("是否分销商", { exact: true })).toBeVisible();
+    await expect(goDialog.getByLabel("分销商", { exact: true })).toBeVisible();
+    for (const goOnlyField of ["Telegram ID（留空表示未绑定）", "到期提醒", "流量提醒"]) {
+      await expect(goDialog.getByLabel(goOnlyField, { exact: true })).toBeVisible();
+    }
+
+    await legacyDialog.locator('input[placeholder="请输入余额"]').fill("12.34");
+    await legacyDialog.locator('input[placeholder="请输入佣金余额"]').fill("5.67");
+    await legacyDialog.locator('input[placeholder="已用上行"]').fill("1.25");
+    await legacyDialog.locator('input[placeholder="已用下行"]').fill("2.5");
+    await legacyDialog.locator('input[placeholder="请输入流量"]').fill("10.75");
+    await legacyDialog.getByRole("button", { name: "提交", exact: true }).click();
+
+    await goDialog.getByLabel("余额（元）", { exact: true }).fill("12.34");
+    await goDialog.getByLabel("佣金余额（元）", { exact: true }).fill("5.67");
+    await goDialog.getByLabel("已用上行流量（GiB）", { exact: true }).fill("1.25");
+    await goDialog.getByLabel("已用下行流量（GiB）", { exact: true }).fill("2.5");
+    await goDialog.getByLabel("流量额度（GiB）", { exact: true }).fill("10.75");
+    await goDialog.getByRole("button", { name: "保存", exact: true }).click();
+
+    await expect.poll(() => legacyUpdate).toBeDefined();
+    await expect.poll(() => goUpdate).toBeDefined();
+    expect(legacyUpdate?.u).toBe(1_342_177_280);
+    expect(legacyUpdate?.d).toBe(2_684_354_560);
+    expect(goUpdate?.traffic_upload).toBe(legacyUpdate?.u);
+    expect(goUpdate?.traffic_download).toBe(legacyUpdate?.d);
+    expect(Number(legacyUpdate?.balance) * 100).toBe(goUpdate?.balance);
+    expect(Number(legacyUpdate?.commission_balance) * 100).toBe(goUpdate?.commission_balance);
+    expect(legacyUpdate?.transfer_enable).toBe(10_737_418_240);
+    expect(goUpdate?.transfer_enable).toBe(11_542_724_608);
+    expect(legacyUpdate?.is_distributor).toBe(0);
+
+    const goLegacyLogin = await goPage.request.post(new URL("/api/v2/passport/auth/login", goURL).toString(), {
+      data: { email: goEmail, password: goPassword }
+    });
+    expect(goLegacyLogin.status()).toBe(200);
+    goLegacyAuthorization = readStringProperty(readProperty(await goLegacyLogin.json() as unknown, "data"), "auth_data") ?? "";
+    expect(goLegacyAuthorization).not.toBe("");
+    const goLegacyUsers = await goPage.request.post(new URL("/api/v2/admin/user/fetch", goURL).toString(), {
+      headers: { authorization: goLegacyAuthorization }, data: { current: 1, pageSize: 200 }
+    });
+    expect(goLegacyUsers.status()).toBe(200);
+    const goLegacyUserItems = readArrayProperty(await goLegacyUsers.json() as unknown, "data");
+    expect(goLegacyUserItems).not.toBeNull();
+    const compatibleTarget = goLegacyUserItems?.find((item) => readProperty(item, "is_distributor") === false);
+    const compatibleTargetID = Number(readProperty(compatibleTarget, "id"));
+    expect(Number.isSafeInteger(compatibleTargetID) && compatibleTargetID > 0).toBe(true);
+    const observedNoChange = await goPage.request.post(new URL("/api/v2/admin/user/update", goURL).toString(), {
+      headers: { authorization: goLegacyAuthorization },
+      data: { id: compatibleTargetID, is_distributor: 0, distributor_name: "" }
+    });
+    expect(observedNoChange.status(), await observedNoChange.text()).toBe(200);
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    if (goLegacyAuthorization !== "") {
+      await goPage.request.post(new URL("/api/v1/user/logout", goURL).toString(), {
+        headers: { authorization: goLegacyAuthorization }
+      }).catch(() => undefined);
+    }
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go payment administration expose the same six core gateways and observable business fields", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });

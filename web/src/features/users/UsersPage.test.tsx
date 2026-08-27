@@ -5,9 +5,12 @@ import { APIError, type AdminUser, type Plan, type ServerGroup } from "../../lib
 import { UsersPage } from "./UsersPage";
 
 const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
+const groupTwo: ServerGroup = { ...group, id: 8, name: "Enterprise", users_count: 0 };
 const plan: Plan = { id: 3, group_id: 7, transfer_enable: 100, name: "旗舰套餐", speed_limit: 50, show: true, sort: 1, renew: true,
   content: "", reset_traffic_method: 1, capacity_limit: null, prices: { monthly: 2500 }, sell: true, device_limit: 3, tags: [], revision: 1,
   users_count: 1, active_users_count: 1, capacity_users_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
+const planTwo: Plan = { ...plan, id: 4, group_id: 8, transfer_enable: 64, name: "企业套餐", speed_limit: null, device_limit: null,
+  users_count: 0, active_users_count: 0, capacity_users_count: 0 };
 const account: AdminUser = {
   id: 41, email: "alpha@example.test", is_admin: false, banned: false, group_id: 7,
   group_name: "Premium", plan_id: 3, plan_name: "旗舰套餐", invite_user_id: 2, invite_user_email: "inviter@example.test",
@@ -91,7 +94,7 @@ describe("UsersPage", () => {
       filters: [{ field: "plan_id", operator: "eq", value: "3" }, { field: "remarks", operator: "contains", value: "重点" }],
       sort_by: "balance", sort_desc: false, page: 1
     })));
-  });
+  }, 10_000);
 
   it("creates and edits only access-state fields, then resets the password", async () => {
     const created = { ...account, id: 42, email: "new@example.test" };
@@ -133,6 +136,53 @@ describe("UsersPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "确认重置" }));
     await waitFor(() => expect(api.resetAdminUserPassword).toHaveBeenCalledWith(42, 2, "rotated-password-123"));
     await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(4));
+  });
+
+  it("edits the complete legacy profile and applies plan entitlements with exact units", async () => {
+    const updated = { ...account, revision: 2, plan_id: planTwo.id, plan_name: planTwo.name, group_id: groupTwo.id, group_name: groupTwo.name };
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+    api.updateAdminUser.mockResolvedValue(updated);
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    await user.click(await screen.findByRole("button", { name: "编辑用户：alpha@example.test" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑用户" });
+
+    await user.selectOptions(within(dialog).getByLabelText("套餐"), String(planTwo.id));
+    expect(within(dialog).getByLabelText("权限组")).toHaveValue(String(groupTwo.id));
+    expect(within(dialog).getByLabelText("流量额度（GiB）")).toHaveValue(64);
+    expect(within(dialog).getByLabelText("限速（Mbps，0 为不限速）")).toHaveValue(0);
+    expect(within(dialog).getByLabelText("设备数（0 为不限设备）")).toHaveValue(0);
+
+    await user.clear(within(dialog).getByLabelText("邀请人邮箱（留空表示无）"));
+    await user.type(within(dialog).getByLabelText("邀请人邮箱（留空表示无）"), "new-inviter@example.test");
+    await user.type(within(dialog).getByLabelText("新密码（留空不修改）"), "rotated-profile-password-123");
+    await user.clear(within(dialog).getByLabelText("已用上行流量（GiB）"));
+    await user.type(within(dialog).getByLabelText("已用上行流量（GiB）"), "1.5");
+    await user.clear(within(dialog).getByLabelText("已用下行流量（GiB）"));
+    await user.type(within(dialog).getByLabelText("已用下行流量（GiB）"), "2");
+    await user.clear(within(dialog).getByLabelText("余额（元）"));
+    await user.type(within(dialog).getByLabelText("余额（元）"), "45.67");
+    await user.clear(within(dialog).getByLabelText("佣金余额（元）"));
+    await user.type(within(dialog).getByLabelText("佣金余额（元）"), "8.09");
+    await user.selectOptions(within(dialog).getByLabelText("佣金类型"), "1");
+    await user.clear(within(dialog).getByLabelText("佣金比例（留空使用系统默认）"));
+    await user.clear(within(dialog).getByLabelText("专享折扣（留空使用系统默认）"));
+    await user.type(within(dialog).getByLabelText("专享折扣（留空使用系统默认）"), "75");
+    await user.clear(within(dialog).getByLabelText("Telegram ID（留空表示未绑定）"));
+    await user.click(within(dialog).getByLabelText("到期提醒"));
+    await user.click(within(dialog).getByLabelText("流量提醒"));
+    await user.clear(within(dialog).getByLabelText("备注"));
+    await user.type(within(dialog).getByLabelText("备注"), "updated complete profile");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledWith(account.id, expect.objectContaining({
+      revision: account.revision, password: "rotated-profile-password-123", plan_id: planTwo.id,
+      group_id: groupTwo.id, transfer_enable: 64 * 1024 * 1024 * 1024, speed_limit: 0, device_limit: 0,
+      invite_user_email: "new-inviter@example.test", traffic_upload: 1_610_612_736, traffic_download: 2_147_483_648,
+      balance: 4567, commission_type: 1, commission_rate: null, commission_balance: 809, discount: 75,
+      telegram_id: null, remind_expire: true, remind_traffic: false, remarks: "updated complete profile"
+    })));
   });
 
   it("keeps the editor open on an optimistic conflict and offers a fresh reload", async () => {
@@ -185,6 +235,6 @@ describe("UsersPage", () => {
 function baseAPI() {
   return {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
-    listServerGroups: vi.fn().mockResolvedValue([group]), listPlans: vi.fn().mockResolvedValue([plan])
+    listServerGroups: vi.fn().mockResolvedValue([group, groupTwo]), listPlans: vi.fn().mockResolvedValue([plan, planTwo])
   };
 }

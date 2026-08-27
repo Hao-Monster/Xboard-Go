@@ -201,9 +201,9 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>上一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>下一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
       </div>}
 
-    {creating && <UserEditor api={api} groups={groups} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); void runQuery(appliedQuery); }} />}
+    {creating && <UserEditor api={api} groups={groups} plans={plans} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); void runQuery(appliedQuery); }} />}
     {viewing !== null && <UserDetail account={viewing} onClose={() => setViewing(null)} />}
-    {editing !== null && <UserEditor api={api} groups={groups} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
+    {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
     {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { setResetting(null); void runQuery(appliedQuery); }} />}
   </main>;
 }
@@ -240,18 +240,31 @@ function DetailField({ label, value, wide = false }: { label: string; value: str
   return <div className={wide ? "user-detail-field wide" : "user-detail-field"}><span className="muted small">{label}</span><strong>{value}</strong></div>;
 }
 
-function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
-  api: UsersAPI; groups: ServerGroup[]; account?: AdminUser; currentUserID?: number; onClose: () => void; onSaved: (user: AdminUser) => void;
+function UserEditor({ api, groups, plans, account, currentUserID, onClose, onSaved }: {
+  api: UsersAPI; groups: ServerGroup[]; plans: Plan[]; account?: AdminUser; currentUserID?: number; onClose: () => void; onSaved: (user: AdminUser) => void;
 }) {
   const editing = account !== undefined;
   const [current, setCurrent] = useState(account);
   const [email, setEmail] = useState(account?.email ?? "");
   const [password, setPassword] = useState("");
+	const [planID, setPlanID] = useState(account?.plan_id === null || account === undefined ? "" : String(account.plan_id));
+	const [inviteUserEmail, setInviteUserEmail] = useState(account?.invite_user_email ?? "");
   const [groupID, setGroupID] = useState(account?.group_id === null || account === undefined ? "" : String(account.group_id));
-  const [transferEnable, setTransferEnable] = useState(String(account?.transfer_enable ?? 0));
+	const [transferEnable, setTransferEnable] = useState(account === undefined ? "0" : scaledIntegerToDecimal(account.transfer_enable, gibBytes));
+	const [trafficUpload, setTrafficUpload] = useState(account === undefined ? "0" : scaledIntegerToDecimal(account.traffic_upload, gibBytes));
+	const [trafficDownload, setTrafficDownload] = useState(account === undefined ? "0" : scaledIntegerToDecimal(account.traffic_download, gibBytes));
   const [expiredAt, setExpiredAt] = useState(toLocalDateTime(account?.expired_at ?? null));
   const [speedLimit, setSpeedLimit] = useState(String(account?.speed_limit ?? 0));
   const [deviceLimit, setDeviceLimit] = useState(String(account?.device_limit ?? 0));
+	const [balance, setBalance] = useState(centsToDecimal(account?.balance ?? 0));
+	const [commissionType, setCommissionType] = useState(String(account?.commission_type ?? 0));
+	const [commissionRate, setCommissionRate] = useState(account?.commission_rate === null || account === undefined ? "" : String(account.commission_rate));
+	const [commissionBalance, setCommissionBalance] = useState(centsToDecimal(account?.commission_balance ?? 0));
+	const [discount, setDiscount] = useState(account?.discount === null || account === undefined ? "" : String(account.discount));
+	const [telegramID, setTelegramID] = useState(account?.telegram_id === null || account === undefined ? "" : String(account.telegram_id));
+	const [remindExpire, setRemindExpire] = useState(account?.remind_expire ?? false);
+	const [remindTraffic, setRemindTraffic] = useState(account?.remind_traffic ?? false);
+	const [remarks, setRemarks] = useState(account?.remarks ?? "");
   const [banned, setBanned] = useState(account?.banned ?? false);
   const [isAdmin, setIsAdmin] = useState(account?.is_admin ?? false);
   const [isStaff, setIsStaff] = useState(account?.is_staff ?? false);
@@ -262,12 +275,32 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
   const [conflict, setConflict] = useState(false);
 
   const resetFrom = (value: AdminUser) => {
-    setCurrent(value); setEmail(value.email); setGroupID(value.group_id === null ? "" : String(value.group_id));
-    setTransferEnable(String(value.transfer_enable)); setExpiredAt(toLocalDateTime(value.expired_at));
+		setCurrent(value); setEmail(value.email); setPassword("");
+		setPlanID(value.plan_id === null ? "" : String(value.plan_id)); setInviteUserEmail(value.invite_user_email ?? "");
+		setGroupID(value.group_id === null ? "" : String(value.group_id));
+		setTransferEnable(scaledIntegerToDecimal(value.transfer_enable, gibBytes));
+		setTrafficUpload(scaledIntegerToDecimal(value.traffic_upload, gibBytes));
+		setTrafficDownload(scaledIntegerToDecimal(value.traffic_download, gibBytes)); setExpiredAt(toLocalDateTime(value.expired_at));
     setSpeedLimit(String(value.speed_limit)); setDeviceLimit(String(value.device_limit)); setBanned(value.banned);
+		setBalance(centsToDecimal(value.balance)); setCommissionType(String(value.commission_type));
+		setCommissionRate(value.commission_rate === null ? "" : String(value.commission_rate));
+		setCommissionBalance(centsToDecimal(value.commission_balance)); setDiscount(value.discount === null ? "" : String(value.discount));
+		setTelegramID(value.telegram_id === null ? "" : String(value.telegram_id));
+		setRemindExpire(value.remind_expire); setRemindTraffic(value.remind_traffic); setRemarks(value.remarks ?? "");
     setIsAdmin(value.is_admin); setIsStaff(value.is_staff ?? false); setIsDistributor(value.is_distributor ?? false);
     setDistributorName(value.distributor_name ?? "");
   };
+
+	const selectPlan = (value: string) => {
+		setPlanID(value);
+		if (value === "") return;
+		const selected = plans.find((plan) => plan.id === Number(value));
+		if (selected === undefined) return;
+		setGroupID(selected.group_id === null ? "" : String(selected.group_id));
+		setTransferEnable(String(selected.transfer_enable));
+		setSpeedLimit(String(selected.speed_limit ?? 0));
+		setDeviceLimit(String(selected.device_limit ?? 0));
+	};
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -275,17 +308,34 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
       setError("启用分销商角色时必须填写分销商名称");
       return;
     }
-    setBusy(true); setError(""); setConflict(false);
-    const common = {
-      email: email.trim(), group_id: groupID === "" ? null : Number(groupID), transfer_enable: Number(transferEnable),
-      expired_at: expiredAt === "" ? null : new Date(expiredAt).toISOString(), speed_limit: Number(speedLimit),
-      device_limit: Number(deviceLimit), banned, is_admin: isAdmin, is_staff: isStaff,
-      is_distributor: isDistributor, distributor_name: isDistributor ? distributorName.trim() : null
-    };
+		setBusy(true); setError(""); setConflict(false);
     try {
-      const saved = editing && current !== undefined
-        ? await api.updateAdminUser(current.id, { ...common, revision: current.revision } satisfies AdminUserUpdateInput)
-        : await api.createAdminUser({ ...common, password } satisfies AdminUserCreateInput);
+			const common = {
+				email: email.trim(), group_id: groupID === "" ? null : safePositiveInteger(groupID, "权限组"),
+				transfer_enable: editing ? decimalToScaledInteger(transferEnable, gibBytes, "流量额度") : safeNonnegativeInteger(transferEnable, "流量额度"),
+				expired_at: expiredAt === "" ? null : new Date(expiredAt).toISOString(),
+				speed_limit: safeNonnegativeInteger(speedLimit, "限速"), device_limit: safeNonnegativeInteger(deviceLimit, "设备数"),
+				banned, is_admin: isAdmin, is_staff: isStaff,
+				is_distributor: isDistributor, distributor_name: isDistributor ? distributorName.trim() : null
+			};
+			let saved: AdminUser;
+			if (editing && current !== undefined) {
+				const update: AdminUserUpdateInput = {
+					...common, revision: current.revision, plan_id: planID === "" ? null : safePositiveInteger(planID, "套餐"),
+					invite_user_email: inviteUserEmail.trim() === "" ? null : inviteUserEmail.trim(),
+					traffic_upload: decimalToScaledInteger(trafficUpload, gibBytes, "已用上行流量"),
+					traffic_download: decimalToScaledInteger(trafficDownload, gibBytes, "已用下行流量"),
+					balance: decimalMoneyToCents(balance, "余额"), commission_type: safeRangeInteger(commissionType, "佣金类型", 0, 2),
+					commission_rate: nullableRangeInteger(commissionRate, "佣金比例", 0, 100),
+					commission_balance: decimalMoneyToCents(commissionBalance, "佣金余额"),
+					discount: nullableRangeInteger(discount, "专享折扣", 0, 100), telegram_id: nullablePositiveInteger(telegramID, "Telegram ID"),
+					remind_expire: remindExpire, remind_traffic: remindTraffic, remarks: remarks.trim() === "" ? null : remarks.trim()
+				};
+				if (password !== "") update.password = password;
+				saved = await api.updateAdminUser(current.id, update);
+			} else {
+				saved = await api.createAdminUser({ ...common, password } satisfies AdminUserCreateInput);
+			}
       onSaved(saved);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -312,11 +362,27 @@ function UserEditor({ api, groups, account, currentUserID, onClose, onSaved }: {
     <ModalHeader title={title} onClose={onClose} />
     <form className="form-stack" onSubmit={(event) => void submit(event)}>
       <label>邮箱<input type="email" value={email} maxLength={320} required onChange={(event) => setEmail(event.target.value)} /></label>
-      {!editing && <label>初始密码<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>}
+			<label>{editing ? "新密码（留空不修改）" : "初始密码"}<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} required={!editing} onChange={(event) => setPassword(event.target.value)} /></label>
+			{editing && <label>邀请人邮箱（留空表示无）<input type="email" maxLength={320} value={inviteUserEmail} onChange={(event) => setInviteUserEmail(event.target.value)} /></label>}
+			{editing && <label>套餐<select value={planID} onChange={(event) => selectPlan(event.target.value)}><option value="">无订阅</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>}
       <label>权限组<select value={groupID} onChange={(event) => setGroupID(event.target.value)}><option value="">未分组</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-      <label>流量额度（字节）<input type="number" min="0" max={Number.MAX_SAFE_INTEGER} step="1" value={transferEnable} required onChange={(event) => setTransferEnable(event.target.value)} /></label>
+			<label>{editing ? "流量额度（GiB）" : "流量额度（字节）"}<input type="number" min="0" max={editing ? undefined : Number.MAX_SAFE_INTEGER} step={editing ? "any" : "1"} value={transferEnable} required onChange={(event) => setTransferEnable(event.target.value)} /></label>
       <label>到期时间（留空表示不限期）<input type="datetime-local" value={expiredAt} onChange={(event) => setExpiredAt(event.target.value)} /></label>
       <div className="time-grid"><label>限速（Mbps，0 为不限速）<input type="number" min="0" step="1" value={speedLimit} required onChange={(event) => setSpeedLimit(event.target.value)} /></label><label>设备数（0 为不限设备）<input type="number" min="0" max="1000" step="1" value={deviceLimit} required onChange={(event) => setDeviceLimit(event.target.value)} /></label></div>
+			{editing && <fieldset className="settings-fieldset"><legend>流量使用</legend><div className="time-grid">
+				<label>已用上行流量（GiB）<input type="number" min="0" step="any" value={trafficUpload} required onChange={(event) => setTrafficUpload(event.target.value)} /></label>
+				<label>已用下行流量（GiB）<input type="number" min="0" step="any" value={trafficDownload} required onChange={(event) => setTrafficDownload(event.target.value)} /></label>
+			</div></fieldset>}
+			{editing && <fieldset className="settings-fieldset"><legend>财务与折扣</legend>
+				<div className="time-grid"><label>余额（元）<input type="text" inputMode="decimal" value={balance} required onChange={(event) => setBalance(event.target.value)} /></label><label>佣金余额（元）<input type="text" inputMode="decimal" value={commissionBalance} required onChange={(event) => setCommissionBalance(event.target.value)} /></label></div>
+				<div className="time-grid"><label>佣金类型<select value={commissionType} onChange={(event) => setCommissionType(event.target.value)}><option value="0">系统默认</option><option value="1">循环佣金</option><option value="2">首次佣金</option></select></label><label>佣金比例（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={commissionRate} onChange={(event) => setCommissionRate(event.target.value)} /></label></div>
+				<label>专享折扣（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={discount} onChange={(event) => setDiscount(event.target.value)} /></label>
+			</fieldset>}
+			{editing && <fieldset className="settings-fieldset"><legend>联系与提醒</legend>
+				<label>Telegram ID（留空表示未绑定）<input type="number" min="1" step="1" value={telegramID} onChange={(event) => setTelegramID(event.target.value)} /></label>
+				<div className="role-switch-grid"><label className="switch-label"><input type="checkbox" checked={remindExpire} onChange={(event) => setRemindExpire(event.target.checked)} />到期提醒</label><label className="switch-label"><input type="checkbox" checked={remindTraffic} onChange={(event) => setRemindTraffic(event.target.checked)} />流量提醒</label></div>
+				<label>备注<textarea maxLength={4096} rows={4} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></label>
+			</fieldset>}
       <fieldset className="settings-fieldset"><legend>账号角色（可并存）</legend><div className="role-switch-grid">
         <label className="switch-label"><input type="checkbox" checked={isAdmin} disabled={editing && current?.id === currentUserID} onChange={(event) => setIsAdmin(event.target.checked)} />管理员</label>
         <label className="switch-label"><input type="checkbox" checked={isStaff} onChange={(event) => setIsStaff(event.target.checked)} />员工</label>
@@ -351,6 +417,87 @@ function PasswordReset({ api, account, onClose, onSaved }: { api: UsersAPI; acco
 
 function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return <div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div>;
+}
+
+const gibBytes = 1_073_741_824n;
+const maximumSafeInteger = BigInt(Number.MAX_SAFE_INTEGER);
+const maximumMoneyCents = 9_000_000_000_000_000n;
+
+function scaledIntegerToDecimal(value: number, scale: bigint): string {
+	if (!Number.isSafeInteger(value) || value < 0) throw new Error("服务端返回了超出安全范围的数值");
+	const integer = BigInt(value);
+	const whole = integer / scale;
+	let remainder = integer % scale;
+	if (remainder === 0n) return whole.toString();
+	let fraction = "";
+	while (remainder !== 0n) {
+		remainder *= 10n;
+		fraction += (remainder / scale).toString();
+		remainder %= scale;
+	}
+	return `${whole}.${fraction}`;
+}
+
+function decimalToScaledInteger(value: string, scale: bigint, label: string): number {
+	const normalized = value.trim();
+	const matched = /^(\d+)(?:\.(\d+))?$/.exec(normalized);
+	if (matched === null || (matched[2]?.length ?? 0) > 30) throw new Error(`${label}格式无效`);
+	const whole = matched[1];
+	if (whole === undefined) throw new Error(`${label}格式无效`);
+	const fraction = matched[2] ?? "";
+	const denominator = 10n ** BigInt(fraction.length);
+	const numerator = BigInt(whole) * denominator + BigInt(fraction === "" ? "0" : fraction);
+	const scaled = numerator * scale;
+	if (scaled % denominator !== 0n) throw new Error(`${label}无法精确换算为字节`);
+	const result = scaled / denominator;
+	if (result > maximumSafeInteger) throw new Error(`${label}超出安全范围`);
+	return Number(result);
+}
+
+function safeNonnegativeInteger(value: string, label: string): number {
+	const normalized = value.trim();
+	if (!/^\d+$/.test(normalized)) throw new Error(`${label}必须是非负整数`);
+	const result = BigInt(normalized);
+	if (result > maximumSafeInteger) throw new Error(`${label}超出安全范围`);
+	return Number(result);
+}
+
+function safePositiveInteger(value: string, label: string): number {
+	const result = safeNonnegativeInteger(value, label);
+	if (result < 1) throw new Error(`${label}必须是正整数`);
+	return result;
+}
+
+function safeRangeInteger(value: string, label: string, minimum: number, maximum: number): number {
+	const result = safeNonnegativeInteger(value, label);
+	if (result < minimum || result > maximum) throw new Error(`${label}必须在 ${minimum} 到 ${maximum} 之间`);
+	return result;
+}
+
+function nullableRangeInteger(value: string, label: string, minimum: number, maximum: number): number | null {
+	return value.trim() === "" ? null : safeRangeInteger(value, label, minimum, maximum);
+}
+
+function nullablePositiveInteger(value: string, label: string): number | null {
+	return value.trim() === "" ? null : safePositiveInteger(value, label);
+}
+
+function centsToDecimal(value: number): string {
+	if (!Number.isSafeInteger(value) || value < 0) throw new Error("服务端返回了超出安全范围的金额");
+	const cents = BigInt(value);
+	return `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
+}
+
+function decimalMoneyToCents(value: string, label: string): number {
+	const normalized = value.trim();
+	const matched = /^(\d+)(?:\.(\d{1,2}))?$/.exec(normalized);
+	if (matched === null) throw new Error(`${label}格式无效，最多保留两位小数`);
+	const whole = matched[1];
+	if (whole === undefined) throw new Error(`${label}格式无效，最多保留两位小数`);
+	const fraction = (matched[2] ?? "").padEnd(2, "0");
+	const cents = BigInt(whole) * 100n + BigInt(fraction === "" ? "0" : fraction);
+	if (cents > maximumMoneyCents) throw new Error(`${label}超出安全范围`);
+	return Number(cents);
 }
 
 function toLocalDateTime(value: string | null): string {
