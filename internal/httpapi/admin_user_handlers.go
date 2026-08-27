@@ -424,6 +424,264 @@ func legacyAdminUserUnix(value *time.Time) any {
 	return value.Unix()
 }
 
+type legacyAdminUserUpdateRequest struct {
+	ID                int64                 `json:"id"`
+	Revision          *int64                `json:"revision"`
+	Email             *string               `json:"email"`
+	Password          *string               `json:"password"`
+	IsAdmin           *bool                 `json:"is_admin"`
+	IsStaff           *bool                 `json:"is_staff"`
+	IsDistributor     legacyOptionalBool    `json:"is_distributor"`
+	DistributorName   *string               `json:"distributor_name"`
+	GroupID           nullableInt64         `json:"group_id"`
+	PlanID            nullableInt64         `json:"plan_id"`
+	InviteUserEmail   nullableString        `json:"invite_user_email"`
+	TransferEnable    *int64                `json:"transfer_enable"`
+	TrafficUpload     *int64                `json:"u"`
+	TrafficDownload   *int64                `json:"d"`
+	ExpiredAt         nullableUnixTimestamp `json:"expired_at"`
+	SpeedLimit        nullableInt           `json:"speed_limit"`
+	DeviceLimit       nullableInt           `json:"device_limit"`
+	Banned            *bool                 `json:"banned"`
+	Balance           json.RawMessage       `json:"balance"`
+	CommissionType    *int                  `json:"commission_type"`
+	CommissionRate    nullableInt           `json:"commission_rate"`
+	CommissionBalance json.RawMessage       `json:"commission_balance"`
+	Discount          nullableInt           `json:"discount"`
+	TelegramID        nullableInt64         `json:"telegram_id"`
+	RemindExpire      *bool                 `json:"remind_expire"`
+	RemindTraffic     *bool                 `json:"remind_traffic"`
+	Remarks           nullableString        `json:"remarks"`
+}
+
+func (s *server) legacyUpdateAdminUser(w http.ResponseWriter, r *http.Request) {
+	var input legacyAdminUserUpdateRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.ID < 1 || input.Revision != nil && *input.Revision < 1 {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户 ID 或版本号格式无效")
+		return
+	}
+	existing, err := s.store.GetAdminUser(r.Context(), input.ID)
+	if err != nil {
+		writeLegacyAdminUserError(w, err)
+		return
+	}
+
+	revision := existing.Revision
+	if input.Revision != nil {
+		revision = *input.Revision
+	}
+	email := existing.Email
+	if input.Email != nil {
+		email = strings.TrimSpace(*input.Email)
+	}
+	groupID := existing.GroupID
+	if input.GroupID.Set {
+		groupID = input.GroupID.Value
+	}
+	transferEnable := existing.TransferEnable
+	if input.TransferEnable != nil {
+		transferEnable = *input.TransferEnable
+	}
+	expiredAt := existing.ExpiredAt
+	if input.ExpiredAt.Set {
+		expiredAt = input.ExpiredAt.Value
+	}
+	speedLimit := existing.SpeedLimit
+	if input.SpeedLimit.Set {
+		speedLimit = 0
+		if input.SpeedLimit.Value != nil {
+			speedLimit = *input.SpeedLimit.Value
+		}
+	}
+	deviceLimit := existing.DeviceLimit
+	if input.DeviceLimit.Set {
+		deviceLimit = 0
+		if input.DeviceLimit.Value != nil {
+			deviceLimit = *input.DeviceLimit.Value
+		}
+	}
+	banned := existing.Banned
+	if input.Banned != nil {
+		banned = *input.Banned
+	}
+	isAdmin, isDistributor := existing.IsAdmin, existing.IsDistributor
+	if input.IsAdmin != nil {
+		isAdmin = *input.IsAdmin
+	}
+	if input.IsDistributor.Set {
+		isDistributor = input.IsDistributor.Value
+	}
+	distributorName := existing.DistributorName
+	if input.DistributorName != nil {
+		distributorName = input.DistributorName
+	}
+
+	fields := validateAdminUserFields(email, legacyPassword(input.Password), groupID, transferEnable, expiredAt, speedLimit, deviceLimit, input.Password != nil && *input.Password != "")
+	for field, message := range validateDistributorRoleFields(isDistributor, distributorName, isDistributor) {
+		fields[field] = message
+	}
+	if input.PlanID.Set && input.PlanID.Value != nil && *input.PlanID.Value < 1 {
+		fields["plan_id"] = "必须是正整数或 null"
+	}
+	if input.InviteUserEmail.Set && input.InviteUserEmail.Value != nil {
+		normalized := strings.ToLower(strings.TrimSpace(*input.InviteUserEmail.Value))
+		if normalized != "" {
+			address, parseErr := mail.ParseAddress(normalized)
+			if parseErr != nil || address.Address != normalized || len(normalized) > 320 {
+				fields["invite_user_email"] = "邮箱格式无效"
+			}
+		}
+	}
+	if input.TrafficUpload != nil && (*input.TrafficUpload < 0 || *input.TrafficUpload > 9_007_199_254_740_991) {
+		fields["u"] = "必须是安全范围内的非负整数"
+	}
+	if input.TrafficDownload != nil && (*input.TrafficDownload < 0 || *input.TrafficDownload > 9_007_199_254_740_991) {
+		fields["d"] = "必须是安全范围内的非负整数"
+	}
+	validateAdminUserRangeField(fields, "commission_type", input.CommissionType, 0, 2)
+	if input.CommissionRate.Set {
+		validateAdminUserRangeField(fields, "commission_rate", input.CommissionRate.Value, 0, 100)
+	}
+	if input.Discount.Set {
+		validateAdminUserRangeField(fields, "discount", input.Discount.Value, 0, 100)
+	}
+	if input.TelegramID.Set && input.TelegramID.Value != nil && *input.TelegramID.Value < 1 {
+		fields["telegram_id"] = "必须是正整数或 null"
+	}
+	if input.Remarks.Set && input.Remarks.Value != nil && (!utf8.ValidString(*input.Remarks.Value) || len(*input.Remarks.Value) > 4096 || strings.IndexByte(*input.Remarks.Value, 0) >= 0) {
+		fields["remarks"] = "不得超过 4096 字节且必须是有效文本"
+	}
+	balance, balanceErr := legacyMoneyCents(input.Balance)
+	if balanceErr != nil {
+		fields["balance"] = "金额格式无效，最多保留两位小数"
+	}
+	commissionBalance, commissionBalanceErr := legacyMoneyCents(input.CommissionBalance)
+	if commissionBalanceErr != nil {
+		fields["commission_balance"] = "金额格式无效，最多保留两位小数"
+	}
+	if len(fields) > 0 {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "请检查用户信息")
+		return
+	}
+
+	session, _ := sessionFromContext(r.Context())
+	if input.ID == session.UserID && banned {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "管理员不能封禁自己的当前账号")
+		return
+	}
+	if input.ID == session.UserID && !isAdmin {
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "不能撤销当前登录账号的管理员权限")
+		return
+	}
+	var passwordHash *string
+	if input.Password != nil && *input.Password != "" {
+		hashed, hashErr := s.passwordHasher.Hash(*input.Password)
+		if hashErr != nil {
+			writeLegacyOrderFail(w, http.StatusInternalServerError, "用户更新失败")
+			return
+		}
+		passwordHash = &hashed
+	}
+	updated, mutation, err := s.store.UpdateAdminUser(r.Context(), input.ID, store.UpdateAdminUserInput{
+		Revision: revision, Email: email, PasswordHash: passwordHash,
+		IsAdmin: input.IsAdmin, IsStaff: input.IsStaff, IsDistributor: input.IsDistributor.Pointer(), DistributorName: input.DistributorName,
+		GroupID: groupID, PlanIDSet: input.PlanID.Set, PlanID: input.PlanID.Value,
+		InviteUserEmailSet: input.InviteUserEmail.Set, InviteUserEmail: input.InviteUserEmail.Value,
+		TransferEnable: transferEnable, TrafficUpload: input.TrafficUpload, TrafficDownload: input.TrafficDownload,
+		ExpiredAt: expiredAt, SpeedLimit: speedLimit, DeviceLimit: deviceLimit, Banned: banned,
+		Balance: balance, CommissionType: input.CommissionType,
+		CommissionRateSet: input.CommissionRate.Set, CommissionRate: input.CommissionRate.Value,
+		CommissionBalance: commissionBalance, DiscountSet: input.Discount.Set, Discount: input.Discount.Value,
+		TelegramIDSet: input.TelegramID.Set, TelegramID: input.TelegramID.Value,
+		RemindExpire: input.RemindExpire, RemindTraffic: input.RemindTraffic,
+		RemarksSet: input.Remarks.Set, Remarks: input.Remarks.Value,
+	}, s.now())
+	if err != nil {
+		writeLegacyAdminUserError(w, err)
+		return
+	}
+	if s.hub != nil && mutation.RuntimeChanged {
+		s.hub.NotifyUserMutation(r.Context(), updated.ID, mutation.UUID, mutation.OldGroupID, mutation.NewGroupID, mutation.AccessStateCleared)
+	}
+	writeLegacySuccess(w, http.StatusOK, true)
+}
+
+func legacyPassword(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func legacyMoneyCents(raw json.RawMessage) (*int64, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "null" {
+		return nil, fmt.Errorf("money cannot be null")
+	}
+	if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return nil, err
+		}
+		text = strings.TrimSpace(text)
+	}
+	if text == "" || strings.HasPrefix(text, "-") || strings.HasPrefix(text, "+") || strings.ContainsAny(text, "eE") {
+		return nil, fmt.Errorf("invalid money")
+	}
+	parts := strings.Split(text, ".")
+	if len(parts) > 2 || parts[0] == "" || len(parts) == 2 && len(parts[1]) > 2 {
+		return nil, fmt.Errorf("invalid money")
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	fraction := int64(0)
+	if len(parts) == 2 {
+		if parts[1] == "" {
+			return nil, fmt.Errorf("invalid money")
+		}
+		fractionText := parts[1]
+		if len(fractionText) == 1 {
+			fractionText += "0"
+		}
+		fraction, err = strconv.ParseInt(fractionText, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+	}
+	const maximum = int64(9_000_000_000_000_000)
+	if whole > (maximum-fraction)/100 {
+		return nil, fmt.Errorf("money exceeds range")
+	}
+	cents := whole*100 + fraction
+	return &cents, nil
+}
+
+func writeLegacyAdminUserError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeLegacyOrderFail(w, http.StatusNotFound, "用户不存在")
+	case errors.Is(err, store.ErrEmailInUse):
+		writeLegacyOrderFail(w, http.StatusConflict, "邮箱已被使用")
+	case errors.Is(err, store.ErrConflict):
+		writeLegacyOrderFail(w, http.StatusConflict, "用户状态已被其他管理员修改，请刷新后重试")
+	case errors.Is(err, store.ErrAdminUserPlanNotFound):
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "订阅计划不存在")
+	case errors.Is(err, store.ErrAdminInviteUserNotFound):
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "邀请用户不存在")
+	case errors.Is(err, store.ErrInvalidInput):
+		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户参数格式无效")
+	default:
+		writeLegacyOrderFail(w, http.StatusInternalServerError, "用户更新失败")
+	}
+}
+
 func (s *server) getAdminUser(w http.ResponseWriter, r *http.Request) {
 	userID, ok := pathID(w, r, "userID")
 	if !ok {
@@ -514,10 +772,28 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "cannot_remove_admin_self", "不能撤销当前登录账号的管理员权限，请使用另一个管理员账号操作", map[string]string{"is_admin": "不能撤销当前账号的管理员权限"})
 		return
 	}
+	var passwordHash *string
+	if input.Password != nil && *input.Password != "" {
+		hashed, err := s.passwordHasher.Hash(*input.Password)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		passwordHash = &hashed
+	}
 	user, mutation, err := s.store.UpdateAdminUser(r.Context(), userID, store.UpdateAdminUserInput{
-		Revision: *input.Revision, Email: *input.Email, GroupID: input.GroupID.Value, TransferEnable: *input.TransferEnable,
+		Revision: *input.Revision, Email: *input.Email, PasswordHash: passwordHash,
+		GroupID: input.GroupID.Value, PlanIDSet: input.PlanID.Set, PlanID: input.PlanID.Value,
+		InviteUserEmailSet: input.InviteUserEmail.Set, InviteUserEmail: input.InviteUserEmail.Value,
+		TransferEnable: *input.TransferEnable, TrafficUpload: input.TrafficUpload, TrafficDownload: input.TrafficDownload,
 		ExpiredAt: input.ExpiredAt.Value, SpeedLimit: *input.SpeedLimit, DeviceLimit: *input.DeviceLimit, Banned: *input.Banned,
 		IsAdmin: input.IsAdmin, IsStaff: input.IsStaff, IsDistributor: input.IsDistributor, DistributorName: input.DistributorName,
+		Balance: input.Balance, CommissionType: input.CommissionType,
+		CommissionRateSet: input.CommissionRate.Set, CommissionRate: input.CommissionRate.Value,
+		CommissionBalance: input.CommissionBalance, DiscountSet: input.Discount.Set, Discount: input.Discount.Value,
+		TelegramIDSet: input.TelegramID.Set, TelegramID: input.TelegramID.Value,
+		RemindExpire: input.RemindExpire, RemindTraffic: input.RemindTraffic,
+		RemarksSet: input.Remarks.Set, Remarks: input.Remarks.Value,
 	}, s.now())
 	if errors.Is(err, store.ErrEmailInUse) {
 		writeAPIError(w, http.StatusConflict, "email_in_use", "邮箱已被使用", map[string]string{"email": "邮箱已被使用"})
@@ -525,6 +801,14 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, store.ErrConflict) {
 		writeAPIError(w, http.StatusConflict, "user_revision_conflict", "用户状态已被其他管理员修改，请刷新后重试", nil)
+		return
+	}
+	if errors.Is(err, store.ErrAdminUserPlanNotFound) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "plan_not_found", "订阅计划不存在", map[string]string{"plan_id": "订阅计划不存在"})
+		return
+	}
+	if errors.Is(err, store.ErrAdminInviteUserNotFound) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invite_user_not_found", "邀请用户不存在", map[string]string{"invite_user_email": "邀请用户不存在"})
 		return
 	}
 	if err != nil {
@@ -580,18 +864,32 @@ func (s *server) resetAdminUserPassword(w http.ResponseWriter, r *http.Request) 
 }
 
 type adminUserUpdateRequest struct {
-	Revision        *int64        `json:"revision"`
-	Email           *string       `json:"email"`
-	IsAdmin         *bool         `json:"is_admin"`
-	IsStaff         *bool         `json:"is_staff"`
-	IsDistributor   *bool         `json:"is_distributor"`
-	DistributorName *string       `json:"distributor_name"`
-	GroupID         nullableInt64 `json:"group_id"`
-	TransferEnable  *int64        `json:"transfer_enable"`
-	ExpiredAt       nullableTime  `json:"expired_at"`
-	SpeedLimit      *int          `json:"speed_limit"`
-	DeviceLimit     *int          `json:"device_limit"`
-	Banned          *bool         `json:"banned"`
+	Revision          *int64         `json:"revision"`
+	Email             *string        `json:"email"`
+	Password          *string        `json:"password"`
+	IsAdmin           *bool          `json:"is_admin"`
+	IsStaff           *bool          `json:"is_staff"`
+	IsDistributor     *bool          `json:"is_distributor"`
+	DistributorName   *string        `json:"distributor_name"`
+	GroupID           nullableInt64  `json:"group_id"`
+	PlanID            nullableInt64  `json:"plan_id"`
+	InviteUserEmail   nullableString `json:"invite_user_email"`
+	TransferEnable    *int64         `json:"transfer_enable"`
+	TrafficUpload     *int64         `json:"traffic_upload"`
+	TrafficDownload   *int64         `json:"traffic_download"`
+	ExpiredAt         nullableTime   `json:"expired_at"`
+	SpeedLimit        *int           `json:"speed_limit"`
+	DeviceLimit       *int           `json:"device_limit"`
+	Banned            *bool          `json:"banned"`
+	Balance           *int64         `json:"balance"`
+	CommissionType    *int           `json:"commission_type"`
+	CommissionRate    nullableInt    `json:"commission_rate"`
+	CommissionBalance *int64         `json:"commission_balance"`
+	Discount          nullableInt    `json:"discount"`
+	TelegramID        nullableInt64  `json:"telegram_id"`
+	RemindExpire      *bool          `json:"remind_expire"`
+	RemindTraffic     *bool          `json:"remind_traffic"`
+	Remarks           nullableString `json:"remarks"`
 }
 
 func (input adminUserUpdateRequest) validationFields() map[string]string {
@@ -624,12 +922,65 @@ func (input adminUserUpdateRequest) validationFields() map[string]string {
 		return fields
 	}
 	fields = validateAdminUserFields(*input.Email, "", input.GroupID.Value, *input.TransferEnable, input.ExpiredAt.Value, *input.SpeedLimit, *input.DeviceLimit, false)
+	if input.Password != nil && *input.Password != "" {
+		if len(*input.Password) < 12 {
+			fields["password"] = "至少需要 12 个字符"
+		} else if len(*input.Password) > 1024 {
+			fields["password"] = "不得超过 1024 个字符"
+		}
+	}
+	if input.PlanID.Set && input.PlanID.Value != nil && *input.PlanID.Value < 1 {
+		fields["plan_id"] = "必须是正整数或 null"
+	}
+	if input.InviteUserEmail.Set && input.InviteUserEmail.Value != nil {
+		normalized := strings.ToLower(strings.TrimSpace(*input.InviteUserEmail.Value))
+		address, err := mail.ParseAddress(normalized)
+		if err != nil || address.Address != normalized || len(normalized) > 320 {
+			fields["invite_user_email"] = "邮箱格式无效"
+		}
+	}
+	if input.TrafficUpload != nil && (*input.TrafficUpload < 0 || *input.TrafficUpload > 9_007_199_254_740_991) {
+		fields["traffic_upload"] = "必须是安全范围内的非负整数"
+	}
+	if input.TrafficDownload != nil && (*input.TrafficDownload < 0 || *input.TrafficDownload > 9_007_199_254_740_991) {
+		fields["traffic_download"] = "必须是安全范围内的非负整数"
+	}
+	if input.TrafficUpload != nil && input.TrafficDownload != nil && *input.TrafficUpload > 9_007_199_254_740_991-*input.TrafficDownload {
+		fields["traffic_download"] = "上行与下行总和超出安全范围"
+	}
+	validateAdminUserMoneyField(fields, "balance", input.Balance)
+	validateAdminUserMoneyField(fields, "commission_balance", input.CommissionBalance)
+	validateAdminUserRangeField(fields, "commission_type", input.CommissionType, 0, 2)
+	if input.CommissionRate.Set {
+		validateAdminUserRangeField(fields, "commission_rate", input.CommissionRate.Value, 0, 100)
+	}
+	if input.Discount.Set {
+		validateAdminUserRangeField(fields, "discount", input.Discount.Value, 0, 100)
+	}
+	if input.TelegramID.Set && input.TelegramID.Value != nil && *input.TelegramID.Value < 1 {
+		fields["telegram_id"] = "必须是正整数或 null"
+	}
+	if input.Remarks.Set && input.Remarks.Value != nil && (!utf8.ValidString(*input.Remarks.Value) || len(*input.Remarks.Value) > 4096 || strings.IndexByte(*input.Remarks.Value, 0) >= 0) {
+		fields["remarks"] = "不得超过 4096 字节且必须是有效文本"
+	}
 	if input.DistributorName != nil || (input.IsDistributor != nil && *input.IsDistributor) {
 		for field, message := range validateDistributorRoleFields(input.IsDistributor != nil && *input.IsDistributor, input.DistributorName, false) {
 			fields[field] = message
 		}
 	}
 	return fields
+}
+
+func validateAdminUserMoneyField(fields map[string]string, field string, value *int64) {
+	if value != nil && (*value < 0 || *value > 9_000_000_000_000_000) {
+		fields[field] = "必须是允许范围内的非负金额"
+	}
+}
+
+func validateAdminUserRangeField(fields map[string]string, field string, value *int, minimum, maximum int) {
+	if value != nil && (*value < minimum || *value > maximum) {
+		fields[field] = fmt.Sprintf("必须在 %d 到 %d 之间", minimum, maximum)
+	}
 }
 
 func validateAdminUserFields(email, password string, groupID *int64, transferEnable int64, expiredAt *time.Time, speedLimit, deviceLimit int, validatePassword bool) map[string]string {
@@ -689,6 +1040,70 @@ type nullableInt64 struct {
 	Value *int64
 }
 
+type legacyOptionalBool struct {
+	Set   bool
+	Value bool
+}
+
+func (value *legacyOptionalBool) UnmarshalJSON(data []byte) error {
+	value.Set = true
+	switch strings.TrimSpace(string(data)) {
+	case "true", "1":
+		value.Value = true
+	case "false", "0":
+		value.Value = false
+	default:
+		return errors.New("must be a JSON boolean or 0/1")
+	}
+	return nil
+}
+
+func (value legacyOptionalBool) Pointer() *bool {
+	if !value.Set {
+		return nil
+	}
+	result := value.Value
+	return &result
+}
+
+type nullableInt struct {
+	Set   bool
+	Value *int
+}
+
+func (value *nullableInt) UnmarshalJSON(data []byte) error {
+	value.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		value.Value = nil
+		return nil
+	}
+	var parsed int
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return fmt.Errorf("integer: %w", err)
+	}
+	value.Value = &parsed
+	return nil
+}
+
+type nullableString struct {
+	Set   bool
+	Value *string
+}
+
+func (value *nullableString) UnmarshalJSON(data []byte) error {
+	value.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		value.Value = nil
+		return nil
+	}
+	var parsed string
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return fmt.Errorf("string: %w", err)
+	}
+	value.Value = &parsed
+	return nil
+}
+
 func (value *nullableInt64) UnmarshalJSON(data []byte) error {
 	value.Set = true
 	if bytes.Equal(data, []byte("null")) {
@@ -706,6 +1121,26 @@ func (value *nullableInt64) UnmarshalJSON(data []byte) error {
 type nullableTime struct {
 	Set   bool
 	Value *time.Time
+}
+
+type nullableUnixTimestamp struct {
+	Set   bool
+	Value *time.Time
+}
+
+func (value *nullableUnixTimestamp) UnmarshalJSON(data []byte) error {
+	value.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		value.Value = nil
+		return nil
+	}
+	var seconds int64
+	if err := json.Unmarshal(data, &seconds); err != nil {
+		return fmt.Errorf("unix timestamp: %w", err)
+	}
+	parsed := time.Unix(seconds, 0).UTC()
+	value.Value = &parsed
+	return nil
 }
 
 func (value *nullableTime) UnmarshalJSON(data []byte) error {

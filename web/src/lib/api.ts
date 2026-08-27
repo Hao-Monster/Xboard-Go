@@ -1166,6 +1166,20 @@ export interface AdminUserCreateInput {
 
 export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "password"> {
   revision: number;
+	password?: string;
+	plan_id?: number | null;
+	invite_user_email?: string | null;
+	traffic_upload?: number;
+	traffic_download?: number;
+	balance?: number;
+	commission_type?: number;
+	commission_rate?: number | null;
+	commission_balance?: number;
+	discount?: number | null;
+	telegram_id?: number | null;
+	remind_expire?: boolean;
+	remind_traffic?: boolean;
+	remarks?: string | null;
 }
 
 export interface AdminAPI {

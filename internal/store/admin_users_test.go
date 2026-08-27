@@ -239,6 +239,160 @@ func TestAdminUserMutationIsOptimisticAndRevokesSensitiveState(t *testing.T) {
 	}
 }
 
+func TestAdminUserFullProfileUpdateAppliesPlanAndSideEffectsAtomically(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	seedAdminUserGroups(t, database, now)
+
+	resetMethod := 1
+	speedLimit := 125
+	deviceLimit := 5
+	plan, err := database.CreatePlan(ctx, SavePlanInput{
+		GroupID: pointerTo(int64(8)), TransferEnableGiB: 64, Name: "U2 plan",
+		SpeedLimit: &speedLimit, DeviceLimit: &deviceLimit, ResetTrafficMethod: &resetMethod,
+		Prices: PlanPrices{}, Tags: []string{},
+	}, now)
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+	inviter, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "inviter-u2@example.test", PasswordHash: "inviter-hash",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(inviter) error = %v", err)
+	}
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "profile-before@example.test", PasswordHash: "old-hash", GroupID: pointerTo(int64(7)),
+		TransferEnable: 1_000, SpeedLimit: 10, DeviceLimit: 2,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(subject) error = %v", err)
+	}
+	if err := database.CreateSession(ctx, user.ID, "u2-session", "u2-csrf", now.Add(time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
+		UserID: user.ID, TokenHash: strings.Repeat("7", 64), Name: "u2-client",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	_, node := createReportingNode(t, database, now)
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO node_device_ips (node_id, user_id, ip, expires_at) VALUES (?, ?, '192.0.2.27', ?);
+		INSERT INTO node_user_online (node_id, user_id, connections, expires_at) VALUES (?, ?, 2, ?);
+		UPDATE users SET online_count = 2 WHERE id = ?
+	`, node.ID, user.ID, now.Add(time.Hour).Unix(), node.ID, user.ID, now.Add(time.Hour).Unix(), user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	expiresAt := now.AddDate(0, 2, 0)
+	upload, download := int64(11_000), int64(22_000)
+	balance, commissionBalance := int64(12_345), int64(6_789)
+	commissionType, commissionRate, discount := 2, 18, 80
+	telegramID := int64(778899)
+	remindExpire, remindTraffic := false, true
+	remarks := "U2 priority account"
+	isStaff := true
+	updated, mutation, err := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
+		Revision: user.Revision, Email: "profile-after@example.test", PasswordHash: pointerTo("new-hash"),
+		IsStaff: &isStaff, GroupID: pointerTo(int64(7)), TransferEnable: 999, ExpiredAt: &expiresAt,
+		SpeedLimit: 1, DeviceLimit: 1, PlanIDSet: true, PlanID: &plan.ID,
+		InviteUserEmailSet: true, InviteUserEmail: &inviter.Email,
+		TrafficUpload: &upload, TrafficDownload: &download, Balance: &balance,
+		CommissionType: &commissionType, CommissionRateSet: true, CommissionRate: &commissionRate,
+		CommissionBalance: &commissionBalance, DiscountSet: true, Discount: &discount,
+		TelegramIDSet: true, TelegramID: &telegramID, RemindExpire: &remindExpire, RemindTraffic: &remindTraffic,
+		RemarksSet: true, Remarks: &remarks,
+	}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("UpdateAdminUser(full profile) error = %v", err)
+	}
+	if updated.Email != "profile-after@example.test" || !updated.IsStaff || updated.PlanID == nil || *updated.PlanID != plan.ID ||
+		updated.GroupID == nil || *updated.GroupID != 8 || updated.TransferEnable != 64*bytesPerGiB ||
+		updated.SpeedLimit != speedLimit || updated.DeviceLimit != deviceLimit || updated.TrafficUpload != upload ||
+		updated.TrafficDownload != download || updated.TrafficUsed != upload+download || updated.Balance != balance ||
+		updated.CommissionType != commissionType || updated.CommissionRate == nil || *updated.CommissionRate != commissionRate ||
+		updated.CommissionBalance != commissionBalance || updated.Discount == nil || *updated.Discount != discount ||
+		updated.InviteUserID == nil || *updated.InviteUserID != inviter.ID || updated.TelegramID == nil || *updated.TelegramID != telegramID ||
+		updated.RemindExpire != remindExpire || updated.RemindTraffic != remindTraffic || updated.Remarks == nil || *updated.Remarks != remarks ||
+		updated.NextResetAt == nil {
+		t.Fatalf("updated full profile = %#v", updated)
+	}
+	if !mutation.RuntimeChanged || !mutation.AccessStateCleared || mutation.OldGroupID == nil || *mutation.OldGroupID != 7 ||
+		mutation.NewGroupID == nil || *mutation.NewGroupID != 8 {
+		t.Fatalf("mutation metadata = %#v", mutation)
+	}
+	found, err := database.FindUserByID(ctx, user.ID)
+	if err != nil || found.PasswordHash != "new-hash" {
+		t.Fatalf("password hash = %q err=%v", found.PasswordHash, err)
+	}
+	if _, err := database.AuthenticateSession(ctx, "u2-session", now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("full update left session active: %v", err)
+	}
+	if _, err := database.AuthenticateAccessToken(ctx, strings.Repeat("7", 64), now.Add(2*time.Minute)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("full update left access token active: %v", err)
+	}
+	var devices, onlineRows, onlineCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_device_ips WHERE user_id = ?`, user.ID).Scan(&devices); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_user_online WHERE user_id = ?`, user.ID).Scan(&onlineRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT online_count FROM users WHERE id = ?`, user.ID).Scan(&onlineCount); err != nil {
+		t.Fatal(err)
+	}
+	if devices != 0 || onlineRows != 0 || onlineCount != 0 {
+		t.Fatalf("full update retained runtime state: devices=%d online_rows=%d online_count=%d", devices, onlineRows, onlineCount)
+	}
+}
+
+func TestAdminUserFullProfileUpdateRollsBackOnMissingReferences(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	seedAdminUserGroups(t, database, now)
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "rollback-u2@example.test", PasswordHash: "original-hash", GroupID: pointerTo(int64(7)),
+		TransferEnable: 1024, SpeedLimit: 10, DeviceLimit: 2,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser() error = %v", err)
+	}
+
+	changedBalance := int64(50_000)
+	missingPlanID := int64(999_999)
+	if _, _, err := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
+		Revision: user.Revision, Email: "must-rollback@example.test", GroupID: pointerTo(int64(8)),
+		TransferEnable: 2048, SpeedLimit: 20, DeviceLimit: 3, PlanIDSet: true, PlanID: &missingPlanID,
+		Balance: &changedBalance,
+	}, now.Add(time.Minute)); !errors.Is(err, ErrAdminUserPlanNotFound) {
+		t.Fatalf("missing plan error = %v, want ErrAdminUserPlanNotFound", err)
+	}
+	fresh, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetAdminUser(after missing plan) error = %v", err)
+	}
+	if fresh.Email != user.Email || fresh.Revision != user.Revision || fresh.Balance != user.Balance ||
+		fresh.GroupID == nil || *fresh.GroupID != 7 || fresh.TransferEnable != user.TransferEnable {
+		t.Fatalf("missing plan partially updated user: %#v", fresh)
+	}
+
+	missingInviter := "missing-inviter@example.test"
+	if _, _, err := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
+		Revision: user.Revision, Email: "must-also-rollback@example.test", GroupID: user.GroupID,
+		TransferEnable: user.TransferEnable, SpeedLimit: user.SpeedLimit, DeviceLimit: user.DeviceLimit,
+		InviteUserEmailSet: true, InviteUserEmail: &missingInviter,
+	}, now.Add(2*time.Minute)); !errors.Is(err, ErrAdminInviteUserNotFound) {
+		t.Fatalf("missing inviter error = %v, want ErrAdminInviteUserNotFound", err)
+	}
+	fresh, err = database.GetAdminUser(ctx, user.ID)
+	if err != nil || fresh.Email != user.Email || fresh.Revision != user.Revision || fresh.InviteUserID != nil {
+		t.Fatalf("missing inviter partially updated user: %#v err=%v", fresh, err)
+	}
+}
+
 func TestAdminUserRolesRequireDistributorNameAndRevokeCredentials(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
@@ -329,7 +483,7 @@ func TestAdminPasswordResetRevokesSessionsAndChecksRevision(t *testing.T) {
 	}
 }
 
-func TestAdminUserUpdateSupportsLegacyNullRuntimeIdentity(t *testing.T) {
+func TestAdminUserUpdateSupportsLegacyNullRuntimeIdentityAndReportsEntitlementChanges(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
@@ -350,7 +504,7 @@ func TestAdminUserUpdateSupportsLegacyNullRuntimeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateAdminUser(null uuid) error = %v", err)
 	}
-	if updated.TransferEnable != 1_000 || mutation.UUID != "" || mutation.RuntimeChanged {
+	if updated.TransferEnable != 1_000 || mutation.UUID != "" || !mutation.RuntimeChanged || !mutation.AccessStateCleared {
 		t.Fatalf("updated=%#v mutation=%#v", updated, mutation)
 	}
 }
@@ -482,9 +636,78 @@ func BenchmarkListAdminUsers100K(b *testing.B) {
 	})
 }
 
+func BenchmarkUpdateAdminUserFullProfile(b *testing.B) {
+	database, err := OpenSQLite("file:benchmark-admin-user-update?mode=memory&cache=shared")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		b.Fatal(err)
+	}
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	seedAdminUserGroups(b, database, now)
+	resetMethod := 1
+	speedLimit := 100
+	deviceLimit := 5
+	plans := make([]Plan, 0, 2)
+	for index, groupID := range []int64{7, 8} {
+		plan, createErr := database.CreatePlan(ctx, SavePlanInput{
+			GroupID: pointerTo(groupID), TransferEnableGiB: int64(64 + index), Name: fmt.Sprintf("benchmark-plan-%d", index),
+			SpeedLimit: &speedLimit, DeviceLimit: &deviceLimit, ResetTrafficMethod: &resetMethod,
+			Prices: PlanPrices{}, Tags: []string{},
+		}, now)
+		if createErr != nil {
+			b.Fatal(createErr)
+		}
+		plans = append(plans, plan)
+	}
+	inviter, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "benchmark-inviter@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		b.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "benchmark-profile@example.test", PasswordHash: "hash", GroupID: pointerTo(int64(7)), TransferEnable: 1,
+	}, now)
+	if err != nil {
+		b.Fatal(err)
+	}
+	upload, download := int64(1), int64(2)
+	balance, commissionBalance := int64(12_345), int64(6_789)
+	commissionType, commissionRate, discount := 2, 18, 80
+	telegramID := int64(778899)
+	remindExpire, remindTraffic := false, true
+	remarks := "benchmark full profile"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := range b.N {
+		plan := plans[index%len(plans)]
+		updated, _, updateErr := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
+			Revision: user.Revision, Email: user.Email, GroupID: user.GroupID, PlanIDSet: true, PlanID: &plan.ID,
+			InviteUserEmailSet: true, InviteUserEmail: &inviter.Email, TransferEnable: user.TransferEnable,
+			TrafficUpload: &upload, TrafficDownload: &download, ExpiredAt: user.ExpiredAt,
+			SpeedLimit: user.SpeedLimit, DeviceLimit: user.DeviceLimit, Banned: user.Banned,
+			Balance: &balance, CommissionType: &commissionType, CommissionRateSet: true, CommissionRate: &commissionRate,
+			CommissionBalance: &commissionBalance, DiscountSet: true, Discount: &discount,
+			TelegramIDSet: true, TelegramID: &telegramID, RemindExpire: &remindExpire, RemindTraffic: &remindTraffic,
+			RemarksSet: true, Remarks: &remarks,
+		}, now)
+		if updateErr != nil {
+			b.Fatal(updateErr)
+		}
+		user = updated
+		upload++
+		download++
+	}
+}
+
 func pointerTo[T any](value T) *T { return &value }
 
-func seedAdminUserGroups(t *testing.T, database *Store, now time.Time) {
+func seedAdminUserGroups(t testing.TB, database *Store, now time.Time) {
 	t.Helper()
 	for _, name := range []string{"group-7", "group-8"} {
 		if _, err := database.CreateServerGroup(context.Background(), name, now); err != nil {

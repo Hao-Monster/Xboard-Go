@@ -14,6 +14,18 @@ test("administrator creates and changes a user's access state", async ({ page })
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
+	const unique = Date.now();
+	const planName = `E2E 用户套餐 ${unique}`;
+	await page.getByRole("button", { name: "套餐管理", exact: true }).click();
+	await page.getByRole("button", { name: "添加套餐", exact: true }).click();
+	let dialog = page.getByRole("dialog", { name: "添加套餐" });
+	await dialog.getByLabel("套餐名称").fill(planName);
+	await dialog.getByLabel("流量（GiB）").fill("64");
+	await dialog.getByLabel("速度限制").fill("80");
+	await dialog.getByLabel("设备限制").fill("4");
+	await dialog.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByText(planName, { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: "用户管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "用户管理" })).toBeVisible();
   const table = page.getByRole("table", { name: "用户列表" });
@@ -32,10 +44,9 @@ test("administrator creates and changes a user's access state", async ({ page })
   await page.getByRole("searchbox", { name: "邮箱前缀" }).clear();
   await page.getByRole("button", { name: "查询用户" }).click();
 
-  const unique = Date.now();
   const email = `e2e-user-${unique}@example.test`;
   await page.getByRole("button", { name: "新增用户" }).click();
-  let dialog = page.getByRole("dialog", { name: "新增用户" });
+  dialog = page.getByRole("dialog", { name: "新增用户" });
   await dialog.getByLabel("邮箱").fill(email);
   await dialog.getByLabel("初始密码").fill("e2e-user-password-123");
   await dialog.getByLabel("流量额度（字节）").fill("1073741824");
@@ -56,7 +67,47 @@ test("administrator creates and changes a user's access state", async ({ page })
 
   await page.getByRole("button", { name: `编辑用户：${email}` }).click();
   dialog = page.getByRole("dialog", { name: "编辑用户" });
-  await dialog.getByLabel("限速（Mbps，0 为不限速）").fill("50");
+	await dialog.getByLabel("套餐").selectOption({ label: planName });
+	await expect(dialog.getByLabel("流量额度（GiB）")).toHaveValue("64");
+	await expect(dialog.getByLabel("限速（Mbps，0 为不限速）")).toHaveValue("80");
+	await expect(dialog.getByLabel("设备数（0 为不限设备）")).toHaveValue("4");
+	await dialog.getByLabel("邀请人邮箱（留空表示无）").fill(adminEmail);
+	await dialog.getByLabel("新密码（留空不修改）").fill("e2e-profile-password-456");
+	await dialog.getByLabel("已用上行流量（GiB）").fill("1.5");
+	await dialog.getByLabel("已用下行流量（GiB）").fill("2");
+	await dialog.getByLabel("余额（元）", { exact: true }).fill("45.67");
+	await dialog.getByLabel("佣金余额（元）", { exact: true }).fill("8.09");
+	await dialog.getByLabel("佣金类型").selectOption("1");
+	await dialog.getByLabel("专享折扣（留空使用系统默认）").fill("75");
+	await dialog.getByLabel("Telegram ID（留空表示未绑定）").fill("778899");
+	await dialog.getByLabel("到期提醒").check();
+	await dialog.getByLabel("流量提醒").check();
+	await dialog.getByLabel("备注").fill("E2E complete profile");
+	const updateRequestPromise = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/v1/admin/users/"));
+	await dialog.getByRole("button", { name: "保存" }).click();
+	const updatePayload = (await updateRequestPromise).postDataJSON();
+	expect(updatePayload).toMatchObject({
+		plan_id: expect.any(Number), transfer_enable: 68_719_476_736, speed_limit: 80, device_limit: 4,
+		invite_user_email: adminEmail, traffic_upload: 1_610_612_736, traffic_download: 2_147_483_648,
+		balance: 4567, commission_type: 1, commission_balance: 809, discount: 75, telegram_id: 778899,
+		remind_expire: true, remind_traffic: true, remarks: "E2E complete profile"
+	});
+	const updatedRow = page.getByRole("row").filter({ hasText: email });
+	await expect(updatedRow).toContainText(planName);
+	await expect(updatedRow).toContainText("¥45.67");
+
+	await page.getByRole("button", { name: `查看详情：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户详情" });
+	await expect(dialog).toContainText(adminEmail);
+	await expect(dialog).toContainText("E2E complete profile");
+	await expect(dialog).toContainText("778899");
+	await expect(dialog).toContainText("¥45.67");
+	await expect(dialog).toContainText("¥8.09");
+	await expect(dialog).toContainText("到期提醒开启 · 流量提醒开启");
+	await dialog.getByRole("button", { name: "关闭" }).last().click();
+
+	await page.getByRole("button", { name: `编辑用户：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "编辑用户" });
   await dialog.getByLabel("封禁用户").check();
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByRole("row").filter({ hasText: email }).getByText("已封禁", { exact: true })).toBeVisible();

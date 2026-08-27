@@ -20,6 +20,9 @@ const (
 	defaultAdminUserPageSize = 50
 	maxAdminUserPageSize     = 200
 	maxAdminUserPage         = 1_000_000
+	maxAdminUserCounter      = int64(9_007_199_254_740_991)
+	maxAdminUserMoney        = int64(9_000_000_000_000_000)
+	maxAdminUserRemarksBytes = 4_096
 )
 
 func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserFilter) (AdminUserPage, error) {
@@ -442,7 +445,31 @@ func (s *Store) CreateAdminUser(ctx context.Context, input CreateAdminUserInput,
 
 func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateAdminUserInput, now time.Time) (AdminUser, AdminUserMutation, error) {
 	input.Email = normalizeEmail(input.Email)
-	if userID < 1 || input.Revision < 1 || input.Email == "" || len(input.Email) > 320 || input.TransferEnable < 0 || input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 || (input.GroupID != nil && *input.GroupID < 1) {
+	if input.InviteUserEmailSet && input.InviteUserEmail != nil {
+		normalized := normalizeEmail(*input.InviteUserEmail)
+		if normalized == "" {
+			input.InviteUserEmail = nil
+		} else {
+			input.InviteUserEmail = &normalized
+		}
+	}
+	if input.RemarksSet {
+		var err error
+		input.Remarks, err = normalizeAdminUserRemarks(input.Remarks)
+		if err != nil {
+			return AdminUser{}, AdminUserMutation{}, err
+		}
+	}
+	if userID < 1 || input.Revision < 1 || input.Email == "" || len(input.Email) > 320 ||
+		!validAdminUserCounter(input.TransferEnable) || input.SpeedLimit < 0 || input.DeviceLimit < 0 || input.DeviceLimit > 1_000 ||
+		(input.GroupID != nil && *input.GroupID < 1) || (input.PlanIDSet && input.PlanID != nil && *input.PlanID < 1) ||
+		(input.PasswordHash != nil && *input.PasswordHash == "") || !validOptionalAdminUserCounter(input.TrafficUpload) ||
+		!validOptionalAdminUserCounter(input.TrafficDownload) || !validOptionalAdminUserMoney(input.Balance) ||
+		!validOptionalAdminUserMoney(input.CommissionBalance) || !validOptionalAdminUserRange(input.CommissionType, 0, 2) ||
+		(input.CommissionRateSet && !validOptionalAdminUserRange(input.CommissionRate, 0, 100)) ||
+		(input.DiscountSet && !validOptionalAdminUserRange(input.Discount, 0, 100)) ||
+		(input.TelegramIDSet && input.TelegramID != nil && *input.TelegramID < 1) ||
+		(input.ExpiredAt != nil && (input.ExpiredAt.Unix() < 0 || input.ExpiredAt.Year() > 9999)) {
 		return AdminUser{}, AdminUserMutation{}, fmt.Errorf("%w: invalid user update", ErrInvalidInput)
 	}
 	defer s.lockWrite()()
@@ -457,9 +484,6 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	}
 	if existing.Revision != input.Revision {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
-	}
-	if err := validateAdminUserGroup(ctx, tx, input.GroupID); err != nil {
-		return AdminUser{}, AdminUserMutation{}, err
 	}
 	isAdmin := existing.IsAdmin
 	if input.IsAdmin != nil {
@@ -481,20 +505,131 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if err != nil {
 		return AdminUser{}, AdminUserMutation{}, err
 	}
-	var groupID, expiredAt any
-	if input.GroupID != nil {
-		groupID = *input.GroupID
+	planID := cloneInt64(existing.PlanID)
+	if input.PlanIDSet {
+		planID = cloneInt64(input.PlanID)
 	}
-	if input.ExpiredAt != nil {
-		expiredAt = input.ExpiredAt.Unix()
+	inviteUserID := cloneInt64(existing.InviteUserID)
+	if input.InviteUserEmailSet {
+		inviteUserID = nil
+		if input.InviteUserEmail != nil {
+			var resolved int64
+			if err := tx.QueryRowContext(ctx, `
+				SELECT id FROM users WHERE email = ? AND account_kind = 'human'
+			`, *input.InviteUserEmail).Scan(&resolved); errors.Is(err, sql.ErrNoRows) {
+				return AdminUser{}, AdminUserMutation{}, ErrAdminInviteUserNotFound
+			} else if err != nil {
+				return AdminUser{}, AdminUserMutation{}, fmt.Errorf("resolve invite user: %w", err)
+			}
+			inviteUserID = &resolved
+		}
+	}
+	groupID := cloneInt64(input.GroupID)
+	transferEnable := input.TransferEnable
+	speedLimit := input.SpeedLimit
+	deviceLimit := input.DeviceLimit
+	trafficUpload := existing.TrafficUpload
+	if input.TrafficUpload != nil {
+		trafficUpload = *input.TrafficUpload
+	}
+	trafficDownload := existing.TrafficDownload
+	if input.TrafficDownload != nil {
+		trafficDownload = *input.TrafficDownload
+	}
+	balance := existing.Balance
+	if input.Balance != nil {
+		balance = *input.Balance
+	}
+	commissionType := existing.CommissionType
+	if input.CommissionType != nil {
+		commissionType = *input.CommissionType
+	}
+	commissionRate := cloneIntPointer(existing.CommissionRate)
+	if input.CommissionRateSet {
+		commissionRate = cloneIntPointer(input.CommissionRate)
+	}
+	commissionBalance := existing.CommissionBalance
+	if input.CommissionBalance != nil {
+		commissionBalance = *input.CommissionBalance
+	}
+	discount := cloneIntPointer(existing.Discount)
+	if input.DiscountSet {
+		discount = cloneIntPointer(input.Discount)
+	}
+	telegramID := cloneInt64(existing.TelegramID)
+	if input.TelegramIDSet {
+		telegramID = cloneInt64(input.TelegramID)
+	}
+	remindExpire := existing.RemindExpire
+	if input.RemindExpire != nil {
+		remindExpire = *input.RemindExpire
+	}
+	remindTraffic := existing.RemindTraffic
+	if input.RemindTraffic != nil {
+		remindTraffic = *input.RemindTraffic
+	}
+	remarks := cloneString(existing.Remarks)
+	if input.RemarksSet {
+		remarks = cloneString(input.Remarks)
+	}
+	if trafficUpload > maxAdminUserCounter-trafficDownload {
+		return AdminUser{}, AdminUserMutation{}, fmt.Errorf("%w: total user traffic exceeds the safe integer range", ErrInvalidInput)
+	}
+	planChanged := !sameNullableInt64(existing.PlanID, planID)
+	expiredChanged := !sameNullableTime(existing.ExpiredAt, input.ExpiredAt)
+	var resetMethod *int
+	if planID != nil && (planChanged || expiredChanged) {
+		var planGroup, planSpeed, planDevices, planReset sql.NullInt64
+		var planTransferGiB int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT group_id, transfer_enable_gib, speed_limit, device_limit, reset_traffic_method
+			FROM plans WHERE id = ?
+		`, *planID).Scan(&planGroup, &planTransferGiB, &planSpeed, &planDevices, &planReset); errors.Is(err, sql.ErrNoRows) {
+			return AdminUser{}, AdminUserMutation{}, ErrAdminUserPlanNotFound
+		} else if err != nil {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("read user plan entitlement: %w", err)
+		}
+		resetMethod = nullableIntPointer(planReset)
+		if planChanged {
+			groupID = nullableInt64Pointer(planGroup)
+			transferEnable = planTransferGiB * bytesPerGiB
+			speedLimit = optionalAdminUserLimit(planSpeed)
+			deviceLimit = optionalAdminUserLimit(planDevices)
+		}
+	}
+	if err := validateAdminUserGroup(ctx, tx, groupID); err != nil {
+		return AdminUser{}, AdminUserMutation{}, err
+	}
+	nextResetAt := cloneTime(existing.NextResetAt)
+	if planID == nil {
+		if planChanged || expiredChanged {
+			nextResetAt = nil
+		}
+	} else if planChanged || expiredChanged {
+		systemResetMethod, err := readSystemTrafficResetMethod(ctx, tx)
+		if err != nil {
+			return AdminUser{}, AdminUserMutation{}, err
+		}
+		nextResetAt = CalculateNextTrafficReset(resetMethod, systemResetMethod, input.ExpiredAt, now)
+	}
+	passwordHash := ""
+	passwordChanged := input.PasswordHash != nil
+	if passwordChanged {
+		passwordHash = *input.PasswordHash
 	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE users SET email = ?, group_id = ?, transfer_enable = ?, expired_at = ?, speed_limit = ?,
-			device_limit = ?, banned = ?, is_admin = ?, is_staff = ?, is_distributor = ?, distributor_name = ?,
+		UPDATE users SET email = ?, password_hash = CASE WHEN ? THEN ? ELSE password_hash END,
+			group_id = ?, plan_id = ?, invite_user_id = ?, transfer_enable = ?, traffic_u = ?, traffic_d = ?, expired_at = ?,
+			speed_limit = ?, device_limit = ?, banned = ?, is_admin = ?, is_staff = ?, is_distributor = ?, distributor_name = ?,
+			balance = ?, commission_type = ?, commission_rate = ?, commission_balance = ?, discount = ?, telegram_id = ?,
+			remind_expire = ?, remind_traffic = ?, remarks = ?, next_reset_at = ?,
 			admin_revision = admin_revision + 1, updated_at = ?
 		WHERE id = ? AND account_kind = 'human' AND admin_revision = ?
-	`, input.Email, groupID, input.TransferEnable, expiredAt, input.SpeedLimit, input.DeviceLimit,
-		input.Banned, isAdmin, isStaff, isDistributor, nullableStringValue(distributorName), now.Unix(), userID, input.Revision)
+	`, input.Email, passwordChanged, passwordHash, nullableInt64Value(groupID), nullableInt64Value(planID), nullableInt64Value(inviteUserID),
+		transferEnable, trafficUpload, trafficDownload, nullableTimeUnix(input.ExpiredAt), speedLimit, deviceLimit,
+		input.Banned, isAdmin, isStaff, isDistributor, nullableStringValue(distributorName), balance, commissionType,
+		nullableIntValue(commissionRate), commissionBalance, nullableIntValue(discount), nullableInt64Value(telegramID),
+		remindExpire, remindTraffic, nullableStringValue(remarks), nullableTimeUnix(nextResetAt), now.Unix(), userID, input.Revision)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return AdminUser{}, AdminUserMutation{}, ErrEmailInUse
@@ -508,17 +643,19 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if changed != 1 {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
 	}
-	credentialsChanged := existing.Email != input.Email || (!existing.Banned && input.Banned) ||
+	credentialsChanged := existing.Email != input.Email || existing.Banned != input.Banned || passwordChanged ||
 		existing.IsAdmin != isAdmin || existing.IsStaff != isStaff || existing.IsDistributor != isDistributor
 	if credentialsChanged {
 		if err := revokeAllCredentialsTx(ctx, tx, userID, now); err != nil {
 			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("revoke user sessions: %w", err)
 		}
 	}
-	groupChanged := !sameNullableInt64(existing.GroupID, input.GroupID)
+	groupChanged := !sameNullableInt64(existing.GroupID, groupID)
 	oldRuntimeEligible := adminUserRuntimeEligible(existing.GroupID, existing.Banned, existing.TransferEnable, existing.TrafficUpload+existing.TrafficDownload, existing.ExpiredAt, now)
-	newRuntimeEligible := adminUserRuntimeEligible(input.GroupID, input.Banned, input.TransferEnable, existing.TrafficUpload+existing.TrafficDownload, input.ExpiredAt, now)
-	accessStateCleared := groupChanged || (oldRuntimeEligible && !newRuntimeEligible)
+	newRuntimeEligible := adminUserRuntimeEligible(groupID, input.Banned, transferEnable, trafficUpload+trafficDownload, input.ExpiredAt, now)
+	trafficChanged := existing.TrafficUpload != trafficUpload || existing.TrafficDownload != trafficDownload
+	accessStateCleared := groupChanged || planChanged || existing.Banned != input.Banned || expiredChanged ||
+		existing.TransferEnable != transferEnable || trafficChanged || existing.DeviceLimit != deviceLimit || oldRuntimeEligible != newRuntimeEligible
 	if accessStateCleared {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM node_device_ips WHERE user_id = ?`, userID); err != nil {
 			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("clear user devices: %w", err)
@@ -541,9 +678,9 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if err := tx.Commit(); err != nil {
 		return AdminUser{}, AdminUserMutation{}, fmt.Errorf("commit update user: %w", err)
 	}
-	runtimeChanged := groupChanged || oldRuntimeEligible != newRuntimeEligible || existing.SpeedLimit != input.SpeedLimit ||
-		existing.DeviceLimit != input.DeviceLimit || existing.Banned != input.Banned
-	return updated, AdminUserMutation{OldGroupID: cloneInt64(existing.GroupID), NewGroupID: cloneInt64(input.GroupID), UUID: runtimeUUID.String, RuntimeChanged: runtimeChanged, AccessStateCleared: accessStateCleared}, nil
+	runtimeChanged := groupChanged || planChanged || oldRuntimeEligible != newRuntimeEligible || expiredChanged || trafficChanged ||
+		existing.TransferEnable != transferEnable || existing.SpeedLimit != speedLimit || existing.DeviceLimit != deviceLimit || existing.Banned != input.Banned
+	return updated, AdminUserMutation{OldGroupID: cloneInt64(existing.GroupID), NewGroupID: cloneInt64(groupID), UUID: runtimeUUID.String, RuntimeChanged: runtimeChanged, AccessStateCleared: accessStateCleared}, nil
 }
 
 func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int64, passwordHash string, now time.Time) (AdminUser, error) {
@@ -688,6 +825,43 @@ func validateAdminUserGroup(ctx context.Context, tx *sql.Tx, groupID *int64) err
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
 
+func normalizeAdminUserRemarks(value *string) (*string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	normalized := strings.TrimSpace(*value)
+	if normalized == "" {
+		return nil, nil
+	}
+	if !utf8.ValidString(normalized) || len(normalized) > maxAdminUserRemarksBytes || strings.IndexByte(normalized, 0) >= 0 {
+		return nil, fmt.Errorf("%w: invalid user remarks", ErrInvalidInput)
+	}
+	return &normalized, nil
+}
+
+func validAdminUserCounter(value int64) bool {
+	return value >= 0 && value <= maxAdminUserCounter
+}
+
+func validOptionalAdminUserCounter(value *int64) bool {
+	return value == nil || validAdminUserCounter(*value)
+}
+
+func validOptionalAdminUserMoney(value *int64) bool {
+	return value == nil || *value >= 0 && *value <= maxAdminUserMoney
+}
+
+func validOptionalAdminUserRange(value *int, minimum, maximum int) bool {
+	return value == nil || *value >= minimum && *value <= maximum
+}
+
+func optionalAdminUserLimit(value sql.NullInt64) int {
+	if !value.Valid {
+		return 0
+	}
+	return int(value.Int64)
+}
+
 func normalizedDistributorName(enabled bool, value *string) (*string, error) {
 	if !enabled {
 		return nil, nil
@@ -745,7 +919,19 @@ func sameNullableInt64(left, right *int64) bool {
 	return (left == nil && right == nil) || (left != nil && right != nil && *left == *right)
 }
 
+func sameNullableTime(left, right *time.Time) bool {
+	return (left == nil && right == nil) || (left != nil && right != nil && left.Equal(*right))
+}
+
 func cloneInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneString(value *string) *string {
 	if value == nil {
 		return nil
 	}

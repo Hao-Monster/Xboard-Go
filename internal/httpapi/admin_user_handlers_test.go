@@ -2,16 +2,191 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	admin := loginAdmin(t, api)
+
+	resetMethod, speedLimit, deviceLimit := 1, 125, 5
+	planGroupID := int64(8)
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
+		GroupID: &planGroupID, TransferEnableGiB: 64, Name: "U2 parity plan",
+		SpeedLimit: &speedLimit, DeviceLimit: &deviceLimit, ResetTrafficMethod: &resetMethod,
+		Prices: store.PlanPrices{}, Tags: []string{},
+	}, now)
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+	inviterResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+		"email":"u2-inviter@example.test","password":"inviter-password-123","group_id":7,
+		"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false
+	}`)
+	if inviterResponse.Code != http.StatusCreated {
+		t.Fatalf("create inviter status=%d body=%s", inviterResponse.Code, inviterResponse.Body)
+	}
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+		"email":"u2-before@example.test","password":"before-password-123","group_id":7,
+		"transfer_enable":1024,"speed_limit":10,"device_limit":2,"banned":false
+	}`)
+	if createdResponse.Code != http.StatusCreated {
+		t.Fatalf("create subject status=%d body=%s", createdResponse.Code, createdResponse.Body)
+	}
+	var createdPayload struct {
+		Data store.AdminUser `json:"data"`
+	}
+	decodeResponse(t, createdResponse, &createdPayload)
+	created := createdPayload.Data
+	userClient := loginAccount(t, api, created.Email, "before-password-123")
+
+	expiresAt := now.AddDate(0, 2, 0).Format(time.RFC3339)
+	updatedResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+		"revision":%d,"email":"u2-after@example.test","password":"after-password-123",
+		"group_id":7,"plan_id":%d,"invite_user_email":"u2-inviter@example.test",
+		"transfer_enable":999,"traffic_upload":11000,"traffic_download":22000,"expired_at":%q,
+		"speed_limit":1,"device_limit":1,"banned":false,"is_staff":true,
+		"balance":12345,"commission_type":2,"commission_rate":18,"commission_balance":6789,"discount":80,
+		"telegram_id":778899,"remind_expire":false,"remind_traffic":true,"remarks":"U2 priority account"
+	}`, created.Revision, plan.ID, expiresAt))
+	if updatedResponse.Code != http.StatusOK {
+		t.Fatalf("modern full update status=%d body=%s", updatedResponse.Code, updatedResponse.Body)
+	}
+	var updatedPayload struct {
+		Data store.AdminUser `json:"data"`
+	}
+	decodeResponse(t, updatedResponse, &updatedPayload)
+	updated := updatedPayload.Data
+	if updated.Email != "u2-after@example.test" || !updated.IsStaff || updated.PlanID == nil || *updated.PlanID != plan.ID ||
+		updated.GroupID == nil || *updated.GroupID != 8 || updated.TransferEnable != 64*1024*1024*1024 ||
+		updated.SpeedLimit != speedLimit || updated.DeviceLimit != deviceLimit || updated.TrafficUsed != 33_000 ||
+		updated.Balance != 12_345 || updated.CommissionBalance != 6_789 || updated.InviteUserEmail == nil ||
+		*updated.InviteUserEmail != "u2-inviter@example.test" || updated.TelegramID == nil || *updated.TelegramID != 778899 ||
+		updated.Remarks == nil || *updated.Remarks != "U2 priority account" || updated.NextResetAt == nil {
+		t.Fatalf("modern full update = %#v", updated)
+	}
+	if stale := userClient.request(t, api, http.MethodGet, "/api/v1/auth/session", ""); stale.Code != http.StatusUnauthorized {
+		t.Fatalf("modern full update retained old login: status=%d body=%s", stale.Code, stale.Body)
+	}
+	if login := loginAccountResponse(api, "u2-after@example.test", "after-password-123"); login.Code != http.StatusOK {
+		t.Fatalf("updated password login status=%d body=%s", login.Code, login.Body)
+	}
+	missingPlan := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", updated.ID), fmt.Sprintf(`{
+		"revision":%d,"email":%q,"group_id":8,"plan_id":999999,"transfer_enable":%d,
+		"expired_at":%q,"speed_limit":125,"device_limit":5,"banned":false
+	}`, updated.Revision, updated.Email, updated.TransferEnable, expiresAt))
+	if missingPlan.Code != http.StatusUnprocessableEntity || !strings.Contains(missingPlan.Body.String(), "plan_not_found") {
+		t.Fatalf("modern missing plan status=%d body=%s", missingPlan.Code, missingPlan.Body)
+	}
+	missingInviter := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", updated.ID), fmt.Sprintf(`{
+		"revision":%d,"email":%q,"group_id":8,"plan_id":%d,"invite_user_email":"missing-u2@example.test",
+		"transfer_enable":%d,"expired_at":%q,"speed_limit":125,"device_limit":5,"banned":false
+	}`, updated.Revision, updated.Email, plan.ID, updated.TransferEnable, expiresAt))
+	if missingInviter.Code != http.StatusUnprocessableEntity || !strings.Contains(missingInviter.Body.String(), "invite_user_not_found") {
+		t.Fatalf("modern missing inviter status=%d body=%s", missingInviter.Code, missingInviter.Body)
+	}
+	afterRejected, err := database.GetAdminUser(ctx, updated.ID)
+	if err != nil || afterRejected.Revision != updated.Revision || afterRejected.PlanID == nil || *afterRejected.PlanID != plan.ID {
+		t.Fatalf("modern rejected reference update mutated user: %#v err=%v", afterRejected, err)
+	}
+
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacy := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", authorization,
+		fmt.Sprintf(`{"id":%d,"revision":%d,"balance":45.67,"commission_balance":8.09,"remarks":"legacy dirty update"}`, updated.ID, updated.Revision))
+	if legacy.Code != http.StatusOK || !containsAll(legacy.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("legacy dirty update status=%d body=%s", legacy.Code, legacy.Body)
+	}
+	fresh, err := database.GetAdminUser(ctx, updated.ID)
+	if err != nil {
+		t.Fatalf("GetAdminUser() error = %v", err)
+	}
+	if fresh.Balance != 4567 || fresh.CommissionBalance != 809 || fresh.Remarks == nil || *fresh.Remarks != "legacy dirty update" ||
+		fresh.PlanID == nil || *fresh.PlanID != plan.ID || fresh.TransferEnable != updated.TransferEnable || fresh.TrafficUsed != updated.TrafficUsed {
+		encoded, _ := json.Marshal(fresh)
+		t.Fatalf("legacy dirty update did not preserve untouched fields: %s", encoded)
+	}
+	legacyNoChange := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", authorization,
+		fmt.Sprintf(`{"id":%d,"is_distributor":0,"distributor_name":""}`, fresh.ID))
+	if legacyNoChange.Code != http.StatusOK || !containsAll(legacyNoChange.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("legacy observed no-change payload status=%d body=%s", legacyNoChange.Code, legacyNoChange.Body)
+	}
+	fresh, err = database.GetAdminUser(ctx, fresh.ID)
+	if err != nil || fresh.IsDistributor || fresh.DistributorName != nil || fresh.Balance != 4567 || fresh.CommissionBalance != 809 {
+		t.Fatalf("legacy observed no-change payload mutated profile: %#v err=%v", fresh, err)
+	}
+	invalidMoney := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", authorization,
+		fmt.Sprintf(`{"id":%d,"revision":%d,"balance":1.009}`, fresh.ID, fresh.Revision))
+	if invalidMoney.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("legacy unsafe money status=%d body=%s", invalidMoney.Code, invalidMoney.Body)
+	}
+	afterInvalid, err := database.GetAdminUser(ctx, fresh.ID)
+	if err != nil || afterInvalid.Revision != fresh.Revision || afterInvalid.Balance != fresh.Balance {
+		t.Fatalf("legacy unsafe money mutated user: %#v err=%v", afterInvalid, err)
+	}
+	audits, err := database.ListAdminAuditLogs(ctx, store.AdminAuditFilter{Page: 1, PageSize: 20, Query: "secure_admin"})
+	if err != nil {
+		t.Fatalf("ListAdminAuditLogs() error = %v", err)
+	}
+	if audits.Total != 3 || len(audits.Items) != 3 {
+		t.Fatalf("legacy user update audits = %#v, want two successful and one rejected attempt", audits)
+	}
+	for _, item := range audits.Items {
+		if item.Route != "/api/v2/{secure_admin}/user/update" || strings.Contains(item.Route, "/api/v2/admin/") {
+			t.Fatalf("legacy user audit leaked the dynamic administrator path: %#v", item)
+		}
+	}
+}
+
+func loginAccountResponse(api http.Handler, email, password string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	return response
+}
+
+func TestLegacyOptionalBoolAcceptsOnlyObservedBooleanRepresentations(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "boolean true", input: "true", want: true},
+		{name: "boolean false", input: "false", want: false},
+		{name: "numeric one", input: "1", want: true},
+		{name: "numeric zero", input: "0", want: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var value legacyOptionalBool
+			if err := json.Unmarshal([]byte(testCase.input), &value); err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error = %v", testCase.input, err)
+			}
+			if !value.Set || value.Value != testCase.want || value.Pointer() == nil || *value.Pointer() != testCase.want {
+				t.Fatalf("UnmarshalJSON(%s) = %#v", testCase.input, value)
+			}
+		})
+	}
+	for _, input := range []string{"null", "2", `"1"`, "-1", "1.0"} {
+		t.Run("reject "+input, func(t *testing.T) {
+			var value legacyOptionalBool
+			if err := json.Unmarshal([]byte(input), &value); err == nil {
+				t.Fatalf("UnmarshalJSON(%s) unexpectedly succeeded: %#v", input, value)
+			}
+		})
+	}
+}
 
 func TestAdminUserPagedQueryAndLegacyFetchAreAllowlistedAndSecretFree(t *testing.T) {
 	api, _ := newTestAPI(t)
@@ -193,6 +368,21 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 	}`, detail.Revision))
 	if selfDemotion.Code != http.StatusUnprocessableEntity || !strings.Contains(selfDemotion.Body.String(), "cannot_remove_admin_self") {
 		t.Fatalf("self demotion status = %d; body=%s", selfDemotion.Code, selfDemotion.Body)
+	}
+	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacySelfBan := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", legacyAuthorization,
+		fmt.Sprintf(`{"id":%d,"banned":true}`, detail.ID))
+	if legacySelfBan.Code != http.StatusUnprocessableEntity || !strings.Contains(legacySelfBan.Body.String(), "不能封禁自己的当前账号") {
+		t.Fatalf("legacy self ban status = %d; body=%s", legacySelfBan.Code, legacySelfBan.Body)
+	}
+	legacySelfDemotion := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", legacyAuthorization,
+		fmt.Sprintf(`{"id":%d,"is_admin":false}`, detail.ID))
+	if legacySelfDemotion.Code != http.StatusUnprocessableEntity || !strings.Contains(legacySelfDemotion.Body.String(), "不能撤销当前登录账号") {
+		t.Fatalf("legacy self demotion status = %d; body=%s", legacySelfDemotion.Code, legacySelfDemotion.Body)
+	}
+	afterSelfProtection, err := database.GetAdminUser(context.Background(), detail.ID)
+	if err != nil || afterSelfProtection.Banned || !afterSelfProtection.IsAdmin || afterSelfProtection.Revision != detail.Revision {
+		t.Fatalf("self-protection requests mutated administrator: %#v err=%v", afterSelfProtection, err)
 	}
 
 	missingRevision := admin.request(t, api, http.MethodPatch, "/api/v1/admin/users/999", `{

@@ -13,6 +13,8 @@ var (
 	ErrAttachmentQuotaExceeded                = errors.New("attachment quota exceeded")
 	ErrRevisionConflict                       = fmt.Errorf("%w: revision conflict", ErrConflict)
 	ErrEmailInUse                             = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrAdminInviteUserNotFound                = errors.New("administrator invite user not found")
+	ErrAdminUserPlanNotFound                  = errors.New("administrator user plan not found")
 	ErrRegistrationClosed                     = errors.New("registration is closed")
 	ErrEmailDomainNotAllowed                  = errors.New("email domain is not allowed")
 	ErrGmailAliasNotAllowed                   = errors.New("Gmail alias is not allowed")
@@ -770,18 +772,38 @@ type CreateAdminUserInput struct {
 }
 
 type UpdateAdminUserInput struct {
-	Revision        int64
-	Email           string
-	IsAdmin         *bool
-	IsStaff         *bool
-	IsDistributor   *bool
-	DistributorName *string
-	GroupID         *int64
-	TransferEnable  int64
-	ExpiredAt       *time.Time
-	SpeedLimit      int
-	DeviceLimit     int
-	Banned          bool
+	Revision           int64
+	Email              string
+	PasswordHash       *string
+	IsAdmin            *bool
+	IsStaff            *bool
+	IsDistributor      *bool
+	DistributorName    *string
+	GroupID            *int64
+	PlanIDSet          bool
+	PlanID             *int64
+	InviteUserEmailSet bool
+	InviteUserEmail    *string
+	TransferEnable     int64
+	TrafficUpload      *int64
+	TrafficDownload    *int64
+	ExpiredAt          *time.Time
+	SpeedLimit         int
+	DeviceLimit        int
+	Banned             bool
+	Balance            *int64
+	CommissionType     *int
+	CommissionRateSet  bool
+	CommissionRate     *int
+	CommissionBalance  *int64
+	DiscountSet        bool
+	Discount           *int
+	TelegramIDSet      bool
+	TelegramID         *int64
+	RemindExpire       *bool
+	RemindTraffic      *bool
+	RemarksSet         bool
+	Remarks            *string
 }
 
 type AdminUserMutation struct {
