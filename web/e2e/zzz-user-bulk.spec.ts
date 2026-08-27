@@ -135,11 +135,8 @@ test("administrator bulk mail, filtered CSV, and ban match the legacy user workf
     expect(serverErrors).toEqual([]);
   } finally {
     if (originalSettings !== null) {
-      try {
-        await saveTicketSettings(page, originalSettings);
-      } catch {
-        // Preserve the primary assertion. The packaged test stack is disposable.
-      }
+      const currentSettings = await getTicketSettings(page);
+      await saveTicketSettings(page, { ...originalSettings, revision: currentSettings.revision });
     }
   }
 });
