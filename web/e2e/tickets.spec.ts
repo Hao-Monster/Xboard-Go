@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("user and administrator complete the legacy ticket lifecycle", async ({ page }) => {
   test.setTimeout(60_000);
@@ -17,20 +17,14 @@ test("user and administrator complete the legacy ticket lifecycle", async ({ pag
   const subject = `Route outage ${unique}`;
 
   await login(page, adminEmail, adminPassword);
-  await page.getByRole("button", { name: "用户管理", exact: true }).click();
-  await page.getByRole("button", { name: "新增用户" }).click();
-  let dialog = page.getByRole("dialog", { name: "新增用户" });
-  await dialog.getByLabel("邮箱").fill(userEmail);
-  await dialog.getByLabel("初始密码").fill(userPassword);
-  await dialog.getByRole("button", { name: "创建" }).click();
-  await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
+  await createAdminUserFixture(page, { email: userEmail, password: userPassword });
 
   await logoutAndWait(page);
   await login(page, userEmail, userPassword);
   await page.getByRole("button", { name: "我的工单", exact: true }).click();
   await expect(page.getByRole("heading", { name: "我的工单" })).toBeVisible();
   await page.getByRole("button", { name: "新建工单" }).click();
-  dialog = page.getByRole("dialog", { name: "新建工单" });
+  let dialog = page.getByRole("dialog", { name: "新建工单" });
   await dialog.getByLabel("主题").fill(subject);
   await dialog.getByLabel("工单级别").selectOption("2");
   await dialog.getByLabel("消息").fill("Initial user message");

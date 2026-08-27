@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("gift-card administrator and user lifecycle works on every supported viewport", async ({ page }) => {
   test.setTimeout(120_000);
@@ -64,6 +64,5 @@ async function login(page: Page, email: string, password: string) {
 }
 
 async function createUser(page: Page, email: string, password: string) {
-  await page.getByRole("button", { name: "用户管理", exact: true }).click(); await page.getByRole("button", { name: "新增用户", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增用户" }); await dialog.getByLabel("邮箱", { exact: true }).fill(email); await dialog.getByLabel("初始密码", { exact: true }).fill(password); await dialog.getByLabel("流量额度（字节）", { exact: true }).fill("0"); await dialog.getByRole("button", { name: "创建", exact: true }).click(); await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await createAdminUserFixture(page, { email, password });
 }

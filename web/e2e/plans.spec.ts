@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator manages plans and a user sees the same purchasable catalog", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -14,14 +14,7 @@ test("administrator manages plans and a user sees the same purchasable catalog",
   const unique = Date.now();
   const userEmail = `plan-user-${unique}@example.test`;
   const userPassword = "plan-user-password-123";
-  await page.getByRole("button", { name: "用户管理", exact: true }).click();
-  await page.getByRole("button", { name: "新增用户" }).click();
-  let dialog = page.getByRole("dialog", { name: "新增用户" });
-  await dialog.getByLabel("邮箱").fill(userEmail);
-  await dialog.getByLabel("初始密码").fill(userPassword);
-  await dialog.getByLabel("流量额度（字节）").fill("0");
-  await dialog.getByRole("button", { name: "创建" }).click();
-  await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
+  await createAdminUserFixture(page, { email: userEmail, password: userPassword });
 
   await page.getByRole("button", { name: "套餐管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "套餐管理" })).toBeVisible();
@@ -53,7 +46,7 @@ test("administrator manages plans and a user sees the same purchasable catalog",
   expect(publicBody).toContain('"monthly":999');
 
   await page.getByRole("button", { name: `编辑套餐：${premiumName}` }).click();
-  dialog = page.getByRole("dialog", { name: "编辑套餐" });
+  const dialog = page.getByRole("dialog", { name: "编辑套餐" });
   await expect(dialog.getByLabel("流量（GiB）")).toHaveValue("1024");
   await expect(dialog.getByLabel("月付", { exact: true })).toHaveValue("9.99");
   await dialog.getByLabel("月付", { exact: true }).fill("10.01");
