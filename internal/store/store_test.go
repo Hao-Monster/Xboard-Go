@@ -541,6 +541,7 @@ func removeSchemaV33ForMigrationTest(t *testing.T, database *Store) {
 
 func removeSchemaV34ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
+	removeSchemaV39ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
 		DROP INDEX idx_commission_logs_owner_created;
 		DROP INDEX idx_commission_logs_user;
@@ -553,6 +554,16 @@ func removeSchemaV34ForMigrationTest(t *testing.T, database *Store) {
 		ALTER TABLE app_settings DROP COLUMN commission_distribution_l3;
 	`); err != nil {
 		t.Fatalf("remove schema v34: %v", err)
+	}
+}
+
+func removeSchemaV39ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TABLE IF EXISTS admin_user_bulk_targets;
+		DROP TABLE IF EXISTS admin_user_bulk_jobs;
+	`); err != nil {
+		t.Fatalf("remove schema v39: %v", err)
 	}
 }
 

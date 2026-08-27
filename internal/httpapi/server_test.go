@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
+	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
@@ -577,6 +578,12 @@ func newTestAPIWithAttachmentOptions(t *testing.T, function func(*http.Request) 
 			t.Fatalf("attachments.New() error = %v", err)
 		}
 	}
+	bulkService, err := bulkops.New(database, bulkops.Options{
+		Cipher: settingsCipher, ExportRoot: t.TempDir(), PanelURL: "https://panel.example.test",
+	})
+	if err != nil {
+		t.Fatalf("bulkops.New() error = %v", err)
+	}
 	handler := New(Dependencies{
 		Store:                      database,
 		PasswordHasher:             hasher,
@@ -594,6 +601,7 @@ func newTestAPIWithAttachmentOptions(t *testing.T, function func(*http.Request) 
 		CaptchaVerifier:            captchaVerifier,
 		PaymentGateway:             gateway,
 		Attachments:                attachmentService,
+		BulkOperations:             bulkService,
 	})
 	return handler, database
 }

@@ -136,6 +136,53 @@ describe("APIClient administrator user contracts", () => {
 			{ path: "/api/v1/admin/users/41/traffic-reset", method: "POST", body: { reason: "customer request" }, idempotencyKey: "u4-browser-reset-0001" }
 		]);
 	});
+
+  it("uses bounded administrator bulk-job routes, encoded IDs, CSRF, and authenticated CSV download", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null; accept: string | null }> = [];
+    document.cookie = "xboard_csrf=user-bulk-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({
+        path,
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: headers.get("X-CSRF-Token"),
+        accept: headers.get("Accept")
+      });
+      if (path.endsWith("/download")) {
+        return Promise.resolve(new Response("csv-bytes", { status: 200, headers: { "Content-Type": "text/csv" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    const filtered = {
+      scope: "filtered" as const,
+      email_prefix: "vip",
+      banned: false,
+      group_id: 7,
+      filters: [{ field: "remarks", operator: "contains" as const, value: "重点" }]
+    };
+
+    await api.createAdminUserBulkMail({ scope: "selected", user_ids: [41, 42] }, "系统通知", "您好 {{user.email}}");
+    await api.createAdminUserBulkCSV(filtered);
+    await api.banAdminUsers({ scope: "all" }, "bulk-ban-0001");
+    await api.listAdminUserBulkJobs(2, 50);
+    await api.getAdminUserBulkJob("job/with slash");
+    await api.cancelAdminUserBulkJob("job/with slash");
+    const blob = await api.downloadAdminUserBulkCSV("job/with slash");
+
+    expect(await blob.text()).toBe("csv-bytes");
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/users/bulk/mail", method: "POST", body: { scope: "selected", user_ids: [41, 42], subject: "系统通知", content: "您好 {{user.email}}" }, csrf: "user-bulk-csrf", accept: "application/json" },
+      { path: "/api/v1/admin/users/bulk/csv", method: "POST", body: filtered, csrf: "user-bulk-csrf", accept: "application/json" },
+      { path: "/api/v1/admin/users/bulk/ban", method: "POST", body: { scope: "all", idempotency_key: "bulk-ban-0001" }, csrf: "user-bulk-csrf", accept: "application/json" },
+      { path: "/api/v1/admin/user-bulk-jobs?page=2&page_size=50", method: "GET", body: undefined, csrf: null, accept: "application/json" },
+      { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash", method: "GET", body: undefined, csrf: null, accept: "application/json" },
+      { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash/cancel", method: "POST", body: {}, csrf: "user-bulk-csrf", accept: "application/json" },
+      { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash/download", method: "GET", body: undefined, csrf: null, accept: "text/csv" }
+    ]);
+  });
 });
 
 describe("APIClient payment contracts", () => {

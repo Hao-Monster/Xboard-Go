@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type Dispatch, type SetStateAction } from "react";
 
 import type { KnowledgeAttachment, KnowledgeAttachmentPage, KnowledgeAttachmentUpload } from "../../lib/api";
+import { secureRandomUUID } from "../../lib/random";
 import { SafeKnowledgeMarkdown } from "./UserKnowledgePage";
 
 export interface KnowledgeAttachmentAPI {
@@ -345,7 +346,7 @@ async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (i
 }
 
 function uploadMarker(id: string) { return `<!-- ${markerPrefix}${id} -->`; }
-function randomID() { return `${Date.now().toString(36)}-${crypto.randomUUID()}`; }
+function randomID() { return `${Date.now().toString(36)}-${secureRandomUUID()}`; }
 function statusLabel(status: UploadStatus) { return ({ queued: "等待上传", uploading: "上传中", complete: "已就绪", failed: "上传失败", cancelling: "正在取消" })[status]; }
 function formatBytes(value: number) { if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(2)} GB`; if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(2)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : "附件请求失败"; }

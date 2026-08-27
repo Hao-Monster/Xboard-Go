@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { APIError, type AdminUser, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
+import { APIError, type AdminUser, type AdminUserBulkJob, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
 import { generatedUsersCSV, UsersPage } from "./UsersPage";
 
 const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
@@ -20,6 +20,12 @@ const account: AdminUser = {
   next_reset_at: "2026-09-01T00:00:00Z", last_reset_at: "2026-08-01T00:00:00Z", reset_count: 4,
   telegram_id: 778899, remind_expire: false, remind_traffic: true, remarks: "重点客户",
   revision: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z"
+};
+const bulkJob: AdminUserBulkJob = {
+  id: "00000000-0000-4000-8000-000000000041", kind: "mail", scope: "selected", administrator_id: 1,
+  administrator_email: "admin@example.test", status: "queued", subject: "系统通知", total_count: 1, processed_count: 0,
+  success_count: 0, failure_count: 0, skipped_count: 0, cancelled_count: 0,
+  created_at: "2026-08-28T12:00:00Z", updated_at: "2026-08-28T12:00:00Z"
 };
 
 describe("UsersPage", () => {
@@ -225,6 +231,103 @@ describe("UsersPage", () => {
 		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
 	});
 
+  it("matches the legacy selected-scope menu and queues a templated mail job", async () => {
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 19, page: 1, page_size: 20 });
+    api.createAdminUserBulkMail.mockResolvedValue(bulkJob);
+    api.listAdminUserBulkJobs.mockResolvedValue({ items: [bulkJob], total: 1, page: 1, page_size: 50 });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+
+    expect(await screen.findByText("已选择 0 项，共 19 项")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    expect(screen.getByRole("menuitem", { name: "发送邮件(全部)" })).toBeVisible();
+    await user.click(screen.getByLabelText(`选择用户：${account.email}`));
+    expect(screen.getByText("已选择 1 项，共 19 项")).toBeVisible();
+    await user.click(screen.getByRole("menuitem", { name: "发送邮件(1)" }));
+
+    const dialog = screen.getByRole("dialog", { name: "发送邮件" });
+    expect(within(dialog).getByText("向所选或已筛选用户发送邮件")).toBeVisible();
+    expect(within(dialog).getByLabelText("仅选中（1）")).toBeChecked();
+    expect(within(dialog).getByLabelText("筛选后的用户")).toBeDisabled();
+    expect(within(dialog).getByLabelText("全部用户")).toBeEnabled();
+    await user.type(within(dialog).getByPlaceholderText("例如：系统通知（支持占位符）"), "系统通知");
+    const content = within(dialog).getByPlaceholderText("请输入邮件正文（可使用占位符）");
+    await user.click(content);
+    await user.paste("您好 {{user.email|用户}}，套餐 {{user.plan_name}}");
+    await user.click(within(dialog).getByRole("button", { name: "发送" }));
+
+    await waitFor(() => expect(api.createAdminUserBulkMail).toHaveBeenCalledWith(
+      { scope: "selected", user_ids: [account.id] }, "系统通知", "您好 {{user.email|用户}}，套餐 {{user.plan_name}}"
+    ));
+    expect(await screen.findByRole("dialog", { name: "批量任务" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("邮件任务已创建，共 1 项");
+  });
+
+  it("uses the current server filter for CSV and keeps paging and sorting out of the bulk scope", async () => {
+    const csvJob: AdminUserBulkJob = { ...bulkJob, id: "00000000-0000-4000-8000-000000000042", kind: "csv", scope: "filtered", total_count: 3 };
+    const api = baseAPI();
+    api.listAdminUsers
+      .mockResolvedValueOnce({ items: [account], total: 19, page: 1, page_size: 20 })
+      .mockResolvedValueOnce({ items: [account], total: 3, page: 1, page_size: 20 });
+    api.createAdminUserBulkCSV.mockResolvedValue(csvJob);
+    api.listAdminUserBulkJobs.mockResolvedValue({ items: [csvJob], total: 1, page: 1, page_size: 50 });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    expect(await screen.findByText(account.email)).toBeVisible();
+    await user.type(screen.getByRole("searchbox", { name: "邮箱前缀" }), "ticket-");
+    await user.click(screen.getByRole("button", { name: "查询用户" }));
+    expect(await screen.findByText("已选择 0 项，共 3 项")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导出 CSV(筛选)" }));
+    await waitFor(() => expect(api.createAdminUserBulkCSV).toHaveBeenCalledWith({ scope: "filtered", email_prefix: "ticket-" }));
+    expect(await screen.findByRole("dialog", { name: "批量任务" })).toBeVisible();
+  });
+
+  it("uses an alertdialog and a stable retry key for all-user bulk ban", async () => {
+    const completed = { ...bulkJob, id: "00000000-0000-4000-8000-000000000043", kind: "ban" as const, scope: "all" as const, status: "succeeded" as const, total_count: 19, processed_count: 19, success_count: 17, skipped_count: 2 };
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 19, page: 1, page_size: 20 });
+    api.banAdminUsers.mockResolvedValue(completed);
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    expect(await screen.findByText(account.email)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "批量封禁(全部)" }));
+    const dialog = screen.getByRole("alertdialog", { name: "确认批量封禁" });
+    expect(within(dialog).getByText("此操作将封禁系统中的所有用户。")).toBeVisible();
+    expect(within(dialog).getByText(/此操作无法撤销/)).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "确认封禁" }));
+    await waitFor(() => expect(api.banAdminUsers).toHaveBeenCalledWith({ scope: "all" }, expect.any(String)));
+    expect(await screen.findByRole("status")).toHaveTextContent("批量封禁完成：成功 17 项，跳过 2 项");
+  });
+
+  it("shows observable job progress and allows cancellation and authenticated download", async () => {
+    const queued = { ...bulkJob, total_count: 10, processed_count: 4, success_count: 4 };
+    const csv = { ...bulkJob, id: "00000000-0000-4000-8000-000000000044", kind: "csv" as const, status: "succeeded" as const, output_filename: "users.csv", output_size: 128, processed_count: 1, success_count: 1 };
+    const cancelled = { ...queued, status: "cancelled" as const, cancelled_count: 6, processed_count: 10 };
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+    api.listAdminUserBulkJobs.mockResolvedValue({ items: [queued, csv], total: 2, page: 1, page_size: 50 });
+    api.cancelAdminUserBulkJob.mockResolvedValue(cancelled);
+    api.downloadAdminUserBulkCSV.mockResolvedValue(new Blob(["csv"]));
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:user-export");
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    expect(await screen.findByText(account.email)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "查看批量任务" }));
+    const dialog = screen.getByRole("dialog", { name: "批量任务" });
+    expect(await within(dialog).findByText("4 / 10")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "取消任务" }));
+    await waitFor(() => expect(api.cancelAdminUserBulkJob).toHaveBeenCalledWith(queued.id));
+    await user.click(within(dialog).getByRole("button", { name: "下载" }));
+    await waitFor(() => expect(api.downloadAdminUserBulkCSV).toHaveBeenCalledWith(csv.id));
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+  });
+
   it("exports a fixed UTF-8 CSV and neutralizes spreadsheet formulas", () => {
     const credential: AdminUserGeneratedCredential = {
       id: 1, email: " =cmd@example.test", password: "\t=WEBSERVICE()", expired_at: null,
@@ -395,6 +498,9 @@ function baseAPI() {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
 		getAdminUserSubscriptionURL: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
 		listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
+    createAdminUserBulkMail: vi.fn(), createAdminUserBulkCSV: vi.fn(), banAdminUsers: vi.fn(),
+    listAdminUserBulkJobs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), getAdminUserBulkJob: vi.fn(),
+    cancelAdminUserBulkJob: vi.fn(), downloadAdminUserBulkCSV: vi.fn(),
     listServerGroups: vi.fn().mockResolvedValue([group, groupTwo]), listPlans: vi.fn().mockResolvedValue([plan, planTwo])
   };
 }

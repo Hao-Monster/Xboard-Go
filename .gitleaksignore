@@ -1,2 +1,4 @@
 # Deterministic example.test subscription token fixture; never a live credential.
 6b9e6b573a637bd2f94f89d755b79bcb3e18f712:internal/knowledge/content_test.go:generic-api-key:13
+# Deterministic dynamic-route token fixture; never a live credential.
+8c81f4cc9884ad7e2603f90f24281d32ea51c53d:internal/webui/webui_test.go:generic-api-key:97

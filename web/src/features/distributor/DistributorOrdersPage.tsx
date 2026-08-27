@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 
 import { Modal } from "../../components/Overlay";
 import type { DistributorEntitlement, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, DistributorSettlementStatus, PlanOffer, PlanPeriod } from "../../lib/api";
+import { secureRandomUUID } from "../../lib/random";
 import { formatDistributorCents } from "./DistributorPlansPage";
 import { distributorCloseLabel, distributorCopy, distributorPeriodLabels, type DistributorCopy, type DistributorLocale } from "./locale";
 
@@ -125,7 +126,7 @@ function RenewDialog({ api, order, locale, onClose, onRenewed }: { api: Distribu
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const idempotencyKey = useRef(createIdempotencyKey());
+  const idempotencyKey = useRef(secureRandomUUID());
   const copy = distributorCopy[locale];
   const periodLabels = distributorPeriodLabels(locale);
   useEffect(() => {
@@ -150,7 +151,6 @@ function RenewDialog({ api, order, locale, onClose, onRenewed }: { api: Distribu
 }
 
 function renewalPeriods(plan: PlanOffer): Array<[PlanPeriod, number]> { return Object.entries(plan.prices).filter((entry): entry is [PlanPeriod, number] => entry[1] !== undefined && entry[1] > 0 && !["onetime", "reset_traffic"].includes(entry[0])); }
-function createIdempotencyKey(): string { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`; }
 function toggleSet(current: Set<number>, id: number): Set<number> { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }
 function Detail({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
 function formatTraffic(value: number): string { if (value < 1024) return `${value} B`; const units = ["KiB", "MiB", "GiB", "TiB", "PiB"]; let amount = value; let index = -1; do { amount /= 1024; index++; } while (amount >= 1024 && index < units.length - 1); return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`; }

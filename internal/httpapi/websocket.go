@@ -736,3 +736,59 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 		h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
 	}
 }
+
+// NotifyBulkUserRemoval resolves node memberships once and publishes bounded
+// removal chunks. This avoids one node lookup per user on large bans while
+// preserving the next full pull as the reconnect baseline.
+func (h *wsHub) NotifyBulkUserRemoval(ctx context.Context, users []store.AdminUserBulkTarget) error {
+	byGroup := make(map[int64][]store.RuntimeUser)
+	groupIDs := make([]int64, 0)
+	seenGroups := make(map[int64]struct{})
+	for _, user := range users {
+		if user.Status != store.AdminUserBulkTargetSucceeded || user.GroupID == nil {
+			continue
+		}
+		groupID := *user.GroupID
+		userID := user.UserID
+		if userID == 0 {
+			// sequence is the immutable user ID snapshot; the nullable foreign key
+			// may already have been cleared by a concurrent account deletion.
+			userID = user.Sequence
+		}
+		byGroup[groupID] = append(byGroup[groupID], store.RuntimeUser{ID: userID, UUID: user.UUID})
+		if _, exists := seenGroups[groupID]; !exists {
+			seenGroups[groupID] = struct{}{}
+			groupIDs = append(groupIDs, groupID)
+		}
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	targets, err := h.store.ListRuntimeNodeGroupTargetsForGroups(ctx, groupIDs)
+	if err != nil {
+		return err
+	}
+	byNode := make(map[int64][]store.RuntimeUser)
+	machines := make(map[int64]int64)
+	for _, target := range targets {
+		byNode[target.NodeID] = append(byNode[target.NodeID], byGroup[target.GroupID]...)
+		machines[target.NodeID] = target.MachineID
+	}
+	now := h.now()
+	nodeIDs := make([]int64, 0, len(byNode))
+	for nodeID, removals := range byNode {
+		h.mu.RLock()
+		connection := h.machines[machines[nodeID]]
+		h.mu.RUnlock()
+		if connection == nil || !connection.hasNode(nodeID) {
+			continue
+		}
+		for start := 0; start < len(removals); start += 500 {
+			end := min(start+500, len(removals))
+			connection.enqueue(userDeltaEnvelope(nodeID, "remove", removals[start:end], now.Unix()))
+		}
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
+	return nil
+}

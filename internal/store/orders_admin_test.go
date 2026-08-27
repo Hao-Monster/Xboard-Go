@@ -10,6 +10,7 @@ import (
 
 func TestSchemaV36AddsAdministratorOrderQueryIndexes(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV39ForMigrationTest(t, database)
 	ctx := context.Background()
 	for _, index := range []string{
 		"idx_orders_created", "idx_orders_type_created", "idx_orders_period_created",

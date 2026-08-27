@@ -353,6 +353,47 @@ func (s *Store) ListRuntimeNodeTargetsForGroups(ctx context.Context, groupIDs []
 	return targets, nil
 }
 
+func (s *Store) ListRuntimeNodeGroupTargetsForGroups(ctx context.Context, groupIDs []int64) ([]NodeRuntimeGroupTarget, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	unique := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID < 1 {
+			return nil, fmt.Errorf("%w: invalid group id", ErrInvalidInput)
+		}
+		unique[groupID] = struct{}{}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(unique)), ",")
+	arguments := make([]any, 0, len(unique))
+	for groupID := range unique {
+		arguments = append(arguments, groupID)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT n.id, n.machine_id, ng.group_id
+		FROM node_group_memberships ng JOIN nodes n ON n.id=ng.node_id
+		WHERE ng.group_id IN (`+placeholders+`)
+		  AND n.machine_id IS NOT NULL AND n.enabled=1 AND n.runtime_config IS NOT NULL
+		ORDER BY n.id, ng.group_id
+	`, arguments...)
+	if err != nil {
+		return nil, fmt.Errorf("list runtime node group targets: %w", err)
+	}
+	defer rows.Close()
+	targets := make([]NodeRuntimeGroupTarget, 0)
+	for rows.Next() {
+		var target NodeRuntimeGroupTarget
+		if err := rows.Scan(&target.NodeID, &target.MachineID, &target.GroupID); err != nil {
+			return nil, fmt.Errorf("scan runtime node group target: %w", err)
+		}
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate runtime node group targets: %w", err)
+	}
+	return targets, nil
+}
+
 func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (NodeReportResult, error) {
 	for userID, traffic := range input.Traffic {
 		if userID < 1 || traffic.Upload < 0 || traffic.Download < 0 {

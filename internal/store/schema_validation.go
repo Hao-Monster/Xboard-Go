@@ -69,6 +69,8 @@ var requiredSchemaTables = []struct {
 	{"knowledge_attachments", 35},
 	{"knowledge_attachment_uploads", 35},
 	{"knowledge_attachment_chunks", 35},
+	{"admin_user_bulk_jobs", 39},
+	{"admin_user_bulk_targets", 39},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -90,6 +92,17 @@ var requiredSchemaColumnsV37 = map[string][]string{
 var requiredSchemaColumnsV38 = map[string][]string{
 	"traffic_reset_logs": {
 		"upload_after", "download_after", "trigger_source", "reason", "administrator_id", "administrator_email", "idempotency_key",
+	},
+}
+
+var requiredSchemaColumnsV39 = map[string][]string{
+	"admin_user_bulk_jobs": {
+		"id", "kind", "scope", "administrator_id", "administrator_email", "status", "request_digest",
+		"total_count", "processed_count", "success_count", "failure_count", "skipped_count", "cancelled_count", "created_at", "updated_at",
+	},
+	"admin_user_bulk_targets": {
+		"job_id", "sequence", "user_id", "email", "uuid", "plan_name", "group_id", "expired_at", "transfer_enable",
+		"transfer_used", "balance", "commission_balance", "subscription_token", "status", "attempt_count", "available_at",
 	},
 }
 
@@ -149,6 +162,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 38 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV38); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 39 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV39); err != nil {
 			return err
 		}
 	}

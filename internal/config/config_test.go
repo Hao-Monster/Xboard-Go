@@ -142,6 +142,44 @@ func TestLoadValidatesPrivateAttachmentStorageAndLimits(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesPrivateAdministratorExportStorage(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	exportRoot := filepath.Join(t.TempDir(), "admin-exports")
+	t.Setenv("XBOARD_ADMIN_EXPORT_ROOT", exportRoot)
+	t.Setenv("XBOARD_BULK_POLL_INTERVAL", "750ms")
+	settings, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AdminExportRoot != exportRoot || settings.BulkPollInterval != 750*time.Millisecond {
+		t.Fatalf("administrator export settings=%#v", settings)
+	}
+	t.Setenv("XBOARD_ADMIN_EXPORT_ROOT", "relative/exports")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative administrator export root")
+	}
+	t.Setenv("XBOARD_ADMIN_EXPORT_ROOT", exportRoot)
+	t.Setenv("XBOARD_BULK_POLL_INTERVAL", "10ms")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an unsafe bulk poll interval")
+	}
+	t.Setenv("XBOARD_BULK_POLL_INTERVAL", "750ms")
+	webRoot := filepath.Join(t.TempDir(), "web")
+	t.Setenv("XBOARD_WEB_ROOT", webRoot)
+	t.Setenv("XBOARD_ADMIN_EXPORT_ROOT", filepath.Join(webRoot, "private-exports"))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an administrator export directory below the public web root")
+	}
+	t.Setenv("XBOARD_WEB_ROOT", "")
+	attachmentRoot := filepath.Join(t.TempDir(), "attachments")
+	t.Setenv("XBOARD_ATTACHMENT_ROOT", attachmentRoot)
+	t.Setenv("XBOARD_ADMIN_EXPORT_ROOT", filepath.Join(attachmentRoot, "exports"))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted overlapping attachment and administrator export roots")
+	}
+}
+
 func TestLoadRejectsInvalidWebSocketAndNodeIntervals(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
