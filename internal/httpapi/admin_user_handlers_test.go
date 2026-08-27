@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -148,6 +151,285 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	admin := loginAdmin(t, api)
+	groupID := int64(7)
+	resetMethod, speedLimit, deviceLimit := 1, 96, 4
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
+		GroupID: &groupID, TransferEnableGiB: 24, Name: "generation plan",
+		SpeedLimit: &speedLimit, DeviceLimit: &deviceLimit, ResetTrafficMethod: &resetMethod,
+		Prices: store.PlanPrices{}, Tags: []string{},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := now.AddDate(0, 1, 0).Format(time.RFC3339)
+	singleResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+		"mode":"single","email":"generated-single@example.test","plan_id":%d,"expired_at":%q
+	}`, plan.ID, expiresAt))
+	if singleResponse.Code != http.StatusCreated || singleResponse.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("single generation status=%d cache=%q body=%s", singleResponse.Code, singleResponse.Header().Get("Cache-Control"), singleResponse.Body)
+	}
+	var singlePayload struct {
+		Data struct {
+			Items []struct {
+				ID           int64      `json:"id"`
+				Email        string     `json:"email"`
+				Password     string     `json:"password"`
+				ExpiredAt    *time.Time `json:"expired_at"`
+				UUID         string     `json:"uuid"`
+				CreatedAt    time.Time  `json:"created_at"`
+				SubscribeURL string     `json:"subscribe_url"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	decodeResponse(t, singleResponse, &singlePayload)
+	if len(singlePayload.Data.Items) != 1 || singlePayload.Data.Items[0].Email != "generated-single@example.test" ||
+		len(singlePayload.Data.Items[0].Password) < 24 || singlePayload.Data.Items[0].Password == singlePayload.Data.Items[0].Email ||
+		!strings.HasPrefix(singlePayload.Data.Items[0].SubscribeURL, "https://panel.example.test/s/") || singlePayload.Data.Items[0].UUID == "" {
+		t.Fatalf("single generation payload = %#v", singlePayload.Data.Items)
+	}
+	if login := loginAccountResponse(api, singlePayload.Data.Items[0].Email, singlePayload.Data.Items[0].Password); login.Code != http.StatusOK {
+		t.Fatalf("generated single login status=%d body=%s", login.Code, login.Body)
+	}
+	ordinary := loginAs(t, api, singlePayload.Data.Items[0].Email, singlePayload.Data.Items[0].Password)
+	denied := ordinary.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+		`{"mode":"single","email":"unauthorized-generation@example.test"}`)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user generation status=%d body=%s", denied.Code, denied.Body)
+	}
+	generatedUser, err := database.GetAdminUser(ctx, singlePayload.Data.Items[0].ID)
+	if err != nil || generatedUser.PlanID == nil || *generatedUser.PlanID != plan.ID || generatedUser.TransferEnable != 24*1024*1024*1024 ||
+		generatedUser.SpeedLimit != speedLimit || generatedUser.DeviceLimit != deviceLimit || generatedUser.NextResetAt == nil {
+		t.Fatalf("generated single user = %#v err=%v", generatedUser, err)
+	}
+
+	batchResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+		"mode":"prefixed_batch","email_prefix":"team","email_domain":"example.test","count":3,"plan_id":%d
+	}`, plan.ID))
+	if batchResponse.Code != http.StatusCreated {
+		t.Fatalf("prefixed batch status=%d body=%s", batchResponse.Code, batchResponse.Body)
+	}
+	var batchPayload struct {
+		Data struct {
+			Items []struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	decodeResponse(t, batchResponse, &batchPayload)
+	if len(batchPayload.Data.Items) != 3 {
+		t.Fatalf("batch items = %#v", batchPayload.Data.Items)
+	}
+	passwords := map[string]struct{}{}
+	for index, item := range batchPayload.Data.Items {
+		wantEmail := fmt.Sprintf("team_%d@example.test", index+1)
+		if item.Email != wantEmail || item.Password == item.Email || len(item.Password) < 24 {
+			t.Fatalf("batch item %d = %#v", index, item)
+		}
+		passwords[item.Password] = struct{}{}
+	}
+	if len(passwords) != 3 {
+		t.Fatalf("batch passwords were not independent: %#v", batchPayload.Data.Items)
+	}
+	randomResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+		`{"mode":"random_batch","email_domain":"example.test","count":2}`)
+	if randomResponse.Code != http.StatusCreated {
+		t.Fatalf("random batch status=%d body=%s", randomResponse.Code, randomResponse.Body)
+	}
+	var randomPayload struct {
+		Data struct {
+			Items []struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	decodeResponse(t, randomResponse, &randomPayload)
+	if len(randomPayload.Data.Items) != 2 || randomPayload.Data.Items[0].Email == randomPayload.Data.Items[1].Email ||
+		randomPayload.Data.Items[0].Password == randomPayload.Data.Items[1].Password {
+		t.Fatalf("random batch did not produce independent identities: %#v", randomPayload.Data.Items)
+	}
+	for _, item := range randomPayload.Data.Items {
+		if !strings.HasSuffix(item.Email, "@example.test") || len(strings.TrimSuffix(item.Email, "@example.test")) != randomEmailLocalBytes*2 {
+			t.Fatalf("random email = %q", item.Email)
+		}
+	}
+	conflictFixture := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+		`{"mode":"single","email":"rollback_2@example.test"}`)
+	if conflictFixture.Code != http.StatusCreated {
+		t.Fatalf("conflict fixture status=%d body=%s", conflictFixture.Code, conflictFixture.Body)
+	}
+	conflictedBatch := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+		`{"mode":"prefixed_batch","email_prefix":"rollback","email_domain":"example.test","count":2}`)
+	if conflictedBatch.Code != http.StatusConflict || !strings.Contains(conflictedBatch.Body.String(), `"code":"email_in_use"`) {
+		t.Fatalf("conflicted batch status=%d body=%s", conflictedBatch.Code, conflictedBatch.Body)
+	}
+	rollbackPage, err := database.ListAdminUsers(ctx, store.AdminUserFilter{Page: 1, PageSize: 20, EmailPrefix: "rollback_"})
+	if err != nil || rollbackPage.Total != 1 || len(rollbackPage.Items) != 1 || rollbackPage.Items[0].Email != "rollback_2@example.test" {
+		t.Fatalf("conflicted batch was not atomic: page=%#v err=%v", rollbackPage, err)
+	}
+
+	distributorResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+		"mode":"single","email":"generated-distributor@example.test","plan_id":%d,
+		"is_distributor":true,"distributor_name":" Oracle Distributor "
+	}`, plan.ID))
+	if distributorResponse.Code != http.StatusCreated {
+		t.Fatalf("distributor generation status=%d body=%s", distributorResponse.Code, distributorResponse.Body)
+	}
+	var distributorPayload struct {
+		Data struct {
+			Items []struct {
+				ID int64 `json:"id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	decodeResponse(t, distributorResponse, &distributorPayload)
+	if len(distributorPayload.Data.Items) != 1 {
+		t.Fatalf("distributor generation payload=%s", distributorResponse.Body)
+	}
+	distributor, err := database.GetAdminUser(ctx, distributorPayload.Data.Items[0].ID)
+	if err != nil || !distributor.IsDistributor || distributor.DistributorName == nil || *distributor.DistributorName != "Oracle Distributor" ||
+		distributor.PlanID != nil || distributor.GroupID != nil || distributor.TransferEnable != 0 {
+		t.Fatalf("generated distributor = %#v err=%v", distributor, err)
+	}
+
+	unknownPrivilege := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+		`{"mode":"single","email":"privilege@example.test","is_admin":true}`)
+	if unknownPrivilege.Code != http.StatusBadRequest || unknownPrivilege.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("unknown privilege status=%d cache=%q body=%s", unknownPrivilege.Code, unknownPrivilege.Header().Get("Cache-Control"), unknownPrivilege.Body)
+	}
+
+	beforeInvalid, err := database.ListAdminUsers(ctx, store.AdminUserFilter{Page: 1, PageSize: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, testCase := range map[string]struct {
+		body          string
+		expectedField string
+	}{
+		"too many":        {body: `{"mode":"random_batch","email_domain":"example.test","count":501}`},
+		"shared password": {body: `{"mode":"random_batch","email_domain":"example.test","count":2,"password":"shared-password-123"}`},
+		"missing plan":    {body: `{"mode":"random_batch","email_domain":"example.test","count":2,"plan_id":999999}`},
+		"malformed domain": {
+			body: `{"mode":"random_batch","email_domain":"example..test","count":2}`, expectedField: `"email_domain":"邮箱域格式无效"`,
+		},
+		"missing prefix": {
+			body: `{"mode":"prefixed_batch","email_domain":"example.test","count":2}`, expectedField: `"email_prefix":"账号前缀不能为空"`,
+		},
+	} {
+		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", testCase.body)
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("%s generation status=%d body=%s", name, response.Code, response.Body)
+		}
+		if testCase.expectedField != "" && !strings.Contains(response.Body.String(), testCase.expectedField) {
+			t.Fatalf("%s generation body=%s, want field %s", name, response.Body, testCase.expectedField)
+		}
+	}
+	afterInvalid, err := database.ListAdminUsers(ctx, store.AdminUserFilter{Page: 1, PageSize: 200})
+	if err != nil || afterInvalid.Total != beforeInvalid.Total {
+		t.Fatalf("invalid generation changed users: before=%d after=%d err=%v", beforeInvalid.Total, afterInvalid.Total, err)
+	}
+
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	csvResponse := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/generate", authorization,
+		`{"email_prefix":"-formula","email_suffix":"example.test","generate_count":2,"download_csv":true,"password":""}`)
+	if csvResponse.Code != http.StatusOK || csvResponse.Header().Get("Content-Type") != "text/csv; charset=utf-8" ||
+		csvResponse.Header().Get("Cache-Control") != "no-store" || !strings.Contains(csvResponse.Header().Get("Content-Disposition"), "users.csv") ||
+		!strings.HasPrefix(csvResponse.Body.String(), "\xef\xbb\xbf") || !strings.Contains(csvResponse.Body.String(), "'-formula_1@example.test") {
+		t.Fatalf("legacy generated CSV status=%d headers=%v body=%q", csvResponse.Code, csvResponse.Header(), csvResponse.Body.String())
+	}
+	if strings.Contains(csvResponse.Body.String(), "-formula_1@example.test,-formula_1@example.test") {
+		t.Fatal("legacy generated CSV reused email as password")
+	}
+	audits, err := database.ListAdminAuditLogs(ctx, store.AdminAuditFilter{Page: 1, PageSize: 100, Query: "generate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audits.Total < 2 {
+		t.Fatalf("generation audits = %#v", audits)
+	}
+	foundModern, foundLegacy := false, false
+	for _, audit := range audits.Items {
+		foundModern = foundModern || audit.Route == "/api/v1/admin/users/generate"
+		foundLegacy = foundLegacy || audit.Route == "/api/v2/{secure_admin}/user/generate"
+		if strings.Contains(audit.Route, "admin-password") || strings.Contains(audit.Route, "formula") {
+			t.Fatalf("audit route leaked request data: %#v", audit)
+		}
+	}
+	if !foundModern || !foundLegacy {
+		t.Fatalf("generation audit routes: modern=%t legacy=%t audits=%#v", foundModern, foundLegacy, audits)
+	}
+}
+
+func TestAdminUserGenerationRejectsConcurrentMemoryIntensiveBatches(t *testing.T) {
+	_, database := newTestAPI(t)
+	hasher := &blockingRegistrationHasher{started: make(chan struct{}), release: make(chan struct{})}
+	api := &server{
+		store: database, passwordHasher: hasher, now: fixedNow, panelURL: "https://panel.example.test",
+		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
+	}
+	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+		strings.NewReader(`{"mode":"single","email":"concurrency-first@example.test"}`))
+	firstRequest.Header.Set("Content-Type", "application/json")
+	firstResponse := httptest.NewRecorder()
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		api.generateAdminUsers(firstResponse, firstRequest)
+	}()
+	<-hasher.started
+
+	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+		strings.NewReader(`{"mode":"single","email":"concurrency-second@example.test"}`))
+	secondRequest.Header.Set("Content-Type", "application/json")
+	secondResponse := httptest.NewRecorder()
+	api.generateAdminUsers(secondResponse, secondRequest)
+	if secondResponse.Code != http.StatusTooManyRequests || secondResponse.Header().Get("Retry-After") != "5" ||
+		!strings.Contains(secondResponse.Body.String(), `"code":"user_generation_busy"`) {
+		t.Fatalf("concurrent generation status=%d headers=%v body=%s", secondResponse.Code, secondResponse.Header(), secondResponse.Body)
+	}
+
+	close(hasher.release)
+	<-firstDone
+	if firstResponse.Code != http.StatusCreated {
+		t.Fatalf("first generation status=%d body=%s", firstResponse.Code, firstResponse.Body)
+	}
+}
+
+func TestAdminUserGenerationLogsInternalFailureWithoutCredentials(t *testing.T) {
+	_, database := newTestAPI(t)
+	internalFailure := errors.New("diagnostic hash failure")
+	var logs bytes.Buffer
+	api := &server{
+		store: database, passwordHasher: failingAdminUserHasher{err: internalFailure}, now: fixedNow,
+		panelURL: "https://panel.example.test", logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
+	}
+	email, password := "must-not-log@example.test", "must-not-log-password-123"
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+		strings.NewReader(fmt.Sprintf(`{"mode":"single","email":%q,"password":%q}`, email, password)))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	api.generateAdminUsers(response, request)
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"user_generation_failed"`) {
+		t.Fatalf("internal generation failure status=%d body=%s", response.Code, response.Body)
+	}
+	logged := logs.String()
+	if !strings.Contains(logged, internalFailure.Error()) || strings.Contains(logged, email) || strings.Contains(logged, password) {
+		t.Fatalf("unsafe or missing generation failure log: %q", logged)
+	}
+}
+
+type failingAdminUserHasher struct{ err error }
+
+func (h failingAdminUserHasher) Hash(string) (string, error) { return "", h.err }
+func (failingAdminUserHasher) Verify(string, string) bool    { return false }
 
 func loginAccountResponse(api http.Handler, email, password string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)))

@@ -1164,6 +1164,35 @@ export interface AdminUserCreateInput {
   distributor_name?: string | null;
 }
 
+export type AdminUserGenerateMode = "single" | "random_batch" | "prefixed_batch";
+
+export interface AdminUserGenerateInput {
+  mode: AdminUserGenerateMode;
+  email?: string;
+  email_prefix?: string;
+  email_domain?: string;
+  count?: number;
+  password?: string;
+  plan_id: number | null;
+  expired_at: string | null;
+  is_distributor: boolean;
+  distributor_name: string | null;
+}
+
+export interface AdminUserGeneratedCredential {
+  id: number;
+  email: string;
+  password: string;
+  expired_at: string | null;
+  uuid: string;
+  created_at: string;
+  subscribe_url: string;
+}
+
+export interface AdminUserGenerationResult {
+  items: AdminUserGeneratedCredential[];
+}
+
 export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "password"> {
   revision: number;
 	password?: string;
@@ -1244,6 +1273,7 @@ export interface AdminAPI {
   listAdminUsers: (query?: AdminUserQuery) => Promise<AdminUserPage>;
   getAdminUser: (id: number) => Promise<AdminUser>;
   createAdminUser: (input: AdminUserCreateInput) => Promise<AdminUser>;
+  generateAdminUsers: (input: AdminUserGenerateInput) => Promise<AdminUserGenerationResult>;
   updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
   resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
   listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
@@ -1855,6 +1885,10 @@ export class APIClient implements AdminAPI {
 
   async createAdminUser(input: AdminUserCreateInput): Promise<AdminUser> {
     return this.request<AdminUser>("/api/v1/admin/users", { method: "POST", body: input });
+  }
+
+  async generateAdminUsers(input: AdminUserGenerateInput): Promise<AdminUserGenerationResult> {
+    return this.request<AdminUserGenerationResult>("/api/v1/admin/users/generate", { method: "POST", body: input });
   }
 
   async updateAdminUser(id: number, input: AdminUserUpdateInput): Promise<AdminUser> {

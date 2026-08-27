@@ -5,6 +5,9 @@ import {
   type AdminAPI,
   type AdminUserFilter,
   type AdminUserFilterOperator,
+  type AdminUserGeneratedCredential,
+  type AdminUserGenerateInput,
+  type AdminUserGenerateMode,
   type AdminUser,
   type AdminUserCreateInput,
   type AdminUserQuery,
@@ -15,7 +18,7 @@ import {
 } from "../../lib/api";
 
 type UsersAPI = Pick<AdminAPI,
-  "listAdminUsers" | "getAdminUser" | "createAdminUser" | "updateAdminUser" | "resetAdminUserPassword" | "listServerGroups" | "listPlans"
+  "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" | "listServerGroups" | "listPlans"
 >;
 
 const userTimestampFormatter = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" });
@@ -201,7 +204,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>上一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>下一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
       </div>}
 
-    {creating && <UserEditor api={api} groups={groups} plans={plans} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); void runQuery(appliedQuery); }} />}
+    {creating && <UserGenerator api={api} plans={plans} onClose={() => setCreating(false)} onGenerated={() => void runQuery(appliedQuery)} />}
     {viewing !== null && <UserDetail account={viewing} onClose={() => setViewing(null)} />}
     {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
     {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { setResetting(null); void runQuery(appliedQuery); }} />}
@@ -238,6 +241,90 @@ function UserDetail({ account, onClose }: { account: AdminUser; onClose: () => v
 
 function DetailField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return <div className={wide ? "user-detail-field wide" : "user-detail-field"}><span className="muted small">{label}</span><strong>{value}</strong></div>;
+}
+
+function UserGenerator({ api, plans, onClose, onGenerated }: {
+  api: UsersAPI; plans: Plan[]; onClose: () => void; onGenerated: () => void;
+}) {
+  const [mode, setMode] = useState<AdminUserGenerateMode>("single");
+  const [email, setEmail] = useState("");
+  const [emailPrefix, setEmailPrefix] = useState("");
+  const [emailDomain, setEmailDomain] = useState("");
+  const [count, setCount] = useState("10");
+  const [password, setPassword] = useState("");
+  const [planID, setPlanID] = useState("");
+  const [expiredAt, setExpiredAt] = useState("");
+  const [isDistributor, setIsDistributor] = useState(false);
+  const [distributorName, setDistributorName] = useState("");
+  const [credentials, setCredentials] = useState<AdminUserGeneratedCredential[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const selectedPlan = plans.find((plan) => plan.id === Number(planID));
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (isDistributor && distributorName.trim() === "") {
+      setError("启用分销商角色时必须填写分销商名称");
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      const request: AdminUserGenerateInput = {
+        mode, plan_id: planID === "" ? null : safePositiveInteger(planID, "套餐"),
+        expired_at: expiredAt === "" ? null : new Date(expiredAt).toISOString(),
+        is_distributor: isDistributor, distributor_name: isDistributor ? distributorName.trim() : null
+      };
+      if (mode === "single") {
+        request.email = email.trim();
+        if (password !== "") request.password = password;
+      } else {
+        request.email_domain = emailDomain.trim();
+        request.count = safeRangeInteger(count, "生成数量", 1, 500);
+        if (mode === "prefixed_batch") request.email_prefix = emailPrefix.trim();
+      }
+      const result = await api.generateAdminUsers(request);
+      setCredentials(result.items);
+      onGenerated();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <Modal title="新增用户" onClose={busy ? () => undefined : onClose}>
+    <ModalHeader title="新增用户" onClose={busy ? () => undefined : onClose} />
+    {credentials === null ? <form className="form-stack" onSubmit={(event) => void submit(event)}>
+      <label>生成方式<select aria-label="生成方式" value={mode} onChange={(event) => { setMode(event.target.value as AdminUserGenerateMode); setError(""); }}>
+        <option value="single">单个用户</option><option value="random_batch">随机账号批量</option><option value="prefixed_batch">固定前缀批量</option>
+      </select></label>
+      {mode === "single" ? <>
+        <label>邮箱<input type="email" maxLength={320} required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>初始密码（留空安全生成）<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      </> : <>
+        {mode === "prefixed_batch" && <label>账号前缀<input maxLength={256} required value={emailPrefix} onChange={(event) => setEmailPrefix(event.target.value)} placeholder="例如 team，将生成 team_1" /></label>}
+        <label>邮箱域<input maxLength={253} required value={emailDomain} onChange={(event) => setEmailDomain(event.target.value)} placeholder="例如 example.com" /></label>
+        <label>生成数量（1～500）<input type="number" min="1" max="500" step="1" required value={count} onChange={(event) => setCount(event.target.value)} /></label>
+        <p className="muted small">批量账号分别使用 CSPRNG 生成独立初始密码，不允许设置共享密码。</p>
+      </>}
+      <label>订阅计划<select aria-label="订阅计划" value={planID} disabled={isDistributor} onChange={(event) => setPlanID(event.target.value)}><option value="">无</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
+      {selectedPlan !== undefined && <p className="muted small">套餐将原子设置权限组、{selectedPlan.transfer_enable} GiB 流量、限速与设备限制。</p>}
+      {isDistributor && <p className="muted small">与 Xboard 业务一致，分销商账号仅用于下单，本身不开通订阅套餐。</p>}
+      <label>到期时间（留空表示长期有效）<input type="datetime-local" value={expiredAt} onChange={(event) => setExpiredAt(event.target.value)} /></label>
+      <fieldset className="settings-fieldset"><legend>账号角色</legend>
+        <label className="switch-label"><input type="checkbox" checked={isDistributor} onChange={(event) => { setIsDistributor(event.target.checked); if (event.target.checked) setPlanID(""); else setDistributorName(""); }} />分销商</label>
+        {isDistributor && <label>分销商名称<input value={distributorName} minLength={1} maxLength={100} required onChange={(event) => setDistributorName(event.target.value)} /></label>}
+      </fieldset>
+      {error !== "" && <div className="alert error" role="alert">{error}</div>}
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在安全生成…" : mode === "single" ? "创建" : "生成账号"}</button></div>
+    </form> : <div className="form-stack user-generation-result">
+      <div className="alert warning" role="status">已生成 {credentials.length} 个账号。明文密码只在本窗口保留；关闭前请下载并妥善保管。</div>
+      <div className="resource-table-wrap user-credential-table-wrap"><table className="resource-table user-credential-table" aria-label="一次性账号凭据"><thead><tr><th>账号</th><th>初始密码</th><th>到期时间</th><th>订阅地址</th></tr></thead><tbody>
+        {credentials.map((credential) => <tr key={credential.id}><td>{credential.email}</td><td><code>{credential.password}</code></td><td>{credential.expired_at === null ? "长期有效" : formatTimestamp(credential.expired_at)}</td><td><code>{credential.subscribe_url}</code></td></tr>)}
+      </tbody></table></div>
+      <div className="form-actions"><button className="button secondary" type="button" onClick={() => downloadGeneratedUsersCSV(credentials)}>下载安全 CSV</button><button className="button primary" type="button" onClick={onClose}>完成</button></div>
+    </div>}
+  </Modal>;
 }
 
 function UserEditor({ api, groups, plans, account, currentUserID, onClose, onSaved }: {
@@ -505,6 +592,40 @@ function toLocalDateTime(value: string | null): string {
   const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+export function generatedUsersCSV(credentials: AdminUserGeneratedCredential[]): string {
+  const rows = [
+    ["账号", "密码", "过期时间", "UUID", "创建时间", "订阅地址"],
+    ...credentials.map((credential) => [
+      safeSpreadsheetCell(credential.email), safeSpreadsheetCell(credential.password),
+      credential.expired_at === null ? "长期有效" : csvTimestamp(credential.expired_at),
+      safeSpreadsheetCell(credential.uuid), csvTimestamp(credential.created_at), safeSpreadsheetCell(credential.subscribe_url)
+    ])
+  ];
+  return `\uFEFF${rows.map((row) => row.map(csvQuotedCell).join(",")).join("\r\n")}\r\n`;
+}
+
+function safeSpreadsheetCell(value: string): string {
+  const first = value.replace(/^ +/, "").charAt(0);
+  return first !== "" && "=+-@\t\r\n".includes(first) ? `'${value}` : value;
+}
+
+function csvQuotedCell(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function csvTimestamp(value: string): string {
+  return new Date(value).toISOString().replace("T", " ").slice(0, 19);
+}
+
+function downloadGeneratedUsersCSV(credentials: AdminUserGeneratedCredential[]) {
+  const url = URL.createObjectURL(new Blob([generatedUsersCSV(credentials)], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "users.csv";
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function formatBytes(value: number): string {

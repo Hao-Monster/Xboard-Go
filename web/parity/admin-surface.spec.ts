@@ -163,6 +163,121 @@ test("legacy and Go user directories expose the same core table and query surfac
   }
 });
 
+test("legacy and Go user generators preserve single and batch concepts with approved credential hardening", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyRequests: Record<string, unknown>[] = [];
+  const goRequests: Record<string, unknown>[] = [];
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await legacyPage.route(/\/api\/v2\/[^/]+\/user\/generate(?:\?.*)?$/, async (route) => {
+      legacyRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
+    });
+    await goPage.route(/\/api\/v1\/admin\/users\/generate(?:\?.*)?$/, async (route) => {
+      const input = route.request().postDataJSON() as Record<string, unknown>;
+      goRequests.push(input);
+      const mode = readStringProperty(input, "mode");
+      const count = mode === "prefixed_batch" ? Number(input.count) : 1;
+      const prefix = readStringProperty(input, "email_prefix") ?? "parity-single";
+      const domain = readStringProperty(input, "email_domain") ?? "example.test";
+      const items = Array.from({ length: count }, (_, index) => ({
+        id: 900 + index,
+        email: mode === "prefixed_batch" ? `${prefix}_${index + 1}@${domain}` : (readStringProperty(input, "email") ?? ""),
+        password: mode === "single" ? (readStringProperty(input, "password") ?? "") : `independent-${index + 1}-credential`,
+        expired_at: null,
+        uuid: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        created_at: "2026-08-27T12:00:00Z",
+        subscribe_url: `https://panel.example.test/s/parity-${index + 1}`
+      }));
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: { items } }) });
+    });
+
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/user/fetch"));
+    await legacyPage.locator('a[href="#/user/manage"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
+
+    await legacyPage.getByRole("button", { name: "创建用户", exact: true }).click();
+    let legacyDialog = legacyPage.locator('[role="dialog"]:visible').last();
+    const legacyPrefix = legacyDialog.locator('input[placeholder="帐号(批量生成请留空)"]');
+    const legacyDomain = legacyDialog.locator('input[placeholder="域"]');
+    const legacyPassword = legacyDialog.locator('input[placeholder="留空则密码与邮件相同"]');
+    await expect(legacyPrefix).toBeVisible();
+    await expect(legacyDomain).toBeVisible();
+    await expect(legacyPassword).toBeVisible();
+    await expect(legacyDialog.getByText("订阅计划", { exact: true })).toBeVisible();
+    await expect(legacyDialog.getByText("到期时间", { exact: true })).toBeVisible();
+    await legacyPrefix.fill("parity-single");
+    await legacyDomain.fill("example.test");
+    await legacyPassword.fill("Parity-single-password-123");
+    await expect(legacyDialog.locator('input[placeholder="如果为批量生产请输入生成数量"]')).toHaveCount(0);
+    await legacyDialog.getByRole("button", { name: "确认", exact: true }).click();
+    await expect.poll(() => legacyRequests.length).toBe(1);
+    expect(legacyRequests[0]).toMatchObject({
+      email_prefix: "parity-single", email_suffix: "example.test", password: "Parity-single-password-123",
+      expired_at: null, plan_id: null, download_csv: false, is_distributor: 0, distributor_name: ""
+    });
+
+    await legacyPage.getByRole("button", { name: "创建用户", exact: true }).click();
+    legacyDialog = legacyPage.locator('[role="dialog"]:visible').last();
+    await legacyDialog.locator('input[placeholder="域"]').fill("example.test");
+    await legacyDialog.locator('input[placeholder="如果为批量生产请输入生成数量"]').fill("2");
+    await expect(legacyDialog.locator('input[placeholder="帐号(批量生成请留空)"]')).toHaveCount(0);
+    await legacyDialog.getByRole("button", { name: "确认", exact: true }).click();
+    await expect.poll(() => legacyRequests.length).toBe(2);
+    expect(legacyRequests[1]).toMatchObject({
+      email_prefix: "", email_suffix: "example.test", password: "", generate_count: 2,
+      expired_at: null, plan_id: null, download_csv: false, is_distributor: 0, distributor_name: ""
+    });
+
+    await goPage.getByRole("button", { name: "新增用户", exact: true }).click();
+    let goDialog = goPage.getByRole("dialog", { name: "新增用户" });
+    await expect(goDialog.getByLabel("生成方式").getByRole("option")).toHaveText([
+      "单个用户", "随机账号批量", "固定前缀批量"
+    ]);
+    await expect(goDialog.getByLabel("订阅计划")).toBeVisible();
+    await expect(goDialog.getByLabel("到期时间（留空表示长期有效）")).toBeVisible();
+    await goDialog.getByLabel("邮箱").fill("parity-single@example.test");
+    await goDialog.getByLabel(/初始密码/).fill("Parity-single-password-123");
+    await goDialog.getByRole("button", { name: "创建", exact: true }).click();
+    await expect.poll(() => goRequests.length).toBe(1);
+    expect(goRequests[0]).toEqual({
+      mode: "single", email: "parity-single@example.test", password: "Parity-single-password-123",
+      plan_id: null, expired_at: null, is_distributor: false, distributor_name: null
+    });
+    await expect(goDialog.getByRole("status")).toContainText("明文密码只在本窗口保留");
+    await goDialog.getByRole("button", { name: "完成" }).click();
+
+    await goPage.getByRole("button", { name: "新增用户", exact: true }).click();
+    goDialog = goPage.getByRole("dialog", { name: "新增用户" });
+    await goDialog.getByLabel("生成方式").selectOption("prefixed_batch");
+    await expect(goDialog.getByLabel(/初始密码/)).toHaveCount(0);
+    await goDialog.getByLabel("账号前缀").fill("parity-team");
+    await goDialog.getByLabel("邮箱域").fill("example.test");
+    await goDialog.getByLabel(/生成数量/).fill("2");
+    await goDialog.getByRole("button", { name: "生成账号" }).click();
+    await expect.poll(() => goRequests.length).toBe(2);
+    expect(goRequests[1]).toEqual({
+      mode: "prefixed_batch", email_prefix: "parity-team", email_domain: "example.test", count: 2,
+      plan_id: null, expired_at: null, is_distributor: false, distributor_name: null
+    });
+    await expect(goDialog.getByRole("table", { name: "一次性账号凭据" }).getByRole("row")).toHaveCount(3);
+    await expect(goDialog).toContainText("independent-1-credential");
+    await expect(goDialog).toContainText("independent-2-credential");
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go user editors preserve the same profile concepts and explicit unit conversions", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });

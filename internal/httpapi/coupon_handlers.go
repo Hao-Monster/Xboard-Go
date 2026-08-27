@@ -502,9 +502,9 @@ func writeCouponCSV(w http.ResponseWriter, coupons []store.Coupon) {
 }
 
 func safeCSVCell(value string) string {
-	trimmed := strings.TrimSpace(value)
+	trimmed := strings.TrimLeft(value, " ")
 	first, _ := utf8.DecodeRuneInString(trimmed)
-	if strings.ContainsRune("=+-@", first) {
+	if strings.ContainsRune("=+-@\t\r\n", first) {
 		return "'" + value
 	}
 	return value

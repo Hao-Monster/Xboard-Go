@@ -1,8 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { APIError, type AdminUser, type Plan, type ServerGroup } from "../../lib/api";
-import { UsersPage } from "./UsersPage";
+import { APIError, type AdminUser, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
+import { generatedUsersCSV, UsersPage } from "./UsersPage";
 
 const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
 const groupTwo: ServerGroup = { ...group, id: 8, name: "Enterprise", users_count: 0 };
@@ -96,14 +96,21 @@ describe("UsersPage", () => {
     })));
   }, 10_000);
 
-  it("creates and edits only access-state fields, then resets the password", async () => {
+  it("generates a one-time credential, then edits access state and resets the password", async () => {
     const created = { ...account, id: 42, email: "new@example.test" };
     const updated = { ...created, revision: 2, banned: true, speed_limit: 80 };
     const passwordUpdated = { ...updated, revision: 3 };
     const api = baseAPI();
     let directory = [account];
     api.listAdminUsers.mockImplementation(() => Promise.resolve({ items: directory, total: directory.length, page: 1, page_size: 20 }));
-    api.createAdminUser.mockImplementation(() => { directory = [created, ...directory]; return Promise.resolve(created); });
+    api.generateAdminUsers.mockImplementation(() => {
+      directory = [created, ...directory];
+      return Promise.resolve({ items: [{
+        id: created.id, email: created.email, password: "secure-password-123", expired_at: null,
+        uuid: "17f14aa9-5f00-4f1e-bbee-ff5be3d3f977", created_at: "2026-08-27T12:00:00Z",
+        subscribe_url: "https://panel.example.test/s/one-time-token"
+      }] });
+    });
     api.updateAdminUser.mockImplementation(() => { directory = directory.map((item) => item.id === updated.id ? updated : item); return Promise.resolve(updated); });
     api.resetAdminUserPassword.mockImplementation(() => { directory = directory.map((item) => item.id === passwordUpdated.id ? passwordUpdated : item); return Promise.resolve(passwordUpdated); });
     const user = userEvent.setup();
@@ -113,14 +120,18 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: "新增用户" }));
     let dialog = screen.getByRole("dialog", { name: "新增用户" });
     await user.type(within(dialog).getByLabelText("邮箱"), "new@example.test");
-    await user.type(within(dialog).getByLabelText("初始密码"), "secure-password-123");
-    await user.selectOptions(within(dialog).getByLabelText("权限组"), "7");
-    await user.clear(within(dialog).getByLabelText("流量额度（字节）"));
-    await user.type(within(dialog).getByLabelText("流量额度（字节）"), "1073741824");
+    await user.type(within(dialog).getByLabelText(/初始密码/), "secure-password-123");
+    await user.selectOptions(within(dialog).getByLabelText("订阅计划"), "3");
     await user.click(within(dialog).getByRole("button", { name: "创建" }));
-    await waitFor(() => expect(api.createAdminUser).toHaveBeenCalledWith(expect.objectContaining({
-      email: "new@example.test", password: "secure-password-123", group_id: 7, transfer_enable: 1_073_741_824
-    })));
+    await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith({
+      mode: "single", email: "new@example.test", password: "secure-password-123", plan_id: 3,
+      expired_at: null, is_distributor: false, distributor_name: null
+    }));
+    expect(within(dialog).getByRole("status")).toHaveTextContent("明文密码只在本窗口保留");
+    expect(within(dialog).getByRole("table", { name: "一次性账号凭据" })).toHaveTextContent("secure-password-123");
+    expect(api.createAdminUser).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "完成" }));
+    expect(await screen.findByText("new@example.test")).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "编辑用户：new@example.test" }));
     dialog = screen.getByRole("dialog", { name: "编辑用户" });
@@ -136,6 +147,77 @@ describe("UsersPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "确认重置" }));
     await waitFor(() => expect(api.resetAdminUserPassword).toHaveBeenCalledWith(42, 2, "rotated-password-123"));
     await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(4));
+  });
+
+  it("exports a fixed UTF-8 CSV and neutralizes spreadsheet formulas", () => {
+    const credential: AdminUserGeneratedCredential = {
+      id: 1, email: " =cmd@example.test", password: "\t=WEBSERVICE()", expired_at: null,
+      uuid: "-dangerous-uuid", created_at: "2026-08-27T12:00:00Z", subscribe_url: "@unsafe-url"
+    };
+    const csv = generatedUsersCSV([credential]);
+    expect(csv.startsWith("\uFEFF\"账号\",\"密码\",\"过期时间\",\"UUID\",\"创建时间\",\"订阅地址\"\r\n")).toBe(true);
+    expect(csv).toContain("\"' =cmd@example.test\"");
+    expect(csv).toContain("\"'\t=WEBSERVICE()\"");
+    expect(csv).toContain("\"'-dangerous-uuid\"");
+    expect(csv).toContain("\"'@unsafe-url\"");
+    expect(csv.endsWith("\r\n")).toBe(true);
+
+    const emptyCells = generatedUsersCSV([{ ...credential, email: "", password: "", uuid: "", subscribe_url: "" }]);
+    expect(emptyCells).not.toContain("\"'\"");
+  });
+
+  it("exposes bounded prefix batches without a shared password field", async () => {
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+    api.generateAdminUsers.mockResolvedValue({ items: [1, 2].map((index) => ({
+      id: index, email: `team_${index}@example.test`, password: `independent-${index}-password`, expired_at: null,
+      uuid: `00000000-0000-4000-8000-00000000000${index}`, created_at: "2026-08-27T12:00:00Z",
+      subscribe_url: `https://panel.example.test/s/token-${index}`
+    })) });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    await user.click(await screen.findByRole("button", { name: "新增用户" }));
+    const dialog = screen.getByRole("dialog", { name: "新增用户" });
+    await user.selectOptions(within(dialog).getByLabelText("生成方式"), "prefixed_batch");
+    expect(within(dialog).queryByLabelText(/初始密码/)).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("账号前缀"), "team");
+    await user.type(within(dialog).getByLabelText("邮箱域"), "example.test");
+    await user.clear(within(dialog).getByLabelText(/生成数量/));
+    await user.type(within(dialog).getByLabelText(/生成数量/), "2");
+    await user.click(within(dialog).getByRole("button", { name: "生成账号" }));
+    await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith({
+      mode: "prefixed_batch", email_prefix: "team", email_domain: "example.test", count: 2,
+      plan_id: null, expired_at: null, is_distributor: false, distributor_name: null
+    }));
+    expect(within(dialog).getAllByRole("row")).toHaveLength(3);
+    expect(within(dialog).getByText("independent-1-password")).toBeVisible();
+    expect(within(dialog).getByText("independent-2-password")).toBeVisible();
+  });
+
+  it("makes the Xboard distributor-without-subscription rule explicit", async () => {
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+    api.generateAdminUsers.mockResolvedValue({ items: [{
+      id: 5, email: "seller@example.test", password: "one-time-seller-password", expired_at: null,
+      uuid: "00000000-0000-4000-8000-000000000005", created_at: "2026-08-27T12:00:00Z",
+      subscribe_url: "https://panel.example.test/s/seller-token"
+    }] });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    await user.click(await screen.findByRole("button", { name: "新增用户" }));
+    const dialog = screen.getByRole("dialog", { name: "新增用户" });
+    await user.type(within(dialog).getByLabelText("邮箱"), "seller@example.test");
+    await user.selectOptions(within(dialog).getByLabelText("订阅计划"), "3");
+    await user.click(within(dialog).getByLabelText("分销商"));
+    expect(within(dialog).getByLabelText("订阅计划")).toBeDisabled();
+    expect(within(dialog).getByLabelText("订阅计划")).toHaveValue("");
+    expect(within(dialog).getByText(/分销商账号仅用于下单/)).toBeVisible();
+    await user.type(within(dialog).getByLabelText("分销商名称"), "星河分销");
+    await user.click(within(dialog).getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith(expect.objectContaining({
+      mode: "single", email: "seller@example.test", plan_id: null,
+      is_distributor: true, distributor_name: "星河分销"
+    })));
   });
 
   it("edits the complete legacy profile and applies plan entitlements with exact units", async () => {
@@ -234,7 +316,7 @@ describe("UsersPage", () => {
 
 function baseAPI() {
   return {
-    listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
+    listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
     listServerGroups: vi.fn().mockResolvedValue([group, groupTwo]), listPlans: vi.fn().mockResolvedValue([plan, planTwo])
   };
 }

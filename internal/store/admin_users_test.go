@@ -128,6 +128,80 @@ func TestAdminUserEmailPrefixCursorUsesEmailOrdering(t *testing.T) {
 	}
 }
 
+func TestCreateAdminUsersIsAtomicAndAppliesPlanEntitlements(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 27, 10, 0, 0, 0, time.UTC)
+	seedAdminUserGroups(t, database, now)
+	resetMethod, speedLimit, deviceLimit := 1, 88, 6
+	groupID := int64(7)
+	plan, err := database.CreatePlan(ctx, SavePlanInput{
+		GroupID: &groupID, TransferEnableGiB: 32, Name: "admin batch plan",
+		SpeedLimit: &speedLimit, DeviceLimit: &deviceLimit, ResetTrafficMethod: &resetMethod,
+		Prices: PlanPrices{}, Tags: []string{},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := now.AddDate(0, 1, 0)
+	created, err := database.CreateAdminUsers(ctx, []CreateAdminUserInput{
+		{Email: "batch-a@example.test", PasswordHash: "argon-a", PlanID: &plan.ID, ExpiredAt: &expiresAt},
+		{Email: "batch-b@example.test", PasswordHash: "argon-b", PlanID: &plan.ID, ExpiredAt: &expiresAt},
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUsers() error = %v", err)
+	}
+	if len(created) != 2 || created[0].User.Email != "batch-a@example.test" || created[1].User.Email != "batch-b@example.test" {
+		t.Fatalf("created users = %#v", created)
+	}
+	for _, item := range created {
+		if item.User.PlanID == nil || *item.User.PlanID != plan.ID || item.User.GroupID == nil || *item.User.GroupID != groupID ||
+			item.User.TransferEnable != 32*1024*1024*1024 || item.User.SpeedLimit != speedLimit ||
+			item.User.DeviceLimit != deviceLimit || item.User.NextResetAt == nil || item.UUID == "" || item.SubscriptionToken == "" {
+			t.Fatalf("plan-backed created user = %#v", item)
+		}
+	}
+	if created[0].UUID == created[1].UUID || created[0].SubscriptionToken == created[1].SubscriptionToken {
+		t.Fatal("batch users reused subscription credentials")
+	}
+
+	if _, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "taken-batch@example.test", PasswordHash: "hash"}, now); err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.CreateAdminUsers(ctx, []CreateAdminUserInput{
+		{Email: "must-rollback@example.test", PasswordHash: "hash-a"},
+		{Email: "taken-batch@example.test", PasswordHash: "hash-b"},
+	}, now)
+	if !errors.Is(err, ErrEmailInUse) {
+		t.Fatalf("duplicate batch error = %v, want ErrEmailInUse", err)
+	}
+	var rolledBack int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE email = 'must-rollback@example.test'`).Scan(&rolledBack); err != nil {
+		t.Fatal(err)
+	}
+	if rolledBack != 0 {
+		t.Fatalf("failed batch retained %d partial users", rolledBack)
+	}
+	if _, err := database.CreateAdminUsers(ctx, nil, now); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("empty batch error = %v", err)
+	}
+	tooMany := make([]CreateAdminUserInput, 501)
+	if _, err := database.CreateAdminUsers(ctx, tooMany, now); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("oversized batch error = %v", err)
+	}
+	maximum := make([]CreateAdminUserInput, 500)
+	for index := range maximum {
+		maximum[index] = CreateAdminUserInput{
+			Email: fmt.Sprintf("boundary-%03d@example.test", index), PasswordHash: fmt.Sprintf("argon-%03d", index),
+		}
+	}
+	maximumCreated, err := database.CreateAdminUsers(ctx, maximum, now.Add(time.Minute))
+	if err != nil || len(maximumCreated) != 500 || maximumCreated[0].User.Email != "boundary-000@example.test" ||
+		maximumCreated[499].User.Email != "boundary-499@example.test" {
+		t.Fatalf("maximum batch: count=%d err=%v", len(maximumCreated), err)
+	}
+}
+
 func TestSchemaV4BackfillsHumanKindAndRevision(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "users-v3.db")
 	database, err := OpenSQLite("file:" + filepath.ToSlash(databasePath))
