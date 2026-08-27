@@ -18,6 +18,8 @@ services:
       XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
       XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
       XBOARD_ATTACHMENT_ROOT: ${XBOARD_ATTACHMENT_ROOT:-/var/lib/xboard/knowledge-attachments}
+      XBOARD_ADMIN_EXPORT_ROOT: /var/lib/xboard/admin-exports
+      XBOARD_BULK_POLL_INTERVAL: 1s
       XBOARD_MAIL_POLL_INTERVAL: 1s
       XBOARD_SMTP_ALLOW_INSECURE: "true"
       XBOARD_CAPTCHA_ALLOW_INSECURE: ${XBOARD_CAPTCHA_ALLOW_INSECURE:-false}
@@ -56,6 +58,7 @@ services:
       XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
       XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
       XBOARD_ATTACHMENT_ROOT: ${XBOARD_ATTACHMENT_ROOT:-/var/lib/xboard/knowledge-attachments}
+      XBOARD_ADMIN_EXPORT_ROOT: /var/lib/xboard/admin-exports
     secrets:
       - settings_encryption_key
     volumes:

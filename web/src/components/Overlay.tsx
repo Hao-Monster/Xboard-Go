@@ -11,6 +11,7 @@ interface DrawerProps {
 interface ModalProps {
   title: string;
   className?: string;
+  role?: "dialog" | "alertdialog";
   onClose: () => void;
   children: ReactNode;
 }
@@ -36,14 +37,14 @@ export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
   );
 }
 
-export function Modal({ title, className = "", onClose, children }: ModalProps) {
+export function Modal({ title, className = "", role = "dialog", onClose, children }: ModalProps) {
   const contentRef = useRef<HTMLElement>(null);
   useDialogFocus(contentRef, true, onClose);
   useDocumentScrollLock();
   return createPortal(
     <div className="overlay-layer modal-layer" data-testid="modal-layer">
       <button className="overlay-backdrop modal-backdrop" aria-label={`点击遮罩关闭${title}`} tabIndex={-1} onClick={onClose} />
-      <section ref={contentRef} className={`modal-panel ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={contentRef} className={`modal-panel ${className}`.trim()} role={role} aria-modal="true" aria-label={title}>
         {children}
       </section>
     </div>,

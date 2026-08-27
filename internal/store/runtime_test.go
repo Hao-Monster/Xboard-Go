@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -450,6 +451,42 @@ func TestListRuntimeNodeIDsForUsersTargetsEnabledMatchingGroups(t *testing.T) {
 	}
 	if len(nodeIDs) != 1 || nodeIDs[0] != matching.ID {
 		t.Fatalf("target node ids = %#v, want [%d]", nodeIDs, matching.ID)
+	}
+}
+
+func TestListRuntimeNodeGroupTargetsForGroupsPreservesMembershipWithoutDuplicates(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	machine, first := createReportingNode(t, database, now)
+	ensureTestServerGroups(t, database, now, 8)
+	second, err := database.CreateNode(ctx, CreateNodeInput{
+		Name: "multi-group-node", Type: "vless", Host: "multi-group.example.test", Port: "8443",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, second.ID, SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7, 8},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":8443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := database.ListRuntimeNodeGroupTargetsForGroups(ctx, []int64{8, 7, 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []NodeRuntimeGroupTarget{
+		{NodeID: first.ID, MachineID: machine.ID, GroupID: 7},
+		{NodeID: second.ID, MachineID: machine.ID, GroupID: 7},
+		{NodeID: second.ID, MachineID: machine.ID, GroupID: 8},
+	}
+	if !reflect.DeepEqual(targets, want) {
+		t.Fatalf("group targets = %#v, want %#v", targets, want)
+	}
+	if _, err := database.ListRuntimeNodeGroupTargetsForGroups(ctx, []int64{0}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("invalid group error = %v", err)
 	}
 }
 

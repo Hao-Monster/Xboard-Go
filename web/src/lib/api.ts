@@ -812,6 +812,54 @@ export interface AdminUserPage {
   page_size?: number;
 }
 
+export type AdminUserBulkScopeName = "selected" | "filtered" | "all";
+export type AdminUserBulkKind = "mail" | "csv" | "ban";
+export type AdminUserBulkStatus = "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed";
+
+export interface AdminUserBulkScopeInput {
+  scope: AdminUserBulkScopeName;
+  user_ids?: number[];
+  email_prefix?: string;
+  banned?: boolean;
+  group_id?: number;
+  filters?: AdminUserFilter[];
+}
+
+export interface AdminUserBulkJob {
+  id: string;
+  kind: AdminUserBulkKind;
+  scope: AdminUserBulkScopeName;
+  administrator_id: number | null;
+  administrator_email: string;
+  status: AdminUserBulkStatus;
+  subject?: string;
+  app_name?: string;
+  app_url?: string;
+  total_count: number;
+  processed_count: number;
+  success_count: number;
+  failure_count: number;
+  skipped_count: number;
+  cancelled_count: number;
+  output_filename?: string;
+  output_size?: number;
+  output_sha256?: string;
+  output_expires_at?: string;
+  last_error?: string;
+  started_at?: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminUserBulkJobPage {
+  items: AdminUserBulkJob[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface AdminUserSubscriptionURL {
 	subscribe_url: string;
 }
@@ -1341,7 +1389,14 @@ export interface AdminAPI {
 	listAdminUserInvitations: (id: number, page?: number, pageSize?: number) => Promise<AdminUserPage>;
 	listAdminUserTraffic: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficStatPage>;
 	listAdminUserTrafficResets: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficResetPage>;
-	resetAdminUserTraffic: (id: number, reason: string, idempotencyKey: string) => Promise<AdminUserTrafficReset>;
+  resetAdminUserTraffic: (id: number, reason: string, idempotencyKey: string) => Promise<AdminUserTrafficReset>;
+  createAdminUserBulkMail: (scope: AdminUserBulkScopeInput, subject: string, content: string) => Promise<AdminUserBulkJob>;
+  createAdminUserBulkCSV: (scope: AdminUserBulkScopeInput) => Promise<AdminUserBulkJob>;
+  banAdminUsers: (scope: AdminUserBulkScopeInput, idempotencyKey: string) => Promise<AdminUserBulkJob>;
+  listAdminUserBulkJobs: (page?: number, pageSize?: number) => Promise<AdminUserBulkJobPage>;
+  getAdminUserBulkJob: (id: string) => Promise<AdminUserBulkJob>;
+  cancelAdminUserBulkJob: (id: string) => Promise<AdminUserBulkJob>;
+  downloadAdminUserBulkCSV: (id: string) => Promise<Blob>;
   listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
   getAdminTicket: (id: number) => Promise<Ticket>;
   replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
@@ -1996,6 +2051,36 @@ export class APIClient implements AdminAPI {
 			method: "POST", body: { reason }, headers: { "Idempotency-Key": idempotencyKey }
 		});
 	}
+
+  async createAdminUserBulkMail(scope: AdminUserBulkScopeInput, subject: string, content: string): Promise<AdminUserBulkJob> {
+    return this.request<AdminUserBulkJob>("/api/v1/admin/users/bulk/mail", { method: "POST", body: { ...scope, subject, content } });
+  }
+
+  async createAdminUserBulkCSV(scope: AdminUserBulkScopeInput): Promise<AdminUserBulkJob> {
+    return this.request<AdminUserBulkJob>("/api/v1/admin/users/bulk/csv", { method: "POST", body: scope });
+  }
+
+  async banAdminUsers(scope: AdminUserBulkScopeInput, idempotencyKey: string): Promise<AdminUserBulkJob> {
+    return this.request<AdminUserBulkJob>("/api/v1/admin/users/bulk/ban", {
+      method: "POST", body: { ...scope, idempotency_key: idempotencyKey }
+    });
+  }
+
+  async listAdminUserBulkJobs(page = 1, pageSize = 20): Promise<AdminUserBulkJobPage> {
+    return this.request<AdminUserBulkJobPage>(`/api/v1/admin/user-bulk-jobs?page=${page}&page_size=${pageSize}`);
+  }
+
+  async getAdminUserBulkJob(id: string): Promise<AdminUserBulkJob> {
+    return this.request<AdminUserBulkJob>(`/api/v1/admin/user-bulk-jobs/${encodeURIComponent(id)}`);
+  }
+
+  async cancelAdminUserBulkJob(id: string): Promise<AdminUserBulkJob> {
+    return this.request<AdminUserBulkJob>(`/api/v1/admin/user-bulk-jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: {} });
+  }
+
+  async downloadAdminUserBulkCSV(id: string): Promise<Blob> {
+    return this.download(`/api/v1/admin/user-bulk-jobs/${encodeURIComponent(id)}/download`);
+  }
 
   async listTickets(page = 1, pageSize = 20): Promise<TicketPage> {
     return this.request<TicketPage>(`/api/v1/tickets?page=${page}&page_size=${pageSize}`);

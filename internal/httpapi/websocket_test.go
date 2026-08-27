@@ -203,6 +203,69 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}
 }
 
+func TestBulkBanPublishesBoundedRuntimeRemovalDelta(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "bulk-ban-ws-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "bulk-ban-ws-node", Type: "vless", Host: "bulk-ban.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	target, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "bulk-ban-ws-user@example.test", PasswordHash: "hash",
+		UUID: "c90a829e-4421-40e8-8691-9d050a23cc9d", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, target.ID)
+
+	admin := loginAdmin(t, api)
+	response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/ban", fmt.Sprintf(
+		`{"scope":"selected","user_ids":[%d],"idempotency_key":"u5-ws-bulk-ban-0001"}`, target.ID))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"success_count":1`) {
+		t.Fatalf("bulk ban status=%d body=%s", response.Code, response.Body)
+	}
+	delta := readWSEvent(t, connection)
+	if delta.Event != "sync.user.delta" {
+		t.Fatalf("bulk ban event = %q, want sync.user.delta", delta.Event)
+	}
+	var data struct {
+		NodeID int64               `json:"node_id"`
+		Action string              `json:"action"`
+		Users  []store.RuntimeUser `json:"users"`
+	}
+	decodeWSData(t, delta.Data, &data)
+	if data.NodeID != node.ID || data.Action != "remove" || len(data.Users) != 1 || data.Users[0].ID != target.ID || data.Users[0].UUID != target.UUID {
+		t.Fatalf("bulk removal delta = %#v", data)
+	}
+	if devices := readWSEvent(t, connection); devices.Event != "sync.devices" {
+		t.Fatalf("bulk ban device event = %q, want sync.devices", devices.Event)
+	}
+}
+
 func TestRoutingRuleUpdatePushesCompatibleWebSocketConfig(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()

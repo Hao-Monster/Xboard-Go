@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 38
+const currentSchemaVersion = 39
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -300,6 +300,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v38: %w", err)
 		}
 		version = 38
+	}
+	if version < 39 {
+		if _, err := tx.ExecContext(ctx, schemaV39); err != nil {
+			return fmt.Errorf("apply schema v39: %w", err)
+		}
+		version = 39
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1926,4 +1932,104 @@ CREATE UNIQUE INDEX idx_traffic_reset_logs_manual_idempotency
     ON traffic_reset_logs(administrator_id, idempotency_key) WHERE trigger_source = 'manual';
 CREATE INDEX IF NOT EXISTS idx_user_traffic_stats_user_record
     ON user_traffic_stats(user_id, record_at DESC, record_type DESC, rate_micros DESC);
+`
+
+const schemaV39 = `
+CREATE TABLE admin_user_bulk_jobs (
+    id TEXT PRIMARY KEY CHECK (
+        length(id) = 36 AND id GLOB '[0-9a-f]*-[0-9a-f]*-[0-9a-f]*-[0-9a-f]*-[0-9a-f]*'
+    ),
+    kind TEXT NOT NULL CHECK (kind IN ('mail', 'csv', 'ban')),
+    scope TEXT NOT NULL CHECK (scope IN ('selected', 'filtered', 'all')),
+    administrator_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    administrator_email TEXT NOT NULL CHECK (length(CAST(administrator_email AS BLOB)) BETWEEN 3 AND 320),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'cancelling', 'cancelled', 'succeeded', 'failed')),
+    request_digest TEXT NOT NULL CHECK (length(request_digest) = 64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+    idempotency_key TEXT CHECK (
+        idempotency_key IS NULL OR (
+            length(idempotency_key) BETWEEN 8 AND 128
+            AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+        )
+    ),
+    subject TEXT CHECK (subject IS NULL OR length(subject) BETWEEN 1 AND 255),
+    content TEXT CHECK (content IS NULL OR length(CAST(content AS BLOB)) BETWEEN 1 AND 65536),
+    app_name TEXT CHECK (app_name IS NULL OR length(app_name) BETWEEN 1 AND 100),
+    app_url TEXT CHECK (app_url IS NULL OR length(CAST(app_url AS BLOB)) <= 2048),
+    smtp_host TEXT CHECK (smtp_host IS NULL OR length(smtp_host) BETWEEN 1 AND 255),
+    smtp_port INTEGER CHECK (smtp_port IS NULL OR smtp_port BETWEEN 1 AND 65535),
+    smtp_username TEXT CHECK (smtp_username IS NULL OR length(CAST(smtp_username AS BLOB)) <= 320),
+    smtp_password_cipher BLOB CHECK (smtp_password_cipher IS NULL OR length(smtp_password_cipher) <= 16384),
+    smtp_encryption TEXT CHECK (smtp_encryption IS NULL OR smtp_encryption IN ('starttls', 'tls', 'none')),
+    smtp_from_address TEXT CHECK (smtp_from_address IS NULL OR length(CAST(smtp_from_address AS BLOB)) BETWEEN 3 AND 320),
+    total_count INTEGER NOT NULL DEFAULT 0 CHECK (total_count BETWEEN 0 AND 10000),
+    processed_count INTEGER NOT NULL DEFAULT 0 CHECK (processed_count BETWEEN 0 AND total_count),
+    success_count INTEGER NOT NULL DEFAULT 0 CHECK (success_count BETWEEN 0 AND processed_count),
+    failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count BETWEEN 0 AND processed_count),
+    skipped_count INTEGER NOT NULL DEFAULT 0 CHECK (skipped_count BETWEEN 0 AND processed_count),
+    cancelled_count INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_count BETWEEN 0 AND processed_count),
+    output_filename TEXT CHECK (output_filename IS NULL OR length(CAST(output_filename AS BLOB)) BETWEEN 1 AND 255),
+    output_relative_path TEXT CHECK (
+        output_relative_path IS NULL OR (
+            length(CAST(output_relative_path AS BLOB)) BETWEEN 1 AND 255
+            AND output_relative_path NOT LIKE '/%' AND instr(output_relative_path, char(92)) = 0
+            AND output_relative_path NOT LIKE '%..%'
+        )
+    ),
+    output_size INTEGER CHECK (output_size IS NULL OR output_size BETWEEN 0 AND 33554432),
+    output_sha256 TEXT CHECK (
+        output_sha256 IS NULL OR (length(output_sha256) = 64 AND output_sha256 NOT GLOB '*[^0-9a-f]*')
+    ),
+    output_expires_at INTEGER CHECK (output_expires_at IS NULL OR output_expires_at >= 0),
+    claim_token TEXT CHECK (claim_token IS NULL OR length(CAST(claim_token AS BLOB)) BETWEEN 8 AND 128),
+    claimed_at INTEGER CHECK (claimed_at IS NULL OR claimed_at >= 0),
+    last_error TEXT CHECK (last_error IS NULL OR length(CAST(last_error AS BLOB)) <= 2048),
+    started_at INTEGER CHECK (started_at IS NULL OR started_at >= 0),
+    completed_at INTEGER CHECK (completed_at IS NULL OR completed_at >= 0),
+    cancelled_at INTEGER CHECK (cancelled_at IS NULL OR cancelled_at >= 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    CHECK (processed_count = success_count + failure_count + skipped_count + cancelled_count),
+    CHECK ((kind = 'mail' AND subject IS NOT NULL AND content IS NOT NULL AND app_name IS NOT NULL
+            AND smtp_host IS NOT NULL AND smtp_port IS NOT NULL AND smtp_encryption IS NOT NULL
+            AND smtp_from_address IS NOT NULL)
+        OR (kind IN ('csv', 'ban') AND subject IS NULL AND content IS NULL)),
+    CHECK ((claim_token IS NULL) = (claimed_at IS NULL))
+);
+CREATE INDEX idx_admin_user_bulk_jobs_list
+    ON admin_user_bulk_jobs(created_at DESC, id DESC);
+CREATE INDEX idx_admin_user_bulk_jobs_claim
+    ON admin_user_bulk_jobs(kind, status, claimed_at, created_at);
+CREATE UNIQUE INDEX idx_admin_user_bulk_jobs_ban_idempotency
+    ON admin_user_bulk_jobs(administrator_id, idempotency_key)
+    WHERE kind = 'ban' AND idempotency_key IS NOT NULL;
+
+CREATE TABLE admin_user_bulk_targets (
+    job_id TEXT NOT NULL REFERENCES admin_user_bulk_jobs(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    email TEXT NOT NULL CHECK (length(CAST(email AS BLOB)) BETWEEN 3 AND 320),
+    uuid TEXT NOT NULL CHECK (length(CAST(uuid AS BLOB)) <= 128),
+    plan_name TEXT NOT NULL CHECK (length(CAST(plan_name AS BLOB)) <= 255),
+    group_id INTEGER REFERENCES server_groups(id) ON DELETE SET NULL,
+    expired_at INTEGER CHECK (expired_at IS NULL OR expired_at >= 0),
+    transfer_enable INTEGER NOT NULL CHECK (transfer_enable >= 0),
+    transfer_used INTEGER NOT NULL CHECK (transfer_used >= 0),
+    balance INTEGER NOT NULL CHECK (balance >= 0),
+    commission_balance INTEGER NOT NULL CHECK (commission_balance >= 0),
+    subscription_token TEXT NOT NULL CHECK (length(CAST(subscription_token AS BLOB)) BETWEEN 1 AND 255),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'succeeded', 'failed', 'skipped', 'cancelled')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    available_at INTEGER NOT NULL CHECK (available_at >= 0),
+    claim_token TEXT CHECK (claim_token IS NULL OR length(CAST(claim_token AS BLOB)) BETWEEN 8 AND 128),
+    claimed_at INTEGER CHECK (claimed_at IS NULL OR claimed_at >= 0),
+    last_error TEXT CHECK (last_error IS NULL OR length(CAST(last_error AS BLOB)) <= 2048),
+    processed_at INTEGER CHECK (processed_at IS NULL OR processed_at >= 0),
+    PRIMARY KEY (job_id, sequence),
+    UNIQUE (job_id, user_id),
+    CHECK ((status = 'processing') = (claim_token IS NOT NULL AND claimed_at IS NOT NULL))
+) WITHOUT ROWID;
+CREATE INDEX idx_admin_user_bulk_targets_claim
+    ON admin_user_bulk_targets(status, available_at, claimed_at, job_id, sequence);
+CREATE INDEX idx_admin_user_bulk_targets_job_status
+    ON admin_user_bulk_targets(job_id, status, sequence);
 `

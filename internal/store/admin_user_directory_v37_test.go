@@ -14,8 +14,8 @@ func TestAdminUserSchemaV37AddsProfileFieldsAndDirectoryIndexes(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 
-	if CurrentSchemaVersion() != 38 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 38", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 39 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 39", CurrentSchemaVersion())
 	}
 	for _, column := range []string{"telegram_id", "remind_expire", "remind_traffic", "remarks"} {
 		var found int
@@ -53,6 +53,7 @@ func TestAdminUserSchemaV37AddsProfileFieldsAndDirectoryIndexes(t *testing.T) {
 
 func TestSchemaV37PreservesV36UsersAndBackfillsReminderDefaults(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV39ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 27, 4, 0, 0, 0, time.UTC)
 	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "preserved-v36@example.test", PasswordHash: "hash"}, now)

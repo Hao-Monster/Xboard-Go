@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
+	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
@@ -55,6 +56,7 @@ type Dependencies struct {
 	CaptchaVerifier            captcha.Verifier
 	PaymentGateway             paymentGateway
 	Attachments                *attachments.Service
+	BulkOperations             *bulkops.Service
 }
 
 type paymentGateway interface {
@@ -115,6 +117,7 @@ type server struct {
 	captchaVerifier            captcha.Verifier
 	paymentGateway             paymentGateway
 	attachments                *attachments.Service
+	bulkOperations             *bulkops.Service
 }
 
 type contextKey int
@@ -222,6 +225,7 @@ func New(dependencies Dependencies) http.Handler {
 		captchaVerifier:            dependencies.CaptchaVerifier,
 		paymentGateway:             dependencies.PaymentGateway,
 		attachments:                dependencies.Attachments,
+		bulkOperations:             dependencies.BulkOperations,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
@@ -374,6 +378,9 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))))
 	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/sendMail", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkMail)))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/dumpCSV", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkCSV)))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/ban", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkBan)))))
 	legacyAdminTrafficReset := http.NewServeMux()
 	legacyAdminTrafficReset.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/reset-user", api.legacyResetAdminUserTraffic)
 	legacyAdminTrafficReset.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/user/{userID}/history", api.legacyListAdminUserTrafficResets)
@@ -523,6 +530,13 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/users", api.createAdminUser)
 	admin.HandleFunc("POST /api/v1/admin/users/generate", api.generateAdminUsers)
 	admin.HandleFunc("POST /api/v1/admin/users/query", api.queryAdminUsers)
+	admin.HandleFunc("POST /api/v1/admin/users/bulk/mail", api.createAdminUserBulkMail)
+	admin.HandleFunc("POST /api/v1/admin/users/bulk/csv", api.createAdminUserBulkCSV)
+	admin.HandleFunc("POST /api/v1/admin/users/bulk/ban", api.banAdminUsers)
+	admin.HandleFunc("GET /api/v1/admin/user-bulk-jobs", api.listAdminUserBulkJobs)
+	admin.HandleFunc("GET /api/v1/admin/user-bulk-jobs/{jobID}", api.getAdminUserBulkJob)
+	admin.HandleFunc("POST /api/v1/admin/user-bulk-jobs/{jobID}/cancel", api.cancelAdminUserBulkJob)
+	admin.HandleFunc("GET /api/v1/admin/user-bulk-jobs/{jobID}/download", api.downloadAdminUserBulkCSV)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)
 	admin.HandleFunc("PATCH /api/v1/admin/users/{userID}", api.updateAdminUser)
 	admin.HandleFunc("PUT /api/v1/admin/users/{userID}/password", api.resetAdminUserPassword)
@@ -613,7 +627,7 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := ""
-		for _, candidate := range []string{"update", "generate"} {
+		for _, candidate := range []string{"update", "generate", "sendMail", "dumpCSV", "ban"} {
 			if strings.HasSuffix(r.URL.Path, "/user/"+candidate) {
 				action = candidate
 				break

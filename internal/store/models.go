@@ -77,6 +77,8 @@ var (
 	ErrDistributorRenewalUnavailable          = fmt.Errorf("%w: distributor subscription cannot be renewed", ErrConflict)
 	ErrDistributorHWIDLimit                   = fmt.Errorf("%w: distributor subscription device limit reached", ErrConflict)
 	ErrDistributorClaimConsumed               = fmt.Errorf("%w: distributor claim has already been consumed", ErrConflict)
+	ErrAdminUserBulkLimit                     = fmt.Errorf("%w: administrator user bulk target limit exceeded", ErrInvalidInput)
+	ErrAdminUserBulkExpired                   = errors.New("administrator user bulk output expired")
 )
 
 const (
@@ -680,6 +682,129 @@ type AdminUserPage struct {
 	Total      int64       `json:"total"`
 	Page       int         `json:"page"`
 	PageSize   int         `json:"page_size"`
+}
+
+const (
+	AdminUserBulkKindMail = "mail"
+	AdminUserBulkKindCSV  = "csv"
+	AdminUserBulkKindBan  = "ban"
+
+	AdminUserBulkScopeSelected = "selected"
+	AdminUserBulkScopeFiltered = "filtered"
+	AdminUserBulkScopeAll      = "all"
+
+	AdminUserBulkStatusQueued     = "queued"
+	AdminUserBulkStatusRunning    = "running"
+	AdminUserBulkStatusCancelling = "cancelling"
+	AdminUserBulkStatusCancelled  = "cancelled"
+	AdminUserBulkStatusSucceeded  = "succeeded"
+	AdminUserBulkStatusFailed     = "failed"
+
+	AdminUserBulkTargetPending    = "pending"
+	AdminUserBulkTargetProcessing = "processing"
+	AdminUserBulkTargetSucceeded  = "succeeded"
+	AdminUserBulkTargetFailed     = "failed"
+	AdminUserBulkTargetSkipped    = "skipped"
+	AdminUserBulkTargetCancelled  = "cancelled"
+)
+
+type AdminUserBulkScope struct {
+	Scope   string
+	UserIDs []int64
+	Filter  AdminUserFilter
+}
+
+type CreateAdminUserBulkJobInput struct {
+	Kind            string
+	AdministratorID int64
+	Scope           AdminUserBulkScope
+	Subject         string
+	Content         string
+}
+
+type BanAdminUsersInput struct {
+	AdministratorID int64
+	IdempotencyKey  string
+	Scope           AdminUserBulkScope
+}
+
+type AdminUserBulkJob struct {
+	ID                 string     `json:"id"`
+	Kind               string     `json:"kind"`
+	Scope              string     `json:"scope"`
+	AdministratorID    *int64     `json:"administrator_id"`
+	AdministratorEmail string     `json:"administrator_email"`
+	Status             string     `json:"status"`
+	Subject            string     `json:"subject,omitempty"`
+	Content            string     `json:"-"`
+	AppName            string     `json:"app_name,omitempty"`
+	AppURL             string     `json:"app_url,omitempty"`
+	TotalCount         int        `json:"total_count"`
+	ProcessedCount     int        `json:"processed_count"`
+	SuccessCount       int        `json:"success_count"`
+	FailureCount       int        `json:"failure_count"`
+	SkippedCount       int        `json:"skipped_count"`
+	CancelledCount     int        `json:"cancelled_count"`
+	OutputFilename     string     `json:"output_filename,omitempty"`
+	OutputRelativePath string     `json:"-"`
+	OutputSize         *int64     `json:"output_size,omitempty"`
+	OutputSHA256       string     `json:"output_sha256,omitempty"`
+	OutputExpiresAt    *time.Time `json:"output_expires_at,omitempty"`
+	LastError          string     `json:"last_error,omitempty"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	CancelledAt        *time.Time `json:"cancelled_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+type AdminUserBulkTarget struct {
+	JobID             string     `json:"job_id"`
+	Sequence          int64      `json:"sequence"`
+	UserID            int64      `json:"user_id"`
+	Email             string     `json:"email"`
+	UUID              string     `json:"-"`
+	PlanName          string     `json:"plan_name,omitempty"`
+	GroupID           *int64     `json:"-"`
+	ExpiredAt         *time.Time `json:"expired_at,omitempty"`
+	TransferEnable    int64      `json:"-"`
+	TransferUsed      int64      `json:"-"`
+	Balance           int64      `json:"-"`
+	CommissionBalance int64      `json:"-"`
+	SubscriptionToken string     `json:"-"`
+	Status            string     `json:"status"`
+	AttemptCount      int        `json:"attempt_count"`
+	LastError         string     `json:"last_error,omitempty"`
+	ProcessedAt       *time.Time `json:"processed_at,omitempty"`
+}
+
+type AdminUserBulkMail struct {
+	AdminUserBulkTarget
+	JobID              string
+	Attempt            int
+	Subject            string
+	Content            string
+	AppName            string
+	AppURL             string
+	CreatedAt          time.Time
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
+}
+
+type AdminUserBulkJobPage struct {
+	Items    []AdminUserBulkJob `json:"items"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
+}
+
+type AdminUserBulkExpiredOutput struct {
+	JobID        string
+	RelativePath string
 }
 
 type AdminUserFilter struct {
@@ -1620,6 +1745,12 @@ type SaveRoutingRuleInput struct {
 type NodeRuntimeTarget struct {
 	NodeID    int64
 	MachineID int64
+}
+
+type NodeRuntimeGroupTarget struct {
+	NodeID    int64
+	MachineID int64
+	GroupID   int64
 }
 
 type RuntimeUser struct {

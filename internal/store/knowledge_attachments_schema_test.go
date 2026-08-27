@@ -8,6 +8,7 @@ import (
 
 func TestSchemaV35PreservesV34DataAndEnforcesAttachmentBoundaries(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV39ForMigrationTest(t, database)
 	ctx := context.Background()
 	if _, err := database.db.ExecContext(ctx, `
 		DROP TABLE knowledge_attachment_chunks;

@@ -30,6 +30,7 @@ type Config struct {
 	BootstrapAdminPassword  string
 	SchedulerInterval       time.Duration
 	MailPollInterval        time.Duration
+	BulkPollInterval        time.Duration
 	SMTPAllowInsecure       bool
 	CaptchaAllowInsecure    bool
 	CaptchaRecaptchaURL     string
@@ -49,6 +50,7 @@ type Config struct {
 	AttachmentDraftTTL      time.Duration
 	AttachmentTrashTTL      time.Duration
 	AttachmentMaxPerArticle int
+	AdminExportRoot         string
 }
 
 func Load() (Config, error) {
@@ -62,6 +64,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	mailPollInterval, err := parseDurationEnv("XBOARD_MAIL_POLL_INTERVAL", 5*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	bulkPollInterval, err := parseDurationEnv("XBOARD_BULK_POLL_INTERVAL", 2*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -113,6 +119,13 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	adminExportRoot := strings.TrimSpace(os.Getenv("XBOARD_ADMIN_EXPORT_ROOT"))
+	if adminExportRoot == "" {
+		adminExportRoot, err = filepath.Abs(filepath.Join("data", "admin-exports"))
+		if err != nil {
+			return Config{}, fmt.Errorf("resolve default administrator export root: %w", err)
+		}
+	}
 
 	bootstrapPassword, err := readSecretEnv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD")
 	if err != nil {
@@ -141,6 +154,7 @@ func Load() (Config, error) {
 		BootstrapAdminPassword:  bootstrapPassword,
 		SchedulerInterval:       interval,
 		MailPollInterval:        mailPollInterval,
+		BulkPollInterval:        bulkPollInterval,
 		SMTPAllowInsecure:       smtpAllowInsecure,
 		CaptchaAllowInsecure:    captchaAllowInsecure,
 		CaptchaRecaptchaURL:     strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
@@ -160,6 +174,7 @@ func Load() (Config, error) {
 		AttachmentDraftTTL:      attachmentDraftTTL,
 		AttachmentTrashTTL:      attachmentTrashTTL,
 		AttachmentMaxPerArticle: attachmentMaxPerArticle,
+		AdminExportRoot:         adminExportRoot,
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -189,6 +204,15 @@ func Load() (Config, error) {
 			return Config{}, errors.New("XBOARD_ATTACHMENT_ROOT must be a dedicated private directory")
 		}
 	}
+	if !filepath.IsAbs(config.AdminExportRoot) {
+		return Config{}, errors.New("XBOARD_ADMIN_EXPORT_ROOT must be an absolute path")
+	}
+	cleanExportRoot := filepath.Clean(config.AdminExportRoot)
+	if cleanExportRoot == filepath.VolumeName(cleanExportRoot)+string(filepath.Separator) ||
+		(config.WebRoot != "" && pathsOverlap(cleanExportRoot, filepath.Clean(config.WebRoot))) ||
+		(config.AttachmentRoot != "" && pathsOverlap(cleanExportRoot, filepath.Clean(config.AttachmentRoot))) {
+		return Config{}, errors.New("XBOARD_ADMIN_EXPORT_ROOT must be a dedicated private directory")
+	}
 	if config.AttachmentChunkSize < 1 || config.AttachmentChunkSize > 64<<20 ||
 		config.AttachmentMaxFileSize < config.AttachmentChunkSize || config.AttachmentMaxFileSize > 1<<30 ||
 		config.AttachmentTotalQuota < config.AttachmentMaxFileSize || config.AttachmentTotalQuota > 1<<40 {
@@ -205,6 +229,9 @@ func Load() (Config, error) {
 	}
 	if config.MailPollInterval < 250*time.Millisecond || config.MailPollInterval > time.Minute {
 		return Config{}, errors.New("XBOARD_MAIL_POLL_INTERVAL must be between 250ms and 1m")
+	}
+	if config.BulkPollInterval < 250*time.Millisecond || config.BulkPollInterval > time.Minute {
+		return Config{}, errors.New("XBOARD_BULK_POLL_INTERVAL must be between 250ms and 1m")
 	}
 	if config.NodePushInterval < 5 || config.NodePushInterval > 3_600 || config.NodePullInterval < 5 || config.NodePullInterval > 3_600 {
 		return Config{}, errors.New("node push and pull intervals must be between 5 and 3600 seconds")
@@ -245,6 +272,15 @@ func Load() (Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func pathsOverlap(left, right string) bool {
+	return pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(parent, candidate string) bool {
+	relative, err := filepath.Rel(parent, candidate)
+	return err == nil && (relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
 func DatabaseDSN() string {

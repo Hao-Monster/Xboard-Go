@@ -4,6 +4,9 @@ import {
   APIError,
   type AdminAPI,
 	type AdminOrderPage,
+  type AdminUserBulkJob,
+  type AdminUserBulkScopeInput,
+  type AdminUserBulkScopeName,
   type AdminUserFilter,
   type AdminUserFilterOperator,
   type AdminUserGeneratedCredential,
@@ -25,7 +28,9 @@ import { AssignOrderDialog } from "../orders/OrderManagementPage";
 type UsersAPI = Pick<AdminAPI,
   "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" |
 	"getAdminUserSubscriptionURL" | "listAdminUserOrders" | "assignAdminUserOrder" | "listAdminUserInvitations" |
-	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans"
+	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans" |
+  "createAdminUserBulkMail" | "createAdminUserBulkCSV" | "banAdminUsers" | "listAdminUserBulkJobs" |
+  "getAdminUserBulkJob" | "cancelAdminUserBulkJob" | "downloadAdminUserBulkCSV"
 >;
 
 type UserRelatedTab = "orders" | "invitations" | "traffic";
@@ -63,6 +68,14 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 	const [assigning, setAssigning] = useState<AdminUser | null>(null);
 	const [related, setRelated] = useState<{ account: AdminUser; tab: UserRelatedTab } | null>(null);
 	const [trafficResetting, setTrafficResetting] = useState<AdminUser | null>(null);
+  const [selectedUserIDs, setSelectedUserIDs] = useState<Set<number>>(() => new Set());
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [mailing, setMailing] = useState(false);
+  const [banning, setBanning] = useState(false);
+  const [bulkJobsOpen, setBulkJobsOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
+  const [bulkError, setBulkError] = useState("");
   const requestVersion = useRef(0);
   const nextFilterID = useRef(1);
 
@@ -99,6 +112,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const runQuery = async (query: AdminUserQuery) => {
     const normalized = { ...defaultUserQuery, ...query };
     const version = ++requestVersion.current;
+    setBulkMenuOpen(false);
     setLoading(true);
     setError("");
     try {
@@ -116,6 +130,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 
   const submitFilters = (event: FormEvent) => {
     event.preventDefault();
+    setSelectedUserIDs(new Set());
     const query: AdminUserQuery = {
       page: 1, page_size: appliedQuery.page_size ?? 20, sort_by: appliedQuery.sort_by ?? "id",
       sort_desc: appliedQuery.sort_desc ?? true, filters: wireAdvancedFilters(advancedFilters)
@@ -154,6 +169,61 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const page = appliedQuery.page ?? 1;
   const pageSize = appliedQuery.page_size ?? 20;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilter = hasAdminUserBulkFilter(appliedQuery);
+  const activeBulkScope: AdminUserBulkScopeName = selectedUserIDs.size > 0 ? "selected" : hasFilter ? "filtered" : "all";
+  const activeBulkSuffix = activeBulkScope === "selected" ? String(selectedUserIDs.size) : activeBulkScope === "filtered" ? "筛选" : "全部";
+  const visibleIDs = users.map((account) => account.id);
+  const allVisibleSelected = visibleIDs.length > 0 && visibleIDs.every((id) => selectedUserIDs.has(id));
+
+  const toggleVisibleSelection = (checked: boolean) => {
+    setBulkError("");
+    setSelectedUserIDs((current) => {
+      const next = new Set(current);
+      if (!checked) {
+        for (const id of visibleIDs) next.delete(id);
+        return next;
+      }
+      if (next.size + visibleIDs.filter((id) => !next.has(id)).length > 500) {
+        setBulkError("一次最多选择 500 名用户，请缩小选择范围");
+        return current;
+      }
+      for (const id of visibleIDs) next.add(id);
+      return next;
+    });
+  };
+
+  const toggleUserSelection = (id: number, checked: boolean) => {
+    setBulkError("");
+    setSelectedUserIDs((current) => {
+      const next = new Set(current);
+      if (checked) {
+        if (next.size >= 500) {
+          setBulkError("一次最多选择 500 名用户，请缩小选择范围");
+          return current;
+        }
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const startCSVExport = async () => {
+    setBulkMenuOpen(false);
+    setBulkBusy(true);
+    setBulkError("");
+    setBulkMessage("");
+    try {
+      const job = await api.createAdminUserBulkCSV(adminUserBulkScopeInput(activeBulkScope, selectedUserIDs, appliedQuery));
+      setBulkMessage(`CSV 导出任务已创建，共 ${job.total_count} 项。`);
+      setBulkJobsOpen(true);
+    } catch (cause) {
+      setBulkError(errorMessage(cause));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   return <main className="page-shell">
     <header className="page-header">
@@ -178,13 +248,29 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
       </fieldset>}
     </form>
 
+    <div className="user-bulk-toolbar" aria-label="用户批量操作">
+      <span>已选择 {selectedUserIDs.size} 项，共 {total} 项</span>
+      <div className="user-bulk-menu-wrap">
+        <button className="button secondary" type="button" aria-haspopup="menu" aria-expanded={bulkMenuOpen} disabled={bulkBusy || loading || total === 0} onClick={() => setBulkMenuOpen((value) => !value)}>{bulkBusy ? "正在创建任务…" : "批量操作"}</button>
+        {bulkMenuOpen && <div className="user-bulk-menu" role="menu" aria-label="批量操作菜单">
+          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setMailing(true); }}>发送邮件({activeBulkSuffix})</button>
+          <button type="button" role="menuitem" onClick={() => void startCSVExport()}>导出 CSV({activeBulkSuffix})</button>
+          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBanning(true); }}>批量封禁({activeBulkSuffix})</button>
+          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBulkJobsOpen(true); }}>查看批量任务</button>
+        </div>}
+      </div>
+    </div>
+
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void runQuery(appliedQuery)}>重试</button></div>}
 		{groupError !== "" && <div className="alert warning resource-alert" role="alert"><span>{groupError}</span><button className="button ghost compact" onClick={() => void retryGroups()}>重试权限组</button></div>}
     {planError !== "" && <div className="alert warning resource-alert" role="alert"><span>{planError}</span><button className="button ghost compact" onClick={() => void retryPlans()}>重试套餐</button></div>}
+    {bulkError !== "" && <div className="alert error resource-alert" role="alert">{bulkError}</div>}
+    {bulkMessage !== "" && <div className="alert success resource-alert" role="status">{bulkMessage}</div>}
     {loading && users.length === 0 ? <div className="empty-card">正在加载用户…</div> : users.length === 0 ? <div className="empty-card">没有符合条件的用户。</div> :
       <div className="resource-table-wrap user-table-wrap">
         <table className="resource-table user-table" aria-label="用户列表">
           <thead><tr>
+            <th scope="col" aria-label="选择"><input type="checkbox" aria-label="选择本页用户" checked={allVisibleSelected} disabled={loading} onChange={(event) => toggleVisibleSelection(event.target.checked)} /></th>
             <SortableHeader label="ID" field="id" query={appliedQuery} onSort={sortBy} />
             <th scope="col">邮箱</th>
             <SortableHeader label="在线设备" field="online_count" query={appliedQuery} onSort={sortBy} />
@@ -199,6 +285,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
             <th scope="col">操作</th>
           </tr></thead>
           <tbody>{users.map((account) => <tr key={account.id}>
+            <td data-label="选择"><input type="checkbox" aria-label={`选择用户：${account.email}`} checked={selectedUserIDs.has(account.id)} disabled={loading} onChange={(event) => toggleUserSelection(account.id, event.target.checked)} /></td>
             <td data-label="ID">#{account.id}</td>
             <td data-label="邮箱"><strong>{account.email}</strong><small className="muted">{roleSummary(account) || "普通用户"}</small>{account.is_distributor && account.distributor_name && <small>{account.distributor_name}</small>}</td>
             <td data-label="在线设备">{account.online_count} / {account.device_limit === 0 ? "∞" : account.device_limit}<small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
@@ -232,7 +319,166 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 		{related !== null && <UserRelatedDialog api={api} account={related.account} initialTab={related.tab} onClose={() => setRelated(null)} />}
 		{trafficResetting !== null && <UserTrafficResetDialog api={api} account={trafficResetting} onClose={() => setTrafficResetting(null)}
 			onReset={() => void runQuery(appliedQuery)} />}
+    {mailing && <AdminUserBulkMailDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} initialScope={activeBulkScope}
+      onClose={() => setMailing(false)} onQueued={(job) => { setMailing(false); setBulkMessage(`邮件任务已创建，共 ${job.total_count} 项。`); setBulkJobsOpen(true); }} />}
+    {banning && <AdminUserBulkBanDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} scope={activeBulkScope}
+      onClose={() => setBanning(false)} onCompleted={(job) => {
+        setBanning(false); setSelectedUserIDs(new Set());
+        setBulkMessage(`批量封禁完成：成功 ${job.success_count} 项，跳过 ${job.skipped_count} 项。`);
+        void runQuery(appliedQuery);
+      }} />}
+    {bulkJobsOpen && <AdminUserBulkJobsDialog api={api} onClose={() => setBulkJobsOpen(false)} />}
   </main>;
+}
+
+function AdminUserBulkMailDialog({ api, selectedUserIDs, query, initialScope, onClose, onQueued }: {
+  api: UsersAPI;
+  selectedUserIDs: ReadonlySet<number>;
+  query: AdminUserQuery;
+  initialScope: AdminUserBulkScopeName;
+  onClose: () => void;
+  onQueued: (job: AdminUserBulkJob) => void;
+}) {
+  const [scope, setScope] = useState(initialScope);
+  const [subject, setSubject] = useState("");
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const filteredAvailable = hasAdminUserBulkFilter(query);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const job = await api.createAdminUserBulkMail(adminUserBulkScopeInput(scope, selectedUserIDs, query), subject, content);
+      onQueued(job);
+    } catch (cause) {
+      setError(errorMessage(cause));
+      setBusy(false);
+    }
+  };
+  return <Modal title="发送邮件" className="wide-modal" onClose={onClose}>
+    <ModalHeader title="发送邮件" onClose={onClose} />
+    <p className="muted">向所选或已筛选用户发送邮件</p>
+    <form className="form-stack" onSubmit={(event) => void submit(event)}>
+      <fieldset className="settings-fieldset"><legend>发送范围</legend><div className="bulk-scope-options">
+        <label><input type="radio" name="mail-scope" value="selected" checked={scope === "selected"} disabled={selectedUserIDs.size === 0} onChange={() => setScope("selected")} />仅选中（{selectedUserIDs.size}）</label>
+        <label><input type="radio" name="mail-scope" value="filtered" checked={scope === "filtered"} disabled={!filteredAvailable} onChange={() => setScope("filtered")} />筛选后的用户</label>
+        <label><input type="radio" name="mail-scope" value="all" checked={scope === "all"} onChange={() => setScope("all")} />全部用户</label>
+      </div></fieldset>
+      <label>邮件主题<input value={subject} required maxLength={255} placeholder="例如：系统通知（支持占位符）" onChange={(event) => setSubject(event.target.value)} /></label>
+      <label>邮件正文<textarea value={content} required maxLength={65_536} rows={12} placeholder="请输入邮件正文（可使用占位符）" onChange={(event) => setContent(event.target.value)} /></label>
+      <p className="muted small">支持 <code>{"{{key}}"}</code> 或 <code>{"{{key|默认值}}"}</code>。可用变量：app.name、app.url、now、user.id、user.email、user.uuid、user.plan_name、user.expired_at、user.transfer_enable、user.transfer_used、user.transfer_left。邮件按纯文本发送。</p>
+      {error !== "" && <div className="alert error" role="alert">{error}</div>}
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在创建任务…" : "发送"}</button></div>
+    </form>
+  </Modal>;
+}
+
+function AdminUserBulkBanDialog({ api, selectedUserIDs, query, scope, onClose, onCompleted }: {
+  api: UsersAPI;
+  selectedUserIDs: ReadonlySet<number>;
+  query: AdminUserQuery;
+  scope: AdminUserBulkScopeName;
+  onClose: () => void;
+  onCompleted: (job: AdminUserBulkJob) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const idempotencyKey = useRef("");
+  const confirm = async () => {
+    setBusy(true);
+    setError("");
+    if (idempotencyKey.current === "") idempotencyKey.current = globalThis.crypto.randomUUID();
+    try {
+      onCompleted(await api.banAdminUsers(adminUserBulkScopeInput(scope, selectedUserIDs, query), idempotencyKey.current));
+    } catch (cause) {
+      setError(errorMessage(cause));
+      setBusy(false);
+    }
+  };
+  const scopeDescription = scope === "selected"
+    ? `此操作将封禁选中的 ${selectedUserIDs.size} 名用户。`
+    : scope === "filtered" ? "此操作将封禁筛选结果中的所有用户。" : "此操作将封禁系统中的所有用户。";
+  return <Modal title="确认批量封禁" role="alertdialog" onClose={onClose}>
+    <ModalHeader title="确认批量封禁" onClose={onClose} />
+    <p>{scopeDescription}</p>
+    <p className="muted">此操作无法撤销。当前管理员和系统内部账号会被安全跳过。</p>
+    {error !== "" && <div className="alert error" role="alert">{error}</div>}
+    <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button danger" type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "正在封禁…" : "确认封禁"}</button></div>
+  </Modal>;
+}
+
+function AdminUserBulkJobsDialog({ api, onClose }: { api: UsersAPI; onClose: () => void }) {
+  const [jobs, setJobs] = useState<AdminUserBulkJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionID, setActionID] = useState("");
+  const hasActiveJobs = useRef(true);
+
+  useEffect(() => {
+    let active = true;
+    let timer = 0;
+    const load = async () => {
+      try {
+        const page = await api.listAdminUserBulkJobs(1, 50);
+        if (!active) return;
+        setJobs(page.items);
+        hasActiveJobs.current = page.items.some((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+        setError("");
+      } catch (cause) {
+        if (active) setError(errorMessage(cause));
+      } finally {
+        if (active) {
+          setLoading(false);
+          if (hasActiveJobs.current) timer = window.setTimeout(() => void load(), 2_000);
+        }
+      }
+    };
+    void load();
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [api]);
+
+  const cancel = async (job: AdminUserBulkJob) => {
+    setActionID(job.id);
+    setError("");
+    try {
+      const updated = await api.cancelAdminUserBulkJob(job.id);
+      setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setActionID("");
+    }
+  };
+
+  const download = async (job: AdminUserBulkJob) => {
+    setActionID(job.id);
+    setError("");
+    try {
+      downloadBlob(await api.downloadAdminUserBulkCSV(job.id), job.output_filename || "users.csv");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setActionID("");
+    }
+  };
+
+  return <Modal title="批量任务" className="wide-modal" onClose={onClose}>
+    <ModalHeader title="批量任务" onClose={onClose} />
+    <p className="muted">邮件和导出任务在后台执行；这里显示实际进度、失败和下载状态。</p>
+    {error !== "" && <div className="alert error" role="alert">{error}</div>}
+    {loading && jobs.length === 0 ? <div className="alert" role="status">正在读取批量任务…</div> : jobs.length === 0 ? <div className="empty-card">暂无批量任务。</div> :
+      <div className="resource-table-wrap bulk-job-table-wrap"><table className="resource-table" aria-label="批量任务列表"><thead><tr><th>类型</th><th>范围</th><th>状态</th><th>进度</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}>
+        <td data-label="类型">{bulkJobKindLabel(job.kind)}</td>
+        <td data-label="范围">{bulkScopeLabel(job.scope)}</td>
+        <td data-label="状态"><span className={`status-badge ${job.status === "failed" ? "blocked" : job.status === "succeeded" ? "enabled" : ""}`}>{bulkJobStatusLabel(job.status)}</span>{job.last_error && <small className="muted">{job.last_error}</small>}</td>
+        <td data-label="进度">{job.processed_count} / {job.total_count}<small className="muted">成功 {job.success_count} · 失败 {job.failure_count} · 跳过 {job.skipped_count}</small></td>
+        <td data-label="创建时间">{formatTimestamp(job.created_at)}{job.output_size !== undefined && <small className="muted">{formatBytes(job.output_size)}</small>}</td>
+        <td data-label="操作"><div className="row-actions">{job.kind === "csv" && job.status === "succeeded" && <button className="button secondary compact" type="button" disabled={actionID !== ""} onClick={() => void download(job)}>下载</button>}{bulkJobCancellable(job.status) && <button className="button ghost compact" type="button" disabled={actionID !== ""} onClick={() => void cancel(job)}>取消任务</button>}</div></td>
+      </tr>)}</tbody></table></div>}
+    <div className="form-actions"><button className="button primary" type="button" onClick={onClose}>关闭</button></div>
+  </Modal>;
 }
 
 function SortableHeader({ label, field, query, onSort }: { label: string; field: AdminUserSort; query: AdminUserQuery; onSort: (field: AdminUserSort) => void }) {
@@ -813,6 +1059,55 @@ function commissionLabel(account: AdminUser): string {
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : "请求失败，请稍后重试";
+}
+
+function hasAdminUserBulkFilter(query: AdminUserQuery): boolean {
+  return (query.email_prefix?.trim() ?? "") !== "" || query.banned !== undefined || query.group_id !== undefined || (query.filters?.length ?? 0) > 0;
+}
+
+function adminUserBulkScopeInput(scope: AdminUserBulkScopeName, selectedUserIDs: ReadonlySet<number>, query: AdminUserQuery): AdminUserBulkScopeInput {
+  if (scope === "selected") {
+    return { scope, user_ids: Array.from(selectedUserIDs).sort((left, right) => left - right) };
+  }
+  if (scope === "filtered") {
+    const input: AdminUserBulkScopeInput = { scope };
+    const prefix = query.email_prefix?.trim() ?? "";
+    if (prefix !== "") input.email_prefix = prefix;
+    if (query.banned !== undefined) input.banned = query.banned;
+    if (query.group_id !== undefined) input.group_id = query.group_id;
+    if ((query.filters?.length ?? 0) > 0) input.filters = query.filters;
+    return input;
+  }
+  return { scope: "all" };
+}
+
+function bulkScopeLabel(scope: AdminUserBulkScopeName): string {
+  return scope === "selected" ? "仅选中" : scope === "filtered" ? "筛选结果" : "全部用户";
+}
+
+function bulkJobKindLabel(kind: AdminUserBulkJob["kind"]): string {
+  return kind === "mail" ? "发送邮件" : kind === "csv" ? "导出 CSV" : "批量封禁";
+}
+
+function bulkJobStatusLabel(status: AdminUserBulkJob["status"]): string {
+  const labels: Record<AdminUserBulkJob["status"], string> = {
+    queued: "等待执行", running: "正在执行", cancelling: "正在取消", cancelled: "已取消", succeeded: "已完成", failed: "失败"
+  };
+  return labels[status];
+}
+
+function bulkJobCancellable(status: AdminUserBulkJob["status"]): boolean {
+  return status === "queued" || status === "running";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const safeFilename = filename.replace(/[\\/\r\n"]/g, "_") || "users.csv";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = safeFilename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function roleSummary(account: AdminUser): string {

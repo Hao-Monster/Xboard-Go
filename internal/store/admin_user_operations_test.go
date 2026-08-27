@@ -411,6 +411,7 @@ func TestAssignOrderByUserIDCannotRetargetReusedEmail(t *testing.T) {
 
 func TestSchemaV38PreservesScheduledTrafficResetHistory(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV39ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 5, 0, 0, 0, time.UTC)
 	plan, err := database.CreatePlan(ctx, SavePlanInput{Name: "U4 migration plan", TransferEnableGiB: 1, Prices: PlanPrices{}, Tags: []string{}}, now)

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
 	"github.com/Hao-Monster/Xboard-Go/internal/backup"
+	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
@@ -158,8 +159,18 @@ func main() {
 	if attachmentService != nil {
 		go runAttachmentCleanup(ctx, attachmentService, logger, time.Hour)
 	}
-	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, loginLinkProtector, mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure), settings.MailPollInterval, logger, runtimeTracker)
+	smtpSender := mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure)
+	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, loginLinkProtector, smtpSender, settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
+	bulkService, err := bulkops.New(database, bulkops.Options{
+		Cipher: settingsCipher, Sender: smtpSender, ExportRoot: settings.AdminExportRoot,
+		PanelURL: settings.PanelURL, PollInterval: settings.BulkPollInterval, Logger: logger,
+	})
+	if err != nil {
+		logger.Error("initialize administrator bulk operations", "error", err)
+		os.Exit(1)
+	}
+	go bulkService.Run(ctx)
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
 		Store:                      database,
@@ -184,6 +195,7 @@ func main() {
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
 		Attachments:                attachmentService,
+		BulkOperations:             bulkService,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)
