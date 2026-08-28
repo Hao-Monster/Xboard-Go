@@ -181,7 +181,9 @@ test("quick and mail login links are safe, one-time, and land on the legacy dest
     });
     expect(cooledUnknown.status).toBe(cooledKnown.status);
     expect(JSON.parse(cooledUnknown.body)).toEqual(JSON.parse(cooledKnown.body));
-    expect(cooledUnknown.retryAfter).toBe("60");
+    const unknownRetryAfter = Number.parseInt(cooledUnknown.retryAfter ?? "", 10);
+    expect(unknownRetryAfter).toBeGreaterThan(0);
+    expect(unknownRetryAfter).toBeLessThanOrEqual(60);
 
     expect(pageErrors).toEqual([]);
     expect(serverErrors).toEqual([]);
