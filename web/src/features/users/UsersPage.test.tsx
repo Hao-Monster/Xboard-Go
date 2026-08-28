@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { APIError, type AdminUser, type AdminUserBulkJob, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
@@ -229,6 +229,34 @@ describe("UsersPage", () => {
 		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledTimes(2));
 		expect(api.resetAdminUserTraffic.mock.calls[1]?.[2]).toBe(firstKey);
 		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
+	});
+
+	it("submits the live traffic reset form value before controlled state synchronization", async () => {
+		const api = baseAPI();
+		api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+		api.resetAdminUserTraffic.mockResolvedValue({
+			user_id: account.id, email: account.email, upload_before: 100, download_before: 200,
+			upload_after: 0, download_after: 0, reset_count: 5, reset_at: "2026-08-28T04:00:00Z",
+			next_reset_at: null, reason: "客服确认", idempotent: false
+		});
+		const user = userEvent.setup();
+		render(<UsersPage api={api} currentUserID={1} />);
+		expect(await screen.findByText(account.email)).toBeVisible();
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		await user.click(within(screen.getByRole("dialog", { name: "用户操作" })).getByRole("button", { name: "重置流量" }));
+		const reset = screen.getByRole("dialog", { name: "重置流量" });
+		const input = within(reset).getByLabelText("重置原因（可选）");
+		const form = input.closest("form");
+		if (form === null) throw new Error("traffic reset form is missing");
+		const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.bind(input);
+		if (valueSetter === undefined) throw new Error("textarea value setter is unavailable");
+
+		act(() => {
+			valueSetter("客服确认");
+			form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		});
+
+		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledWith(account.id, "客服确认", expect.any(String)));
 	});
 
   it("matches the legacy selected-scope menu and queues a templated mail job", async () => {
