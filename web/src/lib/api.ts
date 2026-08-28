@@ -1147,6 +1147,8 @@ export interface SiteSettings {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  try_out_plan_id: number;
+  try_out_hour: number;
   traffic_reset_method: number;
   coupon_enabled: boolean;
   captcha_enable: boolean;
@@ -1191,6 +1193,8 @@ export interface SiteSettingsInput {
   invite_gen_limit: number;
   invite_never_expire: boolean;
   login_with_mail_link_enable: boolean;
+  try_out_plan_id: number;
+  try_out_hour: number;
   traffic_reset_method: number;
   coupon_enabled: boolean;
   captcha_enable: boolean;

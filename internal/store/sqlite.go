@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 43
+const currentSchemaVersion = 44
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -330,6 +330,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v43: %w", err)
 		}
 		version = 43
+	}
+	if version < 44 {
+		if err := applySchemaV44(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v44: %w", err)
+		}
+		version = 44
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2093,6 +2099,28 @@ CREATE TABLE node_agent_settings (
     )
 );
 `
+
+func applySchemaV44(ctx context.Context, tx *sql.Tx) error {
+	for _, column := range []struct {
+		name      string
+		statement string
+	}{
+		{"try_out_plan_id", `ALTER TABLE app_settings ADD COLUMN try_out_plan_id INTEGER NOT NULL DEFAULT 0 CHECK (try_out_plan_id >= 0)`},
+		{"try_out_hour", `ALTER TABLE app_settings ADD COLUMN try_out_hour INTEGER NOT NULL DEFAULT 1 CHECK (try_out_hour BETWEEN 1 AND 8760)`},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect app_settings.%s: %w", column.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, column.statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 	var exists bool

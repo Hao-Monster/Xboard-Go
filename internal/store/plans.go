@@ -30,6 +30,10 @@ var planPricePeriods = map[string]struct{}{
 	"two_yearly": {}, "three_yearly": {}, "onetime": {}, "reset_traffic": {},
 }
 
+// Reset calculation runs on registration and entitlement hot paths. Loading
+// the immutable location once avoids repeated zoneinfo parsing allocations.
+var trafficResetLocation, trafficResetLocationError = time.LoadLocation(trafficResetLocationID)
+
 func (s *Store) CreatePlan(ctx context.Context, input SavePlanInput, now time.Time) (Plan, error) {
 	normalized, pricesJSON, tagsJSON, err := normalizePlanInput(input)
 	if err != nil {
@@ -185,8 +189,9 @@ func (s *Store) DeletePlan(ctx context.Context, planID int64) error {
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM plans WHERE id = ?),
 		       (EXISTS(SELECT 1 FROM users WHERE plan_id = ? LIMIT 1)
-		        OR EXISTS(SELECT 1 FROM orders WHERE plan_id = ? LIMIT 1))
-	`, planID, planID, planID).Scan(&exists, &referenced); err != nil {
+		        OR EXISTS(SELECT 1 FROM orders WHERE plan_id = ? LIMIT 1)
+		        OR EXISTS(SELECT 1 FROM app_settings WHERE id = 1 AND try_out_plan_id = ?))
+	`, planID, planID, planID, planID).Scan(&exists, &referenced); err != nil {
 		return fmt.Errorf("check plan references: %w", err)
 	}
 	if !exists {
@@ -634,10 +639,10 @@ func CalculateNextTrafficReset(planMethod *int, systemMethod int, expiresAt *tim
 	if method < 0 || method > 4 || method == 2 {
 		return nil
 	}
-	location, err := time.LoadLocation(trafficResetLocationID)
-	if err != nil {
+	if trafficResetLocationError != nil {
 		return nil
 	}
+	location := trafficResetLocation
 	localNow := now.In(location)
 	localExpiry := expiresAt.In(location)
 	var next time.Time

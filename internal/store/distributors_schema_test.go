@@ -9,8 +9,8 @@ func TestDistributorSchemaEnforcesRolesRelationshipsAndHotIndexes(t *testing.T) 
 	database := newTestStore(t)
 	ctx := context.Background()
 
-	if CurrentSchemaVersion() != 43 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 43", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 44 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 44", CurrentSchemaVersion())
 	}
 	var version int
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != CurrentSchemaVersion() {

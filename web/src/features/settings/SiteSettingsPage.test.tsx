@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { APIError, type SiteSettings } from "../../lib/api";
+import { APIError, type Plan, type SiteSettings } from "../../lib/api";
 import { SiteSettingsPage } from "./SiteSettingsPage";
 
 const initial: SiteSettings = {
@@ -27,6 +27,8 @@ const initial: SiteSettings = {
   invite_gen_limit: 5,
   invite_never_expire: false,
   login_with_mail_link_enable: false,
+	try_out_plan_id: 0,
+	try_out_hour: 1,
 	traffic_reset_method: 1,
   coupon_enabled: true,
   captcha_enable: false,
@@ -43,6 +45,7 @@ const initial: SiteSettings = {
 
 describe("SiteSettingsPage", () => {
   it("loads all legacy identity fields and publishes the saved identity", async () => {
+	const plans = [{ id: 17, name: "试用套餐" }] as Plan[];
     const updated: SiteSettings = {
       ...initial, revision: 5, app_name: "Example Board", app_description: "Fast control plane",
       app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/",
@@ -54,6 +57,8 @@ describe("SiteSettingsPage", () => {
       password_limit_enable: true, password_limit_count: 2, password_limit_expire: 30,
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
       login_with_mail_link_enable: true,
+	  try_out_plan_id: 17,
+	  try_out_hour: 48,
 	  traffic_reset_method: 1,
       coupon_enabled: false,
       captcha_enable: true, captcha_type: "turnstile", turnstile_site_key: "turnstile-site",
@@ -61,6 +66,7 @@ describe("SiteSettingsPage", () => {
     };
     const api = {
       getSiteSettings: vi.fn().mockResolvedValue(initial),
+      listPlans: vi.fn().mockResolvedValue(plans),
       updateSiteSettings: vi.fn().mockResolvedValue(updated)
     };
     const onIdentityChanged = vi.fn();
@@ -89,6 +95,8 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("登录锁定时长（分钟）")).toHaveValue(60);
     expect(screen.getByRole("checkbox", { name: "验证码" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "启用优惠券" })).toBeChecked();
+    expect(screen.getByLabelText("注册试用")).toHaveValue("0");
+    expect(screen.queryByLabelText("注册试用时长")).not.toBeInTheDocument();
 
     changeValue("站点名称", updated.app_name);
     changeValue("站点描述", updated.app_description);
@@ -112,6 +120,8 @@ describe("SiteSettingsPage", () => {
     changeValue("邀请码生成上限", "7");
     await user.click(screen.getByRole("checkbox", { name: "邀请码永不过期" }));
     await user.click(screen.getByRole("checkbox", { name: "邮件链接登录" }));
+    await user.selectOptions(screen.getByLabelText("注册试用"), "17");
+    changeValue("注册试用时长", "48");
     changeValue("密码错误次数", "2");
     changeValue("登录锁定时长（分钟）", "30");
     await user.click(screen.getByRole("button", { name: "保存站点设置" }));
@@ -138,6 +148,8 @@ describe("SiteSettingsPage", () => {
       invite_gen_limit: 7,
       invite_never_expire: true,
       login_with_mail_link_enable: true,
+	  try_out_plan_id: 17,
+	  try_out_hour: 48,
 	  traffic_reset_method: 1,
       coupon_enabled: false,
       captcha_enable: true,
@@ -166,6 +178,7 @@ describe("SiteSettingsPage", () => {
       getSiteSettings: vi.fn()
         .mockRejectedValueOnce(new Error("设置服务暂时不可用"))
         .mockResolvedValue(initial),
+      listPlans: vi.fn().mockResolvedValue([]),
       updateSiteSettings: vi.fn().mockRejectedValue(new APIError(409, "settings_conflict", "设置已被其他管理员修改，请刷新后重试"))
     };
     const user = userEvent.setup();
