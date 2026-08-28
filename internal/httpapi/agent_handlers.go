@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,7 @@ type machineStatusPayload struct {
 type xboardNodeAuthPayload struct {
 	MachineID int64  `json:"machine_id"`
 	NodeID    int64  `json:"node_id"`
+	NodeType  string `json:"node_type"`
 	Token     string `json:"token"`
 }
 
@@ -64,11 +66,16 @@ func (s *server) agentNodes(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	settings, err := s.store.GetNodeAgentSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
-			"push_interval": s.nodePushInterval,
-			"pull_interval": s.nodePullInterval,
+			"push_interval": settings.PushInterval,
+			"pull_interval": settings.PullInterval,
 		},
 	})
 }
@@ -105,63 +112,151 @@ func (s *server) xboardNodeMachineNodes(w http.ResponseWriter, r *http.Request) 
 		handleStoreError(w, err)
 		return
 	}
+	settings, err := s.store.GetNodeAgentSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
-			"push_interval": s.nodePushInterval,
-			"pull_interval": s.nodePullInterval,
+			"push_interval": settings.PushInterval,
+			"pull_interval": settings.PullInterval,
 		},
 	})
 }
 
 func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 	var input xboardNodeAuthPayload
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.MachineID < 1 {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 必须是正整数", nil)
-		return
-	}
-	if !s.authenticateMachine(w, r, input.MachineID) {
-		return
-	}
-	if !s.allowServerRequest(w, r, s.handshakeRequests, input.MachineID) {
-		return
-	}
-	if input.NodeID > 0 {
-		node, err := s.store.GetNode(r.Context(), input.NodeID)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			handleStoreError(w, err)
+	if r.Method == http.MethodGet {
+		var ok bool
+		if input.MachineID, ok = optionalPositiveQueryID(w, r, "machine_id"); !ok {
 			return
 		}
-		if err != nil || node.MachineID == nil || *node.MachineID != input.MachineID || !node.Enabled {
-			writeAPIError(w, http.StatusForbidden, "invalid_machine_node", "节点不属于当前机器或已停用", nil)
+		if input.NodeID, ok = optionalPositiveQueryID(w, r, "node_id"); !ok {
 			return
 		}
+	} else if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.MachineID < 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 不能是负数", nil)
+		return
+	}
+	if input.NodeID < 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "node_id 不能是负数", nil)
+		return
+	}
+	requestIdentity := input.MachineID
+	if input.MachineID > 0 {
+		if !s.authenticateMachine(w, r, input.MachineID) {
+			return
+		}
+		if input.NodeID > 0 && !s.authorizeMachineNode(w, r, input.MachineID, input.NodeID) {
+			return
+		}
+	} else {
+		if !s.authenticateLegacyNode(w, r, input.NodeID) {
+			return
+		}
+		if input.NodeID > 0 && !s.authorizeLegacyNode(w, r, input.NodeID) {
+			return
+		}
+	}
+	if !s.allowServerRequest(w, r, s.handshakeRequests, requestIdentity) {
+		return
+	}
+	settings, err := s.store.GetNodeAgentSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
 	}
 	websocket := map[string]any{"enabled": false}
-	if s.webSocketEnabled {
-		websocket = map[string]any{"enabled": true, "ws_url": s.requestWebSocketURL(r)}
+	if s.webSocketEnabled && settings.WebSocketEnabled {
+		websocket = map[string]any{"enabled": true, "ws_url": s.requestWebSocketURL(r, settings.WebSocketURL)}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"websocket": websocket,
 		"settings": map[string]int{
-			"push_interval": s.nodePushInterval,
-			"pull_interval": s.nodePullInterval,
+			"push_interval": settings.PushInterval,
+			"pull_interval": settings.PullInterval,
 		},
 	})
 }
 
-func (s *server) requestWebSocketURL(r *http.Request) string {
-	if s.webSocketURL != "" {
-		return s.webSocketURL
+func (s *server) requestWebSocketURL(_ *http.Request, configuredURL string) string {
+	if configuredURL != "" {
+		return strings.TrimRight(configuredURL, "/")
+	}
+	panel, err := url.Parse(s.panelURL)
+	if err != nil || panel.Host == "" {
+		return ""
 	}
 	scheme := "ws"
-	if r.TLS != nil {
+	if panel.Scheme == "https" {
 		scheme = "wss"
 	}
-	return scheme + "://" + r.Host + "/ws"
+	return scheme + "://" + panel.Host + strings.TrimRight(panel.EscapedPath(), "/") + "/ws"
+}
+
+func (s *server) authenticateLegacyNode(w http.ResponseWriter, r *http.Request, nodeID int64) bool {
+	attemptKey := requestIP(r) + ":legacy"
+	if !s.legacyNodeAuthFailures.allowed(attemptKey, s.now()) {
+		w.Header().Set("Retry-After", "60")
+		writeAPIError(w, http.StatusTooManyRequests, "node_auth_rate_limited", "节点认证失败次数过多，请稍后重试", nil)
+		return false
+	}
+	parts := strings.Fields(r.Header.Get("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || len(parts[1]) > 256 {
+		s.legacyNodeAuthFailures.failed(attemptKey, s.now())
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		writeAPIError(w, http.StatusUnauthorized, "invalid_node_credential", "节点凭据无效或未配置", nil)
+		return false
+	}
+	valid, err := s.store.AuthenticateLegacyNodeToken(r.Context(), parts[1])
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return false
+	}
+	if !valid {
+		s.legacyNodeAuthFailures.failed(attemptKey, s.now())
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		writeAPIError(w, http.StatusUnauthorized, "invalid_node_credential", "节点凭据无效或未配置", nil)
+		return false
+	}
+	if r.URL.Path == "/ws" {
+		s.legacyWebSocketAuthSuccess.Add(1)
+	} else {
+		s.legacyHTTPAuthSuccess.Add(1)
+	}
+	s.legacyLastUsedUnix.Store(s.now().Unix())
+	return true
+}
+
+func (s *server) authorizeLegacyNode(w http.ResponseWriter, r *http.Request, nodeID int64) bool {
+	node, err := s.store.GetNode(r.Context(), nodeID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		handleStoreError(w, err)
+		return false
+	}
+	if err != nil || !node.Enabled || !node.RuntimeConfigured {
+		writeAPIError(w, http.StatusForbidden, "invalid_node", "节点不存在、未配置或已停用", nil)
+		return false
+	}
+	return true
+}
+
+func optionalPositiveQueryID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return 0, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", name+" 必须是正整数", nil)
+		return 0, false
+	}
+	return value, true
 }
 
 func (s *server) xboardNodeMachineStatus(w http.ResponseWriter, r *http.Request) {

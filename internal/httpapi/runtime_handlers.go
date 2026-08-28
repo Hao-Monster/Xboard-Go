@@ -32,6 +32,7 @@ const (
 type nodeReportPayload struct {
 	MachineID int64               `json:"machine_id"`
 	NodeID    int64               `json:"node_id"`
+	NodeType  string              `json:"node_type"`
 	Token     string              `json:"token"`
 	ReportID  string              `json:"report_id"`
 	Traffic   map[string][2]int64 `json:"traffic"`
@@ -79,11 +80,15 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.hub != nil {
-		if node, nodeErr := s.store.GetNode(r.Context(), nodeID); nodeErr == nil && node.MachineID != nil {
-			if s.hub.hasMachineNode(*node.MachineID, nodeID) {
-				s.hub.NotifyNodeFull(r.Context(), *node.MachineID, nodeID)
-			} else {
-				s.hub.NotifyMachineNodes(r.Context(), *node.MachineID)
+		if node, nodeErr := s.store.GetNode(r.Context(), nodeID); nodeErr == nil {
+			machineID := int64(0)
+			if node.MachineID != nil {
+				machineID = *node.MachineID
+			}
+			if s.hub.hasNode(nodeID) {
+				s.hub.NotifyNodeFull(r.Context(), machineID, nodeID)
+			} else if machineID > 0 {
+				s.hub.NotifyMachineNodes(r.Context(), machineID)
 			}
 		}
 	}
@@ -98,8 +103,8 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) xboardNodeConfig(w http.ResponseWriter, r *http.Request) {
-	machineID, nodeID, ok := machineNodeQuery(w, r)
-	if !ok || !s.authenticateMachine(w, r, machineID) || !s.allowServerRequest(w, r, s.pullRequests, machineID) || !s.authorizeMachineNode(w, r, machineID, nodeID) {
+	_, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.pullRequests, requestIdentity) {
 		return
 	}
 	runtime, err := s.store.GetNodeRuntime(r.Context(), nodeID)
@@ -107,7 +112,12 @@ func (s *server) xboardNodeConfig(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	payload, err := nodeConfigObject(runtime, s.nodePushInterval, s.nodePullInterval)
+	settings, err := s.store.GetNodeAgentSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	payload, err := nodeConfigObject(runtime, settings.PushInterval, settings.PullInterval)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "invalid_runtime_config", "节点运行时配置无效", nil)
 		return
@@ -147,8 +157,8 @@ func nodeConfigObject(runtime store.NodeRuntime, pushInterval, pullInterval int)
 }
 
 func (s *server) xboardNodeUsers(w http.ResponseWriter, r *http.Request) {
-	machineID, nodeID, ok := machineNodeQuery(w, r)
-	if !ok || !s.authenticateMachine(w, r, machineID) || !s.allowServerRequest(w, r, s.pullRequests, machineID) || !s.authorizeMachineNode(w, r, machineID, nodeID) {
+	_, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.pullRequests, requestIdentity) {
 		return
 	}
 	if _, err := s.store.GetNodeRuntime(r.Context(), nodeID); err != nil {
@@ -173,11 +183,24 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONLimit(w, r, &payload, maxReportBody) {
 		return
 	}
-	if payload.MachineID < 1 || payload.NodeID < 1 {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 和 node_id 必须是正整数", nil)
+	if payload.NodeID < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "node_id 必须是正整数", nil)
 		return
 	}
-	if !s.authenticateMachine(w, r, payload.MachineID) || !s.allowServerRequest(w, r, s.reportRequests, payload.MachineID) || !s.authorizeMachineNode(w, r, payload.MachineID, payload.NodeID) {
+	if payload.MachineID < 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 不能是负数", nil)
+		return
+	}
+	legacyAuth := payload.MachineID == 0
+	requestIdentity := payload.MachineID
+	if legacyAuth {
+		if !s.authenticateLegacyNode(w, r, payload.NodeID) || !s.authorizeLegacyNode(w, r, payload.NodeID) {
+			return
+		}
+	} else if !s.authenticateMachine(w, r, payload.MachineID) || !s.authorizeMachineNode(w, r, payload.MachineID, payload.NodeID) {
+		return
+	}
+	if !s.allowServerRequest(w, r, s.reportRequests, requestIdentity) {
 		return
 	}
 	report, err := validateNodeReport(payload)
@@ -186,6 +209,7 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report.MachineID = payload.MachineID
+	report.LegacyAuth = legacyAuth
 	report.NodeID = payload.NodeID
 	report.Now = s.now()
 	result, err := s.store.ApplyNodeReport(r.Context(), report)
@@ -199,7 +223,110 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }
 
+func (s *server) xboardNodePush(w http.ResponseWriter, r *http.Request) {
+	legacyAuth, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.reportRequests, requestIdentity) {
+		return
+	}
+	var traffic map[string][2]int64
+	if !decodeJSONLimit(w, r, &traffic, maxReportBody) {
+		return
+	}
+	report, err := validateNodeReportWithPolicy(nodeReportPayload{Traffic: traffic}, false)
+	if err != nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), nil)
+		return
+	}
+	report.NodeID, report.LegacyAuth, report.Now = nodeID, legacyAuth, s.now()
+	if !legacyAuth {
+		report.MachineID = requestIdentity
+	}
+	s.applyNodeReportResponse(w, r, report)
+}
+
+func (s *server) xboardNodeAlive(w http.ResponseWriter, r *http.Request) {
+	legacyAuth, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.reportRequests, requestIdentity) {
+		return
+	}
+	var alive map[string][]string
+	if !decodeJSONLimit(w, r, &alive, maxReportBody) {
+		return
+	}
+	report, err := validateNodeReport(nodeReportPayload{Alive: alive})
+	if err != nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), nil)
+		return
+	}
+	report.NodeID, report.LegacyAuth, report.Now = nodeID, legacyAuth, s.now()
+	if !legacyAuth {
+		report.MachineID = requestIdentity
+	}
+	s.applyNodeReportResponse(w, r, report)
+}
+
+func (s *server) xboardNodeStatus(w http.ResponseWriter, r *http.Request) {
+	legacyAuth, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.reportRequests, requestIdentity) {
+		return
+	}
+	var status json.RawMessage
+	if !decodeJSONLimit(w, r, &status, 64*1024) {
+		return
+	}
+	report, err := validateNodeReport(nodeReportPayload{Status: status})
+	if err != nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), nil)
+		return
+	}
+	report.NodeID, report.LegacyAuth, report.Now = nodeID, legacyAuth, s.now()
+	if !legacyAuth {
+		report.MachineID = requestIdentity
+	}
+	s.applyNodeReportResponse(w, r, report)
+}
+
+func (s *server) xboardNodeAliveList(w http.ResponseWriter, r *http.Request) {
+	_, nodeID, requestIdentity, ok := s.authenticateNodeQuery(w, r)
+	if !ok || !s.allowServerRequest(w, r, s.pullRequests, requestIdentity) {
+		return
+	}
+	users, err := s.store.ListNodeRuntimeUsers(r.Context(), nodeID, s.now())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	userIDs := make([]int64, 0, len(users))
+	for _, user := range users {
+		if user.DeviceLimit > 0 {
+			userIDs = append(userIDs, user.ID)
+		}
+	}
+	alive, err := s.store.ListUserDevices(r.Context(), userIDs, s.now())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"alive": alive})
+}
+
+func (s *server) applyNodeReportResponse(w http.ResponseWriter, r *http.Request, report store.NodeReportInput) {
+	result, err := s.store.ApplyNodeReport(r.Context(), report)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if s.hub != nil {
+		s.hub.NotifyDeviceStates(r.Context(), result.DeviceUserIDs)
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
+}
+
 func validateNodeReport(payload nodeReportPayload) (store.NodeReportInput, error) {
+	return validateNodeReportWithPolicy(payload, true)
+}
+
+func validateNodeReportWithPolicy(payload nodeReportPayload, requireTrafficReportID bool) (store.NodeReportInput, error) {
 	normalizedReportID := ""
 	if payload.ReportID != "" {
 		parsedReportID, err := uuid.Parse(payload.ReportID)
@@ -208,7 +335,7 @@ func validateNodeReport(payload nodeReportPayload) (store.NodeReportInput, error
 		}
 		normalizedReportID = parsedReportID.String()
 	}
-	if len(payload.Traffic) > 0 && payload.ReportID == "" {
+	if requireTrafficReportID && len(payload.Traffic) > 0 && payload.ReportID == "" {
 		return store.NodeReportInput{}, errors.New("包含流量时 report_id 必填")
 	}
 	if len(payload.Traffic) > maxReportUsers || len(payload.Alive) > maxReportUsers || len(payload.Online) > maxReportUsers {
@@ -327,6 +454,30 @@ func machineNodeQuery(w http.ResponseWriter, r *http.Request) (int64, int64, boo
 		return 0, 0, false
 	}
 	return machineID, nodeID, true
+}
+
+func (s *server) authenticateNodeQuery(w http.ResponseWriter, r *http.Request) (bool, int64, int64, bool) {
+	nodeID, err := strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
+	if err != nil || nodeID < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "node_id 必须是正整数", nil)
+		return false, 0, 0, false
+	}
+	machineValue := r.URL.Query().Get("machine_id")
+	if machineValue == "" {
+		if !s.authenticateLegacyNode(w, r, nodeID) || !s.authorizeLegacyNode(w, r, nodeID) {
+			return false, 0, 0, false
+		}
+		return true, nodeID, 0, true
+	}
+	machineID, err := strconv.ParseInt(machineValue, 10, 64)
+	if err != nil || machineID < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 必须是正整数", nil)
+		return false, 0, 0, false
+	}
+	if !s.authenticateMachine(w, r, machineID) || !s.authorizeMachineNode(w, r, machineID, nodeID) {
+		return false, 0, 0, false
+	}
+	return false, nodeID, machineID, true
 }
 
 func (s *server) authorizeMachineNode(w http.ResponseWriter, r *http.Request, machineID, nodeID int64) bool {

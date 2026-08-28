@@ -61,6 +61,7 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}
 	handshakeRequest.Header.Set("Content-Type", "application/json")
 	handshakeRequest.Header.Set("Authorization", "Bearer "+credential.Token)
+	handshakeRequest.Host = "attacker.example.test"
 	handshakeResponse, err := http.DefaultClient.Do(handshakeRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +76,7 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	if err := json.NewDecoder(handshakeResponse.Body).Decode(&handshake); err != nil {
 		t.Fatal(err)
 	}
-	if handshakeResponse.StatusCode != http.StatusOK || !handshake.WebSocket.Enabled || handshake.WebSocket.URL != "ws"+strings.TrimPrefix(server.URL, "http")+"/ws" {
+	if handshakeResponse.StatusCode != http.StatusOK || !handshake.WebSocket.Enabled || handshake.WebSocket.URL != "wss://panel.example.test/ws" {
 		t.Fatalf("unexpected handshake: status=%d payload=%#v", handshakeResponse.StatusCode, handshake)
 	}
 
@@ -174,8 +175,13 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetNodeEnabled(ctx, machine.ID, newNode.ID, assignedNode.Revision, false, now); err != nil {
-		t.Fatal(err)
+	disableAssignedNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+		`{"targets":[{"id":%d,"revision":%d}],"enabled":false}`, newNode.ID, assignedNode.Revision))
+	if disableAssignedNode.Code != http.StatusOK {
+		t.Fatalf("disable assigned node status=%d body=%s", disableAssignedNode.Code, disableAssignedNode.Body)
+	}
+	if event := readWSEvent(t, second); event.Event != "sync.devices" {
+		t.Fatalf("disabled-node device cleanup event = %q, want sync.devices", event.Event)
 	}
 	reconciled := readWSEvent(t, second)
 	if reconciled.Event != "sync.nodes" {
@@ -187,9 +193,6 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	decodeWSData(t, reconciled.Data, &reconciledData)
 	if len(reconciledData.Nodes) != 1 || reconciledData.Nodes[0].ID != node.ID {
 		t.Fatalf("reconciled nodes = %#v", reconciledData.Nodes)
-	}
-	if event := readWSEvent(t, second); event.Event != "sync.devices" {
-		t.Fatalf("removed-node cleanup event = %q, want sync.devices", event.Event)
 	}
 	waitFor(t, 2*time.Second, func() bool {
 		devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now)
@@ -204,6 +207,186 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
 	if _, _, err := second.ReadMessage(); err == nil {
 		t.Fatal("disabled machine websocket remained readable")
+	}
+}
+
+func TestLegacyNodeWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettingChange(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	settings, err := database.GetNodeAgentSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyToken := "legacy-websocket-token-1234567890"
+	settings, err = database.UpdateNodeAgentSettings(ctx, store.UpdateNodeAgentSettingsInput{
+		Revision: settings.Revision, ServerToken: &legacyToken, PullInterval: 31, PushInterval: 29,
+		WebSocketEnabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "legacy-ws-node", Type: "vless", Host: "legacy-ws.example.test", Port: "443", Show: true, Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "legacy-ws-user@example.test", PasswordHash: "test-password-hash",
+		UUID: "741aec42-0f04-4f16-b68f-3619192091e0", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := dialLegacyNodeWebSocket(t, server.URL, node.ID, legacyToken)
+	defer first.Close()
+	assertInitialLegacySync(t, first, node.ID, user.ID)
+	second := dialLegacyNodeWebSocket(t, server.URL, node.ID, legacyToken)
+	defer second.Close()
+	assertInitialLegacySync(t, second, node.ID, user.ID)
+	_ = first.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := first.ReadMessage(); err == nil {
+		t.Fatal("first legacy connection survived replacement")
+	}
+	if err := second.WriteJSON(map[string]any{
+		"event": "report.devices", "data": map[string]any{fmt.Sprint(user.ID): []string{"192.0.2.71"}},
+	}); err != nil {
+		t.Fatalf("write legacy device report: %v", err)
+	}
+	deviceEvent := readWSEvent(t, second)
+	if deviceEvent.Event != "sync.devices" {
+		t.Fatalf("legacy device report event=%q", deviceEvent.Event)
+	}
+	devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now)
+	if err != nil || len(devices[user.ID]) != 1 || devices[user.ID][0] != "192.0.2.71" {
+		t.Fatalf("legacy websocket devices=%#v err=%v", devices, err)
+	}
+
+	admin := loginAdmin(t, api)
+	definition, err := database.GetAdminNodeDefinition(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+		`{"targets":[{"id":%d,"revision":%d}],"enabled":false}`, node.ID, definition.Revision))
+	if disableNode.Code != http.StatusOK {
+		t.Fatalf("disable legacy node status=%d body=%s", disableNode.Code, disableNode.Body)
+	}
+	_ = second.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := second.ReadMessage(); err == nil {
+		t.Fatal("legacy connection survived node disable")
+	}
+	reenableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+		`{"targets":[{"id":%d,"revision":%d}],"enabled":true}`, node.ID, definition.Revision+1))
+	if reenableNode.Code != http.StatusOK {
+		t.Fatalf("reenable legacy node status=%d body=%s", reenableNode.Code, reenableNode.Body)
+	}
+	active := dialLegacyNodeWebSocket(t, server.URL, node.ID, legacyToken)
+	defer active.Close()
+	assertInitialLegacySync(t, active, node.ID, user.ID)
+
+	rotate := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+		"revision":%d,"generate_server_token":true,"server_pull_interval":31,"server_push_interval":29,
+		"device_limit_mode":0,"server_ws_enable":true
+	}`, settings.Revision))
+	if rotate.Code != http.StatusOK {
+		t.Fatalf("rotate token status=%d body=%s", rotate.Code, rotate.Body)
+	}
+	rotated := decodeNodeAgentSettings(t, rotate.Body.Bytes())
+	_ = active.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := active.ReadMessage(); err == nil {
+		t.Fatal("legacy connection survived token rotation")
+	}
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/ws?node_id=%d", node.ID)
+	_, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + legacyToken}})
+	if err == nil || response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old token dial response=%v err=%v", response, err)
+	}
+
+	current := dialLegacyNodeWebSocket(t, server.URL, node.ID, rotated.IssuedToken)
+	defer current.Close()
+	assertInitialLegacySync(t, current, node.ID, user.ID)
+	disable := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+		"revision":%d,"server_pull_interval":31,"server_push_interval":29,
+		"device_limit_mode":0,"server_ws_enable":false
+	}`, rotated.Revision))
+	if disable.Code != http.StatusOK {
+		t.Fatalf("disable websocket status=%d body=%s", disable.Code, disable.Body)
+	}
+	_ = current.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := current.ReadMessage(); err == nil {
+		t.Fatal("legacy connection survived websocket disable")
+	}
+	_, response, err = websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + rotated.IssuedToken}})
+	if err == nil || response == nil || response.StatusCode != http.StatusNotFound {
+		t.Fatalf("disabled websocket dial response=%v err=%v", response, err)
+	}
+}
+
+func TestLegacyNodeWebSocketFencesSharedSettingsChangeWithoutCoordinationEvent(t *testing.T) {
+	database := cloneHTTPAPITestDatabase(t)
+	api, cancel := newCoordinatedWebSocketAPI(t, database, nil)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	settings, err := database.GetNodeAgentSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyToken := "legacy-shared-revision-token-1234567890"
+	settings, err = database.UpdateNodeAgentSettings(ctx, store.UpdateNodeAgentSettingsInput{
+		Revision: settings.Revision, ServerToken: &legacyToken, PullInterval: 31, PushInterval: 29,
+		WebSocketEnabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "legacy-shared-revision", Type: "vless", Host: "revision.example.test", Port: "443", Show: true, Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "legacy-shared-revision@example.test", PasswordHash: "hash",
+		UUID: "ed45a4e3-01c8-409d-8528-28cc2217aac1", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	connection := dialLegacyNodeWebSocket(t, server.URL, node.ID, legacyToken)
+	defer connection.Close()
+	assertInitialLegacySync(t, connection, node.ID, user.ID)
+	rotatedToken := "legacy-shared-revision-rotated-123456"
+	if _, err := database.UpdateNodeAgentSettings(ctx, store.UpdateNodeAgentSettingsInput{
+		Revision: settings.Revision, ServerToken: &rotatedToken, PullInterval: 31, PushInterval: 29,
+		WebSocketEnabled: true,
+	}, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(4 * time.Second))
+	if _, _, err := connection.ReadMessage(); err == nil {
+		t.Fatal("legacy websocket survived a shared settings revision change without a coordination event")
 	}
 }
 
@@ -719,7 +902,7 @@ func TestWebSocketUnregisterFencesDeviceCleanupAgainstReconnect(t *testing.T) {
 	}
 
 	for iteration := range 100 {
-		hub := newWSHub(database, fixedNow, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, 60, 60, nil)
+		hub := newWSHub(database, fixedNow, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 		old := &wsConnection{machineID: machine.ID, hub: hub, nodeIDs: map[int64]struct{}{node.ID: {}}}
 		hub.register(old)
 		if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{
@@ -818,6 +1001,61 @@ func dialMachineWebSocket(t *testing.T, serverURL string, machineID int64, token
 		t.Fatalf("websocket dial: %v", err)
 	}
 	return connection
+}
+
+func dialLegacyNodeWebSocket(t *testing.T, serverURL string, nodeID int64, token string) *websocket.Conn {
+	t.Helper()
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + fmt.Sprintf("/ws?node_id=%d", nodeID)
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + token}})
+	if err != nil {
+		if response != nil {
+			t.Fatalf("legacy websocket dial status=%d err=%v", response.StatusCode, err)
+		}
+		t.Fatalf("legacy websocket dial: %v", err)
+	}
+	return connection
+}
+
+func assertInitialLegacySync(t *testing.T, connection *websocket.Conn, nodeID, userID int64) {
+	assertInitialLegacySyncWithIntervals(t, connection, nodeID, userID, 29, 31)
+}
+
+func assertInitialLegacySyncWithIntervals(t *testing.T, connection *websocket.Conn, nodeID, userID int64, pushInterval, pullInterval int) {
+	t.Helper()
+	auth := readWSEvent(t, connection)
+	var authData struct {
+		NodeID int64 `json:"node_id"`
+	}
+	decodeWSData(t, auth.Data, &authData)
+	if auth.Event != "auth.success" || authData.NodeID != nodeID {
+		t.Fatalf("legacy auth event=%q data=%#v", auth.Event, authData)
+	}
+	config := readWSEvent(t, connection)
+	users := readWSEvent(t, connection)
+	if config.Event != "sync.config" || users.Event != "sync.users" {
+		t.Fatalf("legacy initial sync=%q/%q", config.Event, users.Event)
+	}
+	var configData struct {
+		NodeID int64 `json:"node_id"`
+		Config struct {
+			BaseConfig struct {
+				PushInterval int `json:"push_interval"`
+				PullInterval int `json:"pull_interval"`
+			} `json:"base_config"`
+		} `json:"config"`
+	}
+	decodeWSData(t, config.Data, &configData)
+	if configData.NodeID != nodeID || configData.Config.BaseConfig.PushInterval != pushInterval || configData.Config.BaseConfig.PullInterval != pullInterval {
+		t.Fatalf("legacy config sync=%#v", configData)
+	}
+	var usersData struct {
+		NodeID int64               `json:"node_id"`
+		Users  []store.RuntimeUser `json:"users"`
+	}
+	decodeWSData(t, users.Data, &usersData)
+	if usersData.NodeID != nodeID || len(usersData.Users) != 1 || usersData.Users[0].ID != userID {
+		t.Fatalf("legacy users sync=%#v", usersData)
+	}
 }
 
 func assertInitialMachineSync(t *testing.T, connection *websocket.Conn, machineID, nodeID, userID int64) {

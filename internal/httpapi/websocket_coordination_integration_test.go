@@ -236,6 +236,82 @@ func TestRedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *
 	}
 }
 
+func TestRedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances(t *testing.T) {
+	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
+	if redisURL == "" {
+		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
+	}
+	database := cloneHTTPAPITestDatabase(t)
+	prefix := "xboard-go-httpapi-legacy:" + uuid.NewString() + ":"
+	firstCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "legacy-first")
+	secondCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "legacy-second")
+	firstAPI, firstCancel := newCoordinatedWebSocketAPI(t, database, firstCoordinator)
+	defer firstCancel()
+	secondAPI, secondCancel := newCoordinatedWebSocketAPI(t, database, secondCoordinator)
+	defer secondCancel()
+	firstServer := httptest.NewServer(firstAPI)
+	defer firstServer.Close()
+	secondServer := httptest.NewServer(secondAPI)
+	defer secondServer.Close()
+
+	ctx := context.Background()
+	now := fixedNow()
+	settings, err := database.GetNodeAgentSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := "redis-legacy-node-token-1234567890"
+	settings, err = database.UpdateNodeAgentSettings(ctx, store.UpdateNodeAgentSettingsInput{
+		Revision: settings.Revision, ServerToken: &token, PullInterval: 41, PushInterval: 37, WebSocketEnabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "redis-legacy-node", Type: "vless", Host: "redis-legacy.example.test", Port: "443", Show: true, Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "redis-legacy-user@example.test", PasswordHash: "test-password-hash",
+		UUID: "8ce2ff89-3970-4c9e-91df-8682581d7da9", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := dialLegacyNodeWebSocket(t, firstServer.URL, node.ID, token)
+	defer first.Close()
+	assertInitialLegacySyncWithIntervals(t, first, node.ID, user.ID, 37, 41)
+	second := dialLegacyNodeWebSocket(t, secondServer.URL, node.ID, token)
+	defer second.Close()
+	assertInitialLegacySyncWithIntervals(t, second, node.ID, user.ID, 37, 41)
+	_ = first.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := first.ReadMessage(); err == nil {
+		t.Fatal("first instance legacy connection survived replacement")
+	}
+
+	admin := loginAdmin(t, firstAPI)
+	rotated := admin.request(t, firstAPI, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+		"revision":%d,"generate_server_token":true,"server_pull_interval":41,"server_push_interval":37,
+		"device_limit_mode":0,"server_ws_enable":true
+	}`, settings.Revision))
+	if rotated.Code != http.StatusOK {
+		t.Fatalf("rotate coordinated legacy token status=%d body=%s", rotated.Code, rotated.Body)
+	}
+	_ = second.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := second.ReadMessage(); err == nil {
+		t.Fatal("second instance legacy connection survived cross-instance token rotation")
+	}
+}
+
 func runtimeUsersContain(users []store.RuntimeUser, userID int64) bool {
 	for _, user := range users {
 		if user.ID == userID {

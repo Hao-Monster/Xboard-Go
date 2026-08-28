@@ -527,6 +527,7 @@ func (s *server) publishAdminNodeMutation(r *http.Request, mutation store.AdminN
 	}
 	if len(mutation.ClearNodeIDs) > 0 {
 		s.hub.ClearNodeDevices(r.Context(), mutation.ClearNodeIDs)
+		s.hub.DisconnectNodes(mutation.ClearNodeIDs, "node disabled or removed")
 	}
 	if len(mutation.AffectedUserIDs) > 0 {
 		s.hub.NotifyDeviceStates(r.Context(), mutation.AffectedUserIDs)

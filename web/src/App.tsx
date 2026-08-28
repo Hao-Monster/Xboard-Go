@@ -21,6 +21,7 @@ import { CouponManagementPage } from "./features/coupons/CouponManagementPage";
 const api = new APIClient();
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
+const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -42,7 +43,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -176,6 +177,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => setPage("system")}>系统状态</button>
           <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}>系统设置</button>
           <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => setPage("subscriptions")}>订阅设置</button>
+          <button className="nav-link" aria-current={page === "node-settings" ? "page" : undefined} onClick={() => setPage("node-settings")}>节点配置</button>
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
           <button className="nav-link" aria-current={page === "nodes" ? "page" : undefined} onClick={() => setPage("nodes")}>节点管理</button>
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>套餐管理</button>
@@ -201,6 +203,7 @@ export function App() {
       {page === "system" && <SystemOperationsPage api={api} />}
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
       {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
+      {page === "node-settings" && <Suspense fallback={<div className="app-loading">正在加载节点配置…</div>}><NodeAgentSettingsPage api={api} /></Suspense>}
       {page === "servers" && <ServerManagementPage api={api} />}
       {page === "nodes" && <Suspense fallback={<div className="app-loading">正在加载节点管理…</div>}><NodeManagementPage api={api} /></Suspense>}
       {page === "plans" && <PlanManagementPage api={api} />}

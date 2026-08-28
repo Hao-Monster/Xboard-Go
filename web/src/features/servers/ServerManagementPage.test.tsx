@@ -241,6 +241,8 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     phase: "active"
   });
   return {
+    getNodeAgentSettings: vi.fn(),
+    updateNodeAgentSettings: vi.fn(),
     listMachines: vi.fn().mockResolvedValue([machine]),
     createMachine: vi.fn().mockResolvedValue(undefined),
     updateMachine: vi.fn().mockResolvedValue(undefined),

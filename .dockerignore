@@ -1,5 +1,6 @@
 .git
 .github
+.local
 docs-dev
 docs-requirements
 docs-test

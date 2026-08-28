@@ -60,6 +60,34 @@ func TestRedisCoordinatorClaimsFencesRenewsAndConditionallyReleases(t *testing.T
 	}
 }
 
+func TestRedisCoordinatorClaimsAndFencesLegacyNodeLease(t *testing.T) {
+	prefix := testPrefix()
+	first := newTestCoordinatorAt(t, "legacy-first", prefix)
+	second := newTestCoordinatorAt(t, "legacy-second", prefix)
+	ctx := context.Background()
+	firstID := mustConnectionID(t, first)
+	secondID := mustConnectionID(t, second)
+	if err := first.ClaimNode(ctx, 71, firstID); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := first.OwnsNode(ctx, 71, firstID); err != nil || !owned {
+		t.Fatalf("first OwnsNode()=(%t,%v)", owned, err)
+	}
+	if err := second.ClaimNode(ctx, 71, secondID); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := first.OwnsNode(ctx, 71, firstID); err != nil || owned {
+		t.Fatalf("stale OwnsNode()=(%t,%v)", owned, err)
+	}
+	renewed, err := second.RenewNodes(ctx, []NodeLease{{NodeID: 71, ConnectionID: secondID}, {NodeID: 71, ConnectionID: firstID}})
+	if err != nil || len(renewed) != 2 || !renewed[0] || renewed[1] {
+		t.Fatalf("RenewNodes()=(%v,%v)", renewed, err)
+	}
+	if released, err := second.ReleaseNodeIfOwned(ctx, 71, secondID); err != nil || !released {
+		t.Fatalf("ReleaseNodeIfOwned()=(%t,%v)", released, err)
+	}
+}
+
 func TestRedisCoordinatorFencesMachineMembershipChanges(t *testing.T) {
 	prefix := testPrefix()
 	first := newTestCoordinatorAt(t, "membership-first", prefix)

@@ -823,6 +823,59 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go node configuration preserve six settings while exposing only the five observable controls", async ({ browser }) => {
+  const legacyContext = await browser.newContext();
+  const goContext = await browser.newContext();
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const configResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    const authorization = (await configResponse).request().headers().authorization;
+    expect(authorization).toBeTruthy();
+    await legacyPage.getByRole("link", { name: "节点配置", exact: true }).filter({ visible: true }).click();
+    for (const field of ["通讯密钥", "节点拉取动作轮询间隔", "节点推送动作轮询间隔", "启用 WebSocket 通信", "WebSocket 地址"]) {
+      await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), `legacy node setting ${field}`).toBeVisible();
+    }
+    await expect(legacyPage.getByText("设备限制模式", { exact: true })).toHaveCount(0);
+    if (!authorization) throw new Error("legacy administrator authorization is missing");
+    const legacyResponse = await legacyPage.request.get(legacyAdminAPI("/config/fetch"), { headers: { authorization } });
+    expect(legacyResponse.status()).toBe(200);
+    const legacyServer = readObjectProperty(readProperty(await legacyResponse.json() as unknown, "data"), "server");
+    for (const key of ["server_token", "server_pull_interval", "server_push_interval", "device_limit_mode", "server_ws_enable", "server_ws_url"]) {
+      expect(legacyServer, `legacy server setting ${key}`).toHaveProperty(key);
+    }
+
+    await loginGo(goPage);
+    await goPage.getByRole("button", { name: "节点配置", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "节点配置" })).toBeVisible();
+    for (const field of ["通讯密钥操作", "拉取间隔（秒）", "推送间隔（秒）", "WebSocket 地址"]) {
+      await expect(goPage.getByLabel(field, { exact: true }), `Go node setting ${field}`).toBeVisible();
+    }
+    await expect(goPage.getByLabel("设备限制模式", { exact: true })).toHaveCount(0);
+    await expect(goPage.getByRole("checkbox", { name: "启用节点 WebSocket" })).toBeVisible();
+    const goResponse = await goAdminRequest(goPage, "/api/v1/admin/node-agent-settings", "GET");
+    expect(goResponse.status, goResponse.body).toBe(200);
+    expect(goResponse.body).not.toContain("server_token_hash");
+    const goSettings = readObjectProperty(JSON.parse(goResponse.body) as unknown, "data");
+    expect(goSettings).not.toHaveProperty("server_token");
+    expect(Boolean(readProperty(goSettings, "server_token_configured"))).toBe((readStringProperty(legacyServer, "server_token") ?? "") !== "");
+    expect(Number(readProperty(goSettings, "server_pull_interval"))).toBe(Number(readProperty(legacyServer, "server_pull_interval")));
+    expect(Number(readProperty(goSettings, "server_push_interval"))).toBe(Number(readProperty(legacyServer, "server_push_interval")));
+    expect(Number(readProperty(goSettings, "device_limit_mode"))).toBe(Number(readProperty(legacyServer, "device_limit_mode")));
+    expect(Boolean(readProperty(goSettings, "server_ws_enable"))).toBe(Boolean(readProperty(legacyServer, "server_ws_enable")));
+    expect(readStringProperty(goSettings, "server_ws_url") ?? "").toBe(readStringProperty(legacyServer, "server_ws_url") ?? "");
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go CAPTCHA policies preserve the three observable provider contracts", async ({ browser }) => {
   const legacyContext = await browser.newContext();
   const goContext = await browser.newContext();

@@ -28,6 +28,25 @@ func TestDecodeEventRejectsMalformedOrUnboundedInput(t *testing.T) {
 	}
 }
 
+func TestDecodeEventAcceptsBoundedGlobalDisconnectCommands(t *testing.T) {
+	for _, kind := range []string{EventDisconnectLegacy, EventDisconnectAll} {
+		decoded, err := decodeEvent(`{"version":1,"kind":"` + kind + `","source":"peer","reason":"settings changed"}`)
+		if err != nil || decoded.Kind != kind || decoded.Reason != "settings changed" {
+			t.Fatalf("decodeEvent(%s)=(%#v,%v)", kind, decoded, err)
+		}
+	}
+	if _, err := decodeEvent(`{"version":1,"kind":"disconnect_legacy","source":"peer","node_ids":[1]}`); err == nil {
+		t.Fatal("global disconnect accepted a targeted node")
+	}
+}
+
+func TestDecodeEventAcceptsTargetedNodeDisconnect(t *testing.T) {
+	decoded, err := decodeEvent(`{"version":1,"kind":"disconnect_nodes","source":"peer","node_ids":[17,23],"reason":"node disabled"}`)
+	if err != nil || decoded.Kind != EventDisconnectNodes || len(decoded.NodeIDs) != 2 || decoded.NodeIDs[0] != 17 {
+		t.Fatalf("decodeEvent()=(%#v,%v)", decoded, err)
+	}
+}
+
 func TestValidateLeaseNormalizesIDsAndRejectsInvalidIdentity(t *testing.T) {
 	nodes, err := validateLease(7, []int64{9, 3, 9, 5}, "revision:0123456789abcdef", false)
 	if err != nil {
