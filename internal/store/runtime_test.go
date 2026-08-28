@@ -30,6 +30,9 @@ func TestNodeRuntimeUsersPreserveAvailabilityRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNode() error = %v", err)
 	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE nodes SET runtime_config = NULL WHERE id = ?`, node.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.GetNodeRuntime(ctx, node.ID); !errors.Is(err, ErrRuntimeNotConfigured) {
 		t.Fatalf("GetNodeRuntime(unconfigured) error = %v, want ErrRuntimeNotConfigured", err)
 	}
@@ -102,7 +105,7 @@ func TestSchemaV2MigrationPreservesFirstSliceData(t *testing.T) {
 		t.Fatalf("Migrate(v1 to current) error = %v", err)
 	}
 	node, err := database.GetNode(ctx, nodeID)
-	if err != nil || node.Name != "preserved-node" || node.MachineID == nil || *node.MachineID != machineID || node.Rate != 1 || node.RuntimeConfigured {
+	if err != nil || node.Name != "preserved-node" || node.MachineID == nil || *node.MachineID != machineID || node.Rate != 1 || !node.RuntimeConfigured {
 		t.Fatalf("migrated node = %#v, err=%v", node, err)
 	}
 	var version int

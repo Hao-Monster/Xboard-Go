@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -28,29 +27,15 @@ var supportedNodeTypes = map[string]struct{}{
 var nodePortPattern = regexp.MustCompile(`^(\d{1,5})(?:-(\d{1,5}))?$`)
 
 func (s *Store) CreateNode(ctx context.Context, input CreateNodeInput, now time.Time) (Node, error) {
-	defer s.lockWrite()()
-	input.Name = strings.TrimSpace(input.Name)
-	input.Type = strings.ToLower(strings.TrimSpace(input.Type))
-	input.Host = strings.TrimSpace(input.Host)
-	if input.Name == "" || len(input.Name) > 255 || input.Host == "" || len(input.Host) > 255 || !validNodePort(input.Port) {
-		return Node{}, fmt.Errorf("%w: invalid node fields", ErrInvalidInput)
-	}
-	if _, ok := supportedNodeTypes[input.Type]; !ok {
-		return Node{}, fmt.Errorf("%w: unsupported node type", ErrInvalidInput)
-	}
-
-	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO nodes (name, type, host, port, show, enabled, sort, machine_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, input.Name, input.Type, input.Host, input.Port, input.Show, input.Enabled, input.Sort, input.MachineID, now.Unix(), now.Unix())
+	definition, err := NewBasicAdminNodeDefinitionInput(input)
 	if err != nil {
-		return Node{}, fmt.Errorf("create node: %w", err)
+		return Node{}, err
 	}
-	nodeID, err := result.LastInsertId()
+	created, _, err := s.CreateAdminNodeDefinition(ctx, definition, now)
 	if err != nil {
-		return Node{}, fmt.Errorf("read node id: %w", err)
+		return Node{}, err
 	}
-	return s.GetNode(ctx, nodeID)
+	return created.Node, nil
 }
 
 func validNodePort(value string) bool {

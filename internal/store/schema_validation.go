@@ -188,6 +188,26 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 42 {
+		rows, err := database.QueryContext(ctx, `
+			SELECT n.id FROM nodes n
+			LEFT JOIN node_protocol_definitions d ON d.node_id = n.id
+			WHERE d.node_id IS NULL LIMIT 1
+		`)
+		if err != nil {
+			return fmt.Errorf("validate node protocol definition coverage: %w", err)
+		}
+		missing := rows.Next()
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("validate node protocol definition coverage: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("validate node protocol definition coverage: %w", err)
+		}
+		if missing {
+			return fmt.Errorf("Xboard schema version %d contains a node without a protocol definition", schemaVersion)
+		}
+	}
 	return nil
 }
 

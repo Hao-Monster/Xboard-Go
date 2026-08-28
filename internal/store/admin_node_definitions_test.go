@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,7 +40,25 @@ func TestBasicAdminNodeDefinitionDefaultsValidateForEveryProtocol(t *testing.T) 
 	}
 }
 
-func TestSchemaV41PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) {
+func TestCreateNodeMaintainsSchemaV42DefinitionInvariant(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	node, err := database.CreateNode(ctx, CreateNodeInput{
+		Name: "Compact create", Type: "vless", Host: "compact.test", Port: "443", Show: true, Enabled: true,
+	}, time.Date(2026, 8, 28, 14, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := database.GetAdminNodeDefinition(ctx, node.ID)
+	if err != nil || detail.ServerPort != 443 || detail.ListenAddress != "0.0.0.0" || !detail.RuntimeConfigured {
+		t.Fatalf("compact node detail=%#v error=%v", detail, err)
+	}
+	if err := database.ValidateCurrentSchema(ctx); err != nil {
+		t.Fatalf("ValidateCurrentSchema() error = %v", err)
+	}
+}
+
+func TestSchemaV42PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)
@@ -48,8 +67,9 @@ func TestSchemaV41PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) 
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
-		INSERT INTO node_protocol_definitions (node_id, server_port, protocol_settings_json, configured_rate_micros)
-		VALUES (?, 8443, '{"tls":0}', 1250000)
+		UPDATE node_protocol_definitions
+		SET server_port = 8443, protocol_settings_json = '{"tls":0}', configured_rate_micros = 1250000
+		WHERE node_id = ?
 	`, node.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +80,7 @@ func TestSchemaV41PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) 
 		t.Fatalf("prepare v40 database: %v", err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate(v40 to v41) error = %v", err)
+		t.Fatalf("Migrate(v40 to v42) error = %v", err)
 	}
 	var listenAddress, runtime string
 	if err := database.db.QueryRowContext(ctx, `
@@ -73,8 +93,225 @@ func TestSchemaV41PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) 
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 41 || listenAddress != "0.0.0.0" || runtime != `{"protocol":"vless","server_port":8443,"marker":"v40"}` {
+	if version != 42 || listenAddress != "0.0.0.0" || runtime != `{"protocol":"vless","server_port":8443,"marker":"v40"}` {
 		t.Fatalf("migration result version=%d listen=%q runtime=%s", version, listenAddress, runtime)
+	}
+}
+
+func TestSchemaV42BackfillsV40NodesMissingProtocolDefinitions(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 28, 18, 0, 0, 0, time.UTC)
+	protocols := []string{"shadowsocks", "vmess", "trojan", "hysteria", "vless", "tuic", "socks", "naive", "http", "mieru", "anytls"}
+	created := make([]Node, 0, len(protocols))
+	for index, protocol := range protocols {
+		startPort := 30_000 + index
+		node, err := database.CreateNode(ctx, CreateNodeInput{
+			Name: "Historical " + protocol, Type: protocol, Host: protocol + ".upgrade.test",
+			Port: fmt.Sprintf("%d-%d", startPort, startPort+1), Show: index%2 == 0, Enabled: true, Sort: index,
+		}, now.Add(time.Duration(index)*time.Second))
+		if err != nil {
+			t.Fatalf("CreateNode(%s) error = %v", protocol, err)
+		}
+		created = append(created, node)
+	}
+	legacyRuntime := `{"protocol":"shadowsocks","listen_ip":"::","server_port":18443,"network":null,"networkSettings":null,"cipher":"aes-256-gcm","plugin":"obfs","plugin_opts":"obfs=http"}`
+	if _, err := database.db.ExecContext(ctx, `
+		DELETE FROM node_protocol_definitions;
+		UPDATE nodes SET runtime_config = NULL;
+		UPDATE nodes SET traffic_u = 123, traffic_d = 456, admin_revision = 7,
+			rate_micros = 1250000, runtime_config = ? WHERE id = ?;
+		ALTER TABLE node_protocol_definitions DROP COLUMN listen_address;
+		PRAGMA user_version = 40;
+	`, legacyRuntime, created[0].ID); err != nil {
+		t.Fatalf("prepare v40 database: %v", err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(v40 to v42) error = %v", err)
+	}
+
+	for index, node := range created {
+		detail, err := database.GetAdminNodeDefinition(ctx, node.ID)
+		if err != nil {
+			t.Fatalf("GetAdminNodeDefinition(%s) error = %v", protocols[index], err)
+		}
+		startPort := 30_000 + index
+		wantRevision := node.Revision
+		if index == 0 {
+			wantRevision = 7
+		}
+		wantServerPort, wantListenAddress := startPort, "0.0.0.0"
+		if index == 0 {
+			wantServerPort, wantListenAddress = 18443, "::"
+		}
+		if detail.Type != protocols[index] || detail.ServerPort != wantServerPort || detail.ListenAddress != wantListenAddress ||
+			len(detail.ProtocolSettings) == 0 || detail.Revision != wantRevision {
+			t.Fatalf("backfilled %s definition = %#v", protocols[index], detail)
+		}
+		var runtimeJSON string
+		if err := database.db.QueryRowContext(ctx, `SELECT runtime_config FROM nodes WHERE id = ?`, node.ID).Scan(&runtimeJSON); err != nil {
+			t.Fatalf("read %s runtime: %v", protocols[index], err)
+		}
+		if index == 0 && runtimeJSON != legacyRuntime {
+			t.Fatalf("historical runtime changed: got %s want %s", runtimeJSON, legacyRuntime)
+		}
+		var runtime map[string]any
+		if err := json.Unmarshal([]byte(runtimeJSON), &runtime); err != nil {
+			t.Fatalf("decode %s runtime: %v", protocols[index], err)
+		}
+		if runtime["protocol"] != protocols[index] || runtime["listen_ip"] != wantListenAddress || runtime["server_port"] != float64(wantServerPort) {
+			t.Fatalf("backfilled %s runtime = %#v", protocols[index], runtime)
+		}
+		if index == 0 {
+			var settings map[string]any
+			if err := json.Unmarshal(detail.ProtocolSettings, &settings); err != nil {
+				t.Fatal(err)
+			}
+			if settings["cipher"] != "aes-256-gcm" || settings["plugin"] != "obfs" || detail.Rate != 1.25 {
+				t.Fatalf("historical runtime fields were not recovered: detail=%#v settings=%#v", detail, settings)
+			}
+		}
+	}
+	first, err := database.GetNode(ctx, created[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Revision != 7 || first.TrafficUpload != 123 || first.TrafficDownload != 456 {
+		t.Fatalf("historical counters changed: %#v", first)
+	}
+	var version int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 42 {
+		t.Fatalf("schema version = %d, want 42", version)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("second Migrate() error = %v", err)
+	}
+	var definitions int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_protocol_definitions`).Scan(&definitions); err != nil {
+		t.Fatal(err)
+	}
+	if definitions != len(protocols) {
+		t.Fatalf("node definitions after idempotent migration = %d, want %d", definitions, len(protocols))
+	}
+}
+
+func TestSchemaV42BackfillRollsBackUnsupportedHistoricalNode(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 28, 18, 30, 0, 0, time.UTC).Unix()
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO nodes (name, type, host, port, show, enabled, sort, created_at, updated_at)
+		VALUES ('Unsupported historical node', 'unknown', 'unknown.test', '443', 1, 1, 0, ?, ?)
+	`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 41`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err == nil || !strings.Contains(err.Error(), "prepare protocol definition") {
+		t.Fatalf("Migrate() error = %v, want unsupported historical node", err)
+	}
+	var version, definitions int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_protocol_definitions`).Scan(&definitions); err != nil {
+		t.Fatal(err)
+	}
+	if version != 41 || definitions != 0 {
+		t.Fatalf("failed migration was not atomic: version=%d definitions=%d", version, definitions)
+	}
+}
+
+func TestSchemaV42BackfillCrossesBoundedBatchBoundary(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 28, 18, 45, 0, 0, time.UTC).Unix()
+	if _, err := database.db.ExecContext(ctx, `
+		WITH RECURSIVE sequence(value) AS (
+			SELECT 1 UNION ALL SELECT value + 1 FROM sequence WHERE value < 257
+		)
+		INSERT INTO nodes (name, type, host, port, show, enabled, sort, created_at, updated_at)
+		SELECT printf('Batch node %d', value), 'vless', printf('batch-%d.test', value), '443', 1, 1, value, ?, ?
+		FROM sequence
+	`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 41`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(257 nodes) error = %v", err)
+	}
+	var definitions, runtimes int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_protocol_definitions`).Scan(&definitions); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE runtime_config IS NOT NULL`).Scan(&runtimes); err != nil {
+		t.Fatal(err)
+	}
+	if definitions != 257 || runtimes != 257 {
+		t.Fatalf("bounded backfill definitions=%d runtimes=%d, want 257/257", definitions, runtimes)
+	}
+}
+
+func TestSchemaV42BackfillPreservesNonCanonicalLegacyRuntime(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 28, 18, 50, 0, 0, time.UTC)
+	node, err := database.CreateNode(ctx, CreateNodeInput{
+		Name: "Hand-written runtime", Type: "vless", Host: "handwritten.test", Port: "443", Show: true, Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := `{"protocol":"vless","listen_ip":"not-an-ip","server_port":9443,"extension":{"preserve":true}}`
+	if _, err := database.db.ExecContext(ctx, `DELETE FROM node_protocol_definitions WHERE node_id = ?`, node.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE nodes SET runtime_config = ? WHERE id = ?`, runtime, node.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 41`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate(non-canonical runtime) error = %v", err)
+	}
+	detail, err := database.GetAdminNodeDefinition(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preserved string
+	if err := database.db.QueryRowContext(ctx, `SELECT runtime_config FROM nodes WHERE id = ?`, node.ID).Scan(&preserved); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ServerPort != 443 || detail.ListenAddress != "0.0.0.0" || preserved != runtime {
+		t.Fatalf("fallback detail=%#v runtime=%s", detail, preserved)
+	}
+}
+
+func TestValidateSchemaV42RejectsNodeWithoutProtocolDefinition(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	input, err := NewBasicAdminNodeDefinitionInput(CreateNodeInput{
+		Name: "Schema invariant", Type: "vless", Host: "schema.test", Port: "443", Show: true, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, _, err := database.CreateAdminNodeDefinition(ctx, input, time.Date(2026, 8, 28, 19, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `DELETE FROM node_protocol_definitions WHERE node_id = ?`, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSchema(ctx, database.db, CurrentSchemaVersion()); err == nil || !strings.Contains(err.Error(), "without a protocol definition") {
+		t.Fatalf("ValidateSchema() error = %v, want missing protocol definition", err)
 	}
 }
 
@@ -95,19 +332,7 @@ func TestAdminNodeDefinitionCreateRoundTripsAndBuildsAllProtocolRuntimes(t *test
 		t.Fatal(err)
 	}
 
-	cases := map[string]json.RawMessage{
-		"shadowsocks": json.RawMessage(`{"cipher":"2022-blake3-aes-128-gcm","plugin":"","plugin_opts":""}`),
-		"vmess":       json.RawMessage(`{"tls":1,"network":"ws","network_settings":{"path":"/vmess"},"tls_settings":{"server_name":"vmess.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":true,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
-		"trojan":      json.RawMessage(`{"tls":2,"network":"tcp","network_settings":{},"tls_settings":{"server_name":"trojan.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"reality_settings":{"server_name":"reality.example.test","server_port":443,"public_key":"public","private_key":"private","short_id":"01234567","allow_insecure":false},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":false,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
-		"hysteria":    json.RawMessage(`{"version":2,"alpn":"h2","obfs":{"open":true,"type":"salamander","password":"obfs-secret"},"tls":{"server_name":"hy.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"bandwidth":{"up":100,"down":200},"hop_interval":30}`),
-		"vless":       json.RawMessage(`{"tls":2,"network":"grpc","network_settings":{"serviceName":"vless"},"flow":"xtls-rprx-vision","encryption":{"enabled":true,"encryption":"client-public","decryption":"server-private"},"tls_settings":{"server_name":"vless.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"reality_settings":{"server_name":"reality.example.test","server_port":443,"public_key":"public","private_key":"private","short_id":"01234567","allow_insecure":false},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":false,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
-		"tuic":        json.RawMessage(`{"version":5,"congestion_control":"bbr","alpn":["h3"],"udp_relay_mode":"native","tls":{"server_name":"tuic.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
-		"socks":       json.RawMessage(`{"tls":0,"tls_settings":{"server_name":"","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
-		"naive":       json.RawMessage(`{"tls":1,"tls_settings":{"server_name":"naive.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
-		"http":        json.RawMessage(`{"tls":1,"tls_settings":{"server_name":"http.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
-		"mieru":       json.RawMessage(`{"transport":"TCP","traffic_pattern":"","multiplex":{"enabled":true,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
-		"anytls":      json.RawMessage(`{"alpn":"h3","padding_scheme":["stop=8","0=30-30"],"tls":{"server_name":"any.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
-	}
+	cases := adminNodeProtocolSettingsFixtures()
 	requiredRuntimeKeys := map[string][]string{
 		"shadowsocks": {"cipher", "plugin", "plugin_opts", "server_key"},
 		"vmess":       {"network", "tls", "tls_settings", "multiplex", "utls"},
@@ -178,6 +403,74 @@ func TestAdminNodeDefinitionCreateRoundTripsAndBuildsAllProtocolRuntimes(t *test
 				t.Fatalf("runtime missing cert_config: %s", runtime.Config)
 			}
 		})
+	}
+}
+
+func TestHydrateLegacyNodeDefinitionPreservesEveryGeneratedProtocolRuntime(t *testing.T) {
+	createdAt := time.Date(2026, 8, 28, 16, 30, 0, 0, time.UTC)
+	for protocol, settings := range adminNodeProtocolSettingsFixtures() {
+		t.Run(protocol, func(t *testing.T) {
+			base, err := NewBasicAdminNodeDefinitionInput(CreateNodeInput{
+				Name: "Legacy " + protocol, Type: protocol, Host: protocol + ".legacy.test",
+				Port: "18443-18444", Show: true, Enabled: true, Sort: 4,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := base
+			original.RateMicros = 1_250_000
+			original.ServerPort = 19443
+			original.ListenAddress = "::"
+			original.ProtocolSettings = settings
+			original.CustomOutbounds = json.RawMessage(`[{"tag":"proxy-out","protocol":"socks","settings":{"server":"127.0.0.1","server_port":1080}}]`)
+			original.CustomRoutes = json.RawMessage(`[{"action":{"type":"route","target":"direct"}}]`)
+			original.CertificateConfig = json.RawMessage(`{"cert_mode":"file","domain":"legacy.test","cert_file":"/etc/xboard/cert.pem","key_file":"/etc/xboard/key.pem"}`)
+			normalizedOriginal, err := normalizeAdminNodeDefinition(original, false)
+			if err != nil {
+				t.Fatalf("normalize original definition: %v", err)
+			}
+			runtime, err := buildAdminNodeRuntime(normalizedOriginal, createdAt, nil)
+			if err != nil {
+				t.Fatalf("build original runtime: %v", err)
+			}
+
+			base.RateMicros = original.RateMicros
+			hydrated := hydrateLegacyNodeDefinition(base, runtime)
+			normalizedHydrated, err := normalizeAdminNodeDefinition(hydrated, false)
+			if err != nil {
+				t.Fatalf("normalize hydrated definition: %v\nruntime=%s", err, runtime)
+			}
+			rebuilt, err := buildAdminNodeRuntime(normalizedHydrated, createdAt, nil)
+			if err != nil {
+				t.Fatalf("build hydrated runtime: %v", err)
+			}
+			var want, got any
+			if err := json.Unmarshal(runtime, &want); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(rebuilt, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("hydrated runtime changed\n got: %s\nwant: %s", rebuilt, runtime)
+			}
+		})
+	}
+}
+
+func adminNodeProtocolSettingsFixtures() map[string]json.RawMessage {
+	return map[string]json.RawMessage{
+		"shadowsocks": json.RawMessage(`{"cipher":"2022-blake3-aes-128-gcm","plugin":"","plugin_opts":""}`),
+		"vmess":       json.RawMessage(`{"tls":1,"network":"ws","network_settings":{"path":"/vmess"},"tls_settings":{"server_name":"vmess.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":true,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
+		"trojan":      json.RawMessage(`{"tls":2,"network":"tcp","network_settings":{},"tls_settings":{"server_name":"trojan.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"reality_settings":{"server_name":"reality.example.test","server_port":443,"public_key":"public","private_key":"private","short_id":"01234567","allow_insecure":false},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":false,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
+		"hysteria":    json.RawMessage(`{"version":2,"alpn":"h2","obfs":{"open":true,"type":"salamander","password":"obfs-secret"},"tls":{"server_name":"hy.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"bandwidth":{"up":100,"down":200},"hop_interval":30}`),
+		"vless":       json.RawMessage(`{"tls":2,"network":"grpc","network_settings":{"serviceName":"vless"},"flow":"xtls-rprx-vision","encryption":{"enabled":true,"encryption":"client-public","decryption":"server-private"},"tls_settings":{"server_name":"vless.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}},"reality_settings":{"server_name":"reality.example.test","server_port":443,"public_key":"public","private_key":"private","short_id":"01234567","allow_insecure":false},"utls":{"enabled":true,"fingerprint":"chrome"},"multiplex":{"enabled":false,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
+		"tuic":        json.RawMessage(`{"version":5,"congestion_control":"bbr","alpn":["h3"],"udp_relay_mode":"native","tls":{"server_name":"tuic.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
+		"socks":       json.RawMessage(`{"tls":0,"tls_settings":{"server_name":"","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
+		"naive":       json.RawMessage(`{"tls":1,"tls_settings":{"server_name":"naive.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
+		"http":        json.RawMessage(`{"tls":1,"tls_settings":{"server_name":"http.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
+		"mieru":       json.RawMessage(`{"transport":"TCP","traffic_pattern":"","multiplex":{"enabled":true,"protocol":"smux","max_connections":4,"padding":false,"brutal":{"enabled":false,"up_mbps":100,"down_mbps":100}}}`),
+		"anytls":      json.RawMessage(`{"alpn":"h3","padding_scheme":["stop=8","0=30-30"],"tls":{"server_name":"any.example.test","allow_insecure":false,"ech":{"enabled":false,"config":"","query_server_name":"","key":""}}}`),
 	}
 }
 

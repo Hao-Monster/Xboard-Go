@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -48,4 +49,43 @@ func BenchmarkAdminNodeDefinitionReadAndUpdate(b *testing.B) {
 			current = updated
 		}
 	})
+}
+
+func BenchmarkSchemaV42BackfillMissingDefinitions(b *testing.B) {
+	const nodesPerIteration = 10_000
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ReportMetric(nodesPerIteration, "nodes/op")
+	for iteration := 0; iteration < b.N; iteration++ {
+		b.StopTimer()
+		database, err := OpenSQLite(fmt.Sprintf("file:schema-v42-benchmark-%d?mode=memory&cache=shared", iteration))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := database.Migrate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		now := time.Date(2026, 8, 28, 20, 0, 0, 0, time.UTC).Unix()
+		if _, err := database.db.ExecContext(ctx, `
+			WITH RECURSIVE sequence(value) AS (
+				SELECT 1 UNION ALL SELECT value + 1 FROM sequence WHERE value < ?
+			)
+			INSERT INTO nodes (name, type, host, port, show, enabled, sort, created_at, updated_at)
+			SELECT printf('Benchmark node %d', value), 'vless', printf('benchmark-%d.test', value),
+			       '443', 1, 1, value, ?, ? FROM sequence
+		`, nodesPerIteration, now, now); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := database.db.ExecContext(ctx, `PRAGMA user_version = 41`); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		if err := database.Migrate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		b.StopTimer()
+		if err := database.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
