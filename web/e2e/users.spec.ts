@@ -124,6 +124,10 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await dialog.getByLabel("到期提醒").check();
 	await dialog.getByLabel("流量提醒").check();
 	await dialog.getByLabel("备注").fill("E2E complete profile");
+	await dialog.getByLabel("管理员", { exact: true }).check();
+	await dialog.getByLabel("员工", { exact: true }).check();
+	await dialog.getByLabel("分销商", { exact: true }).check();
+	await dialog.getByLabel("分销商名称").fill("E2E 混合角色");
 	const updateRequestPromise = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/v1/admin/users/"));
 	await dialog.getByRole("button", { name: "保存" }).click();
 	const updatePayload = (await updateRequestPromise).postDataJSON();
@@ -131,11 +135,14 @@ test("administrator creates and changes a user's access state", async ({ page, c
 		plan_id: expect.any(Number), transfer_enable: 68_719_476_736, speed_limit: 80, device_limit: 4,
 		invite_user_email: adminEmail, traffic_upload: 1_610_612_736, traffic_download: 2_147_483_648,
 		balance: 4567, commission_type: 1, commission_balance: 809, discount: 75, telegram_id: 778899,
-		remind_expire: true, remind_traffic: true, remarks: "E2E complete profile"
+		remind_expire: true, remind_traffic: true, remarks: "E2E complete profile",
+		is_admin: true, is_staff: true, is_distributor: true, distributor_name: "E2E 混合角色"
 	});
 	const updatedRow = page.getByRole("row").filter({ hasText: email });
 	await expect(updatedRow).toContainText(planName);
 	await expect(updatedRow).toContainText("¥45.67");
+	await expect(updatedRow).toContainText("管理员 · 员工 · 分销商");
+	await expect(updatedRow).toContainText("E2E 混合角色");
 
 	await page.getByRole("button", { name: `查看详情：${email}` }).click();
 	dialog = page.getByRole("dialog", { name: "用户详情" });

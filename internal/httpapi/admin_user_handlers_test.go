@@ -720,6 +720,91 @@ func TestAdminDistributorRoleIsExposedAndRevokesLoginWhenDisabled(t *testing.T) 
 	}
 }
 
+func TestRoleCombinationAuthorizationMatrix(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	const password = "role-matrix-password-123"
+	accounts := []struct {
+		name       string
+		email      string
+		roleFields string
+	}{
+		{name: "ordinary", email: "role-ordinary@example.test", roleFields: `"is_admin":false,"is_staff":false,"is_distributor":false`},
+		{name: "staff", email: "role-staff@example.test", roleFields: `"is_admin":false,"is_staff":true,"is_distributor":false`},
+		{name: "distributor", email: "role-distributor@example.test", roleFields: `"is_admin":false,"is_staff":false,"is_distributor":true,"distributor_name":"矩阵分销商"`},
+		{name: "administrator", email: "role-administrator@example.test", roleFields: `"is_admin":true,"is_staff":false,"is_distributor":false`},
+		{name: "hybrid", email: "role-hybrid@example.test", roleFields: `"is_admin":true,"is_staff":true,"is_distributor":true,"distributor_name":"混合角色"`},
+	}
+	clients := make(map[string]testClient, len(accounts))
+	for _, account := range accounts {
+		created := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", fmt.Sprintf(`{
+			"email":%q,"password":%q,"group_id":null,"transfer_enable":0,"expired_at":null,
+			"speed_limit":0,"device_limit":0,"banned":false,%s
+		}`, account.email, password, account.roleFields))
+		if created.Code != http.StatusCreated {
+			t.Fatalf("create %s status=%d body=%s", account.name, created.Code, created.Body)
+		}
+		clients[account.name] = loginAs(t, api, account.email, password)
+	}
+
+	type routeExpectation struct {
+		path          string
+		visitor       int
+		ordinary      int
+		staff         int
+		distributor   int
+		administrator int
+		hybrid        int
+	}
+	for _, expectation := range []routeExpectation{
+		{path: "/api/v1/admin/users", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusOK},
+		{path: "/api/v1/distributor/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusOK, administrator: http.StatusForbidden, hybrid: http.StatusOK},
+		{path: "/api/v1/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusOK, staff: http.StatusOK, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusForbidden},
+	} {
+		visitorRequest := httptest.NewRequest(http.MethodGet, expectation.path, nil)
+		visitorResponse := httptest.NewRecorder()
+		api.ServeHTTP(visitorResponse, visitorRequest)
+		if visitorResponse.Code != expectation.visitor {
+			t.Fatalf("visitor %s status=%d want=%d body=%s", expectation.path, visitorResponse.Code, expectation.visitor, visitorResponse.Body)
+		}
+		for _, role := range []struct {
+			name string
+			want int
+		}{
+			{name: "ordinary", want: expectation.ordinary},
+			{name: "staff", want: expectation.staff},
+			{name: "distributor", want: expectation.distributor},
+			{name: "administrator", want: expectation.administrator},
+			{name: "hybrid", want: expectation.hybrid},
+		} {
+			response := clients[role.name].request(t, api, http.MethodGet, expectation.path, "")
+			if response.Code != role.want {
+				t.Fatalf("%s %s status=%d want=%d body=%s", role.name, expectation.path, response.Code, role.want, response.Body)
+			}
+		}
+	}
+
+	hybridSession := clients["hybrid"].request(t, api, http.MethodGet, "/api/v1/auth/session", "")
+	if hybridSession.Code != http.StatusOK || !containsAll(hybridSession.Body.String(),
+		`"is_admin":true`, `"is_staff":true`, `"is_distributor":true`, `"distributor_name":"混合角色"`) {
+		t.Fatalf("hybrid session status=%d body=%s", hybridSession.Code, hybridSession.Body)
+	}
+
+	hybridBearer := loginLegacyBearer(t, api, "role-hybrid@example.test", password)
+	legacyAdmin := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/fetch", hybridBearer.Authorization, `{"current":1,"pageSize":20}`)
+	if legacyAdmin.Code != http.StatusOK {
+		t.Fatalf("hybrid legacy admin status=%d body=%s", legacyAdmin.Code, legacyAdmin.Body)
+	}
+	legacyDistributor := bearerRequest(api, http.MethodGet, "/api/v1/user/order/fetch", hybridBearer.Authorization, "")
+	if legacyDistributor.Code != http.StatusOK {
+		t.Fatalf("hybrid legacy distributor status=%d body=%s", legacyDistributor.Code, legacyDistributor.Body)
+	}
+	legacyOrdinary := bearerRequest(api, http.MethodGet, "/api/v1/user/getSubscribe", hybridBearer.Authorization, "")
+	if legacyOrdinary.Code != http.StatusForbidden {
+		t.Fatalf("hybrid legacy ordinary status=%d body=%s", legacyOrdinary.Code, legacyOrdinary.Body)
+	}
+}
+
 func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()

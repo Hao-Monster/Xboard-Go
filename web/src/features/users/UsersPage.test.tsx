@@ -523,6 +523,21 @@ describe("UsersPage", () => {
     expect(await screen.findByText("星河分销")).toBeVisible();
     expect(screen.getByText(/管理员 · 员工 · 分销商/)).toBeVisible();
   });
+
+  it("keeps the current administrator role enabled in the editor", async () => {
+    const currentAdministrator = { ...account, id: 1, email: "current-admin@example.test", is_admin: true };
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [currentAdministrator], total: 1, page: 1, page_size: 20 });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={currentAdministrator.id} />);
+
+    await user.click(await screen.findByRole("button", { name: `编辑用户：${currentAdministrator.email}` }));
+    const dialog = screen.getByRole("dialog", { name: "编辑用户" });
+    expect(within(dialog).getByLabelText("管理员")).toBeChecked();
+    expect(within(dialog).getByLabelText("管理员")).toBeDisabled();
+    expect(within(dialog).getByLabelText("封禁用户")).toBeDisabled();
+    expect(within(dialog).getByText(/不能在本页封禁或移除管理员角色/)).toBeVisible();
+  });
 });
 
 function baseAPI() {
