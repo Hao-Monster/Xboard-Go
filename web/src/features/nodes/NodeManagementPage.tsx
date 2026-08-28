@@ -156,9 +156,9 @@ export function NodeManagementPage({ api }: Props) {
       </div>
     </section>
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
-    {loading ? <div className="empty-card" aria-live="polite">正在加载节点…</div> : nodes.length === 0 ? <div className="empty-card">没有符合条件的节点。</div> : <section className="resource-table-wrap node-table-wrap">
+    {loading ? <div className="empty-card" aria-live="polite">正在加载节点…</div> : <section className="resource-table-wrap node-table-wrap">
       <table className="resource-table node-table" aria-label="节点列表"><thead><tr><th>节点ID</th><th>显隐</th><th>节点</th><th>部署方式</th><th>地址</th><th>在线人数</th><th>倍率</th><th>权限组</th><th>流量使用</th><th>操作</th></tr></thead>
-        <tbody>{nodes.map((node, index) => <tr key={node.id}>
+        <tbody>{nodes.length === 0 ? <tr className="empty-table-row"><td colSpan={10}>没有符合条件的节点。</td></tr> : nodes.map((node, index) => <tr key={node.id}>
           <td data-label="节点ID"><label className="node-select"><input type="checkbox" aria-label={`选择节点：${node.name}`} checked={selected.includes(node.id)} disabled={busy} onChange={(event) => setSelected((current) => event.target.checked ? [...current, node.id] : current.filter((id) => id !== node.id))} /><strong>#{node.id}</strong></label></td>
           <td data-label="显隐"><span className={`status-badge ${node.show ? "enabled" : "blocked"}`}>{node.show ? "显示" : "隐藏"}</span></td>
           <td data-label="节点"><strong>{node.name}</strong><small className="muted">{protocolLabel(node.type)} · {node.enabled ? "已启用" : "已停用"}</small></td>
