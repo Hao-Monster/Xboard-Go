@@ -1090,6 +1090,7 @@ type MachineCredential struct {
 
 type Node struct {
 	ID                int64      `json:"id"`
+	Revision          int64      `json:"revision"`
 	Name              string     `json:"name"`
 	Type              string     `json:"type"`
 	Host              string     `json:"host"`
@@ -1814,6 +1815,63 @@ type CreateNodeInput struct {
 	Enabled   bool
 	Sort      int
 	MachineID *int64
+}
+
+type AdminNode struct {
+	Node
+	MachineName *string `json:"machine_name"`
+	GroupIDs    []int64 `json:"group_ids"`
+	OnlineCount int64   `json:"online_count"`
+}
+
+type AdminNodePage struct {
+	Items    []AdminNode `json:"items"`
+	Total    int64       `json:"total"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"page_size"`
+}
+
+type AdminNodeFilter struct {
+	Page       int
+	PageSize   int
+	Query      string
+	Type       string
+	Show       *bool
+	Enabled    *bool
+	MachineID  *int64
+	Unassigned bool
+}
+
+type UpdateAdminNodeInput struct {
+	Revision     int64
+	Name         string
+	Host         string
+	Port         string
+	Show         bool
+	Enabled      bool
+	Sort         int
+	MachineIDSet bool
+	MachineID    *int64
+}
+
+type AdminNodeRevision struct {
+	ID       int64 `json:"id"`
+	Revision int64 `json:"revision"`
+}
+
+type AdminNodeStateInput struct {
+	Targets      []AdminNodeRevision
+	Show         *bool
+	Enabled      *bool
+	MachineIDSet bool
+	MachineID    *int64
+}
+
+type AdminNodeMutation struct {
+	NodeIDs         []int64 `json:"node_ids"`
+	MachineIDs      []int64 `json:"-"`
+	ClearNodeIDs    []int64 `json:"-"`
+	AffectedUserIDs []int64 `json:"-"`
 }
 
 type LoadHistory struct {

@@ -144,7 +144,7 @@ func TestMachineNodesAndDailyScheduleAPI(t *testing.T) {
 	decodeResponse(t, create, &created)
 
 	bindPath := fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", created.Data.ID, node.ID)
-	bind := client.request(t, api, http.MethodPut, bindPath, `{}`)
+	bind := client.request(t, api, http.MethodPut, bindPath, `{"revision":1}`)
 	if bind.Code != http.StatusNoContent {
 		t.Fatalf("bind node status = %d; body=%s", bind.Code, bind.Body)
 	}

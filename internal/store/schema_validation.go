@@ -106,6 +106,10 @@ var requiredSchemaColumnsV39 = map[string][]string{
 	},
 }
 
+var requiredSchemaColumnsV40 = map[string][]string{
+	"nodes": {"admin_revision"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -167,6 +171,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 39 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV39); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 40 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV40); err != nil {
 			return err
 		}
 	}

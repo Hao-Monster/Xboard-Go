@@ -263,8 +263,8 @@ function MachineDetailDrawer({ api, machine, observedAt, onClose, onChanged }: {
     setBusyNodeID(node.id);
     setError("");
     try {
-      await api.setNodeEnabled(machine.id, node.id, !node.enabled);
-      setNodes((current) => current.map((item) => item.id === node.id ? { ...item, enabled: !item.enabled } : item));
+      await api.setNodeEnabled(machine.id, node.id, node.revision, !node.enabled);
+      setNodes((current) => current.map((item) => item.id === node.id ? { ...item, enabled: !item.enabled, revision: item.revision + 1 } : item));
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -277,7 +277,9 @@ function MachineDetailDrawer({ api, machine, observedAt, onClose, onChanged }: {
     if (!Number.isInteger(nodeID) || nodeID < 1) return;
     setBusyNodeID(nodeID);
     try {
-      await api.assignNode(machine.id, nodeID);
+      const candidate = unassigned.find((node) => node.id === nodeID);
+      if (candidate === undefined) return;
+      await api.assignNode(machine.id, nodeID, candidate.revision);
       setSelectedNodeID("");
       await loadDetail();
       onChanged();
@@ -288,10 +290,10 @@ function MachineDetailDrawer({ api, machine, observedAt, onClose, onChanged }: {
     }
   };
 
-  const unassign = async (nodeID: number) => {
-    setBusyNodeID(nodeID);
+  const unassign = async (node: Node) => {
+    setBusyNodeID(node.id);
     try {
-      await api.unassignNode(machine.id, nodeID);
+      await api.unassignNode(machine.id, node.id, node.revision);
       await loadDetail();
       onChanged();
     } catch (cause) {
@@ -352,7 +354,7 @@ function MachineDetailDrawer({ api, machine, observedAt, onClose, onChanged }: {
                         <span>{node.enabled ? "已启用" : "已停用"}</span>
                       </label>
                       <button className="button compact secondary" aria-label={`定时设置：${node.name}`} onClick={() => setScheduleNode(node)}>定时设置</button>
-                      <button className="button compact ghost danger-text" disabled={busyNodeID === node.id} onClick={() => void unassign(node.id)}>解除关联</button>
+                      <button className="button compact ghost danger-text" disabled={busyNodeID === node.id} onClick={() => void unassign(node)}>解除关联</button>
                     </div>
                   </article>
                 ))}

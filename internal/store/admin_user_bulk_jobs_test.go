@@ -40,7 +40,7 @@ func TestSchemaV39PreservesV38UsersAndAddsAdministratorBulkJobs(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND name IN ('idx_admin_user_bulk_jobs_list','idx_admin_user_bulk_jobs_claim','idx_admin_user_bulk_targets_claim','idx_admin_user_bulk_targets_job_status')`).Scan(&indexes); err != nil {
 		t.Fatal(err)
 	}
-	if version != 39 || tables != 2 || indexes != 4 {
+	if version != CurrentSchemaVersion() || tables != 2 || indexes != 4 {
 		t.Fatalf("schema version=%d tables=%d indexes=%d", version, tables, indexes)
 	}
 	job, err := database.CreateAdminUserBulkJob(ctx, CreateAdminUserBulkJobInput{

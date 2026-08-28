@@ -27,6 +27,44 @@ describe("APIClient CAPTCHA contracts", () => {
   });
 });
 
+describe("APIClient administrator node contracts", () => {
+  it("encodes bounded filters and sends revision-protected mutations with CSRF", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=node-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({
+        path, method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: headers.get("X-CSRF-Token")
+      });
+      if (path.endsWith("/bulk-delete")) return Promise.resolve(new Response(null, { status: 204 }));
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: { items: [], total: 0, page: 2, page_size: 500, node_ids: [41] } }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    const targets = [{ id: 41, revision: 3 }];
+
+    await api.listAdminNodes({ page: 2, page_size: 500, q: " SG edge ", type: "vless", show: false, enabled: true, machine_id: 7 });
+    await api.updateAdminNode(41, { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null });
+    await api.copyAdminNode(41, 3);
+    await api.reorderAdminNodes(targets);
+    await api.updateAdminNodeStates({ targets, enabled: false, machine_id: null });
+    await api.resetAdminNodeTraffic(targets);
+    await api.deleteAdminNodes(targets);
+
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/nodes?page=2&page_size=500&q=SG+edge&type=vless&show=false&enabled=true&machine_id=7", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/nodes/41", method: "PATCH", body: { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/41/copy", method: "POST", body: { revision: 3 }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/order", method: "PUT", body: { targets }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/bulk-state", method: "POST", body: { targets, enabled: false, machine_id: null }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/bulk-reset-traffic", method: "POST", body: { targets }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/bulk-delete", method: "POST", body: { targets }, csrf: "node-csrf" }
+    ]);
+  });
+});
+
 describe("APIClient order contracts", () => {
   it("uses authoritative order routes, encoded trade numbers, integer cents, and CSRF on mutations", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

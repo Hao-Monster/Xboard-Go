@@ -148,7 +148,7 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
-	assigned := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", machine.ID, newNode.ID), `{}`)
+	assigned := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", machine.ID, newNode.ID), `{"revision":1}`)
 	if assigned.Code != http.StatusNoContent {
 		t.Fatalf("assign node status = %d; body=%s", assigned.Code, assigned.Body)
 	}
@@ -170,7 +170,11 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetNodeEnabled(ctx, machine.ID, newNode.ID, false, now); err != nil {
+	assignedNode, err := database.GetNode(ctx, newNode.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetNodeEnabled(ctx, machine.ID, newNode.ID, assignedNode.Revision, false, now); err != nil {
 		t.Fatal(err)
 	}
 	reconciled := readWSEvent(t, second)

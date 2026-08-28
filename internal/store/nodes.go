@@ -91,8 +91,11 @@ func (s *Store) ListUnassignedNodes(ctx context.Context) ([]Node, error) {
 	return scanNodes(rows)
 }
 
-func (s *Store) AssignNode(ctx context.Context, machineID, nodeID int64, now time.Time) error {
+func (s *Store) AssignNode(ctx context.Context, machineID, nodeID, revision int64, now time.Time) error {
 	defer s.lockWrite()()
+	if revision < 1 {
+		return fmt.Errorf("%w: invalid node revision", ErrInvalidInput)
+	}
 	var machineExists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM server_machines WHERE id = ?)`, machineID).Scan(&machineExists); err != nil {
 		return fmt.Errorf("check machine: %w", err)
@@ -100,45 +103,69 @@ func (s *Store) AssignNode(ctx context.Context, machineID, nodeID int64, now tim
 	if !machineExists {
 		return ErrNotFound
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE nodes SET machine_id = ?, updated_at = ? WHERE id = ?`, machineID, now.Unix(), nodeID)
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE nodes SET machine_id = ?, admin_revision = admin_revision + 1, updated_at = ?
+		WHERE id = ? AND admin_revision = ?
+	`, machineID, now.Unix(), nodeID, revision)
 	if err != nil {
 		return fmt.Errorf("assign node: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return ErrNotFound
+		return s.classifyNodeRevisionMiss(ctx, nodeID, revision)
 	}
 	return nil
 }
 
-func (s *Store) UnassignNode(ctx context.Context, machineID, nodeID int64, now time.Time) error {
+func (s *Store) UnassignNode(ctx context.Context, machineID, nodeID, revision int64, now time.Time) error {
 	defer s.lockWrite()()
+	if revision < 1 {
+		return fmt.Errorf("%w: invalid node revision", ErrInvalidInput)
+	}
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE nodes SET machine_id = NULL, updated_at = ? WHERE id = ? AND machine_id = ?
-	`, now.Unix(), nodeID, machineID)
+		UPDATE nodes SET machine_id = NULL, admin_revision = admin_revision + 1, updated_at = ?
+		WHERE id = ? AND machine_id = ? AND admin_revision = ?
+	`, now.Unix(), nodeID, machineID, revision)
 	if err != nil {
 		return fmt.Errorf("unassign node: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return ErrNotFound
+		return s.classifyNodeRevisionMiss(ctx, nodeID, revision)
 	}
 	return nil
 }
 
-func (s *Store) SetNodeEnabled(ctx context.Context, machineID, nodeID int64, enabled bool, now time.Time) error {
+func (s *Store) SetNodeEnabled(ctx context.Context, machineID, nodeID, revision int64, enabled bool, now time.Time) error {
 	defer s.lockWrite()()
+	if revision < 1 {
+		return fmt.Errorf("%w: invalid node revision", ErrInvalidInput)
+	}
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE nodes SET enabled = ?, updated_at = ? WHERE id = ? AND machine_id = ?
-	`, enabled, now.Unix(), nodeID, machineID)
+		UPDATE nodes SET enabled = ?, admin_revision = admin_revision + 1, updated_at = ?
+		WHERE id = ? AND machine_id = ? AND admin_revision = ?
+	`, enabled, now.Unix(), nodeID, machineID, revision)
 	if err != nil {
 		return fmt.Errorf("set node enabled: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return ErrNotFound
+		return s.classifyNodeRevisionMiss(ctx, nodeID, revision)
 	}
 	return nil
+}
+
+func (s *Store) classifyNodeRevisionMiss(ctx context.Context, nodeID, revision int64) error {
+	var currentRevision int64
+	if err := s.db.QueryRowContext(ctx, `SELECT admin_revision FROM nodes WHERE id = ?`, nodeID).Scan(&currentRevision); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("classify node revision mutation: %w", err)
+	}
+	if currentRevision != revision {
+		return ErrConflict
+	}
+	return ErrNotFound
 }
 
 func (s *Store) ListLoadHistory(ctx context.Context, machineID int64, since time.Time, limit int) ([]LoadHistory, error) {
@@ -177,7 +204,7 @@ func (s *Store) ListLoadHistory(ctx context.Context, machineID int64, since time
 	return history, rows.Err()
 }
 
-const nodeSelect = `SELECT id, name, type, host, port, show, enabled, sort,
+const nodeSelect = `SELECT id, admin_revision, name, type, host, port, show, enabled, sort,
 	COALESCE((SELECT configured_rate_micros FROM node_protocol_definitions WHERE node_id = nodes.id), rate_micros), traffic_u, traffic_d,
 	runtime_config IS NOT NULL, last_check_at, last_push_at, machine_id, created_at, updated_at FROM nodes`
 
@@ -188,7 +215,7 @@ func scanNode(row rowScanner) (Node, error) {
 	var rateMicros int64
 	var createdAt, updatedAt int64
 	err := row.Scan(
-		&node.ID, &node.Name, &node.Type, &node.Host, &node.Port, &node.Show, &node.Enabled,
+		&node.ID, &node.Revision, &node.Name, &node.Type, &node.Host, &node.Port, &node.Show, &node.Enabled,
 		&node.Sort, &rateMicros, &node.TrafficUpload, &node.TrafficDownload, &node.RuntimeConfigured,
 		&lastCheckAt, &lastPushAt, &machineID, &createdAt, &updatedAt,
 	)

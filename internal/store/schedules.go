@@ -64,7 +64,7 @@ func (s *Store) SaveDailySchedule(ctx context.Context, nodeID int64, timezone, e
 	if err != nil {
 		return ActivationSchedule{}, fmt.Errorf("upsert schedule: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET enabled = ?, updated_at = ? WHERE id = ?`, state.Enabled, now.Unix(), nodeID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET enabled = ?, admin_revision = admin_revision + 1, updated_at = ? WHERE id = ?`, state.Enabled, now.Unix(), nodeID); err != nil {
 		return ActivationSchedule{}, fmt.Errorf("reconcile node state: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -190,7 +190,7 @@ func (s *Store) ApplyDueSchedule(ctx context.Context, due DueSchedule, now time.
 		return false, nil
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE nodes SET enabled = ?, updated_at = ? WHERE id = ? AND machine_id IS NOT NULL
+		UPDATE nodes SET enabled = ?, admin_revision = admin_revision + 1, updated_at = ? WHERE id = ? AND machine_id IS NOT NULL
 	`, enabled, now.Unix(), due.NodeID); err != nil {
 		return false, fmt.Errorf("apply due node state: %w", err)
 	}
