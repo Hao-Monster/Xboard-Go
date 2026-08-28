@@ -160,42 +160,6 @@ func (s *server) listUnassignedNodes(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, nodes)
 }
 
-func (s *server) createNode(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Name    string          `json:"name"`
-		Type    string          `json:"type"`
-		Host    string          `json:"host"`
-		Port    json.RawMessage `json:"port"`
-		Show    *bool           `json:"show"`
-		Enabled *bool           `json:"enabled"`
-		Sort    int             `json:"sort"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	port, validPort := parseNodePort(input.Port)
-	if !validPort {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "节点端口格式无效", map[string]string{"port": "必须是端口或端口范围"})
-		return
-	}
-	show, enabled := true, true
-	if input.Show != nil {
-		show = *input.Show
-	}
-	if input.Enabled != nil {
-		enabled = *input.Enabled
-	}
-	node, err := s.store.CreateNode(r.Context(), store.CreateNodeInput{
-		Name: input.Name, Type: input.Type, Host: input.Host, Port: port,
-		Show: show, Enabled: enabled, Sort: input.Sort,
-	}, s.now())
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	writeSuccess(w, http.StatusCreated, node)
-}
-
 func parseNodePort(raw json.RawMessage) (string, bool) {
 	var stringValue string
 	if err := json.Unmarshal(raw, &stringValue); err == nil {

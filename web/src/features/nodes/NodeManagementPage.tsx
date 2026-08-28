@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import { Modal } from "../../components/Overlay";
 import type {
-  AdminAPI, AdminNode, AdminNodeQuery, AdminNodeRevision, AdminNodeStateInput, AdminNodeUpdateInput, Machine, ServerGroup
+  AdminAPI, AdminNode, AdminNodeQuery, AdminNodeRevision, AdminNodeStateInput, Machine, RoutingRule, ServerGroup
 } from "../../lib/api";
+import { NodeDefinitionModal } from "./NodeDefinitionModal";
 
 type NodeManagementAPI = Pick<AdminAPI,
-  "listAdminNodes" | "listMachines" | "listServerGroups" | "updateAdminNode" | "copyAdminNode" |
-  "reorderAdminNodes" | "updateAdminNodeStates" | "resetAdminNodeTraffic" | "deleteAdminNodes"
+  "listAdminNodes" | "listMachines" | "listServerGroups" | "listRoutingRules" | "getAdminNodeDefinition" |
+  "createAdminNodeDefinition" | "replaceAdminNodeDefinition" | "copyAdminNode" | "reorderAdminNodes" |
+  "updateAdminNodeStates" | "resetAdminNodeTraffic" | "deleteAdminNodes"
 >;
 
 interface Props {
@@ -23,15 +25,17 @@ const protocols = [
 
 export function NodeManagementPage({ api }: Props) {
   const [nodes, setNodes] = useState<AdminNode[]>([]);
+  const [nodeOptions, setNodeOptions] = useState<AdminNode[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
+  const [routes, setRoutes] = useState<RoutingRule[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
-  const [editing, setEditing] = useState<AdminNode | null>(null);
+  const [editing, setEditing] = useState<AdminNode | "create" | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "reset" | "delete"; targets: AdminNodeRevision[] } | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [queryInput, setQueryInput] = useState("");
@@ -44,15 +48,19 @@ export function NodeManagementPage({ api }: Props) {
 
   useEffect(() => {
     let live = true;
-    void Promise.all([api.listMachines(), api.listServerGroups()]).then(([nextMachines, nextGroups]) => {
+    void Promise.all([
+      api.listMachines(), api.listServerGroups(), api.listRoutingRules(), api.listAdminNodes({ page: 1, page_size: 500 })
+    ]).then(([nextMachines, nextGroups, nextRoutes, nextNodeOptions]) => {
       if (!live) return;
       setMachines(nextMachines);
       setGroups(nextGroups);
+      setRoutes(nextRoutes);
+      setNodeOptions(nextNodeOptions.items);
     }).catch((cause: unknown) => {
       if (live) setError(errorMessage(cause));
     });
     return () => { live = false; };
-  }, [api]);
+  }, [api, reloadToken]);
 
   useEffect(() => {
     let live = true;
@@ -127,7 +135,7 @@ export function NodeManagementPage({ api }: Props) {
   };
 
   return <main className="page-shell node-management-page">
-    <header className="page-header"><div><p className="eyebrow">基础设施</p><h1>节点管理</h1><p className="muted">管理节点显隐、运行状态、部署归属、顺序和累计流量。</p></div></header>
+    <header className="page-header"><div><p className="eyebrow">基础设施</p><h1>节点管理</h1><p className="muted">管理节点协议、显隐、运行状态、部署归属、顺序和累计流量。</p></div><button className="button primary" onClick={() => setEditing("create")}>添加节点</button></header>
     <section className="overview-grid node-overview" aria-label="节点概览">
       <Overview label="节点" value={total} />
       <Overview label="当前页显示" value={nodes.filter((node) => node.show).length} />
@@ -180,40 +188,13 @@ export function NodeManagementPage({ api }: Props) {
       </table>
       <footer className="pagination-footer"><button className="button compact ghost" disabled={page <= 1 || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current - 1); }}>上一页</button><span>第 {page} / {pageCount} 页 · 共 {total} 个节点</span><button className="button compact ghost" disabled={page >= pageCount || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current + 1); }}>下一页</button></footer>
     </section>}
-    {editing !== null && <EditNodeModal api={api} node={editing} machines={machines} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+    {editing !== null && <NodeDefinitionModal api={api} node={editing === "create" ? null : editing} nodes={nodeOptions} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     {confirming !== null && <ConfirmNodeMutation api={api} kind={confirming.kind} targets={confirming.targets} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); refresh(); }} />}
   </main>;
 }
 
 function Overview({ label, value }: { label: string; value: number }) {
   return <article className="overview-metric"><span>{label}</span><strong>{value}</strong></article>;
-}
-
-function EditNodeModal({ api, node, machines, onClose, onSaved }: { api: NodeManagementAPI; node: AdminNode; machines: Machine[]; onClose: () => void; onSaved: () => void }) {
-  const [input, setInput] = useState<AdminNodeUpdateInput>({
-    revision: node.revision, name: node.name, host: node.host, port: node.port, show: node.show,
-    enabled: node.enabled, sort: node.sort, machine_id: node.machine_id
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true); setError("");
-    try { await api.updateAdminNode(node.id, input); onSaved(); }
-    catch (cause) { setError(errorMessage(cause)); setSaving(false); }
-  };
-  return <Modal title="编辑节点" onClose={onClose}><div className="modal-header"><div><p className="eyebrow">{protocolLabel(node.type)}</p><h2>编辑节点</h2></div><button className="icon-button" aria-label="关闭编辑节点" onClick={onClose}>×</button></div>
-    <form className="form-stack" onSubmit={(event) => void submit(event)}>
-      <label>节点名称<input required maxLength={255} value={input.name} onChange={(event) => setInput({ ...input, name: event.target.value })} /></label>
-      <label>节点地址<input required maxLength={255} value={input.host} onChange={(event) => setInput({ ...input, host: event.target.value })} /></label>
-      <label>连接端口<input required inputMode="numeric" pattern="[0-9]{1,5}(-[0-9]{1,5})?" value={input.port} onChange={(event) => setInput({ ...input, port: event.target.value })} /></label>
-      <label>排序<input required type="number" min="0" max="1000000000" value={input.sort} onChange={(event) => setInput({ ...input, sort: Number(event.target.value) })} /></label>
-      <label>绑定服务器<select value={input.machine_id ?? ""} onChange={(event) => setInput({ ...input, machine_id: event.target.value === "" ? null : Number(event.target.value) })}><option value="">独立部署</option>{machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
-      <label className="switch-label"><input type="checkbox" checked={input.show} onChange={(event) => setInput({ ...input, show: event.target.checked })} />用户端显示</label>
-      <label className="switch-label"><input type="checkbox" checked={input.enabled} onChange={(event) => setInput({ ...input, enabled: event.target.checked })} />启用运行</label>
-      {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      <div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : "保存修改"}</button></div>
-    </form>
-  </Modal>;
 }
 
 function ConfirmNodeMutation({ api, kind, targets, onClose, onDone }: { api: NodeManagementAPI; kind: "reset" | "delete"; targets: AdminNodeRevision[]; onClose: () => void; onDone: () => void }) {

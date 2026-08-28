@@ -3,11 +3,275 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+const maxAdminNodeDefinitionBody = 4 << 20
+
+type adminNodeDefinitionRequest struct {
+	Revision          *int64          `json:"revision"`
+	Type              *string         `json:"type"`
+	ExternalCode      nullableString  `json:"external_code"`
+	SpecificKey       nullableString  `json:"specific_key"`
+	ParentID          nullableInt64   `json:"parent_id"`
+	Name              *string         `json:"name"`
+	Rate              *float64        `json:"rate"`
+	Tags              []string        `json:"tags"`
+	Host              *string         `json:"host"`
+	Port              json.RawMessage `json:"port"`
+	ServerPort        *int            `json:"server_port"`
+	ListenAddress     *string         `json:"listen_address"`
+	ProtocolSettings  json.RawMessage `json:"protocol_settings"`
+	Show              *bool           `json:"show"`
+	Enabled           *bool           `json:"enabled"`
+	Sort              *int            `json:"sort"`
+	MachineID         nullableInt64   `json:"machine_id"`
+	GroupIDs          []int64         `json:"group_ids"`
+	RouteIDs          []int64         `json:"route_ids"`
+	RateTimeEnabled   *bool           `json:"rate_time_enabled"`
+	RateTimeEnable    *bool           `json:"rate_time_enable"`
+	RateTimeRanges    json.RawMessage `json:"rate_time_ranges"`
+	CustomOutbounds   json.RawMessage `json:"custom_outbounds"`
+	CustomRoutes      json.RawMessage `json:"custom_routes"`
+	CertificateConfig json.RawMessage `json:"certificate_config"`
+	LegacyCertConfig  json.RawMessage `json:"cert_config"`
+	TransferEnable    *int64          `json:"transfer_enable"`
+}
+
+func (s *server) createNode(w http.ResponseWriter, r *http.Request) {
+	var request adminNodeDefinitionRequest
+	if !decodeJSONLimit(w, r, &request, maxAdminNodeDefinitionBody) {
+		return
+	}
+	if !request.isFullDefinition() {
+		s.createBasicNode(w, r, request)
+		return
+	}
+	input, ok := request.storeInput(w, false)
+	if !ok {
+		return
+	}
+	created, mutation, err := s.store.CreateAdminNodeDefinition(r.Context(), input, s.now())
+	if err != nil {
+		handleAdminNodeMutationError(w, err)
+		return
+	}
+	s.publishAdminNodeMutation(r, mutation)
+	writeSuccess(w, http.StatusCreated, created)
+}
+
+func (request adminNodeDefinitionRequest) isFullDefinition() bool {
+	return request.ServerPort != nil || request.Rate != nil || request.ListenAddress != nil || len(request.ProtocolSettings) > 0 ||
+		request.ParentID.Set || request.GroupIDs != nil || request.RouteIDs != nil || request.Tags != nil || request.TransferEnable != nil
+}
+
+func (s *server) createBasicNode(w http.ResponseWriter, r *http.Request, request adminNodeDefinitionRequest) {
+	port, validPort := parseNodePort(request.Port)
+	fields := map[string]string{}
+	if request.Name == nil {
+		fields["name"] = "必填"
+	}
+	if request.Type == nil {
+		fields["type"] = "必填"
+	}
+	if request.Host == nil {
+		fields["host"] = "必填"
+	}
+	if !validPort {
+		fields["port"] = "必须是端口或端口范围"
+	}
+	if len(fields) > 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请提交完整且有效的节点字段", fields)
+		return
+	}
+	show, enabled, sortPosition := true, true, 0
+	if request.Show != nil {
+		show = *request.Show
+	}
+	if request.Enabled != nil {
+		enabled = *request.Enabled
+	}
+	if request.Sort != nil {
+		sortPosition = *request.Sort
+	}
+	var machineID *int64
+	if request.MachineID.Set {
+		machineID = request.MachineID.Value
+	}
+	input, err := store.NewBasicAdminNodeDefinitionInput(store.CreateNodeInput{
+		Name: *request.Name, Type: *request.Type, Host: *request.Host, Port: port,
+		Show: show, Enabled: enabled, Sort: sortPosition, MachineID: machineID,
+	})
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	created, mutation, err := s.store.CreateAdminNodeDefinition(r.Context(), input, s.now())
+	if err != nil {
+		handleAdminNodeMutationError(w, err)
+		return
+	}
+	s.publishAdminNodeMutation(r, mutation)
+	writeSuccess(w, http.StatusCreated, created)
+}
+
+func (s *server) getAdminNodeDefinition(w http.ResponseWriter, r *http.Request) {
+	nodeID, ok := pathID(w, r, "nodeID")
+	if !ok {
+		return
+	}
+	detail, err := s.store.GetAdminNodeDefinition(r.Context(), nodeID)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, detail)
+}
+
+func (s *server) replaceAdminNodeDefinition(w http.ResponseWriter, r *http.Request) {
+	nodeID, ok := pathID(w, r, "nodeID")
+	if !ok {
+		return
+	}
+	var request adminNodeDefinitionRequest
+	if !decodeJSONLimit(w, r, &request, maxAdminNodeDefinitionBody) {
+		return
+	}
+	input, ok := request.storeInput(w, true)
+	if !ok {
+		return
+	}
+	updated, mutation, err := s.store.UpdateAdminNodeDefinition(r.Context(), nodeID, input, s.now())
+	if err != nil {
+		handleAdminNodeMutationError(w, err)
+		return
+	}
+	s.publishAdminNodeMutation(r, mutation)
+	writeSuccess(w, http.StatusOK, updated)
+}
+
+func (request adminNodeDefinitionRequest) storeInput(w http.ResponseWriter, updating bool) (store.SaveAdminNodeDefinitionInput, bool) {
+	fields := map[string]string{}
+	port, validPort := parseNodePort(request.Port)
+	if updating && (request.Revision == nil || *request.Revision < 1) {
+		fields["revision"] = "必须是正整数"
+	}
+	if !updating && request.Revision != nil {
+		fields["revision"] = "新建节点不得提交 revision"
+	}
+	if request.Type == nil {
+		fields["type"] = "必填"
+	}
+	if request.Name == nil {
+		fields["name"] = "必填"
+	}
+	if request.Host == nil {
+		fields["host"] = "必填"
+	}
+	if !validPort {
+		fields["port"] = "必须是端口或端口范围"
+	}
+	if request.Rate == nil || math.IsNaN(valueOrZero(request.Rate)) || math.IsInf(valueOrZero(request.Rate), 0) || valueOrZero(request.Rate) <= 0 || valueOrZero(request.Rate) > 1_000 {
+		fields["rate"] = "必须大于 0 且不超过 1000"
+	}
+	if request.ServerPort == nil {
+		fields["server_port"] = "必填"
+	}
+	if request.ListenAddress == nil {
+		fields["listen_address"] = "必填"
+	}
+	if len(request.ProtocolSettings) == 0 {
+		fields["protocol_settings"] = "必填"
+	}
+	if request.Show == nil {
+		fields["show"] = "必填"
+	}
+	if request.Enabled == nil {
+		fields["enabled"] = "必填"
+	}
+	if request.Sort == nil {
+		fields["sort"] = "必填"
+	}
+	if !request.ParentID.Set {
+		fields["parent_id"] = "必填，可为 null"
+	}
+	if !request.MachineID.Set {
+		fields["machine_id"] = "必填，可为 null"
+	}
+	if request.Tags == nil {
+		fields["tags"] = "必填"
+	}
+	if request.GroupIDs == nil {
+		fields["group_ids"] = "必填"
+	}
+	if request.RouteIDs == nil {
+		fields["route_ids"] = "必填"
+	}
+	rateTimeEnabled := request.RateTimeEnabled
+	if rateTimeEnabled == nil {
+		rateTimeEnabled = request.RateTimeEnable
+	}
+	if rateTimeEnabled == nil {
+		fields["rate_time_enabled"] = "必填"
+	}
+	if len(request.RateTimeRanges) == 0 {
+		fields["rate_time_ranges"] = "必填"
+	}
+	if len(request.CustomOutbounds) == 0 {
+		fields["custom_outbounds"] = "必填"
+	}
+	if len(request.CustomRoutes) == 0 {
+		fields["custom_routes"] = "必填"
+	}
+	certificate := request.CertificateConfig
+	if len(certificate) == 0 {
+		certificate = request.LegacyCertConfig
+	}
+	if len(certificate) == 0 {
+		fields["certificate_config"] = "必填"
+	}
+	if request.TransferEnable == nil {
+		fields["transfer_enable"] = "必填"
+	}
+	if !request.ExternalCode.Set && !request.SpecificKey.Set {
+		fields["external_code"] = "必填，可为 null"
+	}
+	if len(fields) > 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请提交完整且有效的节点定义", fields)
+		return store.SaveAdminNodeDefinitionInput{}, false
+	}
+	externalCode := request.ExternalCode.Value
+	if !request.ExternalCode.Set {
+		externalCode = request.SpecificKey.Value
+	}
+	result := store.SaveAdminNodeDefinitionInput{
+		Type: *request.Type, ParentID: request.ParentID.Value, Name: *request.Name,
+		RateMicros: int64(math.Round(*request.Rate * 1_000_000)), Tags: request.Tags, Host: *request.Host, Port: port,
+		ServerPort: *request.ServerPort, ListenAddress: *request.ListenAddress, ProtocolSettings: request.ProtocolSettings,
+		Show: *request.Show, Enabled: *request.Enabled, Sort: *request.Sort, MachineID: request.MachineID.Value,
+		GroupIDs: request.GroupIDs, RouteIDs: request.RouteIDs, RateTimeEnabled: *rateTimeEnabled,
+		RateTimeRanges: request.RateTimeRanges, CustomOutbounds: request.CustomOutbounds, CustomRoutes: request.CustomRoutes,
+		CertificateConfig: certificate, TransferEnable: *request.TransferEnable,
+	}
+	if updating {
+		result.Revision = *request.Revision
+	}
+	if externalCode != nil {
+		result.ExternalCode = *externalCode
+	}
+	return result, true
+}
+
+func valueOrZero(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
 
 func (s *server) listAdminNodes(w http.ResponseWriter, r *http.Request) {
 	filter, ok := decodeAdminNodeFilter(w, r)
@@ -269,5 +533,8 @@ func (s *server) publishAdminNodeMutation(r *http.Request, mutation store.AdminN
 	}
 	for _, machineID := range mutation.MachineIDs {
 		s.hub.NotifyMachineNodes(r.Context(), machineID)
+	}
+	for _, sync := range mutation.FullSyncs {
+		s.hub.NotifyNodeFull(r.Context(), sync.MachineID, sync.NodeID)
 	}
 }

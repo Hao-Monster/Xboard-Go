@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 40
+const currentSchemaVersion = 41
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -312,6 +312,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v40: %w", err)
 		}
 		version = 40
+	}
+	if version < 41 {
+		if err := applySchemaV41(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v41: %w", err)
+		}
+		version = 41
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2045,3 +2051,24 @@ ALTER TABLE nodes ADD COLUMN admin_revision INTEGER NOT NULL DEFAULT 1 CHECK (ad
 CREATE INDEX idx_nodes_admin_sort ON nodes(sort, id);
 CREATE INDEX idx_nodes_admin_type_sort ON nodes(type, sort, id);
 `
+
+const schemaV41 = `
+ALTER TABLE node_protocol_definitions ADD COLUMN listen_address TEXT NOT NULL DEFAULT '0.0.0.0'
+    CHECK (length(listen_address) BETWEEN 2 AND 45);
+`
+
+func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('node_protocol_definitions') WHERE name = 'listen_address')
+	`).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect node_protocol_definitions.listen_address: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, schemaV41); err != nil {
+		return fmt.Errorf("add node_protocol_definitions.listen_address: %w", err)
+	}
+	return nil
+}

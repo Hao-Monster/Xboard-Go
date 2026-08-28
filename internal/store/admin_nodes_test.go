@@ -43,7 +43,7 @@ func TestSchemaV40PreservesV39NodesAndAddsAdministratorRevision(t *testing.T) {
 	`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 40 || indexCount != 2 {
+	if version != 41 || indexCount != 2 {
 		t.Fatalf("schema version=%d index_count=%d", version, indexCount)
 	}
 }

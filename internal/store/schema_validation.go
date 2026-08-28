@@ -110,6 +110,10 @@ var requiredSchemaColumnsV40 = map[string][]string{
 	"nodes": {"admin_revision"},
 }
 
+var requiredSchemaColumnsV41 = map[string][]string{
+	"node_protocol_definitions": {"listen_address"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -176,6 +180,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 40 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV40); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 41 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV41); err != nil {
 			return err
 		}
 	}

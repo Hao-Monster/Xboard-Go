@@ -66,6 +66,56 @@ export interface AdminNode extends Node {
   online_count: number;
 }
 
+export interface AdminNodeRateRange {
+  start: string;
+  end: string;
+  rate: number;
+}
+
+export interface AdminNodeDefinition extends Node {
+  external_code: string;
+  parent_id: number | null;
+  server_port: number;
+  listen_address: string;
+  tags: string[];
+  protocol_settings: Record<string, unknown>;
+  group_ids: number[];
+  route_ids: number[];
+  rate_time_enabled: boolean;
+  rate_time_ranges: AdminNodeRateRange[];
+  custom_outbounds: unknown[];
+  custom_routes: unknown[];
+  certificate_config: Record<string, unknown>;
+  transfer_enable: number;
+}
+
+export interface AdminNodeDefinitionInput {
+  revision?: number;
+  type: string;
+  external_code: string | null;
+  parent_id: number | null;
+  name: string;
+  rate: number;
+  tags: string[];
+  host: string;
+  port: string;
+  server_port: number;
+  listen_address: string;
+  protocol_settings: Record<string, unknown>;
+  show: boolean;
+  enabled: boolean;
+  sort: number;
+  machine_id: number | null;
+  group_ids: number[];
+  route_ids: number[];
+  rate_time_enabled: boolean;
+  rate_time_ranges: AdminNodeRateRange[];
+  custom_outbounds: unknown[];
+  custom_routes: unknown[];
+  certificate_config: Record<string, unknown>;
+  transfer_enable: number;
+}
+
 export interface AdminNodePage {
   items: AdminNode[];
   total: number;
@@ -1389,6 +1439,9 @@ export interface AdminAPI {
   unassignNode: (machineID: number, nodeID: number, revision: number) => Promise<void>;
   setNodeEnabled: (machineID: number, nodeID: number, revision: number, enabled: boolean) => Promise<void>;
   listAdminNodes: (query?: AdminNodeQuery) => Promise<AdminNodePage>;
+  getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
+  createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
+  replaceAdminNodeDefinition: (nodeID: number, input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
   updateAdminNode: (nodeID: number, input: AdminNodeUpdateInput) => Promise<Node>;
   copyAdminNode: (nodeID: number, revision: number) => Promise<Node>;
   reorderAdminNodes: (targets: AdminNodeRevision[]) => Promise<AdminNodeMutation>;
@@ -1687,6 +1740,18 @@ export class APIClient implements AdminAPI {
     if (query.machine_id !== undefined) parameters.set("machine_id", String(query.machine_id));
     if (query.unassigned !== undefined) parameters.set("unassigned", String(query.unassigned));
     return this.request<AdminNodePage>(`/api/v1/admin/nodes${parameters.size === 0 ? "" : `?${parameters.toString()}`}`);
+  }
+
+  async getAdminNodeDefinition(nodeID: number): Promise<AdminNodeDefinition> {
+    return this.request<AdminNodeDefinition>(`/api/v1/admin/nodes/${nodeID}`);
+  }
+
+  async createAdminNodeDefinition(input: AdminNodeDefinitionInput): Promise<AdminNodeDefinition> {
+    return this.request<AdminNodeDefinition>("/api/v1/admin/nodes", { method: "POST", body: input });
+  }
+
+  async replaceAdminNodeDefinition(nodeID: number, input: AdminNodeDefinitionInput): Promise<AdminNodeDefinition> {
+    return this.request<AdminNodeDefinition>(`/api/v1/admin/nodes/${nodeID}`, { method: "PUT", body: input });
   }
 
   async updateAdminNode(nodeID: number, input: AdminNodeUpdateInput): Promise<Node> {

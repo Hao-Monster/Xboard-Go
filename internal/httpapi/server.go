@@ -442,6 +442,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/nodes/unassigned", api.listUnassignedNodes)
 	admin.HandleFunc("GET /api/v1/admin/nodes", api.listAdminNodes)
 	admin.HandleFunc("POST /api/v1/admin/nodes", api.createNode)
+	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}", api.getAdminNodeDefinition)
+	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}", api.replaceAdminNodeDefinition)
 	admin.HandleFunc("PATCH /api/v1/admin/nodes/{nodeID}", api.updateAdminNode)
 	admin.HandleFunc("POST /api/v1/admin/nodes/{nodeID}/copy", api.copyAdminNode)
 	admin.HandleFunc("PUT /api/v1/admin/nodes/order", api.reorderAdminNodes)

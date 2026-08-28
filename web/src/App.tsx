@@ -5,7 +5,6 @@ import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
-import { NodeManagementPage } from "./features/nodes/NodeManagementPage";
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
@@ -21,6 +20,7 @@ import { CouponManagementPage } from "./features/coupons/CouponManagementPage";
 
 const api = new APIClient();
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
+const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -202,7 +202,7 @@ export function App() {
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
       {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
       {page === "servers" && <ServerManagementPage api={api} />}
-      {page === "nodes" && <NodeManagementPage api={api} />}
+      {page === "nodes" && <Suspense fallback={<div className="app-loading">正在加载节点管理…</div>}><NodeManagementPage api={api} /></Suspense>}
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "orders" && <OrderManagementPage api={api} />}
       {page === "distributors" && <Suspense fallback={<div className="app-loading">正在加载分销管理…</div>}><AdminDistributorPage api={api} /></Suspense>}

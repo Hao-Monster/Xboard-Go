@@ -44,8 +44,18 @@ describe("APIClient administrator node contracts", () => {
     }));
     const api = new APIClient();
     const targets = [{ id: 41, revision: 3 }];
+		const definition = {
+			type: "vless", external_code: null, parent_id: null, name: "SG VLESS", rate: 1,
+			tags: [], host: "sg.test", port: "443", server_port: 443, listen_address: "0.0.0.0",
+			protocol_settings: { tls: 0, network: "tcp", network_settings: {} }, show: true, enabled: true,
+			sort: 10, machine_id: null, group_ids: [], route_ids: [], rate_time_enabled: false,
+			rate_time_ranges: [], custom_outbounds: [], custom_routes: [], certificate_config: {}, transfer_enable: 0
+		};
 
     await api.listAdminNodes({ page: 2, page_size: 500, q: " SG edge ", type: "vless", show: false, enabled: true, machine_id: 7 });
+		await api.getAdminNodeDefinition(41);
+		await api.createAdminNodeDefinition(definition);
+		await api.replaceAdminNodeDefinition(41, { ...definition, revision: 3 });
     await api.updateAdminNode(41, { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null });
     await api.copyAdminNode(41, 3);
     await api.reorderAdminNodes(targets);
@@ -55,6 +65,9 @@ describe("APIClient administrator node contracts", () => {
 
     expect(requests).toEqual([
       { path: "/api/v1/admin/nodes?page=2&page_size=500&q=SG+edge&type=vless&show=false&enabled=true&machine_id=7", method: "GET", body: undefined, csrf: null },
+			{ path: "/api/v1/admin/nodes/41", method: "GET", body: undefined, csrf: null },
+			{ path: "/api/v1/admin/nodes", method: "POST", body: definition, csrf: "node-csrf" },
+			{ path: "/api/v1/admin/nodes/41", method: "PUT", body: { ...definition, revision: 3 }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/41", method: "PATCH", body: { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/41/copy", method: "POST", body: { revision: 3 }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/order", method: "PUT", body: { targets }, csrf: "node-csrf" },
