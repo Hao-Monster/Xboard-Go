@@ -198,7 +198,10 @@ describe("UsersPage", () => {
 		await user.click(within(operations).getByRole("button", { name: "重置流量" }));
 		const reset = await screen.findByRole("dialog", { name: "重置流量" });
 		expect(screen.getAllByRole("dialog")).toHaveLength(1);
-		await user.type(within(reset).getByLabelText("重置原因（可选）"), "客服确认");
+		const reason = within(reset).getByLabelText("重置原因（可选）");
+		await user.click(reason);
+		await user.paste("客服确认");
+		expect(reason).toHaveValue("客服确认");
 		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
 		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledWith(account.id, "客服确认", expect.any(String)));
 		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
@@ -220,7 +223,10 @@ describe("UsersPage", () => {
 		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
 		await user.click(within(screen.getByRole("dialog", { name: "用户操作" })).getByRole("button", { name: "重置流量" }));
 		const reset = screen.getByRole("dialog", { name: "重置流量" });
-		await user.type(within(reset).getByLabelText("重置原因（可选）"), "重试验证");
+		const reason = within(reset).getByLabelText("重置原因（可选）");
+		await user.click(reason);
+		await user.paste("重试验证");
+		expect(reason).toHaveValue("重试验证");
 		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
 		expect(await within(reset).findByRole("alert")).toHaveTextContent("临时网络错误");
 		const firstKey = api.resetAdminUserTraffic.mock.calls[0]?.[2];
