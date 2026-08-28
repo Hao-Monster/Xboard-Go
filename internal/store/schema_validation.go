@@ -122,6 +122,10 @@ var requiredSchemaColumnsV43 = map[string][]string{
 	},
 }
 
+var requiredSchemaColumnsV44 = map[string][]string{
+	"app_settings": {"try_out_plan_id", "try_out_hour"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -198,6 +202,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 43 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV43); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 44 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV44); err != nil {
 			return err
 		}
 	}

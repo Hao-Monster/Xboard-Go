@@ -432,6 +432,22 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 		return nil, fmt.Errorf("begin create users: %w", err)
 	}
 	defer tx.Rollback()
+	var configuredTrial *registrationTrial
+	for _, input := range normalized {
+		if input.PlanID != nil || input.IsDistributor {
+			continue
+		}
+		var trialPlanID int64
+		var trialHours, systemResetMethod int
+		if err := tx.QueryRowContext(ctx, `SELECT try_out_plan_id, try_out_hour, traffic_reset_method FROM app_settings WHERE id = 1`).Scan(&trialPlanID, &trialHours, &systemResetMethod); err != nil {
+			return nil, fmt.Errorf("read administrator registration trial settings: %w", err)
+		}
+		configuredTrial, err = resolveRegistrationTrial(ctx, tx, trialPlanID, trialHours, systemResetMethod, now)
+		if err != nil {
+			return nil, fmt.Errorf("resolve administrator registration trial: %w", err)
+		}
+		break
+	}
 
 	type planEntitlement struct {
 		groupID        *int64
@@ -453,6 +469,7 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 		transferEnable := input.TransferEnable
 		speedLimit := input.SpeedLimit
 		deviceLimit := input.DeviceLimit
+		expiredAt := input.ExpiredAt
 		var nextResetAt *time.Time
 		if planID != nil {
 			entitlement, exists := plans[*planID]
@@ -485,7 +502,17 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 				}
 				hasSystemResetMethod = true
 			}
-			nextResetAt = CalculateNextTrafficReset(entitlement.resetMethod, systemResetMethod, input.ExpiredAt, now)
+			nextResetAt = CalculateNextTrafficReset(entitlement.resetMethod, systemResetMethod, expiredAt, now)
+		} else if !input.IsDistributor && configuredTrial != nil {
+			groupID = cloneInt64(configuredTrial.entitlement.groupID)
+			trialPlanID := configuredTrial.entitlement.planID
+			planID = &trialPlanID
+			transferEnable = configuredTrial.entitlement.transferEnable
+			speedLimit = configuredTrial.entitlement.speedLimit
+			deviceLimit = configuredTrial.entitlement.deviceLimit
+			trialExpiry := configuredTrial.expiredAt
+			expiredAt = &trialExpiry
+			nextResetAt = configuredTrial.nextResetAt
 		} else if groupID != nil {
 			if cached, checked := groupChecks[*groupID]; checked {
 				if cached != nil {
@@ -517,7 +544,7 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 			) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, input.Email, input.PasswordHash, input.IsAdmin, input.IsStaff, input.IsDistributor,
 			nullableStringValue(distributorNames[index]), input.Banned, userUUID, nullableInt64Value(groupID),
-			nullableInt64Value(planID), transferEnable, nullableTimeUnix(input.ExpiredAt), speedLimit, deviceLimit,
+			nullableInt64Value(planID), transferEnable, nullableTimeUnix(expiredAt), speedLimit, deviceLimit,
 			subscriptionToken, nullableTimeUnix(nextResetAt), now.Unix(), now.Unix())
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "unique") {

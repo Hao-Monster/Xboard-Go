@@ -430,7 +430,7 @@ func readLegacyImportSiteSettings(ctx context.Context, database interface {
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, traffic_reset_method, coupon_enabled,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at

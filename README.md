@@ -518,6 +518,25 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+After plans have been imported, migrate the legacy registration-trial plan and
+duration while the target remains offline:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-registration-trial-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-registration-trial-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The importer rejects non-integer, non-positive, or unbounded enabled trial
+durations. A legacy setting that references a missing plan is explicitly
+reported and normalized to a disabled trial instead of creating a dangling
+reference. Repeating the same source verifies and reuses the recorded rollback
+archive.
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.

@@ -48,6 +48,9 @@ type registrationPolicy struct {
 	registrationIPLimitMinutes int
 	invitationForceEnabled     bool
 	invitationNeverExpire      bool
+	trialPlanID                int64
+	trialHours                 int
+	systemTrafficResetMethod   int
 }
 
 func CheckRegistrationEmailPolicy(settings SiteSettings, email string) error {
@@ -139,12 +142,30 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 			return User{}, err
 		}
 	}
+	trial, err := resolveRegistrationTrial(ctx, tx, policy.trialPlanID, policy.trialHours, policy.systemTrafficResetMethod, now)
+	if err != nil {
+		return User{}, fmt.Errorf("resolve registration trial: %w", err)
+	}
+	var groupID, planID any
+	var transferEnable int64
+	var expiredAt, nextResetAt any
+	var speedLimit, deviceLimit int
+	if trial != nil {
+		groupID = nullableInt64Value(trial.entitlement.groupID)
+		planID = trial.entitlement.planID
+		transferEnable = trial.entitlement.transferEnable
+		expiredAt = trial.expiredAt.Unix()
+		speedLimit = trial.entitlement.speedLimit
+		deviceLimit = trial.entitlement.deviceLimit
+		nextResetAt = nullableTimeUnix(trial.nextResetAt)
+	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
-			email, password_hash, is_admin, banned, account_kind, uuid, group_id, transfer_enable,
-			expired_at, speed_limit, device_limit, subscription_token, invite_user_id, created_at, updated_at
-		) VALUES (?, ?, 0, 0, 'human', ?, NULL, 0, NULL, 0, 0, ?, ?, ?, ?)
-	`, input.Email, input.PasswordHash, uuid.NewString(), subscriptionToken, nullableInvitationOwner(invitation), now.Unix(), now.Unix())
+			email, password_hash, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable,
+			expired_at, speed_limit, device_limit, subscription_token, invite_user_id, next_reset_at, created_at, updated_at
+		) VALUES (?, ?, 0, 0, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, input.Email, input.PasswordHash, uuid.NewString(), groupID, planID, transferEnable, expiredAt, speedLimit, deviceLimit,
+		subscriptionToken, nullableInvitationOwner(invitation), nextResetAt, now.Unix(), now.Unix())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			var existing int
@@ -232,12 +253,12 @@ func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (r
 	err := query.QueryRowContext(ctx, `
 		SELECT stop_register, email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
-		       invite_force, invite_never_expire
+		       invite_force, invite_never_expire, try_out_plan_id, try_out_hour, traffic_reset_method
 		FROM app_settings WHERE id = 1
 	`).Scan(
 		&policy.stopRegister, &policy.emailVerificationEnabled, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
 		&policy.registrationIPLimitEnabled, &policy.registrationIPLimitCount, &policy.registrationIPLimitMinutes,
-		&policy.invitationForceEnabled, &policy.invitationNeverExpire,
+		&policy.invitationForceEnabled, &policy.invitationNeverExpire, &policy.trialPlanID, &policy.trialHours, &policy.systemTrafficResetMethod,
 	)
 	if err != nil {
 		return registrationPolicy{}, err
@@ -256,6 +277,9 @@ func registrationPolicyFromSettings(settings SiteSettings) registrationPolicy {
 		registrationIPLimitMinutes: settings.RegistrationIPLimitMinutes,
 		invitationForceEnabled:     settings.InvitationForceEnabled,
 		invitationNeverExpire:      settings.InvitationNeverExpire,
+		trialPlanID:                settings.TrialPlanID,
+		trialHours:                 settings.TrialHours,
+		systemTrafficResetMethod:   settings.TrafficResetMethod,
 	}
 }
 

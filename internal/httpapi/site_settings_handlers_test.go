@@ -2,13 +2,47 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+func TestSiteSettingsRegistrationTrialContractValidatesPlanAndStaysPrivate(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	now := time.Date(2026, 8, 29, 13, 0, 0, 0, time.UTC)
+	plan, err := database.CreatePlan(t.Context(), store.SavePlanInput{
+		Name: "API trial", TransferEnableGiB: 8, Prices: store.PlanPrices{}, Tags: []string{},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", fmt.Sprintf(`{
+		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"try_out_plan_id":%d,"try_out_hour":48
+	}`, plan.ID))
+	if configured.Code != http.StatusOK {
+		t.Fatalf("configure trial status=%d body=%s", configured.Code, configured.Body)
+	}
+	settings := decodeSiteSettingsEnvelope(t, configured)
+	if settings.TrialPlanID != plan.ID || settings.TrialHours != 48 {
+		t.Fatalf("configured trial settings=%#v", settings)
+	}
+	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
+		"try_out_plan_id":999999,"try_out_hour":0
+	}`)
+	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
+	public := testClient{}.request(t, api, http.MethodGet, "/api/v1/guest/comm/config", "")
+	if strings.Contains(public.Body.String(), "try_out_plan_id") || strings.Contains(public.Body.String(), "try_out_hour") {
+		t.Fatalf("public config disclosed trial policy: %s", public.Body)
+	}
+}
 
 func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	api, database := newTestAPI(t)

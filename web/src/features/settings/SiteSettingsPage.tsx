@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import type { AdminAPI, SiteSettings, SiteSettingsInput } from "../../lib/api";
+import type { AdminAPI, Plan, SiteSettings, SiteSettingsInput } from "../../lib/api";
 
-type SiteSettingsAPI = Pick<AdminAPI, "getSiteSettings" | "updateSiteSettings">;
+type SiteSettingsAPI = Pick<AdminAPI, "getSiteSettings" | "updateSiteSettings" | "listPlans">;
 type SiteDraft = Omit<SiteSettingsInput, "revision">;
 
 export function SiteSettingsPage({ api, onIdentityChanged }: {
@@ -11,6 +11,7 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
 }) {
   const [current, setCurrent] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteDraft | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +27,9 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
     setError("");
     setSaved(false);
     try {
-      applySettings(await api.getSiteSettings());
+      const [settings, availablePlans] = await Promise.all([api.getSiteSettings(), api.listPlans()]);
+      applySettings(settings);
+      setPlans(availablePlans);
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
@@ -36,8 +39,11 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
 
   useEffect(() => {
     let active = true;
-    void api.getSiteSettings().then((settings) => {
-      if (active) applySettings(settings);
+    void Promise.all([api.getSiteSettings(), api.listPlans()]).then(([settings, availablePlans]) => {
+      if (active) {
+        applySettings(settings);
+        setPlans(availablePlans);
+      }
     }).catch((cause: unknown) => {
       if (active) setError(messageOf(cause));
     }).finally(() => {
@@ -101,6 +107,13 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
 		</fieldset>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
+          <label>注册试用<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
+            <option value={0}>关闭</option>
+            {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+          </select></label>
+          <p className="small muted" id="registration-trial-plan-help">选择需要试用的订阅，如果没有选项请先前往订阅管理添加。</p>
+          {draft.try_out_plan_id !== 0 && <label>注册试用时长<input aria-describedby="registration-trial-duration-help" type="number" required min={1} max={8760} step={1} value={draft.try_out_hour} onChange={(event) => updateDraft("try_out_hour", Number(event.target.value))} /></label>}
+          {draft.try_out_plan_id !== 0 && <p className="small muted" id="registration-trial-duration-help">注册试用时长，单位为小时。</p>}
           <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
           <p className="small muted">保护直接注册、注册邮箱验证码和找回密码验证码请求；密码登录不使用此策略。</p>
           {draft.captcha_enable && <label>验证码类型<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
@@ -186,7 +199,9 @@ function toDraft(settings: SiteSettings): SiteDraft {
     invite_gen_limit: settings.invite_gen_limit,
     invite_never_expire: settings.invite_never_expire,
     login_with_mail_link_enable: settings.login_with_mail_link_enable,
-	traffic_reset_method: settings.traffic_reset_method,
+    try_out_plan_id: settings.try_out_plan_id,
+    try_out_hour: settings.try_out_hour,
+    traffic_reset_method: settings.traffic_reset_method,
     coupon_enabled: settings.coupon_enabled,
     captcha_enable: settings.captcha_enable,
     captcha_type: settings.captcha_type,

@@ -87,6 +87,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit        *int      `json:"invite_gen_limit"`
 		InvitationNeverExpire      *bool     `json:"invite_never_expire"`
 		MailLoginEnabled           *bool     `json:"login_with_mail_link_enable"`
+		TrialPlanID                *int64    `json:"try_out_plan_id"`
+		TrialHours                 *int      `json:"try_out_hour"`
 		TrafficResetMethod         *int      `json:"traffic_reset_method"`
 		CouponEnabled              *bool     `json:"coupon_enabled"`
 		CaptchaEnabled             *bool     `json:"captcha_enable"`
@@ -125,6 +127,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		InvitationCodeLimit:        current.InvitationCodeLimit,
 		InvitationNeverExpire:      current.InvitationNeverExpire,
 		MailLoginEnabled:           current.MailLoginEnabled,
+		TrialPlanID:                &current.TrialPlanID,
+		TrialHours:                 &current.TrialHours,
 		TrafficResetMethod:         &current.TrafficResetMethod,
 		CouponEnabled:              &current.CouponEnabled,
 		CaptchaEnabled:             current.CaptchaEnabled,
@@ -178,6 +182,12 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.MailLoginEnabled != nil {
 		next.MailLoginEnabled = *input.MailLoginEnabled
+	}
+	if input.TrialPlanID != nil {
+		next.TrialPlanID = input.TrialPlanID
+	}
+	if input.TrialHours != nil {
+		next.TrialHours = input.TrialHours
 	}
 	if input.TrafficResetMethod != nil {
 		next.TrafficResetMethod = input.TrafficResetMethod

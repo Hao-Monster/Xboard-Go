@@ -219,6 +219,8 @@ type SiteSettings struct {
 	InvitationCodeLimit         int       `json:"invite_gen_limit"`
 	InvitationNeverExpire       bool      `json:"invite_never_expire"`
 	MailLoginEnabled            bool      `json:"login_with_mail_link_enable"`
+	TrialPlanID                 int64     `json:"try_out_plan_id"`
+	TrialHours                  int       `json:"try_out_hour"`
 	TrafficResetMethod          int       `json:"traffic_reset_method"`
 	CouponEnabled               bool      `json:"coupon_enabled"`
 	CaptchaEnabled              bool      `json:"captcha_enable"`
@@ -254,6 +256,8 @@ type SaveSiteSettingsInput struct {
 	InvitationCodeLimit        int
 	InvitationNeverExpire      bool
 	MailLoginEnabled           bool
+	TrialPlanID                *int64
+	TrialHours                 *int
 	TrafficResetMethod         *int
 	CouponEnabled              *bool
 	CaptchaEnabled             bool
