@@ -60,6 +60,7 @@ func TestCreateNodeMaintainsSchemaV42DefinitionInvariant(t *testing.T) {
 
 func TestSchemaV42PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)
 	node, err := database.CreateNode(ctx, CreateNodeInput{Name: "Preserved", Type: "vless", Host: "edge.test", Port: "443", Show: true, Enabled: true}, now)
@@ -93,13 +94,14 @@ func TestSchemaV42PreservesV40NodeDefinitionsAndAddsListenAddress(t *testing.T) 
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 42 || listenAddress != "0.0.0.0" || runtime != `{"protocol":"vless","server_port":8443,"marker":"v40"}` {
+	if version != currentSchemaVersion || listenAddress != "0.0.0.0" || runtime != `{"protocol":"vless","server_port":8443,"marker":"v40"}` {
 		t.Fatalf("migration result version=%d listen=%q runtime=%s", version, listenAddress, runtime)
 	}
 }
 
 func TestSchemaV42BackfillsV40NodesMissingProtocolDefinitions(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 18, 0, 0, 0, time.UTC)
 	protocols := []string{"shadowsocks", "vmess", "trojan", "hysteria", "vless", "tuic", "socks", "naive", "http", "mieru", "anytls"}
@@ -183,8 +185,8 @@ func TestSchemaV42BackfillsV40NodesMissingProtocolDefinitions(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 42 {
-		t.Fatalf("schema version = %d, want 42", version)
+	if version != currentSchemaVersion {
+		t.Fatalf("schema version = %d, want %d", version, currentSchemaVersion)
 	}
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatalf("second Migrate() error = %v", err)
@@ -200,6 +202,7 @@ func TestSchemaV42BackfillsV40NodesMissingProtocolDefinitions(t *testing.T) {
 
 func TestSchemaV42BackfillRollsBackUnsupportedHistoricalNode(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 18, 30, 0, 0, time.UTC).Unix()
 	if _, err := database.db.ExecContext(ctx, `
@@ -228,6 +231,7 @@ func TestSchemaV42BackfillRollsBackUnsupportedHistoricalNode(t *testing.T) {
 
 func TestSchemaV42BackfillCrossesBoundedBatchBoundary(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 18, 45, 0, 0, time.UTC).Unix()
 	if _, err := database.db.ExecContext(ctx, `
@@ -260,6 +264,7 @@ func TestSchemaV42BackfillCrossesBoundedBatchBoundary(t *testing.T) {
 
 func TestSchemaV42BackfillPreservesNonCanonicalLegacyRuntime(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 18, 50, 0, 0, time.UTC)
 	node, err := database.CreateNode(ctx, CreateNodeInput{

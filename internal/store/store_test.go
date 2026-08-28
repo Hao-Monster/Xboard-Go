@@ -572,12 +572,20 @@ func removeSchemaV39ForMigrationTest(t *testing.T, database *Store) {
 
 func removeSchemaV40ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
+	removeSchemaV43ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
 		DROP INDEX IF EXISTS idx_nodes_admin_type_sort;
 		DROP INDEX IF EXISTS idx_nodes_admin_sort;
 		ALTER TABLE nodes DROP COLUMN admin_revision;
 	`); err != nil {
 		t.Fatalf("remove schema v40: %v", err)
+	}
+}
+
+func removeSchemaV43ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `DROP TABLE IF EXISTS node_agent_settings`); err != nil {
+		t.Fatalf("remove schema v43: %v", err)
 	}
 }
 

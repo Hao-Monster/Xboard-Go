@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
@@ -96,6 +97,7 @@ type server struct {
 	adminUserGenerationSlots   chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
+	legacyNodeAuthFailures     *attemptLimiter
 	handshakeRequests          *requestLimitGroup
 	pullRequests               *requestLimitGroup
 	reportRequests             *requestLimitGroup
@@ -105,9 +107,9 @@ type server struct {
 	paymentWebhookRequests     *requestLimiter
 	hub                        *wsHub
 	webSocketEnabled           bool
-	webSocketURL               string
-	nodePushInterval           int
-	nodePullInterval           int
+	legacyHTTPAuthSuccess      atomic.Uint64
+	legacyWebSocketAuthSuccess atomic.Uint64
+	legacyLastUsedUnix         atomic.Int64
 	clientCatalog              *clientcatalog.Service
 	settingsCipher             *appsettings.Cipher
 	passwordResetProtector     *security.PasswordResetProtector
@@ -153,6 +155,12 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.NodePullInterval == 0 {
 		dependencies.NodePullInterval = 60
+	}
+	if err := dependencies.Store.EnsureNodeAgentSettings(dependencies.Context, store.NodeAgentSettingsDefaults{
+		PullInterval: dependencies.NodePullInterval, PushInterval: dependencies.NodePushInterval,
+		WebSocketEnabled: dependencies.WebSocketEnabled, WebSocketURL: strings.TrimRight(dependencies.WebSocketURL, "/"),
+	}, dependencies.Now()); err != nil {
+		panic(fmt.Sprintf("httpapi: ensure node agent settings: %v", err))
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
@@ -203,6 +211,7 @@ func New(dependencies Dependencies) http.Handler {
 		adminUserGenerationSlots:   make(chan struct{}, 1),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
+		legacyNodeAuthFailures:     newAttemptLimiter(60, time.Minute),
 		handshakeRequests:          newRequestLimitGroup(60, 20),
 		pullRequests:               newRequestLimitGroup(2_400, 600),
 		reportRequests:             newRequestLimitGroup(1_200, 240),
@@ -211,9 +220,6 @@ func New(dependencies Dependencies) http.Handler {
 		orderRequests:              newRequestLimitGroup(240, 60),
 		paymentWebhookRequests:     newRequestLimiter(600, time.Minute),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
-		webSocketURL:               strings.TrimRight(dependencies.WebSocketURL, "/"),
-		nodePushInterval:           dependencies.NodePushInterval,
-		nodePullInterval:           dependencies.NodePullInterval,
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
 		}),
@@ -230,7 +236,7 @@ func New(dependencies Dependencies) http.Handler {
 		bulkOperations:             dependencies.BulkOperations,
 	}
 	if dependencies.WebSocketEnabled {
-		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval, dependencies.NodeCoordinator)
+		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator)
 		if dependencies.NodeCoordinator != nil {
 			if err := dependencies.NodeCoordinator.Start(dependencies.Context, api.hub.handleCoordinationEvent); err != nil {
 				panic(fmt.Sprintf("httpapi: start node coordinator: %v", err))
@@ -358,10 +364,21 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("POST /api/v2/server/machine/enroll", api.exchangeEnrollment)
 	root.HandleFunc("POST /api/v2/server/machine/nodes", api.xboardNodeMachineNodes)
 	root.HandleFunc("POST /api/v2/server/machine/status", api.xboardNodeMachineStatus)
+	root.HandleFunc("GET /api/v2/server/handshake", api.xboardNodeHandshake)
 	root.HandleFunc("POST /api/v2/server/handshake", api.xboardNodeHandshake)
 	root.HandleFunc("GET /api/v2/server/config", api.xboardNodeConfig)
 	root.HandleFunc("GET /api/v2/server/user", api.xboardNodeUsers)
+	root.HandleFunc("POST /api/v2/server/push", api.xboardNodePush)
+	root.HandleFunc("POST /api/v2/server/alive", api.xboardNodeAlive)
+	root.HandleFunc("GET /api/v2/server/alivelist", api.xboardNodeAliveList)
+	root.HandleFunc("POST /api/v2/server/status", api.xboardNodeStatus)
 	root.HandleFunc("POST /api/v2/server/report", api.xboardNodeReport)
+	root.HandleFunc("GET /api/v1/server/UniProxy/config", api.xboardNodeConfig)
+	root.HandleFunc("GET /api/v1/server/UniProxy/user", api.xboardNodeUsers)
+	root.HandleFunc("POST /api/v1/server/UniProxy/push", api.xboardNodePush)
+	root.HandleFunc("POST /api/v1/server/UniProxy/alive", api.xboardNodeAlive)
+	root.HandleFunc("GET /api/v1/server/UniProxy/alivelist", api.xboardNodeAliveList)
+	root.HandleFunc("POST /api/v1/server/UniProxy/status", api.xboardNodeStatus)
 	root.HandleFunc("GET /{subscriptionPath}/{subscriptionToken}", api.dynamicClientSubscription)
 	legacyAdminOrder := http.NewServeMux()
 	legacyAdminOrder.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
@@ -537,6 +554,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
+	admin.HandleFunc("GET /api/v1/admin/node-agent-settings", api.getNodeAgentSettings)
+	admin.HandleFunc("PUT /api/v1/admin/node-agent-settings", api.updateNodeAgentSettings)
 	admin.HandleFunc("GET /api/v1/admin/subscription-settings", api.getSubscriptionSettings)
 	admin.HandleFunc("PUT /api/v1/admin/subscription-settings", api.updateSubscriptionSettings)
 	admin.HandleFunc("GET /api/v1/admin/tickets/{ticketID}", api.getAdminTicket)
@@ -599,6 +618,10 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 		}
 		recorder := &responseStatusRecorder{ResponseWriter: w}
 		next.ServeHTTP(recorder, r)
+		statusCode := recorder.statusCode()
+		if r.Method == http.MethodPut && r.URL.Path == "/api/v1/admin/node-agent-settings" && statusCode >= 200 && statusCode < 300 {
+			return
+		}
 		session, ok := sessionFromContext(r.Context())
 		if !ok {
 			return
@@ -609,7 +632,7 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 		} else if _, patternRoute, found := strings.Cut(route, " "); found {
 			route = patternRoute
 		}
-		s.recordAdminAudit(r.Context(), session, r.Method, route, recorder.statusCode())
+		s.recordAdminAudit(r.Context(), session, r.Method, route, statusCode)
 	})
 }
 

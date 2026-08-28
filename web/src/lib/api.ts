@@ -19,6 +19,34 @@ export interface MachineLoadStatus {
   updated_at: number;
 }
 
+export interface NodeAgentSettings {
+  revision: number;
+  server_token_configured: boolean;
+  server_token_prefix: string;
+  server_pull_interval: number;
+  server_push_interval: number;
+  device_limit_mode: 0 | 1;
+  server_ws_enable: boolean;
+  server_ws_url: string;
+  websocket_available: boolean;
+  legacy_http_auth_success_count: number;
+  legacy_websocket_auth_success_count: number;
+  legacy_last_used_at: string | null;
+  updated_at: string;
+  issued_token?: string;
+}
+
+export interface NodeAgentSettingsInput {
+  revision: number;
+  server_token?: string;
+  generate_server_token?: boolean;
+  server_pull_interval: number;
+  server_push_interval: number;
+  device_limit_mode: 0 | 1;
+  server_ws_enable: boolean;
+  server_ws_url: string;
+}
+
 export interface LoadHistory {
   id: number;
   machine_id: number;
@@ -1427,6 +1455,8 @@ export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "passwo
 }
 
 export interface AdminAPI {
+  getNodeAgentSettings: () => Promise<NodeAgentSettings>;
+  updateNodeAgentSettings: (input: NodeAgentSettingsInput) => Promise<NodeAgentSettings>;
   listMachines: () => Promise<Machine[]>;
   createMachine: (input: { name: string; notes: string; is_active: boolean }) => Promise<MachineEnrollment>;
   updateMachine: (id: number, input: { name: string; notes: string; is_active: boolean }) => Promise<Machine>;
@@ -1681,6 +1711,14 @@ export class APIClient implements AdminAPI {
 
   async listMachines(): Promise<Machine[]> {
     return this.request<Machine[]>("/api/v1/admin/machines");
+  }
+
+  async getNodeAgentSettings(): Promise<NodeAgentSettings> {
+    return this.request<NodeAgentSettings>("/api/v1/admin/node-agent-settings");
+  }
+
+  async updateNodeAgentSettings(input: NodeAgentSettingsInput): Promise<NodeAgentSettings> {
+    return this.request<NodeAgentSettings>("/api/v1/admin/node-agent-settings", { method: "PUT", body: input });
   }
 
   async createMachine(input: { name: string; notes: string; is_active: boolean }): Promise<MachineEnrollment> {

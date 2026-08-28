@@ -1088,6 +1088,41 @@ type MachineCredential struct {
 	Prefix    string `json:"token_prefix"`
 }
 
+// NodeAgentSettings contains administrator-owned compatibility settings. The
+// legacy server token is deliberately represented only by non-secret metadata.
+type NodeAgentSettings struct {
+	Revision              int64     `json:"revision"`
+	ServerTokenConfigured bool      `json:"server_token_configured"`
+	ServerTokenPrefix     string    `json:"server_token_prefix"`
+	PullInterval          int       `json:"server_pull_interval"`
+	PushInterval          int       `json:"server_push_interval"`
+	DeviceLimitMode       int       `json:"device_limit_mode"`
+	WebSocketEnabled      bool      `json:"server_ws_enable"`
+	WebSocketURL          string    `json:"server_ws_url"`
+	UpdatedBy             *int64    `json:"updated_by,omitempty"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+type NodeAgentSettingsDefaults struct {
+	PullInterval     int
+	PushInterval     int
+	DeviceLimitMode  int
+	WebSocketEnabled bool
+	WebSocketURL     string
+}
+
+type UpdateNodeAgentSettingsInput struct {
+	Revision         int64
+	ServerToken      *string
+	PullInterval     int
+	PushInterval     int
+	DeviceLimitMode  int
+	WebSocketEnabled bool
+	WebSocketURL     string
+	UpdatedBy        *int64
+	Audit            *AdminAuditInput
+}
+
 type Node struct {
 	ID                int64      `json:"id"`
 	Revision          int64      `json:"revision"`
@@ -1783,6 +1818,7 @@ type TrafficUsage struct {
 
 type NodeReportInput struct {
 	MachineID         int64
+	LegacyAuth        bool
 	NodeID            int64
 	ReportID          string
 	Traffic           map[int64]TrafficUsage

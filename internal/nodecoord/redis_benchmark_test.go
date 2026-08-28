@@ -41,6 +41,22 @@ func BenchmarkRedisCoordinatorVerifyMachineNode(b *testing.B) {
 	}
 }
 
+func BenchmarkRedisCoordinatorClaimAndVerifyLegacyNode(b *testing.B) {
+	coordinator := newBenchmarkCoordinator(b, "legacy-node")
+	connectionID := mustConnectionID(b, coordinator)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if err := coordinator.ClaimNode(context.Background(), 1, connectionID); err != nil {
+			b.Fatal(err)
+		}
+		owned, err := coordinator.OwnsNode(context.Background(), 1, connectionID)
+		if err != nil || !owned {
+			b.Fatalf("OwnsNode()=(%t,%v)", owned, err)
+		}
+	}
+}
+
 func BenchmarkRedisCoordinatorRenew1000Machines(b *testing.B) {
 	coordinator := newBenchmarkCoordinator(b, "renew")
 	leases := make([]Lease, 1_000)

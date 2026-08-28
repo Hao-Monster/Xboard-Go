@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 42
+const currentSchemaVersion = 43
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -324,6 +324,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v42: %w", err)
 		}
 		version = 42
+	}
+	if version < 43 {
+		if _, err := tx.ExecContext(ctx, schemaV43); err != nil {
+			return fmt.Errorf("apply schema v43: %w", err)
+		}
+		version = 43
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2061,6 +2067,31 @@ CREATE INDEX idx_nodes_admin_type_sort ON nodes(type, sort, id);
 const schemaV41 = `
 ALTER TABLE node_protocol_definitions ADD COLUMN listen_address TEXT NOT NULL DEFAULT '0.0.0.0'
     CHECK (length(listen_address) BETWEEN 2 AND 45);
+`
+
+const schemaV43 = `
+CREATE TABLE node_agent_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    server_token_hash TEXT CHECK (
+        server_token_hash IS NULL OR (
+            length(server_token_hash) = 64
+            AND server_token_hash NOT GLOB '*[^0-9a-f]*'
+        )
+    ),
+    server_token_prefix TEXT NOT NULL DEFAULT '' CHECK (length(server_token_prefix) <= 8),
+    pull_interval INTEGER NOT NULL CHECK (pull_interval BETWEEN 1 AND 3600),
+    push_interval INTEGER NOT NULL CHECK (push_interval BETWEEN 1 AND 3600),
+    device_limit_mode INTEGER NOT NULL CHECK (device_limit_mode IN (0, 1)),
+    websocket_enabled INTEGER NOT NULL CHECK (websocket_enabled IN (0, 1)),
+    websocket_url TEXT NOT NULL DEFAULT '' CHECK (length(CAST(websocket_url AS BLOB)) <= 2048),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+    CHECK (
+        (server_token_hash IS NULL AND server_token_prefix = '') OR
+        (server_token_hash IS NOT NULL AND length(server_token_prefix) BETWEEN 1 AND 8)
+    )
+);
 `
 
 func applySchemaV41(ctx context.Context, tx *sql.Tx) error {

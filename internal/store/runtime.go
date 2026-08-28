@@ -328,11 +328,11 @@ func (s *Store) ListRuntimeNodeTargetsForGroups(ctx context.Context, groupIDs []
 		args = append(args, groupID)
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT n.id, n.machine_id
+		SELECT DISTINCT n.id, COALESCE(n.machine_id, 0)
 		FROM node_group_memberships ng
 		JOIN nodes n ON n.id = ng.node_id
 		WHERE ng.group_id IN (`+placeholders+`)
-		  AND n.machine_id IS NOT NULL AND n.enabled = 1 AND n.runtime_config IS NOT NULL
+		  AND n.enabled = 1 AND n.runtime_config IS NOT NULL
 		ORDER BY n.id
 	`, args...)
 	if err != nil {
@@ -370,10 +370,10 @@ func (s *Store) ListRuntimeNodeGroupTargetsForGroups(ctx context.Context, groupI
 		arguments = append(arguments, groupID)
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT n.id, n.machine_id, ng.group_id
+		SELECT n.id, COALESCE(n.machine_id, 0), ng.group_id
 		FROM node_group_memberships ng JOIN nodes n ON n.id=ng.node_id
 		WHERE ng.group_id IN (`+placeholders+`)
-		  AND n.machine_id IS NOT NULL AND n.enabled=1 AND n.runtime_config IS NOT NULL
+		  AND n.enabled=1 AND n.runtime_config IS NOT NULL
 		ORDER BY n.id, ng.group_id
 	`, arguments...)
 	if err != nil {
@@ -413,11 +413,11 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 	var rateTimeRanges string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(d.configured_rate_micros, n.rate_micros),
-		       n.machine_id = ? AND n.enabled = 1 AND n.runtime_config IS NOT NULL,
+		       (? = 1 OR n.machine_id = ?) AND n.enabled = 1 AND n.runtime_config IS NOT NULL,
 		       COALESCE(d.rate_time_enabled, 0), COALESCE(d.rate_time_ranges_json, '[]')
 		FROM nodes n LEFT JOIN node_protocol_definitions d ON d.node_id = n.id
 		WHERE n.id = ?
-	`, input.MachineID, input.NodeID).Scan(&rateMicros, &allowed, &rateTimeEnabled, &rateTimeRanges); errors.Is(err, sql.ErrNoRows) {
+	`, input.LegacyAuth, input.MachineID, input.NodeID).Scan(&rateMicros, &allowed, &rateTimeEnabled, &rateTimeRanges); errors.Is(err, sql.ErrNoRows) {
 		return NodeReportResult{}, ErrNotFound
 	} else if err != nil {
 		return NodeReportResult{}, fmt.Errorf("authorize node report: %w", err)

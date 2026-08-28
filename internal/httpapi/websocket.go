@@ -48,38 +48,38 @@ type wsNodeSnapshot struct {
 type wsHub struct {
 	mu             sync.RWMutex
 	machines       map[int64]*wsConnection
+	nodes          map[int64]*wsConnection
 	store          *store.Store
 	now            func() time.Time
 	logger         *slog.Logger
 	allowedOrigins map[string]struct{}
-	pushInterval   int
-	pullInterval   int
 	deviceSyncMu   sync.Mutex
 	coordinator    nodecoord.Coordinator
 	registrationMu [64]sync.Mutex
 }
 
 type wsConnection struct {
-	id        string
-	machineID int64
-	conn      *websocket.Conn
-	hub       *wsHub
-	writeCh   chan wsEnvelope
-	done      chan struct{}
-	closeOnce sync.Once
-	nodesMu   sync.RWMutex
-	nodeIDs   map[int64]struct{}
+	id                     string
+	machineID              int64
+	legacy                 bool
+	legacySettingsRevision int64
+	conn                   *websocket.Conn
+	hub                    *wsHub
+	writeCh                chan wsEnvelope
+	done                   chan struct{}
+	closeOnce              sync.Once
+	nodesMu                sync.RWMutex
+	nodeIDs                map[int64]struct{}
 }
 
-func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, pushInterval, pullInterval int, coordinator nodecoord.Coordinator) *wsHub {
+func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, coordinator nodecoord.Coordinator) *wsHub {
 	return &wsHub{
 		machines:       make(map[int64]*wsConnection),
+		nodes:          make(map[int64]*wsConnection),
 		store:          database,
 		now:            now,
 		logger:         logger,
 		allowedOrigins: allowedOrigins,
-		pushInterval:   pushInterval,
-		pullInterval:   pullInterval,
 		coordinator:    coordinator,
 	}
 }
@@ -107,13 +107,17 @@ func (h *wsHub) runUntil(ctx context.Context) {
 
 shutdown:
 	h.mu.Lock()
-	connections := make([]*wsConnection, 0, len(h.machines))
+	unique := make(map[*wsConnection]struct{}, len(h.machines)+len(h.nodes))
 	for _, connection := range h.machines {
-		connections = append(connections, connection)
+		unique[connection] = struct{}{}
+	}
+	for _, connection := range h.nodes {
+		unique[connection] = struct{}{}
 	}
 	h.machines = make(map[int64]*wsConnection)
+	h.nodes = make(map[int64]*wsConnection)
 	h.mu.Unlock()
-	for _, connection := range connections {
+	for connection := range unique {
 		connection.close(websocket.CloseGoingAway, "server shutdown")
 	}
 }
@@ -121,10 +125,31 @@ shutdown:
 func (h *wsHub) reconcileConnections(ctx context.Context) {
 	h.mu.RLock()
 	machineIDs := make([]int64, 0, len(h.machines))
+	legacyConnections := make(map[*wsConnection]struct{})
 	for machineID := range h.machines {
 		machineIDs = append(machineIDs, machineID)
 	}
+	for _, connection := range h.nodes {
+		if connection.legacy {
+			legacyConnections[connection] = struct{}{}
+		}
+	}
 	h.mu.RUnlock()
+	if len(legacyConnections) > 0 {
+		settings, err := h.store.GetNodeAgentSettings(ctx)
+		if err != nil {
+			h.logger.Warn("reconcile legacy websocket settings", "connections", len(legacyConnections), "error", err)
+			for connection := range legacyConnections {
+				connection.close(websocket.CloseTryAgainLater, "settings unavailable")
+			}
+		} else {
+			for connection := range legacyConnections {
+				if connection.legacySettingsRevision != settings.Revision {
+					connection.close(websocket.ClosePolicyViolation, "credential or settings changed")
+				}
+			}
+		}
+	}
 	for _, machineID := range machineIDs {
 		nodes, err := h.store.ListMachineNodes(ctx, machineID)
 		if err != nil {
@@ -163,21 +188,52 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	machineID, err := strconv.ParseInt(r.URL.Query().Get("machine_id"), 10, 64)
-	if err != nil || machineID < 1 {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 必须是正整数", nil)
-		return
-	}
-	if !s.authenticateMachine(w, r, machineID) {
-		return
-	}
-	if !s.allowServerRequest(w, r, s.handshakeRequests, machineID) {
-		return
-	}
-	snapshots, err := s.hub.machineSnapshots(r.Context(), machineID)
+	settings, err := s.store.GetNodeAgentSettings(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	if !settings.WebSocketEnabled {
+		http.NotFound(w, r)
+		return
+	}
+	machineID, nodeID := int64(0), int64(0)
+	legacy := r.URL.Query().Get("machine_id") == ""
+	var snapshots []wsNodeSnapshot
+	if legacy {
+		nodeID, err = strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
+		if err != nil || nodeID < 1 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "node_id 必须是正整数", nil)
+			return
+		}
+		if !s.authenticateLegacyNode(w, r, nodeID) || !s.authorizeLegacyNode(w, r, nodeID) || !s.allowServerRequest(w, r, s.handshakeRequests, 0) {
+			return
+		}
+		node, nodeErr := s.store.GetNode(r.Context(), nodeID)
+		if nodeErr != nil {
+			handleStoreError(w, nodeErr)
+			return
+		}
+		snapshot, snapshotErr := s.hub.nodeSnapshot(r.Context(), node, s.now())
+		if snapshotErr != nil {
+			handleStoreError(w, snapshotErr)
+			return
+		}
+		snapshots = []wsNodeSnapshot{snapshot}
+	} else {
+		machineID, err = strconv.ParseInt(r.URL.Query().Get("machine_id"), 10, 64)
+		if err != nil || machineID < 1 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "machine_id 必须是正整数", nil)
+			return
+		}
+		if !s.authenticateMachine(w, r, machineID) || !s.allowServerRequest(w, r, s.handshakeRequests, machineID) {
+			return
+		}
+		snapshots, err = s.hub.machineSnapshots(r.Context(), machineID)
+		if err != nil {
+			handleStoreError(w, err)
+			return
+		}
 	}
 
 	upgrader := websocket.Upgrader{
@@ -205,33 +261,41 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	client := &wsConnection{
-		id:        connectionID,
-		machineID: machineID,
-		conn:      connection,
-		hub:       s.hub,
-		writeCh:   make(chan wsEnvelope, max(64, len(snapshots)*3+4)),
-		done:      make(chan struct{}),
-		nodeIDs:   nodeIDs,
+		id: connectionID, machineID: machineID, legacy: legacy, legacySettingsRevision: settings.Revision,
+		conn: connection, hub: s.hub, writeCh: make(chan wsEnvelope, max(64, len(snapshots)*3+4)),
+		done: make(chan struct{}), nodeIDs: nodeIDs,
 	}
-	registrationLock := &s.hub.registrationMu[uint64(machineID)%uint64(len(s.hub.registrationMu))]
+	registrationID := machineID
+	if legacy {
+		registrationID = nodeID
+	}
+	registrationLock := &s.hub.registrationMu[uint64(registrationID)%uint64(len(s.hub.registrationMu))]
 	registrationLock.Lock()
 	if s.hub.coordinator != nil {
-		if err := s.hub.coordinator.ClaimMachine(r.Context(), machineID, client.nodeIDList(), client.id); err != nil {
+		claimErr := error(nil)
+		if legacy {
+			claimErr = s.hub.coordinator.ClaimNode(r.Context(), nodeID, client.id)
+		} else {
+			claimErr = s.hub.coordinator.ClaimMachine(r.Context(), machineID, client.nodeIDList(), client.id)
+		}
+		if claimErr != nil {
 			registrationLock.Unlock()
-			s.hub.logger.Warn("claim node websocket ownership", "machine_id", machineID, "error", err)
+			s.hub.logger.Warn("claim node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", claimErr)
 			client.close(websocket.CloseTryAgainLater, "coordination unavailable")
 			return
 		}
 	}
-	old := s.hub.register(client)
+	replaced := s.hub.register(client)
 	registrationLock.Unlock()
-	if old != nil {
+	for _, old := range replaced {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
 	}
 	if s.hub.coordinator != nil {
 		var owned bool
 		var verifyErr error
-		if len(client.nodeIDList()) == 0 {
+		if legacy {
+			owned, verifyErr = s.hub.coordinator.OwnsNode(r.Context(), nodeID, client.id)
+		} else if len(client.nodeIDList()) == 0 {
 			owned, verifyErr = s.hub.coordinator.OwnsMachine(r.Context(), machineID, client.id)
 		} else {
 			owned, verifyErr = s.hub.coordinator.OwnsMachineAndNodes(r.Context(), machineID, client.nodeIDList(), client.id)
@@ -243,15 +307,33 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if legacy {
+		parts := strings.Fields(r.Header.Get("Authorization"))
+		valid := len(parts) == 2
+		if valid {
+			valid, err = s.store.AuthenticateLegacyNodeToken(r.Context(), parts[1])
+		}
+		if err != nil || !valid {
+			s.hub.unregister(client)
+			client.close(websocket.ClosePolicyViolation, "credential replaced")
+			return
+		}
+	}
 
 	go client.writeLoop()
-	client.enqueue(initialAuthEnvelope(machineID, snapshots))
+	if legacy {
+		client.enqueue(legacyAuthEnvelope(nodeID))
+	} else {
+		client.enqueue(initialAuthEnvelope(machineID, snapshots))
+	}
 	for _, snapshot := range snapshots {
 		client.enqueue(configSyncEnvelope(snapshot))
 		client.enqueue(usersSyncEnvelope(snapshot))
-		client.enqueue(devicesSyncEnvelope(snapshot))
+		if !legacy {
+			client.enqueue(devicesSyncEnvelope(snapshot))
+		}
 	}
-	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "nodes", len(snapshots))
+	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "nodes", len(snapshots))
 	client.readLoop()
 	current, affectedUsers, clearErr := s.hub.unregisterAndClear(client)
 	client.close(websocket.CloseNormalClosure, "")
@@ -260,7 +342,7 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 	} else if current {
 		s.hub.NotifyDeviceStates(context.Background(), affectedUsers)
 	}
-	s.hub.logger.Info("node websocket disconnected", "machine_id", machineID, "current", current)
+	s.hub.logger.Info("node websocket disconnected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "current", current)
 }
 
 func (h *wsHub) originAllowed(r *http.Request) bool {
@@ -282,12 +364,25 @@ func (h *wsHub) machineSnapshots(ctx context.Context, machineID int64) ([]wsNode
 	if err != nil {
 		return nil, err
 	}
-	snapshots := make([]wsNodeSnapshot, 0, len(nodes))
+	eligible := 0
+	for _, node := range nodes {
+		if node.Enabled && node.RuntimeConfigured {
+			eligible++
+		}
+	}
+	snapshots := make([]wsNodeSnapshot, 0, eligible)
+	if eligible == 0 {
+		return snapshots, nil
+	}
+	settings, err := h.store.GetNodeAgentSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, node := range nodes {
 		if !node.Enabled || !node.RuntimeConfigured {
 			continue
 		}
-		snapshot, err := h.nodeSnapshot(ctx, node, now)
+		snapshot, err := h.nodeSnapshotWithIntervals(ctx, node, now, settings.PushInterval, settings.PullInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -297,11 +392,19 @@ func (h *wsHub) machineSnapshots(ctx context.Context, machineID int64) ([]wsNode
 }
 
 func (h *wsHub) nodeSnapshot(ctx context.Context, node store.Node, now time.Time) (wsNodeSnapshot, error) {
+	settings, err := h.store.GetNodeAgentSettings(ctx)
+	if err != nil {
+		return wsNodeSnapshot{}, err
+	}
+	return h.nodeSnapshotWithIntervals(ctx, node, now, settings.PushInterval, settings.PullInterval)
+}
+
+func (h *wsHub) nodeSnapshotWithIntervals(ctx context.Context, node store.Node, now time.Time, pushInterval, pullInterval int) (wsNodeSnapshot, error) {
 	runtime, err := h.store.GetNodeRuntime(ctx, node.ID)
 	if err != nil {
 		return wsNodeSnapshot{}, err
 	}
-	config, err := nodeConfigObject(runtime, h.pushInterval, h.pullInterval)
+	config, err := nodeConfigObject(runtime, pushInterval, pullInterval)
 	if err != nil {
 		return wsNodeSnapshot{}, err
 	}
@@ -328,32 +431,64 @@ func (h *wsHub) nodeSnapshot(ctx context.Context, node store.Node, now time.Time
 
 func (h *wsHub) hasMachineNode(machineID, nodeID int64) bool {
 	h.mu.RLock()
-	connection := h.machines[machineID]
+	connection := h.nodes[nodeID]
+	h.mu.RUnlock()
+	return connection != nil && !connection.legacy && connection.machineID == machineID && connection.hasNode(nodeID)
+}
+
+func (h *wsHub) hasNode(nodeID int64) bool {
+	h.mu.RLock()
+	connection := h.nodes[nodeID]
 	h.mu.RUnlock()
 	return connection != nil && connection.hasNode(nodeID)
 }
 
-func (h *wsHub) register(connection *wsConnection) *wsConnection {
+func (h *wsHub) register(connection *wsConnection) []*wsConnection {
 	h.mu.Lock()
-	old := h.machines[connection.machineID]
-	h.machines[connection.machineID] = connection
+	replaced := make(map[*wsConnection]struct{})
+	if !connection.legacy {
+		if old := h.machines[connection.machineID]; old != nil && old != connection {
+			replaced[old] = struct{}{}
+		}
+		h.machines[connection.machineID] = connection
+	}
+	for _, nodeID := range connection.nodeIDList() {
+		if old := h.nodes[nodeID]; old != nil && old != connection {
+			replaced[old] = struct{}{}
+		}
+		h.nodes[nodeID] = connection
+	}
 	h.mu.Unlock()
-	return old
+	result := make([]*wsConnection, 0, len(replaced))
+	for old := range replaced {
+		result = append(result, old)
+	}
+	return result
 }
 
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {
 	if h.coordinator != nil {
 		h.mu.Lock()
-		if h.machines[connection.machineID] != connection {
+		currentMachine := !connection.legacy && h.machines[connection.machineID] == connection
+		if currentMachine {
+			delete(h.machines, connection.machineID)
+		}
+		ownedNodes := make([]int64, 0, len(connection.nodeIDList()))
+		for _, nodeID := range connection.nodeIDList() {
+			if h.nodes[nodeID] == connection {
+				delete(h.nodes, nodeID)
+				ownedNodes = append(ownedNodes, nodeID)
+			}
+		}
+		if !currentMachine && len(ownedNodes) == 0 {
 			h.mu.Unlock()
 			return false, nil, nil
 		}
-		delete(h.machines, connection.machineID)
 		h.mu.Unlock()
 
-		releasedNodes := make([]int64, 0, len(connection.nodeIDList()))
+		releasedNodes := make([]int64, 0, len(ownedNodes))
 		var releaseErrors []error
-		for _, nodeID := range connection.nodeIDList() {
+		for _, nodeID := range ownedNodes {
 			released, err := h.coordinator.ReleaseNodeIfOwned(context.Background(), nodeID, connection.id)
 			if err != nil {
 				releaseErrors = append(releaseErrors, err)
@@ -363,8 +498,10 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 				releasedNodes = append(releasedNodes, nodeID)
 			}
 		}
-		if _, err := h.coordinator.ReleaseMachineIfOwned(context.Background(), connection.machineID, connection.id); err != nil {
-			releaseErrors = append(releaseErrors, err)
+		if currentMachine {
+			if _, err := h.coordinator.ReleaseMachineIfOwned(context.Background(), connection.machineID, connection.id); err != nil {
+				releaseErrors = append(releaseErrors, err)
+			}
 		}
 		if len(releasedNodes) == 0 {
 			return true, nil, errors.Join(releaseErrors...)
@@ -374,30 +511,50 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.machines[connection.machineID] != connection {
+	currentMachine := !connection.legacy && h.machines[connection.machineID] == connection
+	if currentMachine {
+		delete(h.machines, connection.machineID)
+	}
+	ownedNodes := make([]int64, 0, len(connection.nodeIDList()))
+	for _, nodeID := range connection.nodeIDList() {
+		if h.nodes[nodeID] == connection {
+			delete(h.nodes, nodeID)
+			ownedNodes = append(ownedNodes, nodeID)
+		}
+	}
+	if !currentMachine && len(ownedNodes) == 0 {
 		return false, nil, nil
 	}
-	delete(h.machines, connection.machineID)
 	// Keep registration fenced while the former owner's device snapshot is
 	// cleared. A reconnect cannot publish a new snapshot and then have it
 	// removed by this stale close path.
-	userIDs, err := h.store.ClearNodeDevices(context.Background(), connection.nodeIDList(), h.now())
+	userIDs, err := h.store.ClearNodeDevices(context.Background(), ownedNodes, h.now())
 	return true, userIDs, err
 }
 
 func (h *wsHub) unregister(connection *wsConnection) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.machines[connection.machineID] != connection {
-		return false
+	removed := false
+	if !connection.legacy && h.machines[connection.machineID] == connection {
+		delete(h.machines, connection.machineID)
+		removed = true
 	}
-	delete(h.machines, connection.machineID)
-	return true
+	for _, nodeID := range connection.nodeIDList() {
+		if h.nodes[nodeID] == connection {
+			delete(h.nodes, nodeID)
+			removed = true
+		}
+	}
+	return removed
 }
 
 func (h *wsHub) owns(connection *wsConnection) bool {
 	h.mu.RLock()
-	owned := h.machines[connection.machineID] == connection
+	owned := connection.legacy || h.machines[connection.machineID] == connection
+	for _, nodeID := range connection.nodeIDList() {
+		owned = owned && h.nodes[nodeID] == connection
+	}
 	h.mu.RUnlock()
 	return owned
 }
@@ -405,11 +562,17 @@ func (h *wsHub) owns(connection *wsConnection) bool {
 func (h *wsHub) renewConnections(ctx context.Context) {
 	h.mu.RLock()
 	connections := make([]*wsConnection, 0, len(h.machines))
+	legacyConnections := make([]*wsConnection, 0)
 	for _, connection := range h.machines {
 		connections = append(connections, connection)
 	}
+	for _, connection := range h.nodes {
+		if connection.legacy {
+			legacyConnections = append(legacyConnections, connection)
+		}
+	}
 	h.mu.RUnlock()
-	if len(connections) == 0 {
+	if len(connections) == 0 && len(legacyConnections) == 0 {
 		return
 	}
 	leases := make([]nodecoord.Lease, len(connections))
@@ -424,6 +587,24 @@ func (h *wsHub) renewConnections(ctx context.Context) {
 	}
 	for index, connection := range connections {
 		if err != nil || index >= len(renewed) || !renewed[index] {
+			if h.owns(connection) {
+				connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+			}
+		}
+	}
+	nodeLeases := make([]nodecoord.NodeLease, 0, len(legacyConnections))
+	for _, connection := range legacyConnections {
+		nodeIDs := connection.nodeIDList()
+		if len(nodeIDs) == 1 {
+			nodeLeases = append(nodeLeases, nodecoord.NodeLease{NodeID: nodeIDs[0], ConnectionID: connection.id})
+		}
+	}
+	nodesRenewed, nodeErr := h.coordinator.RenewNodes(ctx, nodeLeases)
+	if nodeErr != nil {
+		h.logger.Warn("renew legacy node websocket ownership", "connections", len(nodeLeases), "error", nodeErr)
+	}
+	for index, connection := range legacyConnections {
+		if nodeErr != nil || index >= len(nodesRenewed) || !nodesRenewed[index] {
 			if h.owns(connection) {
 				connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
 			}
@@ -452,6 +633,12 @@ func (h *wsHub) handleCoordinationEvent(event nodecoord.Event) {
 		h.notifyDeviceStates(ctx, event.UserIDs, false)
 	case nodecoord.EventRefreshGroups:
 		h.refreshGroupUsers(ctx, event.GroupIDs, event.DevicesCleared)
+	case nodecoord.EventDisconnectNodes:
+		h.disconnectNodes(event.NodeIDs, event.Reason, false)
+	case nodecoord.EventDisconnectLegacy:
+		h.disconnectLegacy(event.Reason, false)
+	case nodecoord.EventDisconnectAll:
+		h.disconnectAll(event.Reason, false)
 	}
 }
 
@@ -464,19 +651,9 @@ func (h *wsHub) closeReplacedConnections(event nodecoord.Event) {
 		}
 	}
 	if len(event.NodeIDs) > 0 {
-		targets := make(map[int64]struct{}, len(event.NodeIDs))
 		for _, nodeID := range event.NodeIDs {
-			targets[nodeID] = struct{}{}
-		}
-		for _, connection := range h.machines {
-			if connection.id == event.ConnectionID {
-				continue
-			}
-			for _, nodeID := range connection.nodeIDList() {
-				if _, replaced := targets[nodeID]; replaced {
-					connections[connection] = struct{}{}
-					break
-				}
+			if connection := h.nodes[nodeID]; connection != nil && connection.id != event.ConnectionID {
+				connections[connection] = struct{}{}
 			}
 		}
 	}
@@ -524,6 +701,13 @@ func (c *wsConnection) readLoop() {
 func (c *wsConnection) ownsIncomingMessage(message wsIncomingEnvelope) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	if c.legacy {
+		nodeIDs := c.nodeIDList()
+		if len(nodeIDs) != 1 {
+			return false, nil
+		}
+		return c.hub.coordinator.OwnsNode(ctx, nodeIDs[0], c.id)
+	}
 	if message.Event == "pong" {
 		return c.hub.coordinator.OwnsMachine(ctx, c.machineID, c.id)
 	}
@@ -540,22 +724,34 @@ func (c *wsConnection) ownsIncomingMessage(message wsIncomingEnvelope) (bool, er
 }
 
 func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
+	nodeID := int64(0)
+	if c.legacy {
+		nodeIDs := c.nodeIDList()
+		if len(nodeIDs) != 1 {
+			return errors.New("legacy connection has an invalid node lease")
+		}
+		nodeID = nodeIDs[0]
+	}
 	switch message.Event {
 	case "pong":
 		return nil
 	case "node.status":
-		var identity struct {
-			NodeID int64 `json:"node_id"`
-		}
-		if err := json.Unmarshal(message.Data, &identity); err != nil || !c.hasNode(identity.NodeID) {
-			return errors.New("node.status has an invalid node_id")
+		if !c.legacy {
+			var identity struct {
+				NodeID int64 `json:"node_id"`
+			}
+			if err := json.Unmarshal(message.Data, &identity); err != nil || !c.hasNode(identity.NodeID) {
+				return errors.New("node.status has an invalid node_id")
+			}
+			nodeID = identity.NodeID
 		}
 		validated, err := validateNodeReport(nodeReportPayload{Metrics: message.Data})
 		if err != nil {
 			return err
 		}
 		validated.MachineID = c.machineID
-		validated.NodeID = identity.NodeID
+		validated.LegacyAuth = c.legacy
+		validated.NodeID = nodeID
 		validated.Now = c.hub.now()
 		_, err = c.hub.store.ApplyNodeReport(context.Background(), validated)
 		return err
@@ -564,7 +760,17 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 			NodeID  int64               `json:"node_id"`
 			Devices map[string][]string `json:"devices"`
 		}
-		if err := json.Unmarshal(message.Data, &payload); err != nil || payload.Devices == nil || !c.hasNode(payload.NodeID) {
+		if err := json.Unmarshal(message.Data, &payload); err != nil {
+			return errors.New("report.devices has invalid data")
+		}
+		if c.legacy {
+			if payload.Devices == nil {
+				if err := json.Unmarshal(message.Data, &payload.Devices); err != nil {
+					return errors.New("report.devices has invalid data")
+				}
+			}
+			payload.NodeID = nodeID
+		} else if payload.Devices == nil || !c.hasNode(payload.NodeID) {
 			return errors.New("report.devices has an invalid node_id")
 		}
 		validated, err := validateNodeReport(nodeReportPayload{Alive: payload.Devices})
@@ -572,6 +778,7 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 			return err
 		}
 		validated.MachineID = c.machineID
+		validated.LegacyAuth = c.legacy
 		validated.NodeID = payload.NodeID
 		validated.ReplaceAllDevices = true
 		validated.Now = c.hub.now()
@@ -670,6 +877,10 @@ func initialAuthEnvelope(machineID int64, snapshots []wsNodeSnapshot) wsEnvelope
 	return wsEnvelope{Event: "auth.success", Data: map[string]any{"machine_id": machineID, "node_ids": nodeIDs}}
 }
 
+func legacyAuthEnvelope(nodeID int64) wsEnvelope {
+	return wsEnvelope{Event: "auth.success", Data: map[string]any{"node_id": nodeID}}
+}
+
 func configSyncEnvelope(snapshot wsNodeSnapshot) wsEnvelope {
 	return wsEnvelope{Event: "sync.config", Data: map[string]any{
 		"node_id": snapshot.summary.ID, "config": snapshot.config, "timestamp": snapshot.timestamp,
@@ -742,7 +953,29 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 			return
 		}
 	}
+	replacedConnections := make(map[*wsConnection]struct{})
+	h.mu.Lock()
+	if h.machines[machineID] != connection {
+		h.mu.Unlock()
+		connection.close(websocket.ClosePolicyViolation, "connection replaced")
+		return
+	}
+	for _, nodeID := range nodeIDs {
+		if old := h.nodes[nodeID]; old != nil && old != connection {
+			replacedConnections[old] = struct{}{}
+		}
+		h.nodes[nodeID] = connection
+	}
+	for nodeID := range removedNodes {
+		if h.nodes[nodeID] == connection {
+			delete(h.nodes, nodeID)
+		}
+	}
+	h.mu.Unlock()
 	connection.replaceNodes(nodeIDs)
+	for replaced := range replacedConnections {
+		replaced.close(websocket.ClosePolicyViolation, "connection replaced")
+	}
 	connection.enqueue(nodesSyncEnvelope(snapshots))
 	removedNodeIDs := make([]int64, 0, len(removedNodes))
 	for nodeID := range removedNodes {
@@ -777,6 +1010,70 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 
 func (h *wsHub) DisconnectMachine(machineID int64, reason string) {
 	h.disconnectMachine(machineID, reason, true)
+}
+
+func (h *wsHub) DisconnectLegacy(reason string) {
+	h.disconnectLegacy(reason, true)
+}
+
+func (h *wsHub) DisconnectNodes(nodeIDs []int64, reason string) {
+	h.disconnectNodes(nodeIDs, reason, true)
+}
+
+func (h *wsHub) disconnectNodes(nodeIDs []int64, reason string, broadcast bool) {
+	if broadcast {
+		h.publishCoordination(context.Background(), nodecoord.Event{Kind: nodecoord.EventDisconnectNodes, NodeIDs: nodeIDs, Reason: reason})
+	}
+	h.mu.RLock()
+	connections := make(map[*wsConnection]struct{}, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		if connection := h.nodes[nodeID]; connection != nil && connection.legacy {
+			connections[connection] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+	for connection := range connections {
+		connection.close(websocket.ClosePolicyViolation, reason)
+	}
+}
+
+func (h *wsHub) disconnectLegacy(reason string, broadcast bool) {
+	if broadcast {
+		h.publishCoordination(context.Background(), nodecoord.Event{Kind: nodecoord.EventDisconnectLegacy, Reason: reason})
+	}
+	h.mu.RLock()
+	connections := make(map[*wsConnection]struct{})
+	for _, connection := range h.nodes {
+		if connection.legacy {
+			connections[connection] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+	for connection := range connections {
+		connection.close(websocket.ClosePolicyViolation, reason)
+	}
+}
+
+func (h *wsHub) DisconnectAll(reason string) {
+	h.disconnectAll(reason, true)
+}
+
+func (h *wsHub) disconnectAll(reason string, broadcast bool) {
+	if broadcast {
+		h.publishCoordination(context.Background(), nodecoord.Event{Kind: nodecoord.EventDisconnectAll, Reason: reason})
+	}
+	h.mu.RLock()
+	connections := make(map[*wsConnection]struct{}, len(h.machines)+len(h.nodes))
+	for _, connection := range h.machines {
+		connections[connection] = struct{}{}
+	}
+	for _, connection := range h.nodes {
+		connections[connection] = struct{}{}
+	}
+	h.mu.RUnlock()
+	for connection := range connections {
+		connection.close(websocket.ClosePolicyViolation, reason)
+	}
 }
 
 func (h *wsHub) disconnectMachine(machineID int64, reason string, broadcast bool) {
@@ -817,7 +1114,7 @@ func (h *wsHub) notifyNodeFull(ctx context.Context, machineID, nodeID int64, bro
 		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventNodeFull, MachineID: machineID, NodeID: nodeID})
 	}
 	node, err := h.store.GetNode(ctx, nodeID)
-	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
+	if err != nil || !node.Enabled || !node.RuntimeConfigured {
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			h.logger.Warn("prepare websocket node full synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		}
@@ -829,14 +1126,19 @@ func (h *wsHub) notifyNodeFull(ctx context.Context, machineID, nodeID int64, bro
 		return
 	}
 	h.mu.RLock()
-	connection := h.machines[machineID]
+	connection := h.nodes[nodeID]
 	h.mu.RUnlock()
 	if connection == nil || !connection.hasNode(nodeID) {
 		return
 	}
+	if !connection.legacy && (node.MachineID == nil || *node.MachineID != connection.machineID) {
+		return
+	}
 	connection.enqueue(configSyncEnvelope(snapshot))
 	connection.enqueue(usersSyncEnvelope(snapshot))
-	connection.enqueue(devicesSyncEnvelope(snapshot))
+	if !connection.legacy {
+		connection.enqueue(devicesSyncEnvelope(snapshot))
+	}
 }
 
 func (h *wsHub) NotifyNodeConfig(ctx context.Context, machineID, nodeID int64) {
@@ -848,7 +1150,7 @@ func (h *wsHub) notifyNodeConfig(ctx context.Context, machineID, nodeID int64, b
 		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventNodeConfig, MachineID: machineID, NodeID: nodeID})
 	}
 	node, err := h.store.GetNode(ctx, nodeID)
-	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
+	if err != nil || !node.Enabled || !node.RuntimeConfigured {
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		}
@@ -859,15 +1161,23 @@ func (h *wsHub) notifyNodeConfig(ctx context.Context, machineID, nodeID int64, b
 		h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		return
 	}
-	config, err := nodeConfigObject(runtime, h.pushInterval, h.pullInterval)
+	settings, err := h.store.GetNodeAgentSettings(ctx)
+	if err != nil {
+		h.logger.Warn("prepare websocket node config settings", "node_id", nodeID, "error", err)
+		return
+	}
+	config, err := nodeConfigObject(runtime, settings.PushInterval, settings.PullInterval)
 	if err != nil {
 		h.logger.Warn("prepare websocket node config synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
 		return
 	}
 	h.mu.RLock()
-	connection := h.machines[machineID]
+	connection := h.nodes[nodeID]
 	h.mu.RUnlock()
 	if connection == nil || !connection.hasNode(nodeID) {
+		return
+	}
+	if !connection.legacy && (node.MachineID == nil || *node.MachineID != connection.machineID) {
 		return
 	}
 	connection.enqueue(configSyncEnvelope(wsNodeSnapshot{
@@ -905,52 +1215,41 @@ func (h *wsHub) notifyDeviceStatesToNodeIDs(ctx context.Context, targetNodeIDs [
 	h.deviceSyncMu.Lock()
 	defer h.deviceSyncMu.Unlock()
 
-	targets := make(map[int64]struct{}, len(targetNodeIDs))
-	for _, nodeID := range targetNodeIDs {
-		targets[nodeID] = struct{}{}
-	}
 	now := h.now()
-	h.mu.RLock()
-	connections := make(map[int64]*wsConnection, len(h.machines))
-	for machineID, connection := range h.machines {
-		connections[machineID] = connection
-	}
-	h.mu.RUnlock()
-
-	for machineID, expected := range connections {
-		for _, nodeID := range expected.nodeIDList() {
-			if _, targeted := targets[nodeID]; !targeted {
-				continue
-			}
-			node, err := h.store.GetNode(ctx, nodeID)
-			if err != nil {
-				h.logger.Warn("authorize websocket device synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
-				continue
-			}
-			if node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
-				continue
-			}
-			users, err := h.store.ListNodeRuntimeUsers(ctx, nodeID, now)
-			if err != nil {
-				h.logger.Warn("list websocket device synchronization users", "machine_id", machineID, "node_id", nodeID, "error", err)
-				continue
-			}
-			nodeUserIDs := make([]int64, 0, len(users))
-			for _, user := range users {
-				nodeUserIDs = append(nodeUserIDs, user.ID)
-			}
-			devices, err := h.store.ListUserDevices(ctx, nodeUserIDs, now)
-			if err != nil {
-				h.logger.Warn("prepare websocket device synchronization", "machine_id", machineID, "node_id", nodeID, "error", err)
-				continue
-			}
-			snapshot := wsNodeSnapshot{summary: machineNodeSummary{ID: nodeID}, devices: devices, timestamp: now.Unix()}
-			h.mu.RLock()
-			current := h.machines[machineID]
-			h.mu.RUnlock()
-			if current != expected {
-				break
-			}
+	for _, nodeID := range uniquePositiveIDs(targetNodeIDs) {
+		h.mu.RLock()
+		expected := h.nodes[nodeID]
+		h.mu.RUnlock()
+		if expected == nil {
+			continue
+		}
+		node, err := h.store.GetNode(ctx, nodeID)
+		if err != nil {
+			h.logger.Warn("authorize websocket device synchronization", "machine_id", expected.machineID, "node_id", nodeID, "error", err)
+			continue
+		}
+		if !node.Enabled || !node.RuntimeConfigured || (!expected.legacy && (node.MachineID == nil || *node.MachineID != expected.machineID)) {
+			continue
+		}
+		users, err := h.store.ListNodeRuntimeUsers(ctx, nodeID, now)
+		if err != nil {
+			h.logger.Warn("list websocket device synchronization users", "machine_id", expected.machineID, "node_id", nodeID, "error", err)
+			continue
+		}
+		nodeUserIDs := make([]int64, 0, len(users))
+		for _, user := range users {
+			nodeUserIDs = append(nodeUserIDs, user.ID)
+		}
+		devices, err := h.store.ListUserDevices(ctx, nodeUserIDs, now)
+		if err != nil {
+			h.logger.Warn("prepare websocket device synchronization", "machine_id", expected.machineID, "node_id", nodeID, "error", err)
+			continue
+		}
+		snapshot := wsNodeSnapshot{summary: machineNodeSummary{ID: nodeID}, devices: devices, timestamp: now.Unix()}
+		h.mu.RLock()
+		current := h.nodes[nodeID]
+		h.mu.RUnlock()
+		if current == expected {
 			current.enqueue(devicesSyncEnvelope(snapshot))
 		}
 	}
@@ -971,7 +1270,7 @@ func (h *wsHub) refreshGroupUsers(ctx context.Context, groupIDs []int64, devices
 		}
 		seenNodes[target.NodeID] = struct{}{}
 		h.mu.RLock()
-		connection := h.machines[target.MachineID]
+		connection := h.nodes[target.NodeID]
 		h.mu.RUnlock()
 		if connection == nil || !connection.hasNode(target.NodeID) {
 			continue
@@ -1069,7 +1368,7 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 	now := h.now()
 	for _, target := range targets {
 		h.mu.RLock()
-		connection := h.machines[target.MachineID]
+		connection := h.nodes[target.NodeID]
 		h.mu.RUnlock()
 		if connection == nil || !connection.hasNode(target.NodeID) {
 			continue
@@ -1130,16 +1429,14 @@ func (h *wsHub) NotifyBulkUserRemoval(ctx context.Context, users []store.AdminUs
 		return err
 	}
 	byNode := make(map[int64][]store.RuntimeUser)
-	machines := make(map[int64]int64)
 	for _, target := range targets {
 		byNode[target.NodeID] = append(byNode[target.NodeID], byGroup[target.GroupID]...)
-		machines[target.NodeID] = target.MachineID
 	}
 	now := h.now()
 	nodeIDs := make([]int64, 0, len(byNode))
 	for nodeID, removals := range byNode {
 		h.mu.RLock()
-		connection := h.machines[machines[nodeID]]
+		connection := h.nodes[nodeID]
 		h.mu.RUnlock()
 		if connection == nil || !connection.hasNode(nodeID) {
 			continue

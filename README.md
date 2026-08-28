@@ -45,6 +45,23 @@ node report is written; Pub/Sub remains an acceleration path, while reconnect
 full snapshots and the node's bounded HTTP pull provide eventual recovery.
 The application refuses to silently fall back to local ownership.
 
+`XBOARD_WEBSOCKET_ENABLED`, `XBOARD_WEBSOCKET_URL`,
+`XBOARD_NODE_PUSH_INTERVAL`, and `XBOARD_NODE_PULL_INTERVAL` are deployment
+capability and first-run defaults only. After the database has been
+initialized, administrators own the pull/push intervals, WebSocket switch,
+and optional public WebSocket URL from the **Node settings** page; process
+restarts do not overwrite them. When the stored URL is empty, the advertised
+endpoint is derived from the trusted `XBOARD_PANEL_URL`, never from an
+untrusted request `Host` header. The stored switch cannot enable WebSocket
+when the deployment capability is disabled.
+
+The same page can generate, replace, or clear the legacy global server token
+used by fixed Xboard-Node single-node mode. The plaintext is returned once;
+the database stores only its SHA-256 digest and a short display prefix.
+Machine credentials remain the recommended least-privilege mode. Rotating or
+clearing the global token revokes legacy HTTP authentication immediately and
+fences legacy WebSocket connections without revoking machine credentials.
+
 The optional `coordination` Compose profile provides a pinned, private-network
 development Redis with a file-backed password, no published port, and no persistent data. Generate
 a temporary password, start Redis, and provide the matching URL only to the
@@ -237,6 +254,12 @@ never emitted in the result. Protocol definitions remain separate from the
 compiled runtime JSON so node pulls stay on the existing hot path. Time-window
 traffic rates retain Xboard's inclusive `Asia/Shanghai` `HH:mm` behavior. The
 reader fails closed if in-flight report receipts have not been drained.
+
+Node-agent settings are a separate slice because the legacy global server
+token is configuration, not a machine credential. The reader accepts only the
+six fixed `v2_settings` keys, hashes the plaintext token in memory, validates
+bounded intervals and WebSocket values, and never emits the token or digest in
+its JSON result or logs.
 
 Never bind-mount a running Xboard database file directly. First use SQLite's
 online backup API to create a standalone snapshot; a filesystem copy of a WAL
@@ -479,6 +502,21 @@ checksums (machines/security state, nodes/definitions, schedules, and traffic).
 Existing machine credentials remain valid without copying a plaintext token.
 Transient report receipts are deliberately not approximated: drain them before
 creating the standalone source snapshot or the command refuses to run.
+
+The legacy node-agent settings can then be imported into a pristine settings
+row using an independent rollback point. This operation is idempotent for the
+same source snapshot and refuses a different source or administrator-edited
+target:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-node-agent-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-node-agent-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
 
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article

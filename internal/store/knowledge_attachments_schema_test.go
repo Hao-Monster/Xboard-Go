@@ -57,6 +57,7 @@ func TestSchemaV35PreservesV34DataAndEnforcesAttachmentBoundaries(t *testing.T) 
 
 func TestSchemaV35RejectsPreexistingAttachmentTableWithMissingColumns(t *testing.T) {
 	database := newTestStore(t)
+	removeSchemaV43ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(t.Context(), `
 		DROP TABLE knowledge_attachment_chunks;
 		DROP TABLE knowledge_attachment_uploads;

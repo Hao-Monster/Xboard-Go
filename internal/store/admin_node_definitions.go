@@ -198,8 +198,12 @@ func (s *Store) UpdateAdminNodeDefinition(ctx context.Context, nodeID int64, inp
 	if !listChanged {
 		mutation.MachineIDs = nil
 	}
-	if current.Enabled && updated.Enabled && sameOptionalInt64(current.MachineID, updated.MachineID) && updated.MachineID != nil {
-		mutation.FullSyncs = []AdminNodeFullSync{{MachineID: *updated.MachineID, NodeID: nodeID}}
+	if current.Enabled && updated.Enabled && sameOptionalInt64(current.MachineID, updated.MachineID) {
+		machineID := int64(0)
+		if updated.MachineID != nil {
+			machineID = *updated.MachineID
+		}
+		mutation.FullSyncs = []AdminNodeFullSync{{MachineID: machineID, NodeID: nodeID}}
 	}
 	if (current.Enabled && !updated.Enabled) || !sameOptionalInt64(current.MachineID, updated.MachineID) {
 		mutation.ClearNodeIDs = []int64{nodeID}

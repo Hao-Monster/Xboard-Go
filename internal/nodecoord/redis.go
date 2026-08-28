@@ -36,6 +36,9 @@ const (
 	EventNodeConfig        = "node_config"
 	EventDeviceUsers       = "device_users"
 	EventRefreshGroups     = "refresh_groups"
+	EventDisconnectNodes   = "disconnect_nodes"
+	EventDisconnectLegacy  = "disconnect_legacy"
+	EventDisconnectAll     = "disconnect_all"
 )
 
 var (
@@ -113,6 +116,11 @@ type Lease struct {
 	ConnectionID string
 }
 
+type NodeLease struct {
+	NodeID       int64
+	ConnectionID string
+}
+
 type Event struct {
 	Version        int     `json:"version"`
 	Kind           string  `json:"kind"`
@@ -131,10 +139,13 @@ type Coordinator interface {
 	InstanceID() string
 	NewConnectionID() (string, error)
 	ClaimMachine(context.Context, int64, []int64, string) error
+	ClaimNode(context.Context, int64, string) error
 	ClaimMachineNodesIfOwned(context.Context, int64, []int64, string) (bool, error)
 	OwnsMachine(context.Context, int64, string) (bool, error)
 	OwnsMachineAndNodes(context.Context, int64, []int64, string) (bool, error)
+	OwnsNode(context.Context, int64, string) (bool, error)
 	Renew(context.Context, []Lease) ([]bool, error)
+	RenewNodes(context.Context, []NodeLease) ([]bool, error)
 	ReleaseMachineIfOwned(context.Context, int64, string) (bool, error)
 	ReleaseNodeIfOwned(context.Context, int64, string) (bool, error)
 	RevokeMachine(context.Context, int64, string) error
@@ -236,6 +247,17 @@ func (c *RedisCoordinator) ClaimMachine(ctx context.Context, machineID int64, no
 	return c.client.Eval(ctx, claimScript, keys, connectionID, c.leaseSeconds, c.channel, event).Err()
 }
 
+func (c *RedisCoordinator) ClaimNode(ctx context.Context, nodeID int64, connectionID string) error {
+	if nodeID < 1 || !validConnectionID(connectionID) {
+		return errors.New("node ID and connection ID are required")
+	}
+	event, err := c.marshalEvent(Event{Kind: EventReplacement, NodeIDs: []int64{nodeID}, ConnectionID: connectionID})
+	if err != nil {
+		return err
+	}
+	return c.client.Eval(ctx, claimScript, []string{c.nodeKey(nodeID)}, connectionID, c.leaseSeconds, c.channel, event).Err()
+}
+
 func (c *RedisCoordinator) ClaimMachineNodesIfOwned(ctx context.Context, machineID int64, nodeIDs []int64, connectionID string) (bool, error) {
 	normalized, err := validateLease(machineID, nodeIDs, connectionID, true)
 	if err != nil {
@@ -271,6 +293,14 @@ func (c *RedisCoordinator) OwnsMachineAndNodes(ctx context.Context, machineID in
 	return result == 1, err
 }
 
+func (c *RedisCoordinator) OwnsNode(ctx context.Context, nodeID int64, connectionID string) (bool, error) {
+	if nodeID < 1 || !validConnectionID(connectionID) {
+		return false, errors.New("node ID and connection ID are required")
+	}
+	result, err := c.client.Eval(ctx, verifyScript, []string{c.nodeKey(nodeID)}, connectionID).Int64()
+	return result == 1, err
+}
+
 func (c *RedisCoordinator) Renew(ctx context.Context, leases []Lease) ([]bool, error) {
 	results := make([]bool, len(leases))
 	if len(leases) == 0 {
@@ -284,6 +314,29 @@ func (c *RedisCoordinator) Renew(ctx context.Context, leases []Lease) ([]bool, e
 			return nil, fmt.Errorf("lease %d: %w", index, err)
 		}
 		commands[index] = pipeline.Eval(ctx, renewScript, c.machineAndNodeKeys(lease.MachineID, nodeIDs), lease.ConnectionID, c.leaseSeconds)
+	}
+	_, execErr := pipeline.Exec(ctx)
+	for index, command := range commands {
+		value, err := command.Int64()
+		if err == nil {
+			results[index] = value == 1
+		}
+	}
+	return results, execErr
+}
+
+func (c *RedisCoordinator) RenewNodes(ctx context.Context, leases []NodeLease) ([]bool, error) {
+	results := make([]bool, len(leases))
+	if len(leases) == 0 {
+		return results, nil
+	}
+	commands := make([]*redis.Cmd, len(leases))
+	pipeline := c.client.Pipeline()
+	for index, lease := range leases {
+		if lease.NodeID < 1 || !validConnectionID(lease.ConnectionID) {
+			return nil, fmt.Errorf("node lease %d is invalid", index)
+		}
+		commands[index] = pipeline.Eval(ctx, renewScript, []string{c.nodeKey(lease.NodeID)}, lease.ConnectionID, c.leaseSeconds)
 	}
 	_, execErr := pipeline.Exec(ctx)
 	for index, command := range commands {
@@ -469,7 +522,7 @@ func validateEvent(event Event) error {
 			return errors.New("machine event target is required")
 		}
 	case EventNodeFull, EventNodeConfig:
-		if event.MachineID < 1 || event.NodeID < 1 {
+		if event.NodeID < 1 {
 			return errors.New("node event target is required")
 		}
 	case EventDeviceUsers:
@@ -479,6 +532,14 @@ func validateEvent(event Event) error {
 	case EventRefreshGroups:
 		if len(event.GroupIDs) == 0 {
 			return errors.New("group event targets are required")
+		}
+	case EventDisconnectNodes:
+		if len(event.NodeIDs) == 0 {
+			return errors.New("node disconnect targets are required")
+		}
+	case EventDisconnectLegacy, EventDisconnectAll:
+		if event.MachineID != 0 || event.NodeID != 0 || len(event.NodeIDs) != 0 || event.ConnectionID != "" {
+			return errors.New("global disconnect event must not contain a connection target")
 		}
 	default:
 		return errors.New("node coordination event kind is unsupported")

@@ -16,6 +16,15 @@ const (
 )
 
 func (s *Store) RecordAdminAudit(ctx context.Context, input AdminAuditInput, now time.Time) error {
+	defer s.lockWrite()()
+	return insertAdminAudit(ctx, s.db, input, now)
+}
+
+type adminAuditExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertAdminAudit(ctx context.Context, database adminAuditExecutor, input AdminAuditInput, now time.Time) error {
 	input.AdministratorEmail = strings.ToLower(strings.TrimSpace(input.AdministratorEmail))
 	input.Method = strings.ToUpper(strings.TrimSpace(input.Method))
 	input.Route = strings.TrimSpace(input.Route)
@@ -25,8 +34,7 @@ func (s *Store) RecordAdminAudit(ctx context.Context, input AdminAuditInput, now
 		strings.ContainsAny(input.Route, "\r\n\x00") || input.StatusCode < 100 || input.StatusCode > 599 || now.IsZero() {
 		return ErrInvalidInput
 	}
-	defer s.lockWrite()()
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := database.ExecContext(ctx, `
 		INSERT INTO admin_audit_logs (
 			administrator_id, administrator_email, method, route, status_code, created_at
 		) VALUES (?, ?, ?, ?, ?, ?)

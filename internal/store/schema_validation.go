@@ -71,6 +71,7 @@ var requiredSchemaTables = []struct {
 	{"knowledge_attachment_chunks", 35},
 	{"admin_user_bulk_jobs", 39},
 	{"admin_user_bulk_targets", 39},
+	{"node_agent_settings", 43},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -112,6 +113,13 @@ var requiredSchemaColumnsV40 = map[string][]string{
 
 var requiredSchemaColumnsV41 = map[string][]string{
 	"node_protocol_definitions": {"listen_address"},
+}
+
+var requiredSchemaColumnsV43 = map[string][]string{
+	"node_agent_settings": {
+		"id", "revision", "server_token_hash", "server_token_prefix", "pull_interval", "push_interval",
+		"device_limit_mode", "websocket_enabled", "websocket_url", "updated_by", "updated_at",
+	},
 }
 
 type schemaQueryer interface {
@@ -185,6 +193,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 41 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV41); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 43 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV43); err != nil {
 			return err
 		}
 	}
