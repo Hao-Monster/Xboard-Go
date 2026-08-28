@@ -129,8 +129,8 @@ func hydrateLegacyNodeDefinition(base SaveAdminNodeDefinitionInput, raw json.Raw
 	if listenAddress, ok := runtime["listen_ip"].(string); ok {
 		common.ListenAddress = listenAddress
 	}
-	if adminNodeInteger(runtime["server_port"], 1, 65_535) {
-		common.ServerPort = int(adminNodeInt(runtime["server_port"]))
+	if serverPort := adminNodeInt(runtime["server_port"]); serverPort >= 1 && serverPort <= 65_535 {
+		common.ServerPort = int(serverPort)
 	}
 	full := common
 	settings := decodeLegacyDefinitionObject(base.ProtocolSettings)
