@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { APIError, type AdminUser, type AdminUserBulkJob, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
@@ -199,8 +199,7 @@ describe("UsersPage", () => {
 		const reset = await screen.findByRole("dialog", { name: "重置流量" });
 		expect(screen.getAllByRole("dialog")).toHaveLength(1);
 		const reason = within(reset).getByLabelText("重置原因（可选）");
-		await user.click(reason);
-		await user.paste("客服确认");
+		fireEvent.change(reason, { target: { value: "客服确认" } });
 		expect(reason).toHaveValue("客服确认");
 		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
 		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledWith(account.id, "客服确认", expect.any(String)));
@@ -224,8 +223,7 @@ describe("UsersPage", () => {
 		await user.click(within(screen.getByRole("dialog", { name: "用户操作" })).getByRole("button", { name: "重置流量" }));
 		const reset = screen.getByRole("dialog", { name: "重置流量" });
 		const reason = within(reset).getByLabelText("重置原因（可选）");
-		await user.click(reason);
-		await user.paste("重试验证");
+		fireEvent.change(reason, { target: { value: "重试验证" } });
 		expect(reason).toHaveValue("重试验证");
 		await user.click(within(reset).getByRole("button", { name: "确认重置流量" }));
 		expect(await within(reset).findByRole("alert")).toHaveTextContent("临时网络错误");
