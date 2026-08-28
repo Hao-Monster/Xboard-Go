@@ -214,14 +214,15 @@ func TestScheduleRequiresLinkedNodeAndManualOverrideLastsUntilBoundary(t *testin
 	if err != nil {
 		t.Fatalf("CreateMachine() error = %v", err)
 	}
-	if err := store.AssignNode(ctx, machine.ID, node.ID, now); err != nil {
+	if err := store.AssignNode(ctx, machine.ID, node.ID, node.Revision, now); err != nil {
 		t.Fatalf("AssignNode() error = %v", err)
 	}
 	saved, err := store.SaveDailySchedule(ctx, node.ID, "Asia/Singapore", "19:00", "01:00", now)
 	if err != nil {
 		t.Fatalf("SaveDailySchedule() error = %v", err)
 	}
-	if err := store.SetNodeEnabled(ctx, machine.ID, node.ID, true, now.Add(time.Minute)); err != nil {
+	beforeOverride, _ := store.GetNode(ctx, node.ID)
+	if err := store.SetNodeEnabled(ctx, machine.ID, node.ID, beforeOverride.Revision, true, now.Add(time.Minute)); err != nil {
 		t.Fatalf("manual SetNodeEnabled() error = %v", err)
 	}
 	gotNode, _ := store.GetNode(ctx, node.ID)
@@ -425,7 +426,8 @@ func TestDeletingSchedulePreservesCurrentManualNodeState(t *testing.T) {
 	if _, err := store.SaveDailySchedule(ctx, node.ID, "Asia/Singapore", "19:00", "01:00", now); err != nil {
 		t.Fatalf("SaveDailySchedule() error = %v", err)
 	}
-	if err := store.SetNodeEnabled(ctx, machine.ID, node.ID, false, now.Add(time.Minute)); err != nil {
+	beforeOverride, _ := store.GetNode(ctx, node.ID)
+	if err := store.SetNodeEnabled(ctx, machine.ID, node.ID, beforeOverride.Revision, false, now.Add(time.Minute)); err != nil {
 		t.Fatalf("SetNodeEnabled() error = %v", err)
 	}
 	if err := store.DeleteActivationSchedule(ctx, node.ID); err != nil {
@@ -559,11 +561,23 @@ func removeSchemaV34ForMigrationTest(t *testing.T, database *Store) {
 
 func removeSchemaV39ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
+	removeSchemaV40ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
 		DROP TABLE IF EXISTS admin_user_bulk_targets;
 		DROP TABLE IF EXISTS admin_user_bulk_jobs;
 	`); err != nil {
 		t.Fatalf("remove schema v39: %v", err)
+	}
+}
+
+func removeSchemaV40ForMigrationTest(t *testing.T, database *Store) {
+	t.Helper()
+	if _, err := database.db.ExecContext(context.Background(), `
+		DROP INDEX IF EXISTS idx_nodes_admin_type_sort;
+		DROP INDEX IF EXISTS idx_nodes_admin_sort;
+		ALTER TABLE nodes DROP COLUMN admin_revision;
+	`); err != nil {
+		t.Fatalf("remove schema v40: %v", err)
 	}
 }
 

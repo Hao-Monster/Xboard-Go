@@ -41,6 +41,7 @@ export interface MachineEnrollment extends Machine {
 
 export interface Node {
   id: number;
+  revision: number;
   name: string;
   type: string;
   host: string;
@@ -48,9 +49,66 @@ export interface Node {
   show: boolean;
   enabled: boolean;
   sort: number;
+  rate: number;
+  traffic_upload: number;
+  traffic_download: number;
+  runtime_configured: boolean;
+  last_check_at: string | null;
+  last_push_at: string | null;
   machine_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminNode extends Node {
+  machine_name: string | null;
+  group_ids: number[];
+  online_count: number;
+}
+
+export interface AdminNodePage {
+  items: AdminNode[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminNodeQuery {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  type?: string;
+  show?: boolean;
+  enabled?: boolean;
+  machine_id?: number;
+  unassigned?: boolean;
+}
+
+export interface AdminNodeUpdateInput {
+  revision: number;
+  name: string;
+  host: string;
+  port: string;
+  show: boolean;
+  enabled: boolean;
+  sort: number;
+  machine_id: number | null;
+}
+
+export interface AdminNodeRevision {
+  id: number;
+  revision: number;
+}
+
+export interface AdminNodeStateInput {
+  targets: AdminNodeRevision[];
+  show?: boolean;
+  enabled?: boolean;
+  machine_id?: number | null;
+}
+
+export interface AdminNodeMutation {
+  node_ids: number[];
 }
 
 export interface ActivationSchedule {
@@ -1327,9 +1385,16 @@ export interface AdminAPI {
   listMachineNodes: (machineID: number) => Promise<Node[]>;
   listLoadHistory: (machineID: number, rangeHours?: number, limit?: number) => Promise<LoadHistory[]>;
   listUnassignedNodes: () => Promise<Node[]>;
-  assignNode: (machineID: number, nodeID: number) => Promise<void>;
-  unassignNode: (machineID: number, nodeID: number) => Promise<void>;
-  setNodeEnabled: (machineID: number, nodeID: number, enabled: boolean) => Promise<void>;
+  assignNode: (machineID: number, nodeID: number, revision: number) => Promise<void>;
+  unassignNode: (machineID: number, nodeID: number, revision: number) => Promise<void>;
+  setNodeEnabled: (machineID: number, nodeID: number, revision: number, enabled: boolean) => Promise<void>;
+  listAdminNodes: (query?: AdminNodeQuery) => Promise<AdminNodePage>;
+  updateAdminNode: (nodeID: number, input: AdminNodeUpdateInput) => Promise<Node>;
+  copyAdminNode: (nodeID: number, revision: number) => Promise<Node>;
+  reorderAdminNodes: (targets: AdminNodeRevision[]) => Promise<AdminNodeMutation>;
+  updateAdminNodeStates: (input: AdminNodeStateInput) => Promise<AdminNodeMutation>;
+  resetAdminNodeTraffic: (targets: AdminNodeRevision[]) => Promise<AdminNodeMutation>;
+  deleteAdminNodes: (targets: AdminNodeRevision[]) => Promise<void>;
   getActivationSchedule: (nodeID: number) => Promise<ActivationSchedule>;
   saveActivationSchedule: (nodeID: number, input: DailyScheduleInput) => Promise<ActivationSchedule>;
   deleteActivationSchedule: (nodeID: number) => Promise<void>;
@@ -1596,19 +1661,56 @@ export class APIClient implements AdminAPI {
     return this.request<Node[]>("/api/v1/admin/nodes/unassigned");
   }
 
-  async assignNode(machineID: number, nodeID: number): Promise<void> {
-    await this.request<void>(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}`, { method: "PUT", body: {} });
+  async assignNode(machineID: number, nodeID: number, revision: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}`, { method: "PUT", body: { revision } });
   }
 
-  async unassignNode(machineID: number, nodeID: number): Promise<void> {
-    await this.request<void>(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}`, { method: "DELETE" });
+  async unassignNode(machineID: number, nodeID: number, revision: number): Promise<void> {
+    await this.request<void>(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}`, { method: "DELETE", body: { revision } });
   }
 
-  async setNodeEnabled(machineID: number, nodeID: number, enabled: boolean): Promise<void> {
+  async setNodeEnabled(machineID: number, nodeID: number, revision: number, enabled: boolean): Promise<void> {
     await this.request<void>(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}/enabled`, {
       method: "PATCH",
-      body: { enabled }
+      body: { revision, enabled }
     });
+  }
+
+  async listAdminNodes(query: AdminNodeQuery = {}): Promise<AdminNodePage> {
+    const parameters = new URLSearchParams();
+    if (query.page !== undefined) parameters.set("page", String(query.page));
+    if (query.page_size !== undefined) parameters.set("page_size", String(query.page_size));
+    if (query.q !== undefined && query.q.trim() !== "") parameters.set("q", query.q.trim());
+    if (query.type !== undefined && query.type !== "") parameters.set("type", query.type);
+    if (query.show !== undefined) parameters.set("show", String(query.show));
+    if (query.enabled !== undefined) parameters.set("enabled", String(query.enabled));
+    if (query.machine_id !== undefined) parameters.set("machine_id", String(query.machine_id));
+    if (query.unassigned !== undefined) parameters.set("unassigned", String(query.unassigned));
+    return this.request<AdminNodePage>(`/api/v1/admin/nodes${parameters.size === 0 ? "" : `?${parameters.toString()}`}`);
+  }
+
+  async updateAdminNode(nodeID: number, input: AdminNodeUpdateInput): Promise<Node> {
+    return this.request<Node>(`/api/v1/admin/nodes/${nodeID}`, { method: "PATCH", body: input });
+  }
+
+  async copyAdminNode(nodeID: number, revision: number): Promise<Node> {
+    return this.request<Node>(`/api/v1/admin/nodes/${nodeID}/copy`, { method: "POST", body: { revision } });
+  }
+
+  async reorderAdminNodes(targets: AdminNodeRevision[]): Promise<AdminNodeMutation> {
+    return this.request<AdminNodeMutation>("/api/v1/admin/nodes/order", { method: "PUT", body: { targets } });
+  }
+
+  async updateAdminNodeStates(input: AdminNodeStateInput): Promise<AdminNodeMutation> {
+    return this.request<AdminNodeMutation>("/api/v1/admin/nodes/bulk-state", { method: "POST", body: input });
+  }
+
+  async resetAdminNodeTraffic(targets: AdminNodeRevision[]): Promise<AdminNodeMutation> {
+    return this.request<AdminNodeMutation>("/api/v1/admin/nodes/bulk-reset-traffic", { method: "POST", body: { targets } });
+  }
+
+  async deleteAdminNodes(targets: AdminNodeRevision[]): Promise<void> {
+    await this.request<void>("/api/v1/admin/nodes/bulk-delete", { method: "POST", body: { targets } });
   }
 
   async getActivationSchedule(nodeID: number): Promise<ActivationSchedule> {

@@ -213,7 +213,11 @@ func (s *server) assignNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.AssignNode(r.Context(), machineID, nodeID, s.now()); err != nil {
+	revision, ok := decodeNodeRevision(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.AssignNode(r.Context(), machineID, nodeID, revision, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -228,7 +232,11 @@ func (s *server) unassignNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.UnassignNode(r.Context(), machineID, nodeID, s.now()); err != nil {
+	revision, ok := decodeNodeRevision(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.UnassignNode(r.Context(), machineID, nodeID, revision, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -245,16 +253,24 @@ func (s *server) setNodeEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Enabled *bool `json:"enabled"`
+		Revision int64 `json:"revision"`
+		Enabled  *bool `json:"enabled"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	fields := map[string]string{}
+	if input.Revision < 1 {
+		fields["revision"] = "必须是正整数"
+	}
 	if input.Enabled == nil {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "enabled 字段必填", map[string]string{"enabled": "必填"})
+		fields["enabled"] = "必填"
+	}
+	if len(fields) > 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请提交有效的节点状态", fields)
 		return
 	}
-	if err := s.store.SetNodeEnabled(r.Context(), machineID, nodeID, *input.Enabled, s.now()); err != nil {
+	if err := s.store.SetNodeEnabled(r.Context(), machineID, nodeID, input.Revision, *input.Enabled, s.now()); err != nil {
 		handleStoreError(w, err)
 		return
 	}
@@ -265,6 +281,20 @@ func (s *server) setNodeEnabled(w http.ResponseWriter, r *http.Request) {
 		s.hub.NotifyMachineNodes(r.Context(), machineID)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func decodeNodeRevision(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	var input struct {
+		Revision int64 `json:"revision"`
+	}
+	if !decodeJSONLimit(w, r, &input, 1024) {
+		return 0, false
+	}
+	if input.Revision < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "revision 必须是正整数", map[string]string{"revision": "必须是正整数"})
+		return 0, false
+	}
+	return input.Revision, true
 }
 
 func (s *server) listHistory(w http.ResponseWriter, r *http.Request) {

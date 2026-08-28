@@ -128,6 +128,57 @@ test("legacy administrator surface remains observable without frontend source", 
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go node directories preserve the U1 management surface", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/server/manage/getNodes"));
+    await legacyPage.locator('a[href="#/server/manage"]').click();
+    expect((await legacyFetch).status()).toBe(200);
+    await expect(legacyPage.getByRole("heading", { name: "节点管理" })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: "添加节点", exact: true })).toBeVisible();
+
+    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/nodes?"));
+    await goPage.getByRole("button", { name: "节点管理", exact: true }).click();
+    const goResponse = await goFetch;
+    expect(goResponse.status()).toBe(200);
+    expect(new URL(goResponse.url()).searchParams.get("page_size")).toBe("500");
+    await expect(goPage.getByRole("heading", { name: "节点管理" })).toBeVisible();
+
+    const columns = ["节点ID", "显隐", "节点", "部署方式", "地址", "在线人数", "倍率", "权限组", "流量使用", "操作"];
+    for (const column of columns) {
+      await expect(legacyPage.getByText(column, { exact: true }).first(), `旧 Xboard：${column}`).toBeVisible();
+      await expect(goPage.getByRole("table", { name: "节点列表" }).getByRole("columnheader", { name: column, exact: true }), `Go：${column}`).toBeVisible();
+    }
+
+    await legacyPage.getByRole("button", { name: "添加节点", exact: true }).click();
+    const legacyDialog = legacyPage.getByRole("dialog");
+    await expect(legacyDialog.getByRole("heading", { name: "新建节点", exact: true })).toBeVisible();
+    const legacyProtocolSelect = legacyDialog.getByRole("combobox").first();
+    await legacyProtocolSelect.click();
+    const protocols = ["Shadowsocks", "VMess", "Trojan", "Hysteria", "VLess", "TUIC", "SOCKS", "Naive", "HTTP", "Mieru", "AnyTLS"];
+    for (const protocol of protocols) {
+      await expect(legacyPage.getByText(protocol, { exact: true }).filter({ visible: true }).first(), `旧 Xboard：${protocol}`).toBeVisible();
+      await expect(goPage.getByLabel("协议筛选").getByRole("option", { name: protocol, exact: true }), `Go：${protocol}`).toBeAttached();
+    }
+    for (const action of ["批量显示", "批量隐藏", "批量启用", "批量停用", "批量重置流量", "批量删除"]) {
+      await expect(goPage.getByRole("button", { name: action, exact: true })).toBeVisible();
+    }
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go user directories expose the same core table and query surface", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
@@ -2320,6 +2371,7 @@ test("implemented Go administrator concepts map to the legacy navigation", async
 
     for (const [legacyLabel, goLabel] of [
       ["服务器管理", "服务器管理"],
+      ["节点管理", "节点管理"],
       ["用户管理", "用户管理"],
       ["权限组管理", "权限组"],
       ["路由管理", "路由规则"],

@@ -19,6 +19,7 @@ const machine: Machine = {
 
 const node: Node = {
   id: 41,
+  revision: 1,
   name: "SG VLESS",
   type: "vless",
   host: "sg.example.test",
@@ -26,6 +27,12 @@ const node: Node = {
   show: true,
   enabled: true,
   sort: 0,
+  rate: 1,
+  traffic_upload: 0,
+  traffic_download: 0,
+  runtime_configured: true,
+  last_check_at: null,
+  last_push_at: null,
   machine_id: 7,
   created_at: "2026-08-20T00:00:00Z",
   updated_at: "2026-08-20T00:00:00Z"
@@ -142,11 +149,11 @@ describe("ServerManagementPage", () => {
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
     const enabled = await screen.findByRole("checkbox", { name: "启用节点：SG VLESS" });
     await user.click(enabled);
-    await waitFor(() => expect(api.setNodeEnabled).toHaveBeenCalledWith(7, 41, false));
+    await waitFor(() => expect(api.setNodeEnabled).toHaveBeenCalledWith(7, 41, 1, false));
     expect(screen.getByRole("button", { name: "定时设置：SG VLESS" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "解除关联" }));
-    await waitFor(() => expect(api.unassignNode).toHaveBeenCalledWith(7, 41));
+    await waitFor(() => expect(api.unassignNode).toHaveBeenCalledWith(7, 41, 2));
     await waitFor(() => expect(screen.queryByRole("button", { name: "定时设置：SG VLESS" })).not.toBeInTheDocument());
   });
 
@@ -268,6 +275,13 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     assignNode: vi.fn(),
     unassignNode: vi.fn().mockResolvedValue(undefined),
     setNodeEnabled: vi.fn().mockResolvedValue(undefined),
+    listAdminNodes: vi.fn(),
+    updateAdminNode: vi.fn(),
+    copyAdminNode: vi.fn(),
+    reorderAdminNodes: vi.fn(),
+    updateAdminNodeStates: vi.fn(),
+    resetAdminNodeTraffic: vi.fn(),
+    deleteAdminNodes: vi.fn(),
     getActivationSchedule: vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 })),
     saveActivationSchedule,
     deleteActivationSchedule: vi.fn(),

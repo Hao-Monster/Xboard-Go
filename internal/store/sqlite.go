@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 39
+const currentSchemaVersion = 40
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -306,6 +306,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v39: %w", err)
 		}
 		version = 39
+	}
+	if version < 40 {
+		if _, err := tx.ExecContext(ctx, schemaV40); err != nil {
+			return fmt.Errorf("apply schema v40: %w", err)
+		}
+		version = 40
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2032,4 +2038,10 @@ CREATE INDEX idx_admin_user_bulk_targets_claim
     ON admin_user_bulk_targets(status, available_at, claimed_at, job_id, sequence);
 CREATE INDEX idx_admin_user_bulk_targets_job_status
     ON admin_user_bulk_targets(job_id, status, sequence);
+`
+
+const schemaV40 = `
+ALTER TABLE nodes ADD COLUMN admin_revision INTEGER NOT NULL DEFAULT 1 CHECK (admin_revision > 0);
+CREATE INDEX idx_nodes_admin_sort ON nodes(sort, id);
+CREATE INDEX idx_nodes_admin_type_sort ON nodes(type, sort, id);
 `

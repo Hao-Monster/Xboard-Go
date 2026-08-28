@@ -5,6 +5,7 @@ import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
+import { NodeManagementPage } from "./features/nodes/NodeManagementPage";
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
@@ -41,7 +42,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "subscriptions" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -176,6 +177,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}>系统设置</button>
           <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => setPage("subscriptions")}>订阅设置</button>
           <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => setPage("servers")}>服务器管理</button>
+          <button className="nav-link" aria-current={page === "nodes" ? "page" : undefined} onClick={() => setPage("nodes")}>节点管理</button>
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>套餐管理</button>
           <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>订单管理</button>
           <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => setPage("distributors")}>分销管理</button>
@@ -200,6 +202,7 @@ export function App() {
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
       {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
       {page === "servers" && <ServerManagementPage api={api} />}
+      {page === "nodes" && <NodeManagementPage api={api} />}
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "orders" && <OrderManagementPage api={api} />}
       {page === "distributors" && <Suspense fallback={<div className="app-loading">正在加载分销管理…</div>}><AdminDistributorPage api={api} /></Suspense>}
