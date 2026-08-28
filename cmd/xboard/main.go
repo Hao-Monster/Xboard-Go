@@ -27,6 +27,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/legacymigration"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/maintenance"
+	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
@@ -73,6 +74,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var nodeCoordinator nodecoord.Coordinator
+	if settings.NodeCoordinationMode == "redis" {
+		redisCoordinator, err := nodecoord.NewRedis(ctx, nodecoord.Options{
+			URL: settings.RedisURL, Prefix: settings.RedisKeyPrefix, Revision: buildRevision, Logger: logger,
+		})
+		if err != nil {
+			logger.Error("initialize node coordination", "error", err)
+			os.Exit(1)
+		}
+		nodeCoordinator = redisCoordinator
+		defer func() {
+			if err := redisCoordinator.Close(); err != nil {
+				logger.Warn("close node coordination", "error", err)
+			}
+		}()
+	}
 	if err := database.Migrate(ctx); err != nil {
 		logger.Error("migrate database", "error", err)
 		os.Exit(1)
@@ -186,6 +203,7 @@ func main() {
 		WebSocketURL:               settings.WebSocketURL,
 		NodePushInterval:           settings.NodePushInterval,
 		NodePullInterval:           settings.NodePullInterval,
+		NodeCoordinator:            nodeCoordinator,
 		SettingsCipher:             settingsCipher,
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,

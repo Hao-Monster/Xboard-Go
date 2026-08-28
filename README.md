@@ -36,6 +36,35 @@ published to the host. Runtime application data is stored in the
 This profile explicitly permits cleartext SMTP only inside its isolated Docker
 network and is not a production deployment definition.
 
+The default `XBOARD_NODE_COORDINATION_MODE=local` is deliberately limited to
+one API/WebSocket replica. Multi-replica tests must use `redis` mode: the
+application then claims a 180-second machine-and-node lease, renews it every 60
+seconds, closes replaced owners, and routes node synchronization through Redis
+Pub/Sub. Redis claim, verification, or renewal failures fail closed before a
+node report is written; Pub/Sub remains an acceleration path, while reconnect
+full snapshots and the node's bounded HTTP pull provide eventual recovery.
+The application refuses to silently fall back to local ownership.
+
+The optional `coordination` Compose profile provides a pinned, private-network
+development Redis with a file-backed password, no published port, and no persistent data. Generate
+a temporary password, start Redis, and provide the matching URL only to the
+application process. For shared environments, use `XBOARD_REDIS_URL_FILE`
+instead of exposing credentials in an environment value; this local command is
+only a reproducible test example.
+
+```bash
+openssl rand -hex 32 > .local/redis-password.txt
+chmod 600 .local/redis-password.txt
+XBOARD_GO_REDIS_PASSWORD_FILE=.local/redis-password.txt \
+  docker compose -f compose.local.yaml --profile coordination up -d --wait redis
+redis_password="$(cat .local/redis-password.txt)"
+XBOARD_NODE_COORDINATION_MODE=redis \
+XBOARD_REDIS_URL="redis://:${redis_password}@redis:6379/15" \
+XBOARD_GO_REDIS_PASSWORD_FILE=.local/redis-password.txt \
+  docker compose -f compose.local.yaml --profile coordination up --build --wait xboard-go
+unset redis_password
+```
+
 `XBOARD_LEGACY_ADMIN_PATH` changes only the compatibility route segment under
 `/api/v2`; it defaults to `admin` and accepts 1 to 64 ASCII letters, digits,
 underscores, or hyphens. It is not an authorization factor: every route still

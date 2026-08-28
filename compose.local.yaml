@@ -26,6 +26,9 @@ services:
       XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL:-}
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL:-}
       XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: ${XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL:-}
+      XBOARD_NODE_COORDINATION_MODE: ${XBOARD_NODE_COORDINATION_MODE:-local}
+      XBOARD_REDIS_URL: ${XBOARD_REDIS_URL:-}
+      XBOARD_REDIS_KEY_PREFIX: ${XBOARD_REDIS_KEY_PREFIX:-xboard-go:}
     secrets:
       - bootstrap_admin_password
       - settings_encryption_key
@@ -126,6 +129,34 @@ services:
       retries: 10
     restart: "no"
 
+  redis:
+    profiles: [coordination]
+    image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+    user: "999:999"
+    entrypoint: ["/bin/sh", "/run-local-redis.sh"]
+    secrets:
+      - redis_password
+    volumes:
+      - ./.docker/redis/run-local-redis.sh:/run-local-redis.sh:ro
+      - ./.docker/redis/healthcheck-local-redis.sh:/healthcheck-local-redis.sh:ro
+    read_only: true
+    tmpfs:
+      - /data:rw,noexec,nosuid,nodev,size=64m,uid=999,gid=999,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=999,gid=999,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.50
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/healthcheck-local-redis.sh"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: unless-stopped
+
 volumes:
   xboard-go-data:
   xboard-go-backups:
@@ -135,3 +166,5 @@ secrets:
     file: ${XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE:-.local/bootstrap-password.txt}
   settings_encryption_key:
     file: ${XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE:-.local/settings-encryption-key.txt}
+  redis_password:
+    file: ${XBOARD_GO_REDIS_PASSWORD_FILE:-.local/redis-password.txt}

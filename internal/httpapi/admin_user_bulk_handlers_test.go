@@ -42,7 +42,7 @@ func TestAdminUserBulkBanPersistsWarningWhenRuntimeNotificationFails(t *testing.
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	testServer := &server{
-		store: database, hub: newWSHub(failedHubStore, fixedNow, logger, nil, 60, 60), logger: logger, now: fixedNow,
+		store: database, hub: newWSHub(failedHubStore, fixedNow, logger, nil, 60, 60, nil), logger: logger, now: fixedNow,
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/bulk/ban", nil)
 	warned := testServer.notifyAndRecordAdminUserBulkBan(request, job)
