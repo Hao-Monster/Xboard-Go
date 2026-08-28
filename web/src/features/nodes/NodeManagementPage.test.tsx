@@ -17,6 +17,16 @@ const node = {
 };
 
 describe("NodeManagementPage", () => {
+  it("keeps the legacy node table headers visible when the directory is empty", async () => {
+    const api = nodeAPI([]);
+    render(<NodeManagementPage api={api} />);
+
+    const table = await screen.findByRole("table", { name: "节点列表" });
+    expect(within(table).getByRole("columnheader", { name: "节点ID" })).toBeVisible();
+    expect(within(table).getByRole("columnheader", { name: "操作" })).toBeVisible();
+    expect(within(table).getByText("没有符合条件的节点。")).toBeVisible();
+  });
+
   it("matches the legacy directory columns, protocol filters, and bounded server pagination", async () => {
     const api = nodeAPI();
     api.listAdminNodes
