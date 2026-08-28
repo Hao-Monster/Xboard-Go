@@ -538,7 +538,7 @@ func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, std
 
 func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
+		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
 	}
 	if arguments[0] == "import-legacy-subscription-config" {
 		return runLegacySubscriptionConfigMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
@@ -557,6 +557,9 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	}
 	if arguments[0] == "import-legacy-orders" {
 		return runLegacyOrdersMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
+	if arguments[0] == "import-legacy-tickets" {
+		return runLegacyTicketsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] == "import-legacy-commissions" {
 		return runLegacyCommissionsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
