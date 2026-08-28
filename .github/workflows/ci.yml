@@ -115,26 +115,54 @@ jobs:
           printf '%s' "$settings_key" > .local/settings-encryption-key.txt
           printf 'XBOARD_PACKAGED_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
           docker compose -f compose.local.yaml --profile e2e up --build --wait
-      - name: Run desktop browser tests against the packaged application
+      - name: Run isolated registration-trial desktop browser test
         env:
           XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
           XBOARD_E2E_EXTERNAL_SERVER: "true"
           XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
           XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
           XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
-        run: pnpm --dir web test:e2e:desktop
+        run: pnpm --dir web exec playwright test e2e/registration-trial.spec.ts --project chromium
+      - name: Reset in-memory request limiters before the desktop regression suite
+        run: |
+          docker compose -f compose.local.yaml --profile e2e restart xboard-go
+          docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
+      - name: Run desktop browser regression suite against the packaged application
+        env:
+          XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
+          XBOARD_E2E_EXTERNAL_SERVER: "true"
+          XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
+          XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
+          XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
+        run: >-
+          pnpm --dir web exec playwright test --project chromium
+          --grep-invert "administrator configures a registration trial and a public registration receives its full entitlement"
       - name: Reset in-memory request limiters before the mobile project
         run: |
           docker compose -f compose.local.yaml --profile e2e restart xboard-go
           docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
-      - name: Run mobile browser tests against the packaged application
+      - name: Run isolated registration-trial mobile browser test
         env:
           XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
           XBOARD_E2E_EXTERNAL_SERVER: "true"
           XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
           XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
           XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
-        run: pnpm --dir web test:e2e:mobile
+        run: pnpm --dir web exec playwright test e2e/registration-trial.spec.ts --project mobile-chromium
+      - name: Reset in-memory request limiters before the mobile regression suite
+        run: |
+          docker compose -f compose.local.yaml --profile e2e restart xboard-go
+          docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
+      - name: Run mobile browser regression suite against the packaged application
+        env:
+          XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
+          XBOARD_E2E_EXTERNAL_SERVER: "true"
+          XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
+          XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
+          XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
+        run: >-
+          pnpm --dir web exec playwright test --project mobile-chromium
+          --grep-invert "administrator configures a registration trial and a public registration receives its full entitlement"
       - name: Capture container logs on failure
         if: failure()
         run: docker compose -f compose.local.yaml --profile e2e logs --no-color
