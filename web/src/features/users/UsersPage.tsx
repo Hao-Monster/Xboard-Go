@@ -606,13 +606,15 @@ function UserTrafficResetDialog({ api, account, onClose, onReset }: { api: Users
 			.catch((cause: unknown) => { if (active) setError(errorMessage(cause)); });
 		return () => { active = false; };
 	}, [account.id, api, tab, result]);
-	const submit = async (event: FormEvent) => {
+	const submit = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
+		const submittedReason = new FormData(event.currentTarget).get("reason");
+		const normalizedReason = typeof submittedReason === "string" ? submittedReason.trim() : "";
 		setSaving(true);
 		setError("");
 		try {
 			if (idempotencyKey.current === "") idempotencyKey.current = secureRandomUUID();
-			const next = await api.resetAdminUserTraffic(account.id, reason.trim(), idempotencyKey.current);
+			const next = await api.resetAdminUserTraffic(account.id, normalizedReason, idempotencyKey.current);
 			setResult(next);
 			onReset();
 		} catch (cause) {
@@ -630,7 +632,7 @@ function UserTrafficResetDialog({ api, account, onClose, onReset }: { api: Users
 		{tab === "reset" && <form className="form-stack" onSubmit={(event) => void submit(event)}>
 			<div className="user-detail-grid"><DetailField label="用户邮箱" value={account.email} /><DetailField label="已用流量" value={formatBytes(account.traffic_upload + account.traffic_download)} /><DetailField label="总流量" value={formatBytes(account.transfer_enable)} /><DetailField label="到期时间" value={account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)} /></div>
 			<div className="alert warning">此操作不可撤销，将同时把上行和下行流量清零，并记录管理员、原因和重置前后值。</div>
-			<label>重置原因（可选）<textarea value={reason} maxLength={255} disabled={result !== null} onChange={(event) => setReason(event.target.value)} /></label>
+			<label>重置原因（可选）<textarea name="reason" value={reason} maxLength={255} disabled={result !== null} onChange={(event) => setReason(event.target.value)} /></label>
 			{result !== null && <div className="alert success" role="status">流量已重置：{formatBytes(result.upload_before + result.download_before)} → 0 B。</div>}
 			{error !== "" && <div className="alert error" role="alert">{error}</div>}
 			<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button><button className="button primary" type="submit" disabled={saving || result !== null}>{saving ? "正在重置…" : "确认重置流量"}</button></div>
