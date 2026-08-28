@@ -36,6 +36,28 @@ describe("App public identity bootstrap", () => {
 		expect(requested.some((path) => path.includes("/api/v1/notices"))).toBe(false);
 	});
 
+	it("keeps the administrator shell for an admin, staff, and distributor hybrid session", async () => {
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Hybrid Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				id: 91, email: "hybrid@example.test", is_admin: true, is_staff: true, is_distributor: true, distributor_name: "混合角色"
+			} }));
+			return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
+		}));
+
+		render(<App />);
+		expect(await screen.findByRole("navigation", { name: "管理端导航" })).toBeVisible();
+		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
+		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
+	});
+
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
 		const token = "11111111111111111111111111111111";
 		let sessionRequested = false;
