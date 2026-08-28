@@ -154,7 +154,7 @@ func TestXboardNodeRuntimeConfigContract(t *testing.T) {
 	}
 }
 
-func TestXboardNodeRuntimeEndpointsEnforceNodeOwnershipAndConfiguration(t *testing.T) {
+func TestXboardNodeRuntimeEndpointsExposeDefaultConfigurationAndEnforceOwnership(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
 	now := fixedNow()
@@ -167,16 +167,16 @@ func TestXboardNodeRuntimeEndpointsEnforceNodeOwnershipAndConfiguration(t *testi
 		t.Fatal(err)
 	}
 	node, err := database.CreateNode(ctx, store.CreateNodeInput{
-		Name: "unconfigured", Type: "vless", Host: "unconfigured.example.test", Port: "443",
+		Name: "default-config", Type: "vless", Host: "default.example.test", Port: "443",
 		Show: true, Enabled: true, MachineID: &machine.ID,
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := fmt.Sprintf("/api/v2/server/config?machine_id=%d&node_id=%d", machine.ID, node.ID)
-	unconfigured := agentRequest(api, http.MethodGet, path, credential.Token, "")
-	if unconfigured.Code != http.StatusConflict {
-		t.Fatalf("unconfigured status = %d, want %d; body=%s", unconfigured.Code, http.StatusConflict, unconfigured.Body)
+	configured := agentRequest(api, http.MethodGet, path, credential.Token, "")
+	if configured.Code != http.StatusOK || !strings.Contains(configured.Body.String(), `"protocol":"vless"`) {
+		t.Fatalf("default configuration status = %d, want %d; body=%s", configured.Code, http.StatusOK, configured.Body)
 	}
 
 	otherMachine, _, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "other", IsActive: true}, now)

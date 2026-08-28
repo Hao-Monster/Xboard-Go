@@ -43,7 +43,7 @@ func TestSchemaV40PreservesV39NodesAndAddsAdministratorRevision(t *testing.T) {
 	`).Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if version != 41 || indexCount != 2 {
+	if version != 42 || indexCount != 2 {
 		t.Fatalf("schema version=%d index_count=%d", version, indexCount)
 	}
 }
@@ -251,13 +251,13 @@ func TestCopyAdminNodePreservesConfigurationButNotIdentityOrEphemeralState(t *te
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
-		INSERT INTO node_protocol_definitions (
-			node_id, external_code, server_port, tags_json, protocol_settings_json, rate_time_enabled,
-			rate_time_ranges_json, custom_outbounds_json, custom_routes_json, cert_config_json,
-			transfer_enable, configured_rate_micros
-		) VALUES (?, 'legacy-external-code', 9443, '["edge"]', '{"flow":"xtls-rprx-vision"}', 1,
-			'[{"start":"00:00","end":"01:00","rate":0.5}]', '[{"tag":"direct"}]', '[{"match":"example.test"}]',
-			'{"mode":"file"}', 1099511627776, 2500000)
+		UPDATE node_protocol_definitions SET
+			external_code = 'legacy-external-code', server_port = 9443, tags_json = '["edge"]',
+			protocol_settings_json = '{"flow":"xtls-rprx-vision"}', rate_time_enabled = 1,
+			rate_time_ranges_json = '[{"start":"00:00","end":"01:00","rate":0.5}]',
+			custom_outbounds_json = '[{"tag":"direct"}]', custom_routes_json = '[{"match":"example.test"}]',
+			cert_config_json = '{"mode":"file"}', transfer_enable = 1099511627776,
+			configured_rate_micros = 2500000 WHERE node_id = ?
 	`, original.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -305,9 +305,10 @@ func TestResetAndDeleteAdminNodesAreAtomicAndReconcileOnlineCounts(t *testing.T)
 	parent, _ := database.CreateNode(ctx, CreateNodeInput{Name: "Parent", Type: "vless", Host: "parent.test", Port: "443", Show: true, Enabled: true}, now)
 	child, _ := database.CreateNode(ctx, CreateNodeInput{Name: "Child", Type: "vless", Host: "child.test", Port: "443", Show: true, Enabled: true}, now)
 	if _, err := database.db.ExecContext(ctx, `
-		INSERT INTO node_protocol_definitions (node_id, parent_id, server_port, protocol_settings_json, configured_rate_micros)
-		VALUES (?, NULL, 443, '{}', 1000000), (?, ?, 443, '{}', 1000000)
-	`, parent.ID, child.ID, parent.ID); err != nil {
+		UPDATE node_protocol_definitions
+		SET parent_id = CASE WHEN node_id = ? THEN ? ELSE NULL END
+		WHERE node_id IN (?, ?)
+	`, child.ID, parent.ID, parent.ID, child.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE nodes SET traffic_u = 100, traffic_d = 200 WHERE id IN (?, ?)`, parent.ID, child.ID); err != nil {
