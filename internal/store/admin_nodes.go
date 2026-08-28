@@ -311,11 +311,11 @@ func (s *Store) CopyAdminNode(ctx context.Context, nodeID, revision int64, now t
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO node_protocol_definitions (
-			node_id, external_code, parent_id, server_port, tags_json, protocol_settings_json,
+			node_id, external_code, parent_id, server_port, listen_address, tags_json, protocol_settings_json,
 			rate_time_enabled, rate_time_ranges_json, custom_outbounds_json, custom_routes_json,
 			cert_config_json, transfer_enable, configured_rate_micros
 		)
-		SELECT ?, NULL, parent_id, server_port, tags_json, protocol_settings_json,
+		SELECT ?, NULL, parent_id, server_port, listen_address, tags_json, protocol_settings_json,
 		       rate_time_enabled, rate_time_ranges_json, custom_outbounds_json, custom_routes_json,
 		       cert_config_json, transfer_enable, configured_rate_micros
 		FROM node_protocol_definitions WHERE node_id = ?
@@ -541,6 +541,8 @@ func (s *Store) DeleteAdminNodes(ctx context.Context, targets []AdminNodeRevisio
 type adminNodeTarget struct {
 	ID        int64
 	Revision  int64
+	Name      string
+	Type      string
 	Show      bool
 	Enabled   bool
 	Sort      int
@@ -615,8 +617,8 @@ func loadAdminNodeTarget(ctx context.Context, tx *sql.Tx, nodeID int64) (adminNo
 	var target adminNodeTarget
 	var machineID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id, admin_revision, show, enabled, sort, machine_id FROM nodes WHERE id = ?
-	`, nodeID).Scan(&target.ID, &target.Revision, &target.Show, &target.Enabled, &target.Sort, &machineID); errors.Is(err, sql.ErrNoRows) {
+		SELECT id, admin_revision, name, type, show, enabled, sort, machine_id FROM nodes WHERE id = ?
+	`, nodeID).Scan(&target.ID, &target.Revision, &target.Name, &target.Type, &target.Show, &target.Enabled, &target.Sort, &machineID); errors.Is(err, sql.ErrNoRows) {
 		return adminNodeTarget{}, ErrNotFound
 	} else if err != nil {
 		return adminNodeTarget{}, fmt.Errorf("read administrator node target: %w", err)
@@ -630,7 +632,7 @@ func loadAdminNodeTarget(ctx context.Context, tx *sql.Tx, nodeID int64) (adminNo
 func loadAdminNodeTargets(ctx context.Context, tx *sql.Tx, requested []AdminNodeRevision) (map[int64]adminNodeTarget, error) {
 	arguments := adminNodeTargetArguments(requested)
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, admin_revision, show, enabled, sort, machine_id FROM nodes
+		SELECT id, admin_revision, name, type, show, enabled, sort, machine_id FROM nodes
 		WHERE id IN (`+sqlPlaceholders(len(arguments))+`)
 	`, arguments...)
 	if err != nil {
@@ -641,7 +643,7 @@ func loadAdminNodeTargets(ctx context.Context, tx *sql.Tx, requested []AdminNode
 	for rows.Next() {
 		var target adminNodeTarget
 		var machineID sql.NullInt64
-		if err := rows.Scan(&target.ID, &target.Revision, &target.Show, &target.Enabled, &target.Sort, &machineID); err != nil {
+		if err := rows.Scan(&target.ID, &target.Revision, &target.Name, &target.Type, &target.Show, &target.Enabled, &target.Sort, &machineID); err != nil {
 			return nil, fmt.Errorf("scan administrator node target: %w", err)
 		}
 		if machineID.Valid {

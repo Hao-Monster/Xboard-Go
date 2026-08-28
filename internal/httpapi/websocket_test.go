@@ -207,6 +207,100 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}
 }
 
+func TestAdminNodeDefinitionUpdatePublishesOnlyRequiredMachineSnapshots(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+
+	ctx := context.Background()
+	now := fixedNow()
+	group, err := database.CreateServerGroup(ctx, "definition users", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "definition-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := store.SaveAdminNodeDefinitionInput{
+		Type: "shadowsocks", Name: "Definition node", RateMicros: 1_000_000, Tags: []string{},
+		Host: "definition.example.test", Port: "443", ServerPort: 443, ListenAddress: "0.0.0.0",
+		ProtocolSettings: json.RawMessage(`{"cipher":"aes-128-gcm","plugin":"","plugin_opts":""}`),
+		Show:             true, Enabled: true, MachineID: &machine.ID, GroupIDs: []int64{group.ID}, RouteIDs: []int64{},
+		RateTimeRanges: json.RawMessage(`[]`), CustomOutbounds: json.RawMessage(`[]`), CustomRoutes: json.RawMessage(`[]`), CertificateConfig: json.RawMessage(`{}`),
+	}
+	created, _, err := database.CreateAdminNodeDefinition(ctx, input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "definition-user@example.test", PasswordHash: "hash", UUID: "14a7e77f-2bc7-4ef7-a96c-259f76248989",
+		GroupID: group.ID, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, created.ID, user.ID)
+	admin := loginAdmin(t, api)
+	body := func(revision int64, name, cipher string) string {
+		payload := map[string]any{
+			"revision": revision, "type": "shadowsocks", "external_code": nil, "parent_id": nil,
+			"name": name, "rate": 1, "tags": []string{}, "host": "definition.example.test", "port": "443",
+			"server_port": 443, "listen_address": "0.0.0.0",
+			"protocol_settings": map[string]any{"cipher": cipher, "plugin": "", "plugin_opts": ""},
+			"show":              true, "enabled": true, "sort": 0, "machine_id": machine.ID, "group_ids": []int64{group.ID}, "route_ids": []int64{},
+			"rate_time_enabled": false, "rate_time_ranges": []any{}, "custom_outbounds": []any{}, "custom_routes": []any{},
+			"certificate_config": map[string]any{}, "transfer_enable": 0,
+		}
+		encoded, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		return string(encoded)
+	}
+	path := fmt.Sprintf("/api/v1/admin/nodes/%d", created.ID)
+	response := admin.request(t, api, http.MethodPut, path, body(created.Revision, created.Name, "aes-256-gcm"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("protocol update status=%d body=%s", response.Code, response.Body)
+	}
+	config := readWSEvent(t, connection)
+	users := readWSEvent(t, connection)
+	devices := readWSEvent(t, connection)
+	if config.Event != "sync.config" || users.Event != "sync.users" || devices.Event != "sync.devices" {
+		t.Fatalf("protocol update events=%q/%q/%q, want config/users/devices", config.Event, users.Event, devices.Event)
+	}
+	var configData struct {
+		Config struct {
+			Cipher string `json:"cipher"`
+		} `json:"config"`
+	}
+	decodeWSData(t, config.Data, &configData)
+	if configData.Config.Cipher != "aes-256-gcm" {
+		t.Fatalf("protocol update cipher=%q", configData.Config.Cipher)
+	}
+
+	response = admin.request(t, api, http.MethodPut, path, body(created.Revision+1, "Renamed definition node", "aes-256-gcm"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("rename status=%d body=%s", response.Code, response.Body)
+	}
+	for index, expected := range []string{"sync.nodes", "sync.config", "sync.users", "sync.devices"} {
+		if event := readWSEvent(t, connection); event.Event != expected {
+			t.Fatalf("rename event %d=%q, want %q", index, event.Event, expected)
+		}
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	if _, _, err := connection.ReadMessage(); err == nil {
+		t.Fatal("definition updates published an extra machine snapshot")
+	}
+}
+
 func TestBulkBanPublishesBoundedRuntimeRemovalDelta(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()

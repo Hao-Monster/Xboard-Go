@@ -171,7 +171,7 @@ func TestSchemaV24ThroughV26AddMigrationLedgerLastLoginAndNodeDefinitionsWithout
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('node_protocol_definitions')`).Scan(&nodeDefinitionColumns); err != nil {
 		t.Fatal(err)
 	}
-	if version != currentSchemaVersion || notices != 1 || ledger != 1 || lastLoginColumns != 1 || nodeDefinitionColumns != 13 {
+	if version != currentSchemaVersion || notices != 1 || ledger != 1 || lastLoginColumns != 1 || nodeDefinitionColumns != 14 {
 		t.Fatalf("migration result version=%d notices=%d ledger=%d last_login_columns=%d node_definition_columns=%d", version, notices, ledger, lastLoginColumns, nodeDefinitionColumns)
 	}
 }

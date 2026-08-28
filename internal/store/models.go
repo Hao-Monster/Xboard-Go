@@ -1824,6 +1824,51 @@ type AdminNode struct {
 	OnlineCount int64   `json:"online_count"`
 }
 
+type AdminNodeDefinition struct {
+	Node
+	ExternalCode      string          `json:"external_code"`
+	ParentID          *int64          `json:"parent_id"`
+	ServerPort        int             `json:"server_port"`
+	ListenAddress     string          `json:"listen_address"`
+	Tags              []string        `json:"tags"`
+	ProtocolSettings  json.RawMessage `json:"protocol_settings"`
+	GroupIDs          []int64         `json:"group_ids"`
+	RouteIDs          []int64         `json:"route_ids"`
+	RateTimeEnabled   bool            `json:"rate_time_enabled"`
+	RateTimeRanges    json.RawMessage `json:"rate_time_ranges"`
+	CustomOutbounds   json.RawMessage `json:"custom_outbounds"`
+	CustomRoutes      json.RawMessage `json:"custom_routes"`
+	CertificateConfig json.RawMessage `json:"certificate_config"`
+	TransferEnable    int64           `json:"transfer_enable"`
+}
+
+type SaveAdminNodeDefinitionInput struct {
+	Revision          int64
+	Type              string
+	ExternalCode      string
+	ParentID          *int64
+	Name              string
+	RateMicros        int64
+	Tags              []string
+	Host              string
+	Port              string
+	ServerPort        int
+	ListenAddress     string
+	ProtocolSettings  json.RawMessage
+	Show              bool
+	Enabled           bool
+	Sort              int
+	MachineID         *int64
+	GroupIDs          []int64
+	RouteIDs          []int64
+	RateTimeEnabled   bool
+	RateTimeRanges    json.RawMessage
+	CustomOutbounds   json.RawMessage
+	CustomRoutes      json.RawMessage
+	CertificateConfig json.RawMessage
+	TransferEnable    int64
+}
+
 type AdminNodePage struct {
 	Items    []AdminNode `json:"items"`
 	Total    int64       `json:"total"`
@@ -1868,10 +1913,16 @@ type AdminNodeStateInput struct {
 }
 
 type AdminNodeMutation struct {
-	NodeIDs         []int64 `json:"node_ids"`
-	MachineIDs      []int64 `json:"-"`
-	ClearNodeIDs    []int64 `json:"-"`
-	AffectedUserIDs []int64 `json:"-"`
+	NodeIDs         []int64             `json:"node_ids"`
+	MachineIDs      []int64             `json:"-"`
+	FullSyncs       []AdminNodeFullSync `json:"-"`
+	ClearNodeIDs    []int64             `json:"-"`
+	AffectedUserIDs []int64             `json:"-"`
+}
+
+type AdminNodeFullSync struct {
+	MachineID int64
+	NodeID    int64
 }
 
 type LoadHistory struct {
