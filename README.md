@@ -311,6 +311,30 @@ must resolve within the snapshot, and password hashes must be bounded legacy
 bcrypt values. Repeating the same source verifies the recorded rollback archive
 and returns the existing result without rewriting users.
 
+Ticket history can then be imported after the human-account slice from the
+same standalone snapshot. The target tickets, messages, reply-mail outbox, and
+reply throttle must all be empty. Ticket and message identifiers, ownership,
+subjects, levels, open/closed and waiting/answered state, final authors,
+message bodies, and timestamps are preserved exactly. Historical notification
+mail is deliberately not replayed:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-tickets \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-tickets.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The reader accepts at most one million tickets, ten million messages, and two
+GiB of ticket text. Messages are streamed instead of retained in memory. The
+source is re-verified before the target transaction commits, canonical
+checksums independently verify both tables, and SQLite identifier sequences are
+advanced to the imported maxima. Repeating the same source is idempotent and
+also detects later target drift.
+
 Coupons can be imported after plans and before orders. The slice preserves
 coupon IDs, exact codes and names, fixed-cent or percentage values, visibility,
 remaining and per-user limits, plan and period restrictions, timestamps, and

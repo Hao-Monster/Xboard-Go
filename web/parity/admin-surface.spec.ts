@@ -2556,9 +2556,11 @@ function goSiteIdentityInput(settings: Record<string, unknown>) {
 
 async function loginLegacy(page: Page) {
   await page.goto(legacyURL, { waitUntil: "domcontentloaded" });
-  await page.locator('input[name="email"]').fill(legacyEmail);
-  await page.locator('input[name="password"]').fill(legacyPassword);
-  await page.locator('input[name="password"]').press("Enter");
+  const fields = page.locator("input:visible");
+  await expect(fields).toHaveCount(2);
+  await fields.first().fill(legacyEmail);
+  await fields.nth(1).fill(legacyPassword);
+  await fields.nth(1).press("Enter");
   await expect(page.locator('a[href="#/server/machine"]')).toBeVisible();
 }
 
