@@ -813,8 +813,9 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	const internalEmail = "internal-login@example.test"
 	internal, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
-		Email: "internal-login@example.test", PasswordHash: hash, AccountKind: store.AccountKindInternalSubscription,
+		Email: internalEmail, PasswordHash: hash, AccountKind: store.AccountKindInternalSubscription,
 		UUID: "7b4a5542-1101-40b8-8aab-6ea1a7e3d0d8", GroupID: 7, TransferEnable: 1_000,
 	}, fixedNow())
 	if err != nil {
@@ -827,6 +828,29 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	api.ServeHTTP(response, login)
 	if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "invalid_credentials") {
 		t.Fatalf("internal login status = %d; body=%s", response.Code, response.Body)
+	}
+	staleSessionToken, err := security.NewOpaqueToken(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateSession(ctx, internal.ID, staleSessionToken.Digest, "internal-csrf-digest", fixedNow().Add(time.Hour), fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	staleSessionRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	staleSessionRequest.AddCookie(&http.Cookie{Name: SessionCookieName, Value: staleSessionToken.Plaintext})
+	staleSession := httptest.NewRecorder()
+	api.ServeHTTP(staleSession, staleSessionRequest)
+	if staleSession.Code != http.StatusUnauthorized {
+		t.Fatalf("pre-existing internal session status=%d body=%s", staleSession.Code, staleSession.Body)
+	}
+	accessToken, err := security.NewOpaqueToken(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+		UserID: internal.ID, TokenHash: accessToken.Digest, Name: "internal-access-token",
+	}, fixedNow()); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("internal access-token creation error=%v, want ErrNotFound", err)
 	}
 	admin := loginAdmin(t, api)
 	list := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?email_prefix=internal-login", "")
@@ -844,6 +868,43 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	for _, group := range groups {
 		if group.ID == 7 && group.UsersCount != 0 {
 			t.Fatalf("internal account leaked into group statistics: %#v", group)
+		}
+	}
+
+	enablePasswordResetSMTP(t, database)
+	reset := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request",
+		`{"email":"internal-login@example.test"}`)
+	if reset.Code != http.StatusAccepted {
+		t.Fatalf("internal password-reset request status=%d body=%s", reset.Code, reset.Body)
+	}
+	if _, claimed, err := database.ClaimPasswordResetMail(ctx, "internal-reset-proof", fixedNow(), time.Minute); err != nil || claimed {
+		t.Fatalf("internal account queued password-reset mail: claimed=%v err=%v", claimed, err)
+	}
+
+	enableMailLogin(t, database)
+	mailLink := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/mail-link/request",
+		`{"email":"internal-login@example.test"}`)
+	if mailLink.Code != http.StatusAccepted {
+		t.Fatalf("internal mail-link request status=%d body=%s", mailLink.Code, mailLink.Body)
+	}
+	if _, claimed, err := database.ClaimLoginLinkMail(ctx, "internal-login-proof", fixedNow(), time.Minute); err != nil || claimed {
+		t.Fatalf("internal account queued login-link mail: claimed=%v err=%v", claimed, err)
+	}
+
+	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacyList := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/fetch", legacyAuthorization,
+		`{"current":1,"pageSize":20}`)
+	if legacyList.Code != http.StatusOK || strings.Contains(legacyList.Body.String(), internalEmail) {
+		t.Fatalf("internal account leaked in legacy list: status=%d body=%s", legacyList.Code, legacyList.Body)
+	}
+	for _, endpoint := range []string{"/api/v1/admin/users/bulk/csv", "/api/v1/admin/users/bulk/mail"} {
+		body := fmt.Sprintf(`{"scope":"selected","user_ids":[%d]}`, internal.ID)
+		if strings.HasSuffix(endpoint, "/mail") {
+			body = fmt.Sprintf(`{"scope":"selected","user_ids":[%d],"subject":"private","content":"private"}`, internal.ID)
+		}
+		bulk := admin.request(t, api, http.MethodPost, endpoint, body)
+		if bulk.Code != http.StatusUnprocessableEntity || strings.Contains(bulk.Body.String(), internalEmail) {
+			t.Fatalf("internal bulk target endpoint=%s status=%d body=%s", endpoint, bulk.Code, bulk.Body)
 		}
 	}
 }
