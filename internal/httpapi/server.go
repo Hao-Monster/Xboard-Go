@@ -17,6 +17,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
+	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -45,6 +46,7 @@ type Dependencies struct {
 	WebSocketURL               string
 	NodePushInterval           int
 	NodePullInterval           int
+	NodeCoordinator            nodecoord.Coordinator
 	CatalogHTTPClient          clientcatalog.HTTPDoer
 	SettingsCipher             *appsettings.Cipher
 	PasswordResetProtector     *security.PasswordResetProtector
@@ -228,7 +230,12 @@ func New(dependencies Dependencies) http.Handler {
 		bulkOperations:             dependencies.BulkOperations,
 	}
 	if dependencies.WebSocketEnabled {
-		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval)
+		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodePushInterval, dependencies.NodePullInterval, dependencies.NodeCoordinator)
+		if dependencies.NodeCoordinator != nil {
+			if err := dependencies.NodeCoordinator.Start(dependencies.Context, api.hub.handleCoordinationEvent); err != nil {
+				panic(fmt.Sprintf("httpapi: start node coordinator: %v", err))
+			}
+		}
 		go api.hub.runUntil(dependencies.Context)
 	}
 

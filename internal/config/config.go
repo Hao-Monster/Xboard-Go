@@ -16,6 +16,7 @@ import (
 var (
 	immutableNodeReleaseRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
 	legacyAdminPathRE      = regexp.MustCompile(`^[0-9A-Za-z_-]{1,64}$`)
+	redisKeyPrefixRE       = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 )
 
 type Config struct {
@@ -41,6 +42,9 @@ type Config struct {
 	WebSocketURL            string
 	NodePushInterval        int
 	NodePullInterval        int
+	NodeCoordinationMode    string
+	RedisURL                string
+	RedisKeyPrefix          string
 	WebRoot                 string
 	AttachmentRoot          string
 	AttachmentChunkSize     int64
@@ -142,6 +146,10 @@ func Load() (Config, error) {
 			return Config{}, errors.New("XBOARD_SETTINGS_ENCRYPTION_KEY must be a base64-encoded 256-bit key")
 		}
 	}
+	redisURL, err := readSecretEnv("XBOARD_REDIS_URL")
+	if err != nil {
+		return Config{}, err
+	}
 
 	config := Config{
 		Address:                 envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
@@ -165,6 +173,9 @@ func Load() (Config, error) {
 		WebSocketURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
 		NodePushInterval:        nodePushInterval,
 		NodePullInterval:        nodePullInterval,
+		NodeCoordinationMode:    strings.ToLower(strings.TrimSpace(envOrDefault("XBOARD_NODE_COORDINATION_MODE", "local"))),
+		RedisURL:                strings.TrimSpace(redisURL),
+		RedisKeyPrefix:          strings.TrimSpace(envOrDefault("XBOARD_REDIS_KEY_PREFIX", "xboard-go:")),
 		WebRoot:                 strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
 		AttachmentRoot:          strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")),
 		AttachmentChunkSize:     attachmentChunkSize,
@@ -253,6 +264,24 @@ func Load() (Config, error) {
 		parsedWebSocketURL, err := url.Parse(config.WebSocketURL)
 		if err != nil || parsedWebSocketURL.Host == "" || (parsedWebSocketURL.Scheme != "ws" && parsedWebSocketURL.Scheme != "wss") {
 			return Config{}, errors.New("XBOARD_WEBSOCKET_URL must be an absolute ws or wss URL")
+		}
+	}
+	if config.NodeCoordinationMode != "local" && config.NodeCoordinationMode != "redis" {
+		return Config{}, errors.New("XBOARD_NODE_COORDINATION_MODE must be local or redis")
+	}
+	if !redisKeyPrefixRE.MatchString(config.RedisKeyPrefix) {
+		return Config{}, errors.New("XBOARD_REDIS_KEY_PREFIX must contain 1 to 64 ASCII letters, digits, colons, underscores, or hyphens")
+	}
+	if config.NodeCoordinationMode == "local" && config.RedisURL != "" {
+		return Config{}, errors.New("XBOARD_REDIS_URL requires XBOARD_NODE_COORDINATION_MODE=redis")
+	}
+	if config.NodeCoordinationMode == "redis" {
+		if config.RedisURL == "" || len(config.RedisURL) > 4096 {
+			return Config{}, errors.New("XBOARD_REDIS_URL is required in redis coordination mode and must not exceed 4096 bytes")
+		}
+		parsedRedisURL, err := url.Parse(config.RedisURL)
+		if err != nil || parsedRedisURL.Host == "" || (parsedRedisURL.Scheme != "redis" && parsedRedisURL.Scheme != "rediss") || parsedRedisURL.Fragment != "" {
+			return Config{}, errors.New("XBOARD_REDIS_URL must be an absolute redis or rediss URL without a fragment")
 		}
 	}
 	for name, endpoint := range map[string]string{

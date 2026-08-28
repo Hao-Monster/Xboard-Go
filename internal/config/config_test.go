@@ -194,6 +194,58 @@ func TestLoadRejectsInvalidWebSocketAndNodeIntervals(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesNodeCoordinationConfiguration(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_NODE_COORDINATION_MODE", "")
+	t.Setenv("XBOARD_REDIS_URL", "")
+	t.Setenv("XBOARD_REDIS_URL_FILE", "")
+	t.Setenv("XBOARD_REDIS_KEY_PREFIX", "")
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() defaults error = %v", err)
+	}
+	if settings.NodeCoordinationMode != "local" || settings.RedisURL != "" || settings.RedisKeyPrefix != "xboard-go:" {
+		t.Fatalf("node coordination defaults = %#v", settings)
+	}
+
+	secretPath := filepath.Join(t.TempDir(), "redis-url")
+	if err := os.WriteFile(secretPath, []byte("rediss://user:secret@redis.example.test:6380/4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XBOARD_NODE_COORDINATION_MODE", "redis")
+	t.Setenv("XBOARD_REDIS_URL_FILE", secretPath)
+	t.Setenv("XBOARD_REDIS_KEY_PREFIX", "tenant_7:")
+	settings, err = Load()
+	if err != nil {
+		t.Fatalf("Load() Redis mode error = %v", err)
+	}
+	if settings.NodeCoordinationMode != "redis" || settings.RedisURL != "rediss://user:secret@redis.example.test:6380/4" || settings.RedisKeyPrefix != "tenant_7:" {
+		t.Fatalf("node coordination settings = %#v", settings)
+	}
+
+	for _, test := range []struct {
+		name, mode, redisURL, prefix string
+	}{
+		{name: "unknown mode", mode: "fallback", redisURL: "", prefix: "xboard-go:"},
+		{name: "missing URL", mode: "redis", redisURL: "", prefix: "xboard-go:"},
+		{name: "wrong scheme", mode: "redis", redisURL: "https://redis.example.test", prefix: "xboard-go:"},
+		{name: "fragment", mode: "redis", redisURL: "redis://redis.example.test/0#secret", prefix: "xboard-go:"},
+		{name: "unsafe prefix", mode: "redis", redisURL: "redis://redis.example.test/0", prefix: "bad prefix"},
+		{name: "misleading local URL", mode: "local", redisURL: "redis://redis.example.test/0", prefix: "xboard-go:"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XBOARD_NODE_COORDINATION_MODE", test.mode)
+			t.Setenv("XBOARD_REDIS_URL", test.redisURL)
+			t.Setenv("XBOARD_REDIS_URL_FILE", "")
+			t.Setenv("XBOARD_REDIS_KEY_PREFIX", test.prefix)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() accepted invalid node coordination configuration")
+			}
+		})
+	}
+}
+
 func TestLoadGatesCaptchaVerificationEndpointOverrides(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")

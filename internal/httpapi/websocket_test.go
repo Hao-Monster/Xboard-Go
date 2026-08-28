@@ -719,7 +719,7 @@ func TestWebSocketUnregisterFencesDeviceCleanupAgainstReconnect(t *testing.T) {
 	}
 
 	for iteration := range 100 {
-		hub := newWSHub(database, fixedNow, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, 60, 60)
+		hub := newWSHub(database, fixedNow, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, 60, 60, nil)
 		old := &wsConnection{machineID: machine.ID, hub: hub, nodeIDs: map[int64]struct{}{node.ID: {}}}
 		hub.register(old)
 		if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{

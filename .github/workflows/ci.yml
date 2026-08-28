@@ -11,6 +11,18 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
+    env:
+      XBOARD_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+    services:
+      redis:
+        image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -19,6 +31,10 @@ jobs:
           cache: true
       - name: Test with race detector and coverage
         run: go test -race -timeout=30m -coverprofile=coverage.out ./...
+      - name: Inject Redis failure and verify recovery
+        env:
+          XBOARD_TEST_REDIS_FAILURES: "true"
+        run: go test -race -timeout=5m ./internal/httpapi -run TestRedisCoordinationFailureClosesBeforeWriteAndRecovers -count=1
       - name: Vet
         run: go vet ./...
       - name: Vulnerability scan

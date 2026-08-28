@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -54,6 +55,8 @@ type wsHub struct {
 	pushInterval   int
 	pullInterval   int
 	deviceSyncMu   sync.Mutex
+	coordinator    nodecoord.Coordinator
+	registrationMu [64]sync.Mutex
 }
 
 type wsConnection struct {
@@ -68,7 +71,7 @@ type wsConnection struct {
 	nodeIDs   map[int64]struct{}
 }
 
-func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, pushInterval, pullInterval int) *wsHub {
+func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, pushInterval, pullInterval int, coordinator nodecoord.Coordinator) *wsHub {
 	return &wsHub{
 		machines:       make(map[int64]*wsConnection),
 		store:          database,
@@ -77,18 +80,28 @@ func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, 
 		allowedOrigins: allowedOrigins,
 		pushInterval:   pushInterval,
 		pullInterval:   pullInterval,
+		coordinator:    coordinator,
 	}
 }
 
 func (h *wsHub) runUntil(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	reconcileTicker := time.NewTicker(time.Second)
+	defer reconcileTicker.Stop()
+	var renewTicker *time.Ticker
+	var renew <-chan time.Time
+	if h.coordinator != nil {
+		renewTicker = time.NewTicker(nodecoord.RenewInterval)
+		renew = renewTicker.C
+		defer renewTicker.Stop()
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			goto shutdown
-		case <-ticker.C:
+		case <-reconcileTicker.C:
 			h.reconcileConnections(ctx)
+		case <-renew:
+			h.renewConnections(ctx)
 		}
 	}
 
@@ -128,7 +141,7 @@ func (h *wsHub) reconcileConnections(ctx context.Context) {
 		connection := h.machines[machineID]
 		h.mu.RUnlock()
 		if connection != nil && !sameNodeIDs(connection.nodeIDList(), nodeIDs) {
-			h.NotifyMachineNodes(ctx, machineID)
+			h.notifyMachineNodes(ctx, machineID, false)
 		}
 	}
 }
@@ -181,8 +194,18 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 	for _, snapshot := range snapshots {
 		nodeIDs[snapshot.summary.ID] = struct{}{}
 	}
+	connectionID := uuid.NewString()
+	if s.hub.coordinator != nil {
+		connectionID, err = s.hub.coordinator.NewConnectionID()
+		if err != nil {
+			s.hub.logger.Error("generate node websocket connection ID", "error", err)
+			_ = connection.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "coordination unavailable"), time.Now().Add(webSocketWriteWait))
+			_ = connection.Close()
+			return
+		}
+	}
 	client := &wsConnection{
-		id:        uuid.NewString(),
+		id:        connectionID,
 		machineID: machineID,
 		conn:      connection,
 		hub:       s.hub,
@@ -190,9 +213,35 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		done:      make(chan struct{}),
 		nodeIDs:   nodeIDs,
 	}
+	registrationLock := &s.hub.registrationMu[uint64(machineID)%uint64(len(s.hub.registrationMu))]
+	registrationLock.Lock()
+	if s.hub.coordinator != nil {
+		if err := s.hub.coordinator.ClaimMachine(r.Context(), machineID, client.nodeIDList(), client.id); err != nil {
+			registrationLock.Unlock()
+			s.hub.logger.Warn("claim node websocket ownership", "machine_id", machineID, "error", err)
+			client.close(websocket.CloseTryAgainLater, "coordination unavailable")
+			return
+		}
+	}
 	old := s.hub.register(client)
+	registrationLock.Unlock()
 	if old != nil {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
+	}
+	if s.hub.coordinator != nil {
+		var owned bool
+		var verifyErr error
+		if len(client.nodeIDList()) == 0 {
+			owned, verifyErr = s.hub.coordinator.OwnsMachine(r.Context(), machineID, client.id)
+		} else {
+			owned, verifyErr = s.hub.coordinator.OwnsMachineAndNodes(r.Context(), machineID, client.nodeIDList(), client.id)
+		}
+		if verifyErr != nil || !owned {
+			s.hub.unregister(client)
+			s.hub.logger.Warn("verify new node websocket ownership", "machine_id", machineID, "error", verifyErr)
+			client.close(websocket.ClosePolicyViolation, "connection replaced")
+			return
+		}
 	}
 
 	go client.writeLoop()
@@ -293,6 +342,36 @@ func (h *wsHub) register(connection *wsConnection) *wsConnection {
 }
 
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {
+	if h.coordinator != nil {
+		h.mu.Lock()
+		if h.machines[connection.machineID] != connection {
+			h.mu.Unlock()
+			return false, nil, nil
+		}
+		delete(h.machines, connection.machineID)
+		h.mu.Unlock()
+
+		releasedNodes := make([]int64, 0, len(connection.nodeIDList()))
+		var releaseErrors []error
+		for _, nodeID := range connection.nodeIDList() {
+			released, err := h.coordinator.ReleaseNodeIfOwned(context.Background(), nodeID, connection.id)
+			if err != nil {
+				releaseErrors = append(releaseErrors, err)
+				continue
+			}
+			if released {
+				releasedNodes = append(releasedNodes, nodeID)
+			}
+		}
+		if _, err := h.coordinator.ReleaseMachineIfOwned(context.Background(), connection.machineID, connection.id); err != nil {
+			releaseErrors = append(releaseErrors, err)
+		}
+		if len(releasedNodes) == 0 {
+			return true, nil, errors.Join(releaseErrors...)
+		}
+		userIDs, clearErr := h.store.ClearNodeDevices(context.Background(), releasedNodes, h.now())
+		return true, userIDs, errors.Join(append(releaseErrors, clearErr)...)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.machines[connection.machineID] != connection {
@@ -306,11 +385,105 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 	return true, userIDs, err
 }
 
+func (h *wsHub) unregister(connection *wsConnection) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.machines[connection.machineID] != connection {
+		return false
+	}
+	delete(h.machines, connection.machineID)
+	return true
+}
+
 func (h *wsHub) owns(connection *wsConnection) bool {
 	h.mu.RLock()
 	owned := h.machines[connection.machineID] == connection
 	h.mu.RUnlock()
 	return owned
+}
+
+func (h *wsHub) renewConnections(ctx context.Context) {
+	h.mu.RLock()
+	connections := make([]*wsConnection, 0, len(h.machines))
+	for _, connection := range h.machines {
+		connections = append(connections, connection)
+	}
+	h.mu.RUnlock()
+	if len(connections) == 0 {
+		return
+	}
+	leases := make([]nodecoord.Lease, len(connections))
+	for index, connection := range connections {
+		leases[index] = nodecoord.Lease{
+			MachineID: connection.machineID, NodeIDs: connection.nodeIDList(), ConnectionID: connection.id,
+		}
+	}
+	renewed, err := h.coordinator.Renew(ctx, leases)
+	if err != nil {
+		h.logger.Warn("renew node websocket ownership", "connections", len(connections), "error", err)
+	}
+	for index, connection := range connections {
+		if err != nil || index >= len(renewed) || !renewed[index] {
+			if h.owns(connection) {
+				connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+			}
+		}
+	}
+}
+
+func (h *wsHub) handleCoordinationEvent(event nodecoord.Event) {
+	if h.coordinator == nil || event.Source == h.coordinator.InstanceID() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	switch event.Kind {
+	case nodecoord.EventReplacement:
+		h.closeReplacedConnections(event)
+	case nodecoord.EventMachineNodes:
+		h.notifyMachineNodes(ctx, event.MachineID, false)
+	case nodecoord.EventDisconnectMachine:
+		h.disconnectMachine(event.MachineID, event.Reason, false)
+	case nodecoord.EventNodeFull:
+		h.notifyNodeFull(ctx, event.MachineID, event.NodeID, false)
+	case nodecoord.EventNodeConfig:
+		h.notifyNodeConfig(ctx, event.MachineID, event.NodeID, false)
+	case nodecoord.EventDeviceUsers:
+		h.notifyDeviceStates(ctx, event.UserIDs, false)
+	case nodecoord.EventRefreshGroups:
+		h.refreshGroupUsers(ctx, event.GroupIDs, event.DevicesCleared)
+	}
+}
+
+func (h *wsHub) closeReplacedConnections(event nodecoord.Event) {
+	h.mu.RLock()
+	connections := make(map[*wsConnection]struct{})
+	if event.MachineID > 0 {
+		if connection := h.machines[event.MachineID]; connection != nil && connection.id != event.ConnectionID {
+			connections[connection] = struct{}{}
+		}
+	}
+	if len(event.NodeIDs) > 0 {
+		targets := make(map[int64]struct{}, len(event.NodeIDs))
+		for _, nodeID := range event.NodeIDs {
+			targets[nodeID] = struct{}{}
+		}
+		for _, connection := range h.machines {
+			if connection.id == event.ConnectionID {
+				continue
+			}
+			for _, nodeID := range connection.nodeIDList() {
+				if _, replaced := targets[nodeID]; replaced {
+					connections[connection] = struct{}{}
+					break
+				}
+			}
+		}
+	}
+	h.mu.RUnlock()
+	for connection := range connections {
+		connection.close(websocket.ClosePolicyViolation, "connection replaced")
+	}
 }
 
 func (c *wsConnection) readLoop() {
@@ -328,12 +501,42 @@ func (c *wsConnection) readLoop() {
 		if !c.hub.owns(c) {
 			return
 		}
+		if c.hub.coordinator != nil {
+			owned, err := c.ownsIncomingMessage(message)
+			if err != nil {
+				c.hub.logger.Warn("verify node websocket ownership", "machine_id", c.machineID, "event", message.Event, "error", err)
+				c.close(websocket.CloseTryAgainLater, "coordination unavailable")
+				return
+			}
+			if !owned {
+				c.close(websocket.ClosePolicyViolation, "connection replaced")
+				return
+			}
+		}
 		if err := c.handleMessage(message); err != nil {
 			c.hub.logger.Warn("reject node websocket message", "machine_id", c.machineID, "event", message.Event, "error", err)
 			c.close(websocket.ClosePolicyViolation, "invalid message")
 			return
 		}
 	}
+}
+
+func (c *wsConnection) ownsIncomingMessage(message wsIncomingEnvelope) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if message.Event == "pong" {
+		return c.hub.coordinator.OwnsMachine(ctx, c.machineID, c.id)
+	}
+	if message.Event != "node.status" && message.Event != "report.devices" {
+		return true, nil
+	}
+	var identity struct {
+		NodeID int64 `json:"node_id"`
+	}
+	if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID < 1 || !c.hasNode(identity.NodeID) {
+		return true, nil
+	}
+	return c.hub.coordinator.OwnsMachineAndNodes(ctx, c.machineID, []int64{identity.NodeID}, c.id)
 }
 
 func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
@@ -500,6 +703,13 @@ func nodesSyncEnvelope(snapshots []wsNodeSnapshot) wsEnvelope {
 }
 
 func (h *wsHub) NotifyMachineNodes(ctx context.Context, machineID int64) {
+	h.notifyMachineNodes(ctx, machineID, true)
+}
+
+func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadcast bool) {
+	if broadcast {
+		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventMachineNodes, MachineID: machineID})
+	}
 	snapshots, err := h.machineSnapshots(ctx, machineID)
 	if err != nil {
 		h.logger.Warn("prepare websocket node synchronization", "machine_id", machineID, "error", err)
@@ -524,14 +734,34 @@ func (h *wsHub) NotifyMachineNodes(ctx context.Context, machineID int64) {
 		nodeIDs = append(nodeIDs, snapshot.summary.ID)
 		delete(removedNodes, snapshot.summary.ID)
 	}
+	if h.coordinator != nil {
+		claimed, err := h.coordinator.ClaimMachineNodesIfOwned(ctx, machineID, nodeIDs, connection.id)
+		if err != nil || !claimed {
+			h.logger.Warn("synchronize node websocket ownership", "machine_id", machineID, "error", err)
+			connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+			return
+		}
+	}
 	connection.replaceNodes(nodeIDs)
 	connection.enqueue(nodesSyncEnvelope(snapshots))
 	removedNodeIDs := make([]int64, 0, len(removedNodes))
 	for nodeID := range removedNodes {
-		removedNodeIDs = append(removedNodeIDs, nodeID)
+		if h.coordinator == nil {
+			removedNodeIDs = append(removedNodeIDs, nodeID)
+			continue
+		}
+		released, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id)
+		if err != nil {
+			h.logger.Warn("release removed node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", err)
+			connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+			return
+		}
+		if released {
+			removedNodeIDs = append(removedNodeIDs, nodeID)
+		}
 	}
 	if len(removedNodeIDs) > 0 {
-		h.ClearNodeDevices(ctx, removedNodeIDs)
+		h.clearNodeDevices(ctx, removedNodeIDs, broadcast)
 	}
 	for _, snapshot := range snapshots {
 		if !connection.hasNode(snapshot.summary.ID) {
@@ -546,6 +776,17 @@ func (h *wsHub) NotifyMachineNodes(ctx context.Context, machineID int64) {
 }
 
 func (h *wsHub) DisconnectMachine(machineID int64, reason string) {
+	h.disconnectMachine(machineID, reason, true)
+}
+
+func (h *wsHub) disconnectMachine(machineID int64, reason string, broadcast bool) {
+	if broadcast && h.coordinator != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if err := h.coordinator.RevokeMachine(ctx, machineID, reason); err != nil {
+			h.logger.Warn("revoke node websocket ownership", "machine_id", machineID, "error", err)
+		}
+		cancel()
+	}
 	h.mu.RLock()
 	connection := h.machines[machineID]
 	h.mu.RUnlock()
@@ -555,15 +796,26 @@ func (h *wsHub) DisconnectMachine(machineID int64, reason string) {
 }
 
 func (h *wsHub) ClearNodeDevices(ctx context.Context, nodeIDs []int64) {
+	h.clearNodeDevices(ctx, nodeIDs, true)
+}
+
+func (h *wsHub) clearNodeDevices(ctx context.Context, nodeIDs []int64, broadcast bool) {
 	affectedUsers, err := h.store.ClearNodeDevices(ctx, nodeIDs, h.now())
 	if err != nil {
 		h.logger.Warn("clear removed node devices", "node_ids", nodeIDs, "error", err)
 		return
 	}
-	h.NotifyDeviceStates(ctx, affectedUsers)
+	h.notifyDeviceStates(ctx, affectedUsers, broadcast)
 }
 
 func (h *wsHub) NotifyNodeFull(ctx context.Context, machineID, nodeID int64) {
+	h.notifyNodeFull(ctx, machineID, nodeID, true)
+}
+
+func (h *wsHub) notifyNodeFull(ctx context.Context, machineID, nodeID int64, broadcast bool) {
+	if broadcast {
+		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventNodeFull, MachineID: machineID, NodeID: nodeID})
+	}
 	node, err := h.store.GetNode(ctx, nodeID)
 	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -588,6 +840,13 @@ func (h *wsHub) NotifyNodeFull(ctx context.Context, machineID, nodeID int64) {
 }
 
 func (h *wsHub) NotifyNodeConfig(ctx context.Context, machineID, nodeID int64) {
+	h.notifyNodeConfig(ctx, machineID, nodeID, true)
+}
+
+func (h *wsHub) notifyNodeConfig(ctx context.Context, machineID, nodeID int64, broadcast bool) {
+	if broadcast {
+		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventNodeConfig, MachineID: machineID, NodeID: nodeID})
+	}
 	node, err := h.store.GetNode(ctx, nodeID)
 	if err != nil || node.MachineID == nil || *node.MachineID != machineID || !node.Enabled || !node.RuntimeConfigured {
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -621,8 +880,15 @@ func (h *wsHub) NotifyNodeConfig(ctx context.Context, machineID, nodeID int64) {
 // whose groups contain an affected user. The device mutex preserves publish
 // order when reports and disconnect cleanup happen concurrently.
 func (h *wsHub) NotifyDeviceStates(ctx context.Context, userIDs []int64) {
+	h.notifyDeviceStates(ctx, userIDs, true)
+}
+
+func (h *wsHub) notifyDeviceStates(ctx context.Context, userIDs []int64, broadcast bool) {
 	if len(userIDs) == 0 {
 		return
+	}
+	if broadcast {
+		defer h.publishCoordination(ctx, nodecoord.Event{Kind: nodecoord.EventDeviceUsers, UserIDs: uniquePositiveIDs(userIDs)})
 	}
 	targetNodeIDs, err := h.store.ListRuntimeNodeIDsForUsers(ctx, userIDs)
 	if err != nil {
@@ -690,6 +956,95 @@ func (h *wsHub) notifyDeviceStatesToNodeIDs(ctx context.Context, targetNodeIDs [
 	}
 }
 
+func (h *wsHub) refreshGroupUsers(ctx context.Context, groupIDs []int64, devicesCleared bool) {
+	targets, err := h.store.ListRuntimeNodeTargetsForGroups(ctx, uniquePositiveIDs(groupIDs))
+	if err != nil {
+		h.logger.Warn("resolve websocket group refresh targets", "error", err)
+		return
+	}
+	now := h.now()
+	nodeIDs := make([]int64, 0, len(targets))
+	seenNodes := make(map[int64]struct{}, len(targets))
+	for _, target := range targets {
+		if _, seen := seenNodes[target.NodeID]; seen {
+			continue
+		}
+		seenNodes[target.NodeID] = struct{}{}
+		h.mu.RLock()
+		connection := h.machines[target.MachineID]
+		h.mu.RUnlock()
+		if connection == nil || !connection.hasNode(target.NodeID) {
+			continue
+		}
+		users, err := h.store.ListNodeRuntimeUsers(ctx, target.NodeID, now)
+		if err != nil {
+			h.logger.Warn("prepare websocket group user refresh", "machine_id", target.MachineID, "node_id", target.NodeID, "error", err)
+			continue
+		}
+		connection.enqueue(usersSyncEnvelope(wsNodeSnapshot{
+			summary: machineNodeSummary{ID: target.NodeID}, users: users, timestamp: now.Unix(),
+		}))
+		nodeIDs = append(nodeIDs, target.NodeID)
+	}
+	if devicesCleared {
+		h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
+	}
+}
+
+func (h *wsHub) publishCoordination(ctx context.Context, event nodecoord.Event) {
+	if h.coordinator == nil {
+		return
+	}
+	for _, candidate := range splitCoordinationEvent(event, 5_000) {
+		if err := h.coordinator.Publish(ctx, candidate); err != nil {
+			h.logger.Warn("publish node websocket coordination event", "kind", event.Kind, "error", err)
+			return
+		}
+	}
+}
+
+func splitCoordinationEvent(event nodecoord.Event, chunkSize int) []nodecoord.Event {
+	var values []int64
+	switch event.Kind {
+	case nodecoord.EventDeviceUsers:
+		values = uniquePositiveIDs(event.UserIDs)
+	case nodecoord.EventRefreshGroups:
+		values = uniquePositiveIDs(event.GroupIDs)
+	default:
+		return []nodecoord.Event{event}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]nodecoord.Event, 0, (len(values)+chunkSize-1)/chunkSize)
+	for start := 0; start < len(values); start += chunkSize {
+		end := min(start+chunkSize, len(values))
+		candidate := event
+		if event.Kind == nodecoord.EventDeviceUsers {
+			candidate.UserIDs = append([]int64(nil), values[start:end]...)
+		} else {
+			candidate.GroupIDs = append([]int64(nil), values[start:end]...)
+		}
+		result = append(result, candidate)
+	}
+	return result
+}
+
+func uniquePositiveIDs(values []int64) []int64 {
+	unique := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		if value > 0 {
+			unique[value] = struct{}{}
+		}
+	}
+	result := make([]int64, 0, len(unique))
+	for value := range unique {
+		result = append(result, value)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
 // NotifyUserMutation publishes an O(changed users) delta to every runtime node
 // in the old or new group. A full snapshot remains the reconnect baseline.
 func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUUID string, oldGroupID, newGroupID *int64, devicesCleared bool) {
@@ -703,6 +1058,9 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 	if len(groupIDs) == 0 {
 		return
 	}
+	defer h.publishCoordination(ctx, nodecoord.Event{
+		Kind: nodecoord.EventRefreshGroups, GroupIDs: uniquePositiveIDs(groupIDs), DevicesCleared: devicesCleared,
+	})
 	targets, err := h.store.ListRuntimeNodeTargetsForGroups(ctx, groupIDs)
 	if err != nil {
 		h.logger.Warn("resolve websocket user delta targets", "user_id", userID, "error", err)
@@ -764,6 +1122,9 @@ func (h *wsHub) NotifyBulkUserRemoval(ctx context.Context, users []store.AdminUs
 	if len(groupIDs) == 0 {
 		return nil
 	}
+	defer h.publishCoordination(ctx, nodecoord.Event{
+		Kind: nodecoord.EventRefreshGroups, GroupIDs: uniquePositiveIDs(groupIDs), DevicesCleared: true,
+	})
 	targets, err := h.store.ListRuntimeNodeGroupTargetsForGroups(ctx, groupIDs)
 	if err != nil {
 		return err
