@@ -17,12 +17,27 @@ const initial: SubscriptionSettings = {
   updated_at: "2026-08-26T10:00:00Z"
 };
 
+const initialPolicy = {
+  revision: 7,
+  plan_change_enable: true,
+  reset_traffic_method: 0,
+  surplus_enable: true,
+  new_order_event_id: 0,
+  renew_order_event_id: 1,
+  change_order_event_id: 0,
+  default_remind_expire: true,
+  default_remind_traffic: false,
+  updated_at: "2026-08-29T10:00:00Z"
+};
+
 describe("SubscriptionSettingsPage", () => {
   it("edits the legacy subscription path, display switches, and all six templates atomically", async () => {
     const updated = { ...initial, revision: 4, path: "feeds_1", show_info: true, templates: { ...initial.templates, clash: "proxies:\n  - name: edge" } };
     const api = {
       getSubscriptionSettings: vi.fn().mockResolvedValue(initial),
-      updateSubscriptionSettings: vi.fn().mockResolvedValue(updated)
+      updateSubscriptionSettings: vi.fn().mockResolvedValue(updated),
+      getSubscriptionPolicySettings: vi.fn().mockResolvedValue(initialPolicy),
+      updateSubscriptionPolicySettings: vi.fn().mockResolvedValue(initialPolicy)
     };
     const user = userEvent.setup();
     render(<SubscriptionSettingsPage api={api} />);
@@ -50,7 +65,9 @@ describe("SubscriptionSettingsPage", () => {
   it("keeps unsaved text available after a revision conflict", async () => {
     const api = {
       getSubscriptionSettings: vi.fn().mockResolvedValue(initial),
-      updateSubscriptionSettings: vi.fn().mockRejectedValue(new Error("订阅设置已被其他管理员修改，请刷新后重试"))
+      updateSubscriptionSettings: vi.fn().mockRejectedValue(new Error("订阅设置已被其他管理员修改，请刷新后重试")),
+      getSubscriptionPolicySettings: vi.fn().mockResolvedValue(initialPolicy),
+      updateSubscriptionPolicySettings: vi.fn().mockResolvedValue(initialPolicy)
     };
     const user = userEvent.setup();
     render(<SubscriptionSettingsPage api={api} />);
@@ -60,5 +77,50 @@ describe("SubscriptionSettingsPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("订阅设置已被其他管理员修改");
     expect(path).toHaveValue("draft_path");
     expect(screen.getByRole("button", { name: "刷新最新设置" })).toBeVisible();
+  });
+
+  it("renders and saves the nine controls visible in the fixed legacy subscription page", async () => {
+    const updatedPolicy = {
+      ...initialPolicy,
+      revision: 8,
+      plan_change_enable: false,
+      reset_traffic_method: 4,
+      surplus_enable: false,
+      new_order_event_id: 1,
+      renew_order_event_id: 0,
+      change_order_event_id: 1
+    };
+    const api = {
+      getSubscriptionSettings: vi.fn().mockResolvedValue(initial),
+      updateSubscriptionSettings: vi.fn().mockResolvedValue(initial),
+      getSubscriptionPolicySettings: vi.fn().mockResolvedValue(initialPolicy),
+      updateSubscriptionPolicySettings: vi.fn().mockResolvedValue(updatedPolicy)
+    };
+    const user = userEvent.setup();
+    render(<SubscriptionSettingsPage api={api} />);
+
+    await user.click(await screen.findByRole("checkbox", { name: "允许用户更改订阅" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "月流量重置方式" }), "4");
+    await user.click(screen.getByRole("checkbox", { name: "开启折抵方案" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "当订阅新购时触发事件" }), "1");
+    await user.selectOptions(screen.getByRole("combobox", { name: "当订阅续费时触发事件" }), "0");
+    await user.selectOptions(screen.getByRole("combobox", { name: "当订阅变更时触发事件" }), "1");
+    expect(screen.getByLabelText("订阅路径")).toHaveValue("s");
+    expect(screen.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "保存订阅策略" }));
+    await waitFor(() => expect(api.updateSubscriptionPolicySettings).toHaveBeenCalledWith({
+      revision: 7,
+      plan_change_enable: false,
+      reset_traffic_method: 4,
+      surplus_enable: false,
+      new_order_event_id: 1,
+      renew_order_event_id: 0,
+      change_order_event_id: 1,
+      default_remind_expire: true,
+      default_remind_traffic: false
+    }));
+    expect(screen.getByText("策略 Revision 8")).toBeVisible();
   });
 });

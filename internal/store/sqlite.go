@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 44
+const currentSchemaVersion = 45
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -336,6 +336,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v44: %w", err)
 		}
 		version = 44
+	}
+	if version < 45 {
+		if err := applySchemaV45(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v45: %w", err)
+		}
+		version = 45
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -1186,7 +1192,7 @@ ALTER TABLE users ADD COLUMN reset_count INTEGER NOT NULL DEFAULT 0 CHECK (reset
 CREATE INDEX idx_users_plan_capacity ON users(plan_id, account_kind, expired_at) WHERE plan_id IS NOT NULL;
 CREATE INDEX idx_users_due_traffic_reset ON users(next_reset_at, id) WHERE next_reset_at IS NOT NULL AND plan_id IS NOT NULL;
 
-ALTER TABLE app_settings ADD COLUMN traffic_reset_method INTEGER NOT NULL DEFAULT 1
+ALTER TABLE app_settings ADD COLUMN traffic_reset_method INTEGER NOT NULL DEFAULT 0
     CHECK (traffic_reset_method BETWEEN 0 AND 4);
 
 CREATE TABLE traffic_reset_logs (
@@ -2099,6 +2105,34 @@ CREATE TABLE node_agent_settings (
     )
 );
 `
+
+func applySchemaV45(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"default_remind_expire", `ALTER TABLE app_settings ADD COLUMN default_remind_expire INTEGER NOT NULL DEFAULT 1 CHECK (default_remind_expire IN (0, 1))`},
+		{"default_remind_traffic", `ALTER TABLE app_settings ADD COLUMN default_remind_traffic INTEGER NOT NULL DEFAULT 1 CHECK (default_remind_traffic IN (0, 1))`},
+	}
+	for _, column := range columns {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect app_settings.%s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add app_settings.%s: %w", column.name, err)
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE app_settings SET traffic_reset_method = 0
+		WHERE id = 1 AND revision = 1 AND updated_at = 0 AND traffic_reset_method = 1
+	`); err != nil {
+		return fmt.Errorf("align pristine traffic reset method: %w", err)
+	}
+	return nil
+}
 
 func applySchemaV44(ctx context.Context, tx *sql.Tx) error {
 	for _, column := range []struct {

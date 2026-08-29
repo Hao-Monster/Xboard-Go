@@ -2462,7 +2462,7 @@ test("implemented Go administrator concepts map to the legacy navigation", async
   }
 });
 
-test("legacy subscription settings remain observable and map to Go output controls", async ({ browser }) => {
+test("legacy subscription settings remain observable and map to Go policy and output controls", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
   const legacyPage = await legacyContext.newPage();
@@ -2482,7 +2482,8 @@ test("legacy subscription settings remain observable and map to Go output contro
 
     await legacyPage.getByRole("link", { name: "订阅设置", exact: true }).filter({ visible: true }).click();
     for (const field of [
-      "允许用户更改订阅", "月流量重置方式", "开启折抵方案", "订阅路径",
+      "允许用户更改订阅", "月流量重置方式", "开启折抵方案",
+      "当订阅新购时触发事件", "当订阅续费时触发事件", "当订阅变更时触发事件", "订阅路径",
       "在订阅中展示订阅信息", "在订阅中线路名称中显示协议名称"
     ]) {
       await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), field).toBeVisible();
@@ -2504,6 +2505,12 @@ test("legacy subscription settings remain observable and map to Go output contro
 
     await goPage.getByRole("button", { name: "订阅设置", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "订阅设置" })).toBeVisible();
+    await expect(goPage.getByRole("checkbox", { name: "允许用户更改订阅" })).toBeVisible();
+    await expect(goPage.getByRole("combobox", { name: "月流量重置方式" })).toBeVisible();
+    await expect(goPage.getByRole("checkbox", { name: "开启折抵方案" })).toBeVisible();
+    await expect(goPage.getByRole("combobox", { name: "当订阅新购时触发事件" })).toBeVisible();
+    await expect(goPage.getByRole("combobox", { name: "当订阅续费时触发事件" })).toBeVisible();
+    await expect(goPage.getByRole("combobox", { name: "当订阅变更时触发事件" })).toBeVisible();
     await expect(goPage.getByLabel("订阅路径")).toBeVisible();
     await expect(goPage.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).toBeVisible();
     await expect(goPage.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeVisible();
@@ -2519,6 +2526,17 @@ test("legacy subscription settings remain observable and map to Go output contro
     expect(Object.keys(readObjectProperty(goSettings, "templates")).sort()).toEqual([
       "clash", "clashmeta", "singbox", "stash", "surfboard", "surge"
     ]);
+    const goPolicyResponse = await goAdminRequest(goPage, "/api/v1/admin/subscription-policy-settings", "GET");
+    expect(goPolicyResponse.status, goPolicyResponse.body).toBe(200);
+    const goPolicy = readObjectProperty(JSON.parse(goPolicyResponse.body) as unknown, "data");
+    expect(typeof readProperty(goPolicy, "plan_change_enable")).toBe("boolean");
+    expect(typeof readProperty(goPolicy, "reset_traffic_method")).toBe("number");
+    expect(typeof readProperty(goPolicy, "surplus_enable")).toBe("boolean");
+    for (const field of ["new_order_event_id", "renew_order_event_id", "change_order_event_id"]) {
+      expect(typeof readProperty(goPolicy, field)).toBe("number");
+    }
+    expect(typeof readProperty(goPolicy, "default_remind_expire")).toBe("boolean");
+    expect(typeof readProperty(goPolicy, "default_remind_traffic")).toBe("boolean");
     expect(legacyErrors).toEqual([]);
     expect(goErrors).toEqual([]);
   } finally {

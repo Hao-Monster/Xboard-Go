@@ -633,6 +633,58 @@ type SaveSubscriptionSettingsInput struct {
 	Templates    map[string]string
 }
 
+type SubscriptionPolicySettings struct {
+	Revision             int64     `json:"revision"`
+	PlanChangeEnabled    bool      `json:"plan_change_enable"`
+	ResetTrafficMethod   int       `json:"reset_traffic_method"`
+	SurplusEnabled       bool      `json:"surplus_enable"`
+	NewOrderEventID      int       `json:"new_order_event_id"`
+	RenewOrderEventID    int       `json:"renew_order_event_id"`
+	ChangeOrderEventID   int       `json:"change_order_event_id"`
+	DefaultRemindExpire  bool      `json:"default_remind_expire"`
+	DefaultRemindTraffic bool      `json:"default_remind_traffic"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
+type SaveSubscriptionPolicySettingsInput struct {
+	PlanChangeEnabled    bool
+	ResetTrafficMethod   int
+	SurplusEnabled       bool
+	NewOrderEventID      int
+	RenewOrderEventID    int
+	ChangeOrderEventID   int
+	DefaultRemindExpire  bool
+	DefaultRemindTraffic bool
+}
+
+type LegacyAdminSubscriptionConfig struct {
+	PlanChangeEnabled    bool   `json:"plan_change_enable"`
+	ResetTrafficMethod   int    `json:"reset_traffic_method"`
+	SurplusEnabled       bool   `json:"surplus_enable"`
+	NewOrderEventID      int    `json:"new_order_event_id"`
+	RenewOrderEventID    int    `json:"renew_order_event_id"`
+	ChangeOrderEventID   int    `json:"change_order_event_id"`
+	ShowInfo             bool   `json:"show_info_to_server_enable"`
+	ShowProtocol         bool   `json:"show_protocol_to_server_enable"`
+	DefaultRemindExpire  bool   `json:"default_remind_expire"`
+	DefaultRemindTraffic bool   `json:"default_remind_traffic"`
+	Path                 string `json:"subscribe_path"`
+}
+
+type SaveLegacyAdminSubscriptionConfigInput struct {
+	PlanChangeEnabled    *bool
+	ResetTrafficMethod   *int
+	SurplusEnabled       *bool
+	NewOrderEventID      *int
+	RenewOrderEventID    *int
+	ChangeOrderEventID   *int
+	ShowInfo             *bool
+	ShowProtocol         *bool
+	DefaultRemindExpire  *bool
+	DefaultRemindTraffic *bool
+	Path                 *string
+}
+
 type SubscriptionAccount struct {
 	ID                int64
 	Email             string

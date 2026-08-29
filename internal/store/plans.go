@@ -588,6 +588,70 @@ func reschedulePlanUsers(ctx context.Context, tx *sql.Tx, planID int64, planMeth
 	}
 }
 
+func rescheduleSystemTrafficResetUsers(ctx context.Context, tx *sql.Tx, systemMethod int, now time.Time) error {
+	const batchSize = 500
+	statement, err := tx.PrepareContext(ctx, `
+		UPDATE users SET next_reset_at = ?, updated_at = ?
+		WHERE id = ? AND account_kind = 'human'
+	`)
+	if err != nil {
+		return fmt.Errorf("prepare system user reset reschedule: %w", err)
+	}
+	defer statement.Close()
+	var lastID int64
+	for {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT u.id, u.expired_at
+			FROM users u JOIN plans p ON p.id = u.plan_id
+			WHERE u.account_kind = 'human' AND u.banned = 0 AND u.id > ?
+			  AND p.reset_traffic_method IS NULL
+			  AND (u.expired_at IS NULL OR u.expired_at > ?)
+			ORDER BY u.id LIMIT ?
+		`, lastID, now.Unix(), batchSize)
+		if err != nil {
+			return fmt.Errorf("list system reset users for reschedule: %w", err)
+		}
+		type systemResetUser struct {
+			id        int64
+			expiresAt sql.NullInt64
+		}
+		users := make([]systemResetUser, 0, batchSize)
+		for rows.Next() {
+			var user systemResetUser
+			if err := rows.Scan(&user.id, &user.expiresAt); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan system reset user for reschedule: %w", err)
+			}
+			users = append(users, user)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close system reset users for reschedule: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate system reset users for reschedule: %w", err)
+		}
+		for _, user := range users {
+			var expiresAt *time.Time
+			if user.expiresAt.Valid {
+				value := time.Unix(user.expiresAt.Int64, 0)
+				expiresAt = &value
+			}
+			next := CalculateNextTrafficReset(nil, systemMethod, expiresAt, now)
+			var nextUnix any
+			if next != nil {
+				nextUnix = next.Unix()
+			}
+			if _, err := statement.ExecContext(ctx, nextUnix, now.Unix(), user.id); err != nil {
+				return fmt.Errorf("reschedule system user traffic reset: %w", err)
+			}
+			lastID = user.id
+		}
+		if len(users) < batchSize {
+			return nil
+		}
+	}
+}
+
 func validatePlanGroup(ctx context.Context, database interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, groupID *int64) error {
