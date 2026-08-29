@@ -208,7 +208,7 @@ async function waitForLoginURL(request: APIRequestContext, recipient: string, su
     if (message?.ID === undefined) return 0;
     const detail = await request.get(`${mailpitURL}/api/v1/message/${encodeURIComponent(message.ID)}`);
     if (!detail.ok()) return 0;
-    const match = JSON.stringify(await detail.json()).match(/https?:\/\/[^\s"<>]+\/#\/login\?verify=[0-9a-f]{32}&redirect=[a-z]+/);
+    const match = JSON.stringify(await detail.json()).match(/https?:\/\/[^\s"<>]+?\/#\/login\?verify=[0-9a-f]{32}&redirect=[a-z]+/);
     loginURL = match?.[0] ?? "";
     return loginURL === "" ? 0 : 1;
   }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(1);
