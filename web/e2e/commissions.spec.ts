@@ -23,7 +23,7 @@ interface InvitationSummary {
   available_commission: number;
 }
 
-test("administrator commission rules drive the invited order, history, and positive transfer flow", async ({ page, request }, testInfo) => {
+test("administrator commission rules drive the invited order, history, and positive transfer flow", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
@@ -70,13 +70,9 @@ test("administrator commission rules drive the invited order, history, and posit
     const code = (await page.locator("code.monospace").textContent())?.trim() ?? "";
     expect(code).toMatch(/^[A-Za-z0-9]{8}$/);
 
-    const registration = await request.post("/api/v1/auth/register", { data: {
-      email: buyerEmail, password, password_confirmation: password, invite_code: code
-    } });
-    expect(registration.status(), await registration.text()).toBe(200);
-
     await logoutAndWait(page);
     await login(page, adminEmail, adminPassword);
+    await createAdminUserFixture(page, { email: buyerEmail, password, inviteUserEmail: ownerEmail });
     await createFreePlan(page, planName);
     await page.getByRole("button", { name: "订单管理", exact: true }).click();
     await expect(page.getByRole("heading", { name: "订单管理", exact: true })).toBeVisible();
