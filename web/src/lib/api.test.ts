@@ -60,6 +60,34 @@ describe("APIClient Telegram settings contracts", () => {
   });
 });
 
+describe("APIClient client app settings contracts", () => {
+  it("keeps reads non-mutating and sends the complete revisioned update with CSRF", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=client-app-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({ path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined, csrf: headers.get("X-CSRF-Token") });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    const input = {
+      revision: 3,
+      windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
+      macos_version: "4.8.2", macos_download_url: "https://download.example.test/macos.dmg",
+      android_version: "4.8.3", android_download_url: "https://download.example.test/android.apk"
+    };
+
+    await api.getClientAppSettings();
+    await api.updateClientAppSettings(input);
+
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/client-app-settings", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/client-app-settings", method: "PUT", body: input, csrf: "client-app-csrf" }
+    ]);
+  });
+});
+
 describe("APIClient mail template contracts", () => {
   it("keeps catalog reads non-mutating and sends every editor action with CSRF", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

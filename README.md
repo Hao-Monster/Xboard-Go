@@ -578,6 +578,22 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+The six legacy client application version and download settings can be
+imported independently from the fixed `v2_settings` keys. The importer trims
+legacy whitespace, accepts blank values, requires download links to be
+absolute HTTPS URLs, refuses an administrator-edited target, and verifies a
+dedicated rollback archive before writing:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-client-app-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-client-app-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.

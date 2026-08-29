@@ -76,6 +76,7 @@ var requiredSchemaTables = []struct {
 	{"node_agent_settings", 43},
 	{"subscription_reminder_outbox", 46},
 	{"mail_templates", 48},
+	{"client_app_settings", 49},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -154,6 +155,13 @@ var requiredSchemaColumnsV47 = map[string][]string{
 
 var requiredSchemaColumnsV48 = map[string][]string{
 	"mail_templates": {"name", "subject", "content", "revision", "updated_by", "updated_at"},
+}
+
+var requiredSchemaColumnsV49 = map[string][]string{
+	"client_app_settings": {
+		"id", "windows_version", "windows_download_url", "macos_version", "macos_download_url",
+		"android_version", "android_download_url", "revision", "updated_by", "updated_at",
+	},
 }
 
 type schemaQueryer interface {
@@ -266,6 +274,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
+	if schemaVersion >= 49 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV49); err != nil {
+			return err
+		}
+		if err := validateClientAppSettingsSingleton(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -314,6 +330,32 @@ func validateMailTemplateCatalog(ctx context.Context, database schemaQueryer) er
 		if names[index] != want[index] {
 			return errors.New("mail template catalog contains an unexpected template")
 		}
+	}
+	return nil
+}
+
+func validateClientAppSettingsSingleton(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `SELECT id FROM client_app_settings ORDER BY id`)
+	if err != nil {
+		return fmt.Errorf("inspect client app settings singleton: %w", err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("inspect client app settings singleton: %w", err)
+		}
+		if id != 1 {
+			return errors.New("client app settings contains an unexpected row")
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect client app settings singleton: %w", err)
+	}
+	if count != 1 {
+		return errors.New("client app settings must contain exactly one row")
 	}
 	return nil
 }

@@ -381,6 +381,35 @@ type SaveSiteSettingsInput struct {
 	TurnstileSecretCipher      []byte
 }
 
+type ClientAppSettings struct {
+	Revision           int64     `json:"revision"`
+	WindowsVersion     string    `json:"windows_version"`
+	WindowsDownloadURL string    `json:"windows_download_url"`
+	MacOSVersion       string    `json:"macos_version"`
+	MacOSDownloadURL   string    `json:"macos_download_url"`
+	AndroidVersion     string    `json:"android_version"`
+	AndroidDownloadURL string    `json:"android_download_url"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+type SaveClientAppSettingsInput struct {
+	WindowsVersion     string
+	WindowsDownloadURL string
+	MacOSVersion       string
+	MacOSDownloadURL   string
+	AndroidVersion     string
+	AndroidDownloadURL string
+}
+
+type SaveLegacyClientAppSettingsInput struct {
+	WindowsVersion     *string
+	WindowsDownloadURL *string
+	MacOSVersion       *string
+	MacOSDownloadURL   *string
+	AndroidVersion     *string
+	AndroidDownloadURL *string
+}
+
 type CaptchaSecretCiphers struct {
 	Recaptcha   []byte
 	RecaptchaV3 []byte
