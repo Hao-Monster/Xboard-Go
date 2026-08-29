@@ -885,6 +885,14 @@ func (s *Store) BanAdminUsers(ctx context.Context, input BanAdminUsersInput, now
 	`, now.Unix(), job.ID); err != nil {
 		return AdminUserBulkJob{}, fmt.Errorf("ban administrator user bulk targets: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE subscription_reminder_outbox
+		SET cancelled_at=?, last_error='cancelled because user was banned', updated_at=?
+		WHERE user_id IN (SELECT user_id FROM admin_user_bulk_targets WHERE job_id=? AND status='succeeded')
+		  AND sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
+	`, now.Unix(), now.Unix(), job.ID); err != nil {
+		return AdminUserBulkJob{}, fmt.Errorf("cancel administrator user bulk reminder mail: %w", err)
+	}
 	for _, statement := range []string{
 		`UPDATE admin_sessions SET revoked_at=? WHERE revoked_at IS NULL AND user_id IN (SELECT user_id FROM admin_user_bulk_targets WHERE job_id=? AND status='succeeded')`,
 		`UPDATE access_tokens SET revoked_at=? WHERE revoked_at IS NULL AND user_id IN (SELECT user_id FROM admin_user_bulk_targets WHERE job_id=? AND status='succeeded')`,

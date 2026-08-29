@@ -781,6 +781,12 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if changed != 1 {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
 	}
+	if existing.Email != input.Email || existing.Banned != input.Banned ||
+		existing.RemindExpire != remindExpire || existing.RemindTraffic != remindTraffic {
+		if err := cancelSubscriptionRemindersForUserChangeTx(ctx, tx, userID, input.Email, input.Banned, remindExpire, remindTraffic, now); err != nil {
+			return AdminUser{}, AdminUserMutation{}, err
+		}
+	}
 	credentialsChanged := existing.Email != input.Email || existing.Banned != input.Banned || passwordChanged ||
 		existing.IsAdmin != isAdmin || existing.IsStaff != isStaff || existing.IsDistributor != isDistributor
 	if credentialsChanged {

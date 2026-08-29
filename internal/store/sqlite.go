@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 45
+const currentSchemaVersion = 46
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -342,6 +342,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v45: %w", err)
 		}
 		version = 45
+	}
+	if version < 46 {
+		if err := applySchemaV46(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v46: %w", err)
+		}
+		version = 46
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2105,6 +2111,69 @@ CREATE TABLE node_agent_settings (
     )
 );
 `
+
+const schemaV46 = `
+CREATE TABLE IF NOT EXISTS subscription_reminder_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('expire', 'traffic')),
+    reminder_day TEXT NOT NULL CHECK (length(reminder_day) = 10),
+    recipient TEXT NOT NULL CHECK (length(recipient) BETWEEN 3 AND 320),
+    app_name TEXT NOT NULL CHECK (length(app_name) BETWEEN 1 AND 100),
+    app_url TEXT NOT NULL DEFAULT '' CHECK (length(app_url) <= 2048),
+    available_at INTEGER NOT NULL CHECK (available_at >= 0),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    claim_token TEXT CHECK (claim_token IS NULL OR length(claim_token) BETWEEN 1 AND 128),
+    claimed_at INTEGER CHECK (claimed_at IS NULL OR claimed_at >= 0),
+    sent_at INTEGER CHECK (sent_at IS NULL OR sent_at >= 0),
+    failed_at INTEGER CHECK (failed_at IS NULL OR failed_at >= 0),
+    cancelled_at INTEGER CHECK (cancelled_at IS NULL OR cancelled_at >= 0),
+    last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 1024),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+    UNIQUE(user_id, kind, reminder_day),
+    CHECK ((claim_token IS NULL) = (claimed_at IS NULL)),
+    CHECK (
+        (sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NOT NULL AND failed_at IS NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NULL AND failed_at IS NOT NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_reminder_due
+    ON subscription_reminder_outbox(available_at, id)
+    WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_subscription_reminder_failed
+    ON subscription_reminder_outbox(failed_at DESC, id DESC)
+    WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_reminder_expire
+    ON users(expired_at, id)
+    WHERE banned = 0 AND remind_expire = 1 AND email <> '' AND expired_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_reminder_traffic
+    ON users(id)
+    WHERE banned = 0 AND remind_traffic = 1 AND email <> '' AND transfer_enable > 0;
+`
+
+func applySchemaV46(ctx context.Context, tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = 'remind_mail_enable')
+	`).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect app_settings.remind_mail_enable: %w", err)
+	}
+	if !exists {
+		if _, err := tx.ExecContext(ctx, `
+			ALTER TABLE app_settings ADD COLUMN remind_mail_enable INTEGER NOT NULL DEFAULT 0
+				CHECK (remind_mail_enable IN (0, 1))
+		`); err != nil {
+			return fmt.Errorf("add app_settings.remind_mail_enable: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, schemaV46); err != nil {
+		return err
+	}
+	return nil
+}
 
 func applySchemaV45(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {

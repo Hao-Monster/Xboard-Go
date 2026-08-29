@@ -286,6 +286,39 @@ func TestSystemQueueStatsAndFailedMailPaginationExcludeMessageBodies(t *testing.
 	}
 }
 
+func TestSystemQueueDiagnosticsIncludeSubscriptionReminderFailures(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 29, 3, 30, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "failed-reminder@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO subscription_reminder_outbox (
+			user_id, kind, reminder_day, recipient, app_name, app_url, available_at,
+			attempt_count, failed_at, last_error, created_at, updated_at
+		) VALUES (?, 'traffic', '2026-08-29', ?, 'Xboard-Go', '', ?, 3, ?, 'permanent reminder refusal', ?, ?)
+	`, user.ID, user.Email, now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := database.GetSystemQueueStats(ctx)
+	if err != nil || stats.Failed != 1 || stats.Pending != 0 {
+		t.Fatalf("reminder queue stats=%#v err=%v", stats, err)
+	}
+	page, err := database.ListTicketMailFailures(ctx, 1, 20)
+	if err != nil || page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("reminder failure page=%#v err=%v", page, err)
+	}
+	item := page.Items[0]
+	if item.Kind != "subscription_reminder_traffic" || item.TicketSubject != "订阅流量提醒" ||
+		item.Recipient != user.Email || item.LastError != "permanent reminder refusal" {
+		t.Fatalf("reminder failure item=%#v", item)
+	}
+}
+
 func TestMigrationFromSchemaV11AddsFailedMailIndexWithoutChangingAuditData(t *testing.T) {
 	database, err := OpenSQLite(fmt.Sprintf("file:system-v11-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {

@@ -1125,6 +1125,35 @@ export interface TicketSettingsInput {
   smtp_from_address: string;
 }
 
+export interface MailSettings {
+  revision: number;
+  smtp_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password_set: boolean;
+  smtp_encryption: SMTPEncryption;
+  smtp_from_address: string;
+  remind_mail_enable: boolean;
+  updated_at: string;
+}
+
+export interface MailSettingsInput {
+  revision: number;
+  smtp_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password?: string;
+  smtp_encryption: SMTPEncryption;
+  smtp_from_address: string;
+  remind_mail_enable: boolean;
+}
+
+export interface MailSettingsTestResult {
+  recipient: string;
+}
+
 export interface SiteSettings {
   revision: number;
   app_name: string;
@@ -1376,7 +1405,8 @@ export interface AdminAuditPage {
 
 export interface TicketMailFailure {
   id: number;
-  kind: "ticket" | "password_reset" | "registration_email_verification" | "login_link";
+  kind: "ticket" | "password_reset" | "registration_email_verification" | "login_link" |
+    "subscription_reminder_expire" | "subscription_reminder_traffic";
   recipient: string;
   ticket_subject: string;
   attempt_count: number;
@@ -1587,6 +1617,9 @@ export interface AdminAPI {
   closeAdminTicket: (id: number) => Promise<Ticket>;
   getTicketSettings: () => Promise<TicketSettings>;
   updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
+  getMailSettings: () => Promise<MailSettings>;
+  updateMailSettings: (input: MailSettingsInput) => Promise<MailSettings>;
+  testMailSettings: () => Promise<MailSettingsTestResult>;
   getSiteSettings: () => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   getCommissionSettings: () => Promise<CommissionSettings>;
@@ -2374,6 +2407,18 @@ export class APIClient implements AdminAPI {
 
   async updateTicketSettings(input: TicketSettingsInput): Promise<TicketSettings> {
     return this.request<TicketSettings>("/api/v1/admin/ticket-settings", { method: "PUT", body: input });
+  }
+
+  async getMailSettings(): Promise<MailSettings> {
+    return this.request<MailSettings>("/api/v1/admin/mail-settings");
+  }
+
+  async updateMailSettings(input: MailSettingsInput): Promise<MailSettings> {
+    return this.request<MailSettings>("/api/v1/admin/mail-settings", { method: "PUT", body: input });
+  }
+
+  async testMailSettings(): Promise<MailSettingsTestResult> {
+    return this.request<MailSettingsTestResult>("/api/v1/admin/mail-settings/test", { method: "POST", body: {} });
   }
 
   async getSiteSettings(): Promise<SiteSettings> {

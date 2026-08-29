@@ -10,21 +10,26 @@ import (
 )
 
 type Worker struct {
-	store                      *store.Store
-	interval                   time.Duration
-	now                        func() time.Time
-	logger                     *slog.Logger
-	lastTicketSweep            time.Time
-	lastIPSweep                time.Time
-	lastPasswordResetSweep     time.Time
-	lastRegistrationEmailSweep time.Time
-	lastLoginLinkSweep         time.Time
-	lastLoginFailureSweep      time.Time
-	lastTrafficResetSweep      time.Time
-	lastOrderSweep             time.Time
-	lastCommissionSweep        time.Time
-	tracker                    *operations.Tracker
+	store                       *store.Store
+	interval                    time.Duration
+	now                         func() time.Time
+	logger                      *slog.Logger
+	lastTicketSweep             time.Time
+	lastIPSweep                 time.Time
+	lastPasswordResetSweep      time.Time
+	lastRegistrationEmailSweep  time.Time
+	lastLoginLinkSweep          time.Time
+	lastLoginFailureSweep       time.Time
+	lastTrafficResetSweep       time.Time
+	lastOrderSweep              time.Time
+	lastCommissionSweep         time.Time
+	lastSubscriptionReminderDay string
+	tracker                     *operations.Tracker
 }
+
+const subscriptionReminderBatch = 500
+
+var subscriptionReminderLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
 func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logger, trackers ...*operations.Tracker) *Worker {
 	if interval <= 0 {
@@ -68,6 +73,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.resetDueTraffic(ctx, now)
 	w.processOrders(ctx, now)
 	w.processCommissions(ctx, now)
+	w.scheduleSubscriptionReminders(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -84,6 +90,30 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) scheduleSubscriptionReminders(ctx context.Context, now time.Time) {
+	local := now.In(subscriptionReminderLocation)
+	if local.Hour() < 11 || local.Hour() == 11 && local.Minute() < 30 {
+		return
+	}
+	day := local.Format("2006-01-02")
+	if w.lastSubscriptionReminderDay == day {
+		return
+	}
+	result, err := w.store.ScheduleSubscriptionReminders(ctx, now, day, subscriptionReminderBatch)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("schedule subscription reminders", "day", day, "error", err)
+		}
+		return
+	}
+	if result.ExpireQueued < subscriptionReminderBatch && result.TrafficQueued < subscriptionReminderBatch {
+		w.lastSubscriptionReminderDay = day
+	}
+	if result.ExpireQueued > 0 || result.TrafficQueued > 0 {
+		w.logger.Info("subscription reminders scheduled", "day", day, "expire", result.ExpireQueued, "traffic", result.TrafficQueued)
 	}
 }
 

@@ -823,6 +823,56 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(errors).toEqual([]);
 });
 
+test("legacy and Go mail configuration expose the same seven business settings without returning the SMTP secret", async ({ browser }) => {
+  const legacyContext = await browser.newContext();
+  const goContext = await browser.newContext();
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const configResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    const authorization = (await configResponse).request().headers().authorization;
+    expect(authorization).toBeTruthy();
+    await legacyPage.getByRole("link", { name: "邮件设置", exact: true }).filter({ visible: true }).click();
+    for (const field of ["SMTP主机", "SMTP端口", "加密方式", "SMTP用户名", "SMTP密码", "发件人地址", "邮件提醒"]) {
+      await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), `legacy mail setting ${field}`).toBeVisible();
+    }
+    await expect(legacyPage.getByRole("button", { name: "发送测试邮件", exact: true })).toBeVisible();
+    if (!authorization) throw new Error("legacy administrator authorization is missing");
+    const legacyResponse = await legacyPage.request.get(legacyAdminAPI("/config/fetch?key=email"), { headers: { authorization } });
+    expect(legacyResponse.status()).toBe(200);
+    expect(Object.keys(readObjectProperty(readProperty(await legacyResponse.json() as unknown, "data"), "email"))).toEqual(expect.arrayContaining([
+      "email_host", "email_port", "email_encryption", "email_username", "email_password", "email_from_address", "remind_mail_enable"
+    ]));
+
+    await loginGo(goPage);
+    await goPage.getByRole("button", { name: "邮件设置", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "邮件设置", exact: true })).toBeVisible();
+    for (const field of ["SMTP 主机", "SMTP 端口", "加密方式", "SMTP 用户名", "SMTP 密码", "发件人地址"]) {
+      await expect(goPage.getByLabel(field, { exact: true }), `Go mail setting ${field}`).toBeVisible();
+    }
+    await expect(goPage.getByRole("checkbox", { name: "启用订阅到期和流量提醒", exact: true })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "发送测试邮件", exact: true })).toBeVisible();
+
+    const goResponse = await goAdminRequest(goPage, "/api/v1/admin/mail-settings", "GET");
+    expect(goResponse.status, goResponse.body).toBe(200);
+    const goSettings = readObjectProperty(JSON.parse(goResponse.body) as unknown, "data");
+    for (const key of ["smtp_host", "smtp_port", "smtp_encryption", "smtp_username", "smtp_password_set", "smtp_from_address", "remind_mail_enable"]) {
+      expect(goSettings, `Go mail setting ${key}`).toHaveProperty(key);
+    }
+    expect(goSettings).not.toHaveProperty("smtp_password");
+    expect(goSettings).not.toHaveProperty("smtp_password_ciphertext");
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go node configuration preserve six settings while exposing only the five observable controls", async ({ browser }) => {
   const legacyContext = await browser.newContext();
   const goContext = await browser.newContext();

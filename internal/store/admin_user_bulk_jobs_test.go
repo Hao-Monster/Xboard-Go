@@ -301,6 +301,22 @@ func TestBanAdminUsersIsIdempotentAndProtectsAdministrator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mailSettings, err := database.GetMailSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateMailSettings(ctx, administrator.ID, mailSettings.Revision, SaveMailSettingsInput{
+		SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025, SMTPEncryption: "none",
+		SMTPFromAddress: "support@example.test", RemindMailEnabled: true,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET expired_at=? WHERE id=?`, now.Add(time.Hour).Unix(), active.ID); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := database.ScheduleSubscriptionReminders(ctx, now, "2026-08-28", 500); err != nil || result.ExpireQueued != 1 {
+		t.Fatalf("ScheduleSubscriptionReminders()=%#v err=%v", result, err)
+	}
 	if _, err := database.CreateAccessToken(ctx, CreateAccessTokenInput{
 		UserID: active.ID, Name: "U5 token", TokenHash: strings.Repeat("d", 64),
 	}, now); err != nil {
@@ -329,6 +345,12 @@ func TestBanAdminUsersIsIdempotentAndProtectsAdministrator(t *testing.T) {
 	}
 	if adminBanned || !activeBanned || activeTokens != 0 {
 		t.Fatalf("ban state admin=%v active=%v tokens=%d", adminBanned, activeBanned, activeTokens)
+	}
+	var cancelledReminders int
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM subscription_reminder_outbox WHERE user_id=? AND cancelled_at IS NOT NULL
+	`, active.ID).Scan(&cancelledReminders); err != nil || cancelledReminders != 1 {
+		t.Fatalf("banned user cancelled reminders=%d err=%v", cancelledReminders, err)
 	}
 	targets, err := database.ListAdminUserBulkTargets(ctx, result.ID, 0, 500)
 	if err != nil {

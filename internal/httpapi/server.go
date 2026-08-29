@@ -18,6 +18,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
+	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
@@ -55,6 +56,7 @@ type Dependencies struct {
 	InvitationProtector        *security.InvitationProtector
 	LoginLinkProtector         *security.LoginLinkProtector
 	SMTPAllowInsecure          bool
+	MailSender                 mailer.Sender
 	RuntimeTracker             *operations.Tracker
 	CaptchaVerifier            captcha.Verifier
 	PaymentGateway             paymentGateway
@@ -117,6 +119,8 @@ type server struct {
 	invitationProtector        *security.InvitationProtector
 	loginLinkProtector         *security.LoginLinkProtector
 	smtpAllowInsecure          bool
+	mailSender                 mailer.Sender
+	smtpTestRequests           *requestLimiter
 	runtimeTracker             *operations.Tracker
 	captchaVerifier            captcha.Verifier
 	paymentGateway             paymentGateway
@@ -219,6 +223,7 @@ func New(dependencies Dependencies) http.Handler {
 		ticketRequests:             newRequestLimitGroup(240, 60),
 		orderRequests:              newRequestLimitGroup(240, 60),
 		paymentWebhookRequests:     newRequestLimiter(600, time.Minute),
+		smtpTestRequests:           newRequestLimiter(3, time.Minute),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
@@ -229,6 +234,7 @@ func New(dependencies Dependencies) http.Handler {
 		invitationProtector:        dependencies.InvitationProtector,
 		loginLinkProtector:         dependencies.LoginLinkProtector,
 		smtpAllowInsecure:          dependencies.SMTPAllowInsecure,
+		mailSender:                 dependencies.MailSender,
 		runtimeTracker:             dependencies.RuntimeTracker,
 		captchaVerifier:            dependencies.CaptchaVerifier,
 		paymentGateway:             dependencies.PaymentGateway,
@@ -449,6 +455,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))
 	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/config/fetch", api.legacyFetchConfigSettings)
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveConfigSettings)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/testSendMail", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyTestSendMail)))
 	legacyKnowledgeAttachments := http.NewServeMux()
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
@@ -556,6 +563,9 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/tickets", api.listAdminTickets)
 	admin.HandleFunc("GET /api/v1/admin/ticket-settings", api.getTicketSettings)
 	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
+	admin.HandleFunc("GET /api/v1/admin/mail-settings", api.getMailSettings)
+	admin.HandleFunc("PUT /api/v1/admin/mail-settings", api.updateMailSettings)
+	admin.HandleFunc("POST /api/v1/admin/mail-settings/test", api.testMailSettings)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
 	admin.HandleFunc("GET /api/v1/admin/commission-settings", api.getCommissionSettings)

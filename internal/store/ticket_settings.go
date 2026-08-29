@@ -70,15 +70,8 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 	}
 	defer tx.Rollback()
 	if !normalized.SMTPEnabled {
-		var emailVerificationEnabled, mailLoginEnabled bool
-		if err := tx.QueryRowContext(ctx, `SELECT email_verify, login_with_mail_link_enable FROM app_settings WHERE id = 1`).Scan(&emailVerificationEnabled, &mailLoginEnabled); err != nil {
-			return TicketSettings{}, fmt.Errorf("read registration email verification setting: %w", err)
-		}
-		if emailVerificationEnabled {
-			return TicketSettings{}, ErrRegistrationEmailVerificationNeedsMail
-		}
-		if mailLoginEnabled {
-			return TicketSettings{}, ErrMailLoginNeedsMail
+		if err := ensureSMTPCanBeDisabled(ctx, tx); err != nil {
+			return TicketSettings{}, err
 		}
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -100,28 +93,8 @@ func (s *Store) UpdateTicketSettings(ctx context.Context, administratorID, revis
 		return TicketSettings{}, ErrConflict
 	}
 	if !normalized.SMTPEnabled {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE ticket_mail_outbox
-			SET failed_at = ?, last_error = 'cancelled because SMTP notifications were disabled', updated_at = ?
-			WHERE sent_at IS NULL AND failed_at IS NULL AND claim_token IS NULL
-		`, now.Unix(), now.Unix()); err != nil {
-			return TicketSettings{}, fmt.Errorf("cancel disabled ticket mail: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE password_reset_mail_outbox
-			SET cancelled_at = ?, code_cipher = NULL,
-			    last_error = 'cancelled because SMTP notifications were disabled', updated_at = ?
-			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
-		`, now.Unix(), now.Unix()); err != nil {
-			return TicketSettings{}, fmt.Errorf("cancel disabled password reset mail: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE registration_email_mail_outbox
-			SET cancelled_at = ?, code_cipher = NULL,
-			    last_error = 'cancelled because SMTP notifications were disabled', updated_at = ?
-			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NULL
-		`, now.Unix(), now.Unix()); err != nil {
-			return TicketSettings{}, fmt.Errorf("cancel disabled registration verification mail: %w", err)
+		if err := cancelAllUnclaimedMailTx(ctx, tx, now); err != nil {
+			return TicketSettings{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -278,28 +251,51 @@ func enqueueTicketMailTx(ctx context.Context, tx *sql.Tx, userID, ticketMessageI
 func normalizeTicketSettings(input SaveTicketSettingsInput) (SaveTicketSettingsInput, error) {
 	input.AppName = strings.TrimSpace(input.AppName)
 	input.AppURL = strings.TrimRight(strings.TrimSpace(input.AppURL), "/")
-	input.SMTPHost = strings.TrimSpace(input.SMTPHost)
-	input.SMTPUsername = strings.TrimSpace(input.SMTPUsername)
-	input.SMTPEncryption = strings.ToLower(strings.TrimSpace(input.SMTPEncryption))
-	input.SMTPFromAddress = strings.TrimSpace(input.SMTPFromAddress)
-	if input.SMTPPort == 0 {
-		input.SMTPPort = 587
-	}
-	if input.SMTPEncryption == "" {
-		input.SMTPEncryption = "starttls"
-	}
 	if utf8.RuneCountInString(input.AppName) < 1 || utf8.RuneCountInString(input.AppName) > maxTicketAppNameRunes ||
 		containsUnsafeTicketControl(input.AppName, false) || len(input.AppURL) > maxTicketAppURLBytes ||
-		(input.AppURL != "" && !validHTTPURL(input.AppURL)) || input.SMTPPort < 1 || input.SMTPPort > 65_535 ||
-		len(input.SMTPHost) > maxSMTPHostBytes || len(input.SMTPUsername) > maxSMTPIdentityBytes ||
-		len(input.SMTPFromAddress) > maxSMTPIdentityBytes || len(input.SMTPPasswordCipher) > maxSMTPPasswordCipher ||
-		(input.SMTPHost != "" && !validSMTPHost(input.SMTPHost)) || containsUnsafeTicketControl(input.SMTPUsername, false) ||
-		(input.SMTPFromAddress != "" && !validMailAddress(input.SMTPFromAddress)) ||
-		(input.SMTPEncryption != "starttls" && input.SMTPEncryption != "tls" && input.SMTPEncryption != "none") {
+		(input.AppURL != "" && !validHTTPURL(input.AppURL)) {
 		return SaveTicketSettingsInput{}, ErrInvalidInput
 	}
-	if input.SMTPEnabled && (input.SMTPHost == "" || input.SMTPFromAddress == "") {
+	smtp, err := normalizeSMTPSettings(smtpSettingsInput{
+		Enabled: input.SMTPEnabled, Host: input.SMTPHost, Port: input.SMTPPort, Username: input.SMTPUsername,
+		PasswordCipher: input.SMTPPasswordCipher, Encryption: input.SMTPEncryption, FromAddress: input.SMTPFromAddress,
+	})
+	if err != nil {
 		return SaveTicketSettingsInput{}, ErrInvalidInput
+	}
+	input.SMTPHost, input.SMTPPort, input.SMTPUsername = smtp.Host, smtp.Port, smtp.Username
+	input.SMTPEncryption, input.SMTPFromAddress = smtp.Encryption, smtp.FromAddress
+	return input, nil
+}
+
+type smtpSettingsInput struct {
+	Enabled        bool
+	Host           string
+	Port           int
+	Username       string
+	PasswordCipher []byte
+	Encryption     string
+	FromAddress    string
+}
+
+func normalizeSMTPSettings(input smtpSettingsInput) (smtpSettingsInput, error) {
+	input.Host = strings.TrimSpace(input.Host)
+	input.Username = strings.TrimSpace(input.Username)
+	input.Encryption = strings.ToLower(strings.TrimSpace(input.Encryption))
+	input.FromAddress = strings.TrimSpace(input.FromAddress)
+	if input.Port == 0 {
+		input.Port = 587
+	}
+	if input.Encryption == "" {
+		input.Encryption = "starttls"
+	}
+	if input.Port < 1 || input.Port > 65_535 || len(input.Host) > maxSMTPHostBytes ||
+		len(input.Username) > maxSMTPIdentityBytes || len(input.FromAddress) > maxSMTPIdentityBytes ||
+		len(input.PasswordCipher) > maxSMTPPasswordCipher || (input.Host != "" && !validSMTPHost(input.Host)) ||
+		containsUnsafeTicketControl(input.Username, false) || (input.FromAddress != "" && !validMailAddress(input.FromAddress)) ||
+		(input.Encryption != "starttls" && input.Encryption != "tls" && input.Encryption != "none") ||
+		(input.Enabled && (input.Host == "" || input.FromAddress == "")) {
+		return smtpSettingsInput{}, ErrInvalidInput
 	}
 	return input, nil
 }

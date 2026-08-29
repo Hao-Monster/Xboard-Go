@@ -71,6 +71,14 @@ type legacyConfigSaveRequest struct {
 	DefaultRemindExpire  *bool            `json:"default_remind_expire"`
 	DefaultRemindTraffic *bool            `json:"default_remind_traffic"`
 	Path                 *string          `json:"subscribe_path"`
+
+	EmailHost         *string          `json:"email_host"`
+	EmailPort         *legacyConfigInt `json:"email_port"`
+	EmailUsername     *string          `json:"email_username"`
+	EmailPassword     *string          `json:"email_password"`
+	EmailEncryption   *string          `json:"email_encryption"`
+	EmailFromAddress  *string          `json:"email_from_address"`
+	RemindMailEnabled *bool            `json:"remind_mail_enable"`
 }
 
 func (input legacyConfigSaveRequest) hasInvite() bool {
@@ -90,6 +98,11 @@ func (input legacyConfigSaveRequest) hasSubscribe() bool {
 		input.NewOrderEventID != nil || input.RenewOrderEventID != nil || input.ChangeOrderEventID != nil ||
 		input.ShowInfo != nil || input.ShowProtocol != nil || input.DefaultRemindExpire != nil ||
 		input.DefaultRemindTraffic != nil || input.Path != nil
+}
+
+func (input legacyConfigSaveRequest) hasEmail() bool {
+	return input.EmailHost != nil || input.EmailPort != nil || input.EmailUsername != nil || input.EmailPassword != nil ||
+		input.EmailEncryption != nil || input.EmailFromAddress != nil || input.RemindMailEnabled != nil
 }
 
 func (input commissionSettingsRequest) complete() bool {
@@ -154,6 +167,13 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeLegacySuccess(w, http.StatusOK, map[string]any{"subscribe": settings})
+	case "email":
+		settings, err := s.store.GetMailSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "邮件配置读取失败")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"email": legacyMailSettings(settings)})
 	default:
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "不支持的配置组")
 	}
@@ -164,12 +184,74 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	invite, subscribe := input.hasInvite(), input.hasSubscribe()
-	if invite == subscribe {
+	invite, subscribe, email := input.hasInvite(), input.hasSubscribe(), input.hasEmail()
+	groupCount := 0
+	for _, present := range []bool{invite, subscribe, email} {
+		if present {
+			groupCount++
+		}
+	}
+	if groupCount != 1 {
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "请提交单一配置组")
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if email {
+		current, err := s.store.GetMailSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "邮件配置读取失败")
+			return
+		}
+		request := mailSettingsRequest{
+			Revision: current.Revision, SMTPEnabled: current.SMTPEnabled, SMTPHost: current.SMTPHost,
+			SMTPPort: current.SMTPPort, SMTPUsername: current.SMTPUsername, SMTPEncryption: current.SMTPEncryption,
+			SMTPFromAddress: current.SMTPFromAddress, RemindMailEnabled: current.RemindMailEnabled,
+		}
+		if input.EmailHost != nil {
+			request.SMTPHost = *input.EmailHost
+			request.SMTPEnabled = strings.TrimSpace(*input.EmailHost) != ""
+		}
+		if input.EmailPort != nil {
+			request.SMTPPort = int(*input.EmailPort)
+		}
+		if input.EmailUsername != nil {
+			request.SMTPUsername = *input.EmailUsername
+		}
+		if input.EmailPassword != nil && *input.EmailPassword != "" {
+			request.SMTPPassword = input.EmailPassword
+		}
+		if input.EmailEncryption != nil {
+			mapped, valid := modernSMTPEncryption(*input.EmailEncryption)
+			if !valid {
+				writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "邮件加密方式无效")
+				return
+			}
+			request.SMTPEncryption = mapped
+		}
+		if input.EmailFromAddress != nil {
+			request.SMTPFromAddress = *input.EmailFromAddress
+		}
+		if input.RemindMailEnabled != nil {
+			request.RemindMailEnabled = *input.RemindMailEnabled
+		}
+		save, err := s.prepareMailSettingsSave(request, current)
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "邮件配置无效")
+			return
+		}
+		if _, err := s.store.UpdateMailSettings(r.Context(), session.UserID, current.Revision, save, s.now()); err != nil {
+			status, message := http.StatusUnprocessableEntity, "邮件配置无效"
+			if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+			} else if !errors.Is(err, store.ErrInvalidInput) && !errors.Is(err, store.ErrRegistrationEmailVerificationNeedsMail) && !errors.Is(err, store.ErrMailLoginNeedsMail) {
+				status, message = http.StatusInternalServerError, "邮件配置保存失败"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	if subscribe {
 		_, err := s.store.UpdateLegacyAdminSubscriptionConfig(r.Context(), session.UserID, store.SaveLegacyAdminSubscriptionConfigInput{
 			PlanChangeEnabled: input.PlanChangeEnabled, ResetTrafficMethod: legacyConfigIntPointer(input.ResetTrafficMethod),
@@ -219,6 +301,27 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeLegacySuccess(w, http.StatusOK, true)
+}
+
+func (s *server) legacyTestSendMail(w http.ResponseWriter, r *http.Request) {
+	session, _ := sessionFromContext(r.Context())
+	if !s.smtpTestRequests.take(strconv.FormatInt(session.UserID, 10), s.now()) {
+		writeLegacyInviteFailure(w, http.StatusTooManyRequests, "测试邮件发送过于频繁")
+		return
+	}
+	if err := s.sendTestMail(r.Context(), session.Email); err != nil {
+		status, message := http.StatusBadGateway, "测试邮件发送失败"
+		if errors.Is(err, errSMTPTestNotConfigured) {
+			status, message = http.StatusConflict, "请先保存并启用 SMTP 邮件服务"
+		} else if errors.Is(err, errSMTPTestUnavailable) {
+			status, message = http.StatusServiceUnavailable, "测试邮件服务暂时不可用"
+		}
+		writeLegacyInviteFailure(w, status, message)
+		return
+	}
+	writeLegacySuccess(w, http.StatusOK, map[string]any{
+		"email": session.Email, "subject": "This is xboard test email", "error": nil,
+	})
 }
 
 func legacyCommissionSettings(settings store.CommissionSettings) map[string]any {
