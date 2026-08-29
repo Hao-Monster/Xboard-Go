@@ -25,13 +25,17 @@ func populateInvitationCommissionSummary(ctx context.Context, database commissio
 	var commissionRate sql.NullInt64
 	var globalRate int
 	var distributionEnabled bool
-	var levelOne int
+	var levelOne, levelTwo, levelThree int
 	if err := database.QueryRowContext(ctx, `
 		SELECT u.commission_balance, u.commission_rate, s.invite_commission,
-		       s.commission_distribution_enable, s.commission_distribution_l1
+		       s.commission_distribution_enable, s.commission_distribution_l1,
+		       s.commission_distribution_l2, s.commission_distribution_l3
 		FROM users u CROSS JOIN app_settings s
 		WHERE u.id = ? AND u.account_kind = 'human' AND s.id = 1
-	`, ownerID).Scan(&summary.AvailableCommission, &commissionRate, &globalRate, &distributionEnabled, &levelOne); errors.Is(err, sql.ErrNoRows) {
+	`, ownerID).Scan(
+		&summary.AvailableCommission, &commissionRate, &globalRate, &distributionEnabled,
+		&levelOne, &levelTwo, &levelThree,
+	); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("read invitation commission settings: %w", err)
@@ -40,6 +44,15 @@ func populateInvitationCommissionSummary(ctx context.Context, database commissio
 		summary.CommissionRate = int(commissionRate.Int64)
 	} else {
 		summary.CommissionRate = globalRate
+	}
+	summary.CommissionDistributionEnabled = distributionEnabled
+	summary.CommissionDistributionRates = make([]int, 0)
+	if distributionEnabled {
+		summary.CommissionDistributionRates = []int{
+			int(commissionShare(int64(summary.CommissionRate), levelOne)),
+			int(commissionShare(int64(summary.CommissionRate), levelTwo)),
+			int(commissionShare(int64(summary.CommissionRate), levelThree)),
+		}
 	}
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE invite_user_id = ?`, ownerID).Scan(&summary.InvitedCount); err != nil {
 		return fmt.Errorf("count invited users: %w", err)

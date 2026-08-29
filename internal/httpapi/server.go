@@ -446,6 +446,8 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/types", api.legacyGiftCardTypes)
 	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))))
+	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/config/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyFetchCommissionSettings))))
+	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveCommissionSettings)))))
 	legacyKnowledgeAttachments := http.NewServeMux()
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
@@ -554,6 +556,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
+	admin.HandleFunc("GET /api/v1/admin/commission-settings", api.getCommissionSettings)
+	admin.HandleFunc("PUT /api/v1/admin/commission-settings", api.updateCommissionSettings)
 	admin.HandleFunc("GET /api/v1/admin/node-agent-settings", api.getNodeAgentSettings)
 	admin.HandleFunc("PUT /api/v1/admin/node-agent-settings", api.updateNodeAgentSettings)
 	admin.HandleFunc("GET /api/v1/admin/subscription-settings", api.getSubscriptionSettings)
@@ -768,6 +772,22 @@ func (s *server) auditLegacyAdminGiftCardMutations(next http.Handler) http.Handl
 			action = action[index+len("/gift-card/"):]
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/gift-card/"+action, recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminConfigMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/config/save") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if !ok {
+			return
+		}
+		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/config/save", recorder.statusCode())
 	})
 }
 

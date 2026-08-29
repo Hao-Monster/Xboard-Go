@@ -19,12 +19,14 @@ type invitationCodeResponse struct {
 }
 
 type invitationSummaryResponse struct {
-	Codes               []invitationCodeResponse `json:"codes"`
-	InvitedCount        int64                    `json:"invited_count"`
-	ValidCommission     int64                    `json:"valid_commission"`
-	PendingCommission   int64                    `json:"pending_commission"`
-	CommissionRate      int                      `json:"commission_rate"`
-	AvailableCommission int64                    `json:"available_commission"`
+	Codes                         []invitationCodeResponse `json:"codes"`
+	InvitedCount                  int64                    `json:"invited_count"`
+	ValidCommission               int64                    `json:"valid_commission"`
+	PendingCommission             int64                    `json:"pending_commission"`
+	CommissionRate                int                      `json:"commission_rate"`
+	CommissionDistributionEnabled bool                     `json:"commission_distribution_enabled"`
+	CommissionDistributionRates   []int                    `json:"commission_distribution_rates"`
+	AvailableCommission           int64                    `json:"available_commission"`
 }
 
 func (s *server) getInvitations(w http.ResponseWriter, r *http.Request) {
@@ -58,10 +60,14 @@ func (s *server) readInvitationSummary(ctx context.Context, userID int64) (invit
 		}
 		codes = append(codes, invitationCodeResponse{Code: code, PV: stored.PV, CreatedAt: stored.CreatedAt})
 	}
+	distributionRates := make([]int, len(summary.CommissionDistributionRates))
+	copy(distributionRates, summary.CommissionDistributionRates)
 	return invitationSummaryResponse{
 		Codes: codes, InvitedCount: summary.InvitedCount, ValidCommission: summary.ValidCommission,
 		PendingCommission: summary.PendingCommission, CommissionRate: summary.CommissionRate,
-		AvailableCommission: summary.AvailableCommission,
+		CommissionDistributionEnabled: summary.CommissionDistributionEnabled,
+		CommissionDistributionRates:   distributionRates,
+		AvailableCommission:           summary.AvailableCommission,
 	}, nil
 }
 

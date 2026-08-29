@@ -6,7 +6,10 @@ import { InvitationPage } from "./InvitationPage";
 
 describe("InvitationPage", () => {
   it("loads all five legacy statistics, commission history, transfers money, and generates a code", async () => {
-    const initial = { codes: [], invited_count: 2, valid_commission: 12_345, pending_commission: 678, commission_rate: 20, available_commission: 9_999 };
+    const initial = {
+      codes: [], invited_count: 2, valid_commission: 12_345, pending_commission: 678, commission_rate: 20,
+      commission_distribution_enabled: true, commission_distribution_rates: [10, 6, 4], available_commission: 9_999
+    };
     const generated = { code: "Abcd1234", pv: 0, created_at: "2026-08-25T04:00:00Z" };
     const history = { items: [{ id: 1, trade_no: "2026082600000000000000001", order_amount: 50_000, get_amount: 10_000, created_at: "2026-08-26T04:00:00Z" }], total: 1, page: 1, page_size: 50 };
     const api = {
@@ -27,7 +30,7 @@ describe("InvitationPage", () => {
     expect(await screen.findByText("已邀请用户", { exact: true })).toBeVisible();
     expect(screen.getByText("¥123.45", { exact: true })).toBeVisible();
     expect(screen.getByText("¥6.78", { exact: true })).toBeVisible();
-    expect(screen.getByText("20%", { exact: true })).toBeVisible();
+    expect(screen.getByText("10% / 6% / 4%", { exact: true })).toBeVisible();
     expect(screen.getByText("¥99.99", { exact: true })).toBeVisible();
     expect(screen.getByText("2026082600000000000000001", { exact: true })).toBeVisible();
     expect(screen.getByRole("heading", { name: "邀请码" })).toBeVisible();
@@ -53,7 +56,8 @@ describe("InvitationPage", () => {
     const api = {
       getInvitations: vi.fn().mockResolvedValue({
         codes: [{ code: "Keep1234", pv: 7, created_at: "2026-08-25T04:00:00Z" }], invited_count: 1,
-        valid_commission: 0, pending_commission: 0, commission_rate: 10, available_commission: 0
+        valid_commission: 0, pending_commission: 0, commission_rate: 10,
+        commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0
       }),
       createInvitation: vi.fn().mockRejectedValue(new Error("已达到创建数量上限")),
       listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }),
