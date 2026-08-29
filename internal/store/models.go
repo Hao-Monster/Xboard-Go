@@ -197,6 +197,58 @@ type SaveTicketSettingsInput struct {
 	SMTPFromAddress     string
 }
 
+type MailSettings struct {
+	Revision          int64     `json:"revision"`
+	SMTPEnabled       bool      `json:"smtp_enabled"`
+	SMTPHost          string    `json:"smtp_host"`
+	SMTPPort          int       `json:"smtp_port"`
+	SMTPUsername      string    `json:"smtp_username"`
+	SMTPPasswordSet   bool      `json:"smtp_password_set"`
+	SMTPEncryption    string    `json:"smtp_encryption"`
+	SMTPFromAddress   string    `json:"smtp_from_address"`
+	RemindMailEnabled bool      `json:"remind_mail_enable"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type SaveMailSettingsInput struct {
+	SMTPEnabled         bool
+	SMTPHost            string
+	SMTPPort            int
+	SMTPUsername        string
+	ReplaceSMTPPassword bool
+	SMTPPasswordCipher  []byte
+	SMTPEncryption      string
+	SMTPFromAddress     string
+	RemindMailEnabled   bool
+}
+
+type SubscriptionReminderKind string
+
+const (
+	SubscriptionReminderExpire  SubscriptionReminderKind = "expire"
+	SubscriptionReminderTraffic SubscriptionReminderKind = "traffic"
+)
+
+type SubscriptionReminderScheduleResult struct {
+	ExpireQueued  int64
+	TrafficQueued int64
+}
+
+type SubscriptionReminderJob struct {
+	ID                 int64
+	Attempt            int
+	Kind               SubscriptionReminderKind
+	Recipient          string
+	AppName            string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPasswordCipher []byte
+	SMTPEncryption     string
+	SMTPFromAddress    string
+}
+
 type SiteSettings struct {
 	Revision                    int64     `json:"revision"`
 	AppName                     string    `json:"app_name"`

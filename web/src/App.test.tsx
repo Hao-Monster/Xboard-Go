@@ -55,6 +55,7 @@ describe("App public identity bootstrap", () => {
 		expect(await screen.findByRole("navigation", { name: "管理端导航" })).toBeVisible();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 

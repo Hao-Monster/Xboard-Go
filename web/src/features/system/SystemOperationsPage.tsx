@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import type {
-  AdminAuditPage, AuditMethod, SystemOperationsAPI, SystemStatus, TicketMailFailurePage, WorkerStatus
+  AdminAuditPage, AuditMethod, SystemOperationsAPI, SystemStatus, TicketMailFailure, TicketMailFailurePage, WorkerStatus
 } from "../../lib/api";
 
 const pageSize = 20;
@@ -133,13 +133,24 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
     <section className="system-section" aria-labelledby="mail-failures-heading">
       <div className="section-heading"><div><h2 id="mail-failures-heading">失败邮件任务</h2><p className="muted">展示投递诊断元数据，不展示工单回复正文、验证码或 SMTP 凭据。</p></div></div>
       <div className="resource-table-wrap"><table className="resource-table"><thead><tr><th>邮件主题</th><th>类型</th><th>收件人</th><th>尝试</th><th>错误</th><th>失败时间</th></tr></thead><tbody>
-        {failures?.items.map((item) => <tr key={`${item.kind}-${item.id}`}><td data-label="邮件主题"><strong>{item.ticket_subject}</strong><small className="muted">任务 #{Math.abs(item.id)}</small></td><td data-label="类型">{item.kind === "password_reset" ? "密码重置" : item.kind === "registration_email_verification" ? "注册验证" : item.kind === "login_link" ? "登录链接" : "工单通知"}</td><td data-label="收件人">{item.recipient}</td><td data-label="尝试">{item.attempt_count}</td><td data-label="错误"><span className="system-error-text">{item.last_error}</span></td><td data-label="失败时间">{formatDate(item.failed_at)}</td></tr>)}
+        {failures?.items.map((item) => <tr key={`${item.kind}-${item.id}`}><td data-label="邮件主题"><strong>{item.ticket_subject}</strong><small className="muted">任务 #{Math.abs(item.id)}</small></td><td data-label="类型">{mailFailureKindLabel(item.kind)}</td><td data-label="收件人">{item.recipient}</td><td data-label="尝试">{item.attempt_count}</td><td data-label="错误"><span className="system-error-text">{item.last_error}</span></td><td data-label="失败时间">{formatDate(item.failed_at)}</td></tr>)}
         {failures !== null && failures.items.length === 0 && <tr><td colSpan={6}>暂无失败邮件任务。</td></tr>}
       </tbody></table>
         {failures !== null && failures.total > failures.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={failures.page <= 1} onClick={() => void changeFailurePage(failures.page - 1)}>失败任务上一页</button><span>第 {failures.page} 页</span><button className="button secondary compact" disabled={failures.page * failures.page_size >= failures.total} onClick={() => void changeFailurePage(failures.page + 1)}>失败任务下一页</button></div>}
       </div>
     </section>
   </main>;
+}
+
+function mailFailureKindLabel(kind: TicketMailFailure["kind"]): string {
+  switch (kind) {
+    case "password_reset": return "密码重置";
+    case "registration_email_verification": return "注册验证";
+    case "login_link": return "登录链接";
+    case "subscription_reminder_expire": return "到期提醒";
+    case "subscription_reminder_traffic": return "流量提醒";
+    default: return "工单通知";
+  }
 }
 
 function WorkerMetric({ label, status }: { label: string; status: WorkerStatus }) {

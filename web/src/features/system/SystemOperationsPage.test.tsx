@@ -27,6 +27,12 @@ const failures: TicketMailFailurePage = {
   }, {
     id: -5, kind: "login_link", recipient: "linked@example.test", ticket_subject: "邮件登录链接", attempt_count: 3,
     last_error: "mail unavailable", created_at: "2026-08-24T10:01:00Z", failed_at: "2026-08-24T10:08:00Z"
+  }, {
+    id: -6, kind: "subscription_reminder_expire", recipient: "expiring@example.test", ticket_subject: "订阅到期提醒", attempt_count: 3,
+    last_error: "mail unavailable", created_at: "2026-08-24T10:02:00Z", failed_at: "2026-08-24T10:09:00Z"
+  }, {
+    id: -7, kind: "subscription_reminder_traffic", recipient: "traffic@example.test", ticket_subject: "订阅流量提醒", attempt_count: 3,
+    last_error: "mail unavailable", created_at: "2026-08-24T10:03:00Z", failed_at: "2026-08-24T10:10:00Z"
   }],
   total: 22, page: 1, page_size: 20
 };
@@ -45,7 +51,9 @@ describe("SystemOperationsPage", () => {
     expect(await screen.findByText("Schema v18", { exact: true })).toBeVisible();
     expect(screen.getByText("待处理 2", { exact: true })).toBeVisible();
     expect(screen.getByText("Unable to connect", { exact: true })).toBeVisible();
-		expect(screen.getByText("登录链接", { exact: true })).toBeVisible();
+    expect(screen.getByText("登录链接", { exact: true })).toBeVisible();
+    expect(screen.getByText("到期提醒", { exact: true })).toBeVisible();
+    expect(screen.getByText("流量提醒", { exact: true })).toBeVisible();
     expect(screen.queryByText("private reply body", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("/api/v1/admin/ticket-settings", { exact: true })).toBeVisible();
 

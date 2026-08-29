@@ -72,6 +72,7 @@ var requiredSchemaTables = []struct {
 	{"admin_user_bulk_jobs", 39},
 	{"admin_user_bulk_targets", 39},
 	{"node_agent_settings", 43},
+	{"subscription_reminder_outbox", 46},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -128,6 +129,15 @@ var requiredSchemaColumnsV44 = map[string][]string{
 
 var requiredSchemaColumnsV45 = map[string][]string{
 	"app_settings": {"default_remind_expire", "default_remind_traffic"},
+}
+
+var requiredSchemaColumnsV46 = map[string][]string{
+	"app_settings": {"remind_mail_enable"},
+	"subscription_reminder_outbox": {
+		"id", "user_id", "kind", "reminder_day", "recipient", "app_name", "app_url", "available_at",
+		"attempt_count", "claim_token", "claimed_at", "sent_at", "failed_at", "cancelled_at", "last_error",
+		"created_at", "updated_at",
+	},
 }
 
 type schemaQueryer interface {
@@ -216,6 +226,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 45 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV45); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 46 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV46); err != nil {
 			return err
 		}
 	}

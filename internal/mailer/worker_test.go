@@ -221,6 +221,98 @@ func (sender *recordingSender) Send(_ context.Context, configuration SMTPConfig,
 	return sender.failure
 }
 
+func TestWorkerRetriesAndDeliversBothSubscriptionReminderKinds(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 8, 29, 3, 30, 0, 0, time.UTC)
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "subscription-reminder-worker.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "reminder-worker-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipherBox, err := appsettings.NewCipher(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	passwordCipher, err := cipherBox.Encrypt([]byte("reminder-smtp-password"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetMailSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateMailSettings(ctx, administrator.ID, settings.Revision, store.SaveMailSettingsInput{
+		SMTPEnabled: true, SMTPHost: "smtp.example.test", SMTPPort: 587, SMTPUsername: "mailer",
+		ReplaceSMTPPassword: true, SMTPPasswordCipher: passwordCipher, SMTPEncryption: EncryptionStartTLS,
+		SMTPFromAddress: "support@example.test", RemindMailEnabled: true,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := now.Add(23 * time.Hour)
+	recipient, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "both-reminders@example.test", PasswordHash: "hash", TransferEnable: 1_000, ExpiredAt: &expiresAt,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload, download := int64(400), int64(400)
+	if _, _, err := database.UpdateAdminUser(ctx, recipient.ID, store.UpdateAdminUserInput{
+		Revision: recipient.Revision, Email: recipient.Email, GroupID: recipient.GroupID,
+		TransferEnable: recipient.TransferEnable, TrafficUpload: &upload, TrafficDownload: &download,
+		ExpiredAt: recipient.ExpiredAt, SpeedLimit: recipient.SpeedLimit, DeviceLimit: recipient.DeviceLimit,
+		Banned: recipient.Banned,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	result, err := database.ScheduleSubscriptionReminders(ctx, now, "2026-08-29", 500)
+	if err != nil || result.ExpireQueued != 1 || result.TrafficQueued != 1 {
+		t.Fatalf("ScheduleSubscriptionReminders()=%#v err=%v", result, err)
+	}
+
+	sender := &recordingSender{failure: errors.New("temporary reminder SMTP failure")}
+	worker := NewWorker(database, cipherBox, nil, nil, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worked, err := worker.RunOnce(ctx, now)
+	if !worked || err == nil {
+		t.Fatalf("first RunOnce()=(%v,%v), want retryable failure", worked, err)
+	}
+	sender.failure = nil
+	for _, attemptAt := range []time.Time{now.Add(time.Minute), now.Add(time.Minute)} {
+		worked, err = worker.RunOnce(ctx, attemptAt)
+		if !worked || err != nil {
+			t.Fatalf("successful RunOnce()=(%v,%v)", worked, err)
+		}
+	}
+	worked, err = worker.RunOnce(ctx, now.Add(2*time.Minute))
+	if worked || err != nil {
+		t.Fatalf("completed RunOnce()=(%v,%v), want empty queue", worked, err)
+	}
+	if len(sender.messages) != 3 || len(sender.configurations) != 3 {
+		t.Fatalf("send attempts=%d configurations=%d", len(sender.messages), len(sender.configurations))
+	}
+	if sender.configurations[2].Password != "reminder-smtp-password" || sender.configurations[2].Encryption != EncryptionStartTLS {
+		t.Fatalf("decrypted reminder configuration=%#v", sender.configurations[2])
+	}
+	subjects := map[string]bool{}
+	for _, message := range sender.messages[1:] {
+		if message.To != recipient.Email {
+			t.Fatalf("reminder recipient=%q want=%q", message.To, recipient.Email)
+		}
+		subjects[message.Subject] = true
+	}
+	if !subjects["您在Xboard-Go的服务即将到期"] || !subjects["您在Xboard-Go的流量使用已达到80%"] {
+		t.Fatalf("reminder subjects=%#v", subjects)
+	}
+}
+
 func TestWorkerDecryptsRetriesAndCompletesTicketNotification(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 24, 13, 0, 0, 0, time.UTC)

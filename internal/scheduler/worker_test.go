@@ -60,6 +60,70 @@ func TestWorkerAppliesPersistedDueSchedule(t *testing.T) {
 	}
 }
 
+func TestWorkerSchedulesSubscriptionRemindersAtLegacyDailyBoundary(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-reminder-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Date(2026, 8, 29, 3, 29, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-reminder-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetMailSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateMailSettings(ctx, administrator.ID, settings.Revision, store.SaveMailSettingsInput{
+		SMTPEnabled: true, SMTPHost: "mailpit", SMTPPort: 1025, SMTPEncryption: "none",
+		SMTPFromAddress: "support@example.test", RemindMailEnabled: true,
+	}, before); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := before.Add(23 * time.Hour)
+	if _, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-reminder-user@example.test", PasswordHash: "hash", TransferEnable: 1_000,
+		ExpiredAt: &expiresAt,
+	}, before); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.scheduleSubscriptionReminders(ctx, before)
+	if _, claimed, err := database.ClaimSubscriptionReminder(ctx, "before-boundary", before, time.Minute); err != nil || claimed {
+		t.Fatalf("reminder before 11:30 Asia/Shanghai claimed=%v err=%v", claimed, err)
+	}
+
+	atBoundary := before.Add(time.Minute)
+	worker.scheduleSubscriptionReminders(ctx, atBoundary)
+	job, claimed, err := database.ClaimSubscriptionReminder(ctx, "at-boundary", atBoundary, time.Minute)
+	if err != nil || !claimed || job.Kind != store.SubscriptionReminderExpire {
+		t.Fatalf("reminder at boundary=(%#v,%v,%v)", job, claimed, err)
+	}
+	if err := database.CompleteSubscriptionReminder(ctx, job.ID, "at-boundary", atBoundary); err != nil {
+		t.Fatal(err)
+	}
+	if worker.lastSubscriptionReminderDay != "2026-08-29" {
+		t.Fatalf("completed reminder day=%q", worker.lastSubscriptionReminderDay)
+	}
+
+	restarted := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	restarted.scheduleSubscriptionReminders(ctx, atBoundary.Add(time.Hour))
+	if restarted.lastSubscriptionReminderDay != "2026-08-29" {
+		t.Fatalf("restart did not converge on daily idempotency: day=%q", restarted.lastSubscriptionReminderDay)
+	}
+	if _, claimed, err := database.ClaimSubscriptionReminder(ctx, "after-restart", atBoundary.Add(time.Hour), time.Minute); err != nil || claimed {
+		t.Fatalf("restart duplicated reminder: claimed=%v err=%v", claimed, err)
+	}
+}
+
 func TestWorkerResetsDuePlanTrafficExactlyOnce(t *testing.T) {
 	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-plan-reset-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {

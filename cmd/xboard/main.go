@@ -210,6 +210,7 @@ func main() {
 		InvitationProtector:        invitationProtector,
 		LoginLinkProtector:         loginLinkProtector,
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
+		MailSender:                 smtpSender,
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
 		Attachments:                attachmentService,

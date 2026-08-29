@@ -118,20 +118,31 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 		return true, worker.deliverLoginLink(ctx, loginLinkJob, claimToken, now)
 	}
 	job, claimed, err := worker.store.ClaimTicketMail(ctx, claimToken, now, mailClaimLease)
-	if err != nil || !claimed {
+	if err != nil {
 		return false, err
 	}
+	if claimed {
+		return true, worker.deliverTicket(ctx, job, claimToken, now)
+	}
+	reminderJob, reminderClaimed, err := worker.store.ClaimSubscriptionReminder(ctx, claimToken, now, mailClaimLease)
+	if err != nil || !reminderClaimed {
+		return false, err
+	}
+	return true, worker.deliverSubscriptionReminder(ctx, reminderJob, claimToken, now)
+}
+
+func (worker *Worker) deliverTicket(ctx context.Context, job store.TicketMailJob, claimToken string, now time.Time) error {
 	configuration := SMTPConfig{
 		Host: job.SMTPHost, Port: job.SMTPPort, Username: job.SMTPUsername,
 		Encryption: job.SMTPEncryption, FromAddress: job.SMTPFromAddress,
 	}
 	if len(job.SMTPPasswordCipher) > 0 {
 		if worker.cipher == nil {
-			return true, worker.recordFailure(ctx, job, claimToken, now, errors.New("settings encryption key is unavailable"))
+			return worker.recordFailure(ctx, job, claimToken, now, errors.New("settings encryption key is unavailable"))
 		}
 		plaintext, decryptErr := worker.cipher.Decrypt(job.SMTPPasswordCipher)
 		if decryptErr != nil {
-			return true, worker.recordFailure(ctx, job, claimToken, now, errors.New("decrypt SMTP credential"))
+			return worker.recordFailure(ctx, job, claimToken, now, errors.New("decrypt SMTP credential"))
 		}
 		configuration.Password = string(plaintext)
 		for index := range plaintext {
@@ -148,13 +159,58 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
-		return true, worker.recordFailure(ctx, job, claimToken, now, err)
+		return worker.recordFailure(ctx, job, claimToken, now, err)
 	}
 	configuration.Password = ""
 	if err := worker.store.CompleteTicketMail(ctx, job.ID, claimToken, now); err != nil {
-		return true, fmt.Errorf("complete ticket email job: %w", err)
+		return fmt.Errorf("complete ticket email job: %w", err)
 	}
-	return true, nil
+	return nil
+}
+
+func (worker *Worker) deliverSubscriptionReminder(ctx context.Context, job store.SubscriptionReminderJob, claimToken string, now time.Time) error {
+	configuration := SMTPConfig{
+		Host: job.SMTPHost, Port: job.SMTPPort, Username: job.SMTPUsername,
+		Encryption: job.SMTPEncryption, FromAddress: job.SMTPFromAddress,
+	}
+	if len(job.SMTPPasswordCipher) > 0 {
+		if worker.cipher == nil {
+			return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("settings encryption key is unavailable"))
+		}
+		plaintext, decryptErr := worker.cipher.Decrypt(job.SMTPPasswordCipher)
+		if decryptErr != nil {
+			return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("decrypt SMTP credential"))
+		}
+		configuration.Password = string(plaintext)
+		for index := range plaintext {
+			plaintext[index] = 0
+		}
+	}
+	appName := strings.TrimSpace(job.AppName)
+	message := Message{To: job.Recipient}
+	switch job.Kind {
+	case store.SubscriptionReminderExpire:
+		message.Subject = fmt.Sprintf("您在%s的服务即将到期", appName)
+		message.Text = "您的服务将在 24 小时内到期，请及时续费。"
+	case store.SubscriptionReminderTraffic:
+		message.Subject = fmt.Sprintf("您在%s的流量使用已达到80%%", appName)
+		message.Text = "您的订阅流量使用已达到 80%，请及时处理。"
+	default:
+		configuration.Password = ""
+		return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("unsupported subscription reminder kind"))
+	}
+	if appURL := strings.TrimRight(strings.TrimSpace(job.AppURL), "/"); appURL != "" {
+		message.Text += "\r\n访问站点：" + appURL
+	}
+	if err := worker.sender.Send(ctx, configuration, message); err != nil {
+		configuration.Password = ""
+		return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, err)
+	}
+	configuration.Password = ""
+	if err := worker.store.CompleteSubscriptionReminder(ctx, job.ID, claimToken, now); err != nil {
+		return fmt.Errorf("complete subscription reminder email job: %w", err)
+	}
+	return nil
 }
 
 func (worker *Worker) deliverLoginLink(ctx context.Context, job store.LoginLinkMailJob, claimToken string, now time.Time) error {
@@ -321,6 +377,13 @@ func (worker *Worker) recordLoginLinkFailure(ctx context.Context, job store.Logi
 		return fmt.Errorf("record login link email failure after %v: %w", deliveryError, err)
 	}
 	return fmt.Errorf("login link email attempt %d failed: %w", job.Attempt, deliveryError)
+}
+
+func (worker *Worker) recordSubscriptionReminderFailure(ctx context.Context, job store.SubscriptionReminderJob, claimToken string, now time.Time, deliveryError error) error {
+	if err := worker.store.FailSubscriptionReminder(ctx, job.ID, claimToken, deliveryError.Error(), now.Add(mailRetryDelay(job.Attempt)), now); err != nil {
+		return fmt.Errorf("record subscription reminder email failure after %v: %w", deliveryError, err)
+	}
+	return fmt.Errorf("subscription reminder email attempt %d failed: %w", job.Attempt, deliveryError)
 }
 
 func passwordResetMailRetryDelay(attempt int) time.Duration {
