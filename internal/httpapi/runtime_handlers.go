@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -517,7 +518,8 @@ func etagMatches(header, target string) bool {
 }
 
 func decodeJSONLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
-	if contentType := r.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
 		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
 		return false
 	}
