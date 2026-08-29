@@ -48,7 +48,7 @@ func (s *server) getClientAppSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) updateClientAppSettings(w http.ResponseWriter, r *http.Request) {
 	var input clientAppSettingsRequest
-	if !decodeClientAppSettingsJSON(w, r, &input) {
+	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
 	if !input.complete() {
@@ -72,14 +72,17 @@ func (s *server) updateClientAppSettings(w http.ResponseWriter, r *http.Request)
 	writeSuccess(w, http.StatusOK, settings)
 }
 
-func decodeClientAppSettingsJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+func decodeStrictUTF8JSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
-	body, err := io.ReadAll(r.Body)
+	limitedBody := http.MaxBytesReader(w, r.Body, maxJSONBody)
+	body, err := io.ReadAll(limitedBody)
+	if closeErr := limitedBody.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {

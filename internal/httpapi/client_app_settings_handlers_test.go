@@ -119,6 +119,15 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 	if mixed.Code != http.StatusUnprocessableEntity || !strings.Contains(mixed.Body.String(), `"status":"fail"`) {
 		t.Fatalf("mixed legacy config status=%d body=%s", mixed.Code, mixed.Body)
 	}
+	legacyInvalidUTF8Body := []byte(`{"windows_version":"`)
+	legacyInvalidUTF8Body = append(legacyInvalidUTF8Body, 0xff)
+	legacyInvalidUTF8Body = append(legacyInvalidUTF8Body, []byte(`"}`)...)
+	legacyInvalidUTF8Request := httptest.NewRequest(http.MethodPost, "/api/v2/admin/config/save", bytes.NewReader(legacyInvalidUTF8Body))
+	legacyInvalidUTF8Request.Header.Set("Content-Type", "application/json")
+	legacyInvalidUTF8Request.Header.Set("Authorization", legacyLogin.Authorization)
+	legacyInvalidUTF8 := httptest.NewRecorder()
+	api.ServeHTTP(legacyInvalidUTF8, legacyInvalidUTF8Request)
+	expectAPIError(t, legacyInvalidUTF8, http.StatusBadRequest, "invalid_json")
 
 	userLogin := loginLegacyBearer(t, api, "client-version-reader@example.test", "client-version-reader-password-123")
 	for _, version := range []string{"v1", "v2"} {

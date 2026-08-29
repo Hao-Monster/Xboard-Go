@@ -217,7 +217,7 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 
 func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request) {
 	var input legacyConfigSaveRequest
-	if !decodeJSON(w, r, &input) {
+	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
 	invite, subscribe, email, telegram, clientApp := input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp()
