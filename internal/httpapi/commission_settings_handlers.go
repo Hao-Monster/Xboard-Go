@@ -84,6 +84,13 @@ type legacyConfigSaveRequest struct {
 	TelegramBotToken    *string `json:"telegram_bot_token"`
 	TelegramWebhookURL  *string `json:"telegram_webhook_url"`
 	TelegramDiscussLink *string `json:"telegram_discuss_link"`
+
+	WindowsVersion     *string `json:"windows_version"`
+	WindowsDownloadURL *string `json:"windows_download_url"`
+	MacOSVersion       *string `json:"macos_version"`
+	MacOSDownloadURL   *string `json:"macos_download_url"`
+	AndroidVersion     *string `json:"android_version"`
+	AndroidDownloadURL *string `json:"android_download_url"`
 }
 
 func (input legacyConfigSaveRequest) hasInvite() bool {
@@ -112,6 +119,12 @@ func (input legacyConfigSaveRequest) hasEmail() bool {
 
 func (input legacyConfigSaveRequest) hasTelegram() bool {
 	return input.TelegramBotEnabled != nil || input.TelegramBotToken != nil || input.TelegramWebhookURL != nil || input.TelegramDiscussLink != nil
+}
+
+func (input legacyConfigSaveRequest) hasClientApp() bool {
+	return input.WindowsVersion != nil || input.WindowsDownloadURL != nil ||
+		input.MacOSVersion != nil || input.MacOSDownloadURL != nil ||
+		input.AndroidVersion != nil || input.AndroidDownloadURL != nil
 }
 
 func (input commissionSettingsRequest) complete() bool {
@@ -190,6 +203,13 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeLegacySuccess(w, http.StatusOK, map[string]any{"telegram": legacyTelegramSettings(settings)})
+	case "app":
+		settings, err := s.store.GetClientAppSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "客户端应用配置读取失败")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"app": legacyClientAppSettings(settings)})
 	default:
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "不支持的配置组")
 	}
@@ -197,12 +217,12 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 
 func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request) {
 	var input legacyConfigSaveRequest
-	if !decodeJSON(w, r, &input) {
+	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
-	invite, subscribe, email, telegram := input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram()
+	invite, subscribe, email, telegram, clientApp := input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp()
 	groupCount := 0
-	for _, present := range []bool{invite, subscribe, email, telegram} {
+	for _, present := range []bool{invite, subscribe, email, telegram, clientApp} {
 		if present {
 			groupCount++
 		}
@@ -212,6 +232,25 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if clientApp {
+		_, err := s.store.UpdateLegacyClientAppSettings(r.Context(), session.UserID, store.SaveLegacyClientAppSettingsInput{
+			WindowsVersion: input.WindowsVersion, WindowsDownloadURL: input.WindowsDownloadURL,
+			MacOSVersion: input.MacOSVersion, MacOSDownloadURL: input.MacOSDownloadURL,
+			AndroidVersion: input.AndroidVersion, AndroidDownloadURL: input.AndroidDownloadURL,
+		}, s.now())
+		if err != nil {
+			status, message := http.StatusUnprocessableEntity, "客户端应用配置无效"
+			if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+			} else if !errors.Is(err, store.ErrInvalidInput) {
+				status, message = http.StatusInternalServerError, "客户端应用配置保存失败"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	if telegram {
 		current, err := s.store.GetTelegramSettings(r.Context())
 		if err != nil {

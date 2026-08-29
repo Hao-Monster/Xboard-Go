@@ -349,6 +349,8 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     getTelegramSettings: vi.fn(),
     updateTelegramSettings: vi.fn(),
     provisionTelegramWebhook: vi.fn(),
+    getClientAppSettings: vi.fn(),
+    updateClientAppSettings: vi.fn(),
     getSiteSettings: vi.fn(),
     updateSiteSettings: vi.fn(),
     getCommissionSettings: vi.fn(),

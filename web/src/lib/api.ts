@@ -1196,6 +1196,19 @@ export interface TelegramSettingsInput {
   telegram_discuss_link: string;
 }
 
+export interface ClientAppSettings {
+  revision: number;
+  windows_version: string;
+  windows_download_url: string;
+  macos_version: string;
+  macos_download_url: string;
+  android_version: string;
+  android_download_url: string;
+  updated_at: string;
+}
+
+export type ClientAppSettingsInput = Omit<ClientAppSettings, "updated_at">;
+
 export interface TelegramProvisionResult {
   settings: TelegramSettings;
   webhook_url: string;
@@ -1677,6 +1690,8 @@ export interface AdminAPI {
   getTelegramSettings: () => Promise<TelegramSettings>;
   updateTelegramSettings: (input: TelegramSettingsInput) => Promise<TelegramSettings>;
   provisionTelegramWebhook: (revision: number) => Promise<TelegramProvisionResult>;
+  getClientAppSettings: () => Promise<ClientAppSettings>;
+  updateClientAppSettings: (input: ClientAppSettingsInput) => Promise<ClientAppSettings>;
   getSiteSettings: () => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   getCommissionSettings: () => Promise<CommissionSettings>;
@@ -2512,6 +2527,14 @@ export class APIClient implements AdminAPI {
 
   async provisionTelegramWebhook(revision: number): Promise<TelegramProvisionResult> {
     return this.request<TelegramProvisionResult>("/api/v1/admin/telegram-settings/webhook", { method: "POST", body: { revision } });
+  }
+
+  async getClientAppSettings(): Promise<ClientAppSettings> {
+    return this.request<ClientAppSettings>("/api/v1/admin/client-app-settings");
+  }
+
+  async updateClientAppSettings(input: ClientAppSettingsInput): Promise<ClientAppSettings> {
+    return this.request<ClientAppSettings>("/api/v1/admin/client-app-settings", { method: "PUT", body: input });
   }
 
   async getSiteSettings(): Promise<SiteSettings> {

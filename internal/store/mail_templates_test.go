@@ -118,7 +118,7 @@ func TestMailTemplateStoreRejectsInvalidNamesContentAndMissingCatalogRows(t *tes
 	}
 }
 
-func TestSchemaV48CreatesExactlyFiveMailTemplateRows(t *testing.T) {
+func TestSchemaV48CreatesExactlyFiveMailTemplateRowsBeforeContinuingToCurrentSchema(t *testing.T) {
 	database := newTestStore(t)
 	ctx := t.Context()
 	if _, err := database.db.ExecContext(ctx, `DROP TABLE mail_templates; PRAGMA user_version = 47`); err != nil {
@@ -134,7 +134,7 @@ func TestSchemaV48CreatesExactlyFiveMailTemplateRows(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM mail_templates`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if version != 48 || rows != 5 {
+	if version != CurrentSchemaVersion() || rows != 5 {
 		t.Fatalf("schema version=%d mail template rows=%d", version, rows)
 	}
 }

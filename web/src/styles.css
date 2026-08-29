@@ -718,8 +718,18 @@ textarea { min-height: 100px; resize: vertical; }
 .mail-template-preview iframe { width: 100%; min-height: 24rem; border: 1px solid #303746; border-radius: .75rem; background: white; }
 .mail-template-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.client-app-settings-form { display: grid; gap: 1rem; margin-top: 1.25rem; }
+.client-app-platform-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.client-app-platform-card { margin-top: 0; min-width: 0; }
+.client-app-platform-card input { width: 100%; }
+
 @media (max-width: 760px) {
   .mail-template-layout { grid-template-columns: 1fr; }
   .mail-template-list { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mail-template-test-row { grid-template-columns: 1fr; }
+  .client-app-platform-grid { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .client-app-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

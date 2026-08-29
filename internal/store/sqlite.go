@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 48
+const currentSchemaVersion = 49
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -361,6 +361,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v48: %w", err)
 		}
 		version = 48
+	}
+	if version < 49 {
+		if _, err := tx.ExecContext(ctx, schemaV49); err != nil {
+			return fmt.Errorf("apply schema v49: %w", err)
+		}
+		version = 49
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2218,6 +2224,41 @@ CREATE TABLE IF NOT EXISTS mail_templates (
 
 INSERT OR IGNORE INTO mail_templates(name) VALUES
     ('verify'), ('notify'), ('remindExpire'), ('remindTraffic'), ('mailLogin');
+`
+
+const schemaV49 = `
+CREATE TABLE IF NOT EXISTS client_app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    windows_version TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(windows_version AS BLOB)) <= 128 AND instr(windows_version, char(0)) = 0
+    ),
+    windows_download_url TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(windows_download_url AS BLOB)) <= 2048
+        AND instr(windows_download_url, char(0)) = 0
+        AND (windows_download_url = '' OR lower(substr(windows_download_url, 1, 8)) = 'https://')
+    ),
+    macos_version TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(macos_version AS BLOB)) <= 128 AND instr(macos_version, char(0)) = 0
+    ),
+    macos_download_url TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(macos_download_url AS BLOB)) <= 2048
+        AND instr(macos_download_url, char(0)) = 0
+        AND (macos_download_url = '' OR lower(substr(macos_download_url, 1, 8)) = 'https://')
+    ),
+    android_version TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(android_version AS BLOB)) <= 128 AND instr(android_version, char(0)) = 0
+    ),
+    android_download_url TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(android_download_url AS BLOB)) <= 2048
+        AND instr(android_download_url, char(0)) = 0
+        AND (android_download_url = '' OR lower(substr(android_download_url, 1, 8)) = 'https://')
+    ),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+) STRICT;
+
+INSERT OR IGNORE INTO client_app_settings(id) VALUES (1);
 `
 
 func applySchemaV47(ctx context.Context, tx *sql.Tx) error {

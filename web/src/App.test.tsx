@@ -59,6 +59,45 @@ describe("App public identity bootstrap", () => {
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
+  it("warns before leaving client app settings with unsaved changes", async () => {
+    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    vi.stubGlobal("confirm", confirm);
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        app_name: "Client Board", app_description: null, app_url: null, tos_url: null, logo: null,
+        is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+        captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+        recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+      } }));
+      if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        id: 92, email: "client-admin@example.test", is_admin: true, is_staff: false, is_distributor: false
+      } }));
+      if (path.endsWith("/api/v1/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        revision: 1,
+        windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
+        macos_version: "4.8.2", macos_download_url: "https://download.example.test/macos.dmg",
+        android_version: "4.8.3", android_download_url: "https://download.example.test/android.apk",
+        updated_at: "2026-08-30T11:00:00Z"
+      } }));
+      return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "客户端版本" }));
+    const version = await screen.findByLabelText("Windows 版本");
+    await user.clear(version);
+    await user.type(version, "5.0.0");
+    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
+    expect(screen.getByRole("heading", { name: "客户端版本" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("heading", { name: "系统设置" })).toBeVisible();
+  });
+
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
 		const token = "11111111111111111111111111111111";
 		let sessionRequested = false;
