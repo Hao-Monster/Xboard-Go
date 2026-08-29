@@ -27,10 +27,17 @@ type guestConfigResponse struct {
 	AppURL                    *string `json:"app_url"`
 	Logo                      *string `json:"logo"`
 	IsRecaptcha               int     `json:"is_recaptcha"`
+	IsTelegram                int     `json:"is_telegram"`
+	TelegramDiscussLink       *string `json:"telegram_discuss_link"`
 }
 
 func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.store.GetSiteSettings(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	telegramSettings, err := s.store.GetTelegramSettings(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -50,8 +57,10 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		TurnstileSiteKey:          nullablePublicString(settings.TurnstileSiteKey), AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
 		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
-		IsInviteForce:      boolToInt(settings.InvitationForceEnabled),
-		EnableCouponSystem: boolToInt(settings.CouponEnabled),
+		IsInviteForce:       boolToInt(settings.InvitationForceEnabled),
+		EnableCouponSystem:  boolToInt(settings.CouponEnabled),
+		IsTelegram:          boolToInt(telegramSettings.BotEnabled),
+		TelegramDiscussLink: nullablePublicString(telegramSettings.DiscussLink),
 	})
 }
 

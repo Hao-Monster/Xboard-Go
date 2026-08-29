@@ -24,6 +24,8 @@ const (
 	RecaptchaV3SecretPurpose SecretPurpose = "recaptcha-v3-secret"
 	TurnstileSecretPurpose   SecretPurpose = "turnstile-secret"
 	PaymentConfigPurpose     SecretPurpose = "payment-config"
+	TelegramBotTokenPurpose  SecretPurpose = "telegram-bot-token"
+	TelegramWebhookPurpose   SecretPurpose = "telegram-webhook-secret"
 )
 
 const settingsAADPrefix = "xboard-go:app-settings:"
@@ -120,6 +122,10 @@ func purposeAAD(purpose SecretPurpose) ([]byte, error) {
 		suffix = "turnstile-secret:v1"
 	case PaymentConfigPurpose:
 		suffix = "payment-config:v1"
+	case TelegramBotTokenPurpose:
+		suffix = "telegram-bot-token:v1"
+	case TelegramWebhookPurpose:
+		suffix = "telegram-webhook-secret:v1"
 	default:
 		return nil, errors.New("settings secret purpose is invalid")
 	}

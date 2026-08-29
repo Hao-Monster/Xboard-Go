@@ -204,6 +204,8 @@ type guestConfigContract struct {
 	RecaptchaV3Threshold float64         `json:"recaptcha_v3_score_threshold"`
 	TurnstileSiteKey     *string         `json:"turnstile_site_key"`
 	IsRecaptcha          int             `json:"is_recaptcha"`
+	IsTelegram           int             `json:"is_telegram"`
+	TelegramDiscussLink  *string         `json:"telegram_discuss_link"`
 }
 
 func decodeSiteSettingsEnvelope(t *testing.T, response *httptest.ResponseRecorder) store.SiteSettings {
@@ -247,6 +249,7 @@ func assertGuestConfigKeys(t *testing.T, response *httptest.ResponseRecorder) {
 		"tos_url", "is_email_verify", "is_invite_force", "email_whitelist_suffix", "is_captcha", "captcha_type",
 		"recaptcha_site_key", "recaptcha_v3_site_key", "recaptcha_v3_score_threshold", "turnstile_site_key",
 		"app_name", "app_description", "app_url", "logo", "is_recaptcha", "enable_coupon_system",
+		"is_telegram", "telegram_discuss_link",
 	} {
 		if _, ok := envelope.Data[key]; !ok {
 			t.Errorf("guest config key %q is missing", key)

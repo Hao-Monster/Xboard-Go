@@ -557,13 +557,16 @@ func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, std
 
 func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
+		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-telegram-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
 	}
 	if arguments[0] == "import-legacy-registration-trial-settings" {
 		return runLegacyRegistrationTrialSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] == "import-legacy-node-agent-settings" {
 		return runLegacyNodeAgentSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
+	if arguments[0] == "import-legacy-telegram-settings" {
+		return runLegacyTelegramSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] == "import-legacy-subscription-config" {
 		return runLegacySubscriptionConfigMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
@@ -2333,7 +2336,11 @@ func initializeSettingsCipher(ctx context.Context, database *store.Store, key []
 	if err != nil {
 		return nil, err
 	}
-	settingsSecretsExist := len(ciphertext) > 0 || len(captchaSecrets.Recaptcha) > 0 || len(captchaSecrets.RecaptchaV3) > 0 || len(captchaSecrets.Turnstile) > 0 || len(paymentConfigs) > 0
+	telegramSecrets, err := database.GetTelegramSecretCiphers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settingsSecretsExist := len(ciphertext) > 0 || len(captchaSecrets.Recaptcha) > 0 || len(captchaSecrets.RecaptchaV3) > 0 || len(captchaSecrets.Turnstile) > 0 || len(paymentConfigs) > 0 || len(telegramSecrets.BotToken) > 0 || len(telegramSecrets.WebhookSecret) > 0 || len(telegramSecrets.PendingWebhookSecret) > 0
 	if len(key) == 0 {
 		if settingsSecretsExist {
 			return nil, errors.New("settings encryption key is required for stored credentials")
@@ -2372,6 +2379,25 @@ func initializeSettingsCipher(ctx context.Context, database *store.Store, key []
 	for _, config := range paymentConfigs {
 		if _, err := payment.OpenConfig(cipherBox, config.Provider, config.Ciphertext); err != nil {
 			return nil, errors.New("settings encryption key cannot decrypt a stored payment credential")
+		}
+	}
+	for _, encrypted := range []struct {
+		purpose    appsettings.SecretPurpose
+		ciphertext []byte
+	}{
+		{purpose: appsettings.TelegramBotTokenPurpose, ciphertext: telegramSecrets.BotToken},
+		{purpose: appsettings.TelegramWebhookPurpose, ciphertext: telegramSecrets.WebhookSecret},
+		{purpose: appsettings.TelegramWebhookPurpose, ciphertext: telegramSecrets.PendingWebhookSecret},
+	} {
+		if len(encrypted.ciphertext) == 0 {
+			continue
+		}
+		plaintext, err := cipherBox.DecryptFor(encrypted.purpose, encrypted.ciphertext)
+		if err != nil {
+			return nil, errors.New("settings encryption key cannot decrypt a stored Telegram credential")
+		}
+		for index := range plaintext {
+			plaintext[index] = 0
 		}
 	}
 	return cipherBox, nil

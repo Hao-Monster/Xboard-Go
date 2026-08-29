@@ -27,6 +27,39 @@ describe("APIClient CAPTCHA contracts", () => {
   });
 });
 
+describe("APIClient Telegram settings contracts", () => {
+  it("keeps reads non-mutating and sends revisioned settings and provisioning with CSRF", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=telegram-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({
+        path, method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: headers.get("X-CSRF-Token")
+      });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    const input = {
+      revision: 7, telegram_bot_enable: true,
+      telegram_bot_token: "123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+      telegram_webhook_url: "https://panel.example.test", telegram_discuss_link: "https://t.me/xboard_group"
+    };
+
+    await api.getTelegramSettings();
+    await api.updateTelegramSettings(input);
+    await api.provisionTelegramWebhook(8);
+
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/telegram-settings", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/telegram-settings", method: "PUT", body: input, csrf: "telegram-csrf" },
+      { path: "/api/v1/admin/telegram-settings/webhook", method: "POST", body: { revision: 8 }, csrf: "telegram-csrf" }
+    ]);
+  });
+});
+
 describe("APIClient administrator node contracts", () => {
   it("encodes bounded filters and sends revision-protected mutations with CSRF", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

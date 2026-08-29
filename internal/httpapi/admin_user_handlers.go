@@ -673,6 +673,8 @@ func writeLegacyAdminUserError(w http.ResponseWriter, err error) {
 		writeLegacyOrderFail(w, http.StatusNotFound, "用户不存在")
 	case errors.Is(err, store.ErrEmailInUse):
 		writeLegacyOrderFail(w, http.StatusConflict, "邮箱已被使用")
+	case errors.Is(err, store.ErrTelegramIDInUse):
+		writeLegacyOrderFail(w, http.StatusConflict, "Telegram ID 已被其他用户绑定")
 	case errors.Is(err, store.ErrConflict):
 		writeLegacyOrderFail(w, http.StatusConflict, "用户状态已被其他管理员修改，请刷新后重试")
 	case errors.Is(err, store.ErrAdminUserPlanNotFound):
@@ -1211,6 +1213,10 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 	}, s.now())
 	if errors.Is(err, store.ErrEmailInUse) {
 		writeAPIError(w, http.StatusConflict, "email_in_use", "邮箱已被使用", map[string]string{"email": "邮箱已被使用"})
+		return
+	}
+	if errors.Is(err, store.ErrTelegramIDInUse) {
+		writeAPIError(w, http.StatusConflict, "telegram_id_in_use", "Telegram ID 已被其他用户绑定", map[string]string{"telegram_id": "Telegram ID 已被其他用户绑定"})
 		return
 	}
 	if errors.Is(err, store.ErrConflict) {

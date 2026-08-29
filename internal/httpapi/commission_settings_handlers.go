@@ -79,6 +79,11 @@ type legacyConfigSaveRequest struct {
 	EmailEncryption   *string          `json:"email_encryption"`
 	EmailFromAddress  *string          `json:"email_from_address"`
 	RemindMailEnabled *bool            `json:"remind_mail_enable"`
+
+	TelegramBotEnabled  *bool   `json:"telegram_bot_enable"`
+	TelegramBotToken    *string `json:"telegram_bot_token"`
+	TelegramWebhookURL  *string `json:"telegram_webhook_url"`
+	TelegramDiscussLink *string `json:"telegram_discuss_link"`
 }
 
 func (input legacyConfigSaveRequest) hasInvite() bool {
@@ -103,6 +108,10 @@ func (input legacyConfigSaveRequest) hasSubscribe() bool {
 func (input legacyConfigSaveRequest) hasEmail() bool {
 	return input.EmailHost != nil || input.EmailPort != nil || input.EmailUsername != nil || input.EmailPassword != nil ||
 		input.EmailEncryption != nil || input.EmailFromAddress != nil || input.RemindMailEnabled != nil
+}
+
+func (input legacyConfigSaveRequest) hasTelegram() bool {
+	return input.TelegramBotEnabled != nil || input.TelegramBotToken != nil || input.TelegramWebhookURL != nil || input.TelegramDiscussLink != nil
 }
 
 func (input commissionSettingsRequest) complete() bool {
@@ -174,6 +183,13 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeLegacySuccess(w, http.StatusOK, map[string]any{"email": legacyMailSettings(settings)})
+	case "telegram":
+		settings, err := s.store.GetTelegramSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "Telegram 配置读取失败")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"telegram": legacyTelegramSettings(settings)})
 	default:
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "不支持的配置组")
 	}
@@ -184,9 +200,9 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	invite, subscribe, email := input.hasInvite(), input.hasSubscribe(), input.hasEmail()
+	invite, subscribe, email, telegram := input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram()
 	groupCount := 0
-	for _, present := range []bool{invite, subscribe, email} {
+	for _, present := range []bool{invite, subscribe, email, telegram} {
 		if present {
 			groupCount++
 		}
@@ -196,6 +212,46 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if telegram {
+		current, err := s.store.GetTelegramSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "Telegram 配置读取失败")
+			return
+		}
+		request := telegramSettingsRequest{
+			Revision: current.Revision, BotEnabled: current.BotEnabled,
+			WebhookURL: current.WebhookURL, DiscussLink: current.DiscussLink,
+		}
+		if input.TelegramBotEnabled != nil {
+			request.BotEnabled = *input.TelegramBotEnabled
+		}
+		if input.TelegramBotToken != nil && *input.TelegramBotToken != "" {
+			request.BotToken = input.TelegramBotToken
+		}
+		if input.TelegramWebhookURL != nil {
+			request.WebhookURL = *input.TelegramWebhookURL
+		}
+		if input.TelegramDiscussLink != nil {
+			request.DiscussLink = *input.TelegramDiscussLink
+		}
+		save, err := s.prepareTelegramSettingsSave(request)
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "Telegram 配置无效")
+			return
+		}
+		if _, err := s.store.UpdateTelegramSettings(r.Context(), session.UserID, current.Revision, save, s.now()); err != nil {
+			status, message := http.StatusUnprocessableEntity, "Telegram 配置无效"
+			if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+			} else if !errors.Is(err, store.ErrInvalidInput) {
+				status, message = http.StatusInternalServerError, "Telegram 配置保存失败"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	if email {
 		current, err := s.store.GetMailSettings(r.Context())
 		if err != nil {
@@ -301,6 +357,42 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeLegacySuccess(w, http.StatusOK, true)
+}
+
+func (s *server) legacyProvisionTelegramWebhook(w http.ResponseWriter, r *http.Request) {
+	session, _ := sessionFromContext(r.Context())
+	if !s.telegramProvisionRequests.take(strconv.FormatInt(session.UserID, 10), s.now()) {
+		writeLegacyInviteFailure(w, http.StatusTooManyRequests, "Webhook 设置过于频繁")
+		return
+	}
+	settings, err := s.store.GetTelegramSettings(r.Context())
+	if err != nil {
+		writeLegacyInviteFailure(w, http.StatusInternalServerError, "Telegram 配置读取失败")
+		return
+	}
+	result, err := s.provisionTelegram(r, session.UserID, settings.Revision)
+	if err != nil {
+		status, message := http.StatusBadGateway, "Telegram Webhook 设置失败"
+		if errors.Is(err, store.ErrConflict) {
+			status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+		} else if errors.Is(err, store.ErrInvalidInput) || errors.Is(err, errTelegramWebhookURLInvalid) || errors.Is(err, errTelegramNotConfigured) {
+			status, message = http.StatusUnprocessableEntity, "Telegram 配置无效"
+		} else if errors.Is(err, errTelegramEncryptionUnavailable) {
+			status, message = http.StatusServiceUnavailable, "Telegram 配置加密不可用"
+		}
+		writeLegacyInviteFailure(w, status, message)
+		return
+	}
+	writeLegacySuccess(w, http.StatusOK, map[string]any{
+		"success": true, "webhook_url": result.WebhookURL, "webhook_base_url": result.WebhookBaseURL,
+	})
+}
+
+func legacyTelegramSettings(settings store.TelegramSettings) map[string]any {
+	return map[string]any{
+		"telegram_bot_enable": settings.BotEnabled, "telegram_bot_token": "",
+		"telegram_webhook_url": settings.WebhookURL, "telegram_discuss_link": settings.DiscussLink,
+	}
 }
 
 func (s *server) legacyTestSendMail(w http.ResponseWriter, r *http.Request) {
