@@ -152,38 +152,15 @@ func (s *server) sendTestMail(ctx context.Context, recipient string) error {
 	if s.mailSender == nil {
 		return errSMTPTestUnavailable
 	}
-	mailSettings, err := s.store.GetMailSettings(ctx)
-	if err != nil {
-		return err
-	}
-	if !mailSettings.SMTPEnabled || mailSettings.SMTPHost == "" || mailSettings.SMTPFromAddress == "" {
-		return errSMTPTestNotConfigured
-	}
 	siteSettings, err := s.store.GetSiteSettings(ctx)
 	if err != nil {
 		return err
 	}
-	configuration := mailer.SMTPConfig{
-		Host: mailSettings.SMTPHost, Port: mailSettings.SMTPPort, Username: mailSettings.SMTPUsername,
-		Encryption: mailSettings.SMTPEncryption, FromAddress: mailSettings.SMTPFromAddress,
-	}
-	ciphertext, err := s.store.GetSMTPPasswordCipher(ctx)
+	configuration, err := s.loadSMTPConfiguration(ctx)
 	if err != nil {
 		return err
 	}
-	if len(ciphertext) > 0 {
-		if s.settingsCipher == nil {
-			return errSMTPTestUnavailable
-		}
-		plaintext, decryptErr := s.settingsCipher.Decrypt(ciphertext)
-		if decryptErr != nil {
-			return errSMTPTestUnavailable
-		}
-		configuration.Password = string(plaintext)
-		for index := range plaintext {
-			plaintext[index] = 0
-		}
-	}
+	defer func() { configuration.Password = "" }()
 	body := "This is xboard test email\r\nSite: " + siteSettings.AppName
 	if siteSettings.AppURL != "" {
 		body += "\r\nURL: " + siteSettings.AppURL
@@ -191,13 +168,11 @@ func (s *server) sendTestMail(ctx context.Context, recipient string) error {
 	if err := s.mailSender.Send(ctx, configuration, mailer.Message{
 		To: recipient, Subject: "This is xboard test email", Text: body,
 	}); err != nil {
-		configuration.Password = ""
 		// SMTP servers may echo recipient addresses or attacker-controlled response
 		// text. Keep the operational event observable without persisting that data.
 		s.logger.Warn("SMTP test delivery failed", "reason", "delivery_failed")
 		return errSMTPTestDelivery
 	}
-	configuration.Password = ""
 	return nil
 }
 

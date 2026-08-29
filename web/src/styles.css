@@ -663,3 +663,63 @@ textarea { min-height: 100px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+.email-settings-shell { display: grid; gap: 1rem; }
+.email-settings-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: .25rem;
+  padding: .25rem;
+  border: 1px solid #303746;
+  border-radius: .75rem;
+  background: #171b24;
+}
+.email-settings-tabs button {
+  border: 0;
+  border-radius: .55rem;
+  padding: .55rem .9rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.email-settings-tabs button.active { background: #252c48; color: #f7f8fb; }
+
+.mail-template-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.mail-template-list {
+  display: grid;
+  gap: .5rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.mail-template-item {
+  border: 1px solid #303746;
+  border-radius: .75rem;
+  background: transparent;
+  color: inherit;
+  padding: .75rem;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: .2rem;
+}
+
+.mail-template-item small { color: var(--muted); }
+.mail-template-item.active { border-color: #8da9ff; background: #252c48; }
+.mail-template-variables { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.mail-template-test-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: end; }
+.mail-template-preview { border-top: 1px solid #303746; padding-top: 1rem; }
+.mail-template-preview iframe { width: 100%; min-height: 24rem; border: 1px solid #303746; border-radius: .75rem; background: white; }
+.mail-template-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .mail-template-layout { grid-template-columns: 1fr; }
+  .mail-template-list { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mail-template-test-row { grid-template-columns: 1fr; }
+}

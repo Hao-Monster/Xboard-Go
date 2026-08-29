@@ -60,6 +60,36 @@ describe("APIClient Telegram settings contracts", () => {
   });
 });
 
+describe("APIClient mail template contracts", () => {
+  it("keeps catalog reads non-mutating and sends every editor action with CSRF", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=template-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({ path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined, csrf: headers.get("X-CSRF-Token") });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+
+    await api.listMailTemplates();
+    await api.getMailTemplate("mailLogin");
+    await api.updateMailTemplate("mailLogin", 2, "{{name}} - 登录", "<p>{{link}}</p>");
+    await api.previewMailTemplate("mailLogin", "{{name}} - 预览", "<p>{{link}}</p>");
+    await api.testMailTemplate("mailLogin", "admin@example.test");
+    await api.resetMailTemplate("mailLogin", 3);
+
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/mail-templates", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/mail-templates/mailLogin", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/mail-templates/mailLogin", method: "PUT", body: { revision: 2, subject: "{{name}} - 登录", content: "<p>{{link}}</p>" }, csrf: "template-csrf" },
+      { path: "/api/v1/admin/mail-templates/mailLogin/preview", method: "POST", body: { subject: "{{name}} - 预览", content: "<p>{{link}}</p>" }, csrf: "template-csrf" },
+      { path: "/api/v1/admin/mail-templates/mailLogin/test", method: "POST", body: { email: "admin@example.test" }, csrf: "template-csrf" },
+      { path: "/api/v1/admin/mail-templates/mailLogin/reset", method: "POST", body: { revision: 3 }, csrf: "template-csrf" }
+    ]);
+  });
+});
+
 describe("APIClient administrator node contracts", () => {
   it("encodes bounded filters and sends revision-protected mutations with CSRF", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

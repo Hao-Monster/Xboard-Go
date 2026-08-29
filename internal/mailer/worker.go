@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/mailtemplate"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
@@ -149,13 +150,12 @@ func (worker *Worker) deliverTicket(ctx context.Context, job store.TicketMailJob
 			plaintext[index] = 0
 		}
 	}
-	message := Message{
-		To:      job.Recipient,
-		Subject: fmt.Sprintf("您在%s的工单得到了回复", strings.TrimSpace(job.AppName)),
-		Text:    fmt.Sprintf("主题：%s\r\n回复内容：%s", job.Subject, job.Message),
-	}
-	if strings.TrimSpace(job.AppURL) != "" {
-		message.Text += "\r\n查看工单：" + strings.TrimRight(strings.TrimSpace(job.AppURL), "/")
+	message, err := worker.renderMailTemplate(ctx, mailtemplate.Notify, job.Recipient, job.AppName, job.AppURL, map[string]string{
+		"content": fmt.Sprintf("主题：%s\r\n回复内容：%s", job.Subject, job.Message),
+	})
+	if err != nil {
+		configuration.Password = ""
+		return worker.recordFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -186,21 +186,20 @@ func (worker *Worker) deliverSubscriptionReminder(ctx context.Context, job store
 			plaintext[index] = 0
 		}
 	}
-	appName := strings.TrimSpace(job.AppName)
-	message := Message{To: job.Recipient}
+	var templateName mailtemplate.Name
 	switch job.Kind {
 	case store.SubscriptionReminderExpire:
-		message.Subject = fmt.Sprintf("您在%s的服务即将到期", appName)
-		message.Text = "您的服务将在 24 小时内到期，请及时续费。"
+		templateName = mailtemplate.RemindExpire
 	case store.SubscriptionReminderTraffic:
-		message.Subject = fmt.Sprintf("您在%s的流量使用已达到80%%", appName)
-		message.Text = "您的订阅流量使用已达到 80%，请及时处理。"
+		templateName = mailtemplate.RemindTraffic
 	default:
 		configuration.Password = ""
 		return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("unsupported subscription reminder kind"))
 	}
-	if appURL := strings.TrimRight(strings.TrimSpace(job.AppURL), "/"); appURL != "" {
-		message.Text += "\r\n访问站点：" + appURL
+	message, err := worker.renderMailTemplate(ctx, templateName, job.Recipient, job.AppName, job.AppURL, nil)
+	if err != nil {
+		configuration.Password = ""
+		return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -245,9 +244,12 @@ func (worker *Worker) deliverLoginLink(ctx context.Context, job store.LoginLinkM
 	}
 	loginURL := strings.TrimRight(strings.TrimSpace(job.AppURL), "/") + "/#/login?verify=" +
 		url.QueryEscape(string(token)) + "&redirect=" + url.QueryEscape(job.Redirect)
-	message := Message{
-		To: job.Recipient, Subject: fmt.Sprintf("登录到%s", strings.TrimSpace(job.AppName)),
-		Text: "点击以下链接登录：\r\n" + loginURL + "\r\n链接 5 分钟内有效且只能使用一次。如非本人操作，请忽略此邮件。",
+	message, err := worker.renderMailTemplate(ctx, mailtemplate.MailLogin, job.Recipient, job.AppName, job.AppURL, map[string]string{
+		"link": loginURL,
+	})
+	if err != nil {
+		configuration.Password = ""
+		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -290,9 +292,12 @@ func (worker *Worker) deliverRegistrationEmailVerification(ctx context.Context, 
 			plaintext[index] = 0
 		}
 	}
-	message := Message{
-		To: job.Recipient, Subject: fmt.Sprintf("%s邮箱验证码", strings.TrimSpace(job.AppName)),
-		Text: fmt.Sprintf("您的邮箱验证码是：%s\r\n验证码 5 分钟内有效，请勿泄露给他人。", string(code)),
+	message, err := worker.renderMailTemplate(ctx, mailtemplate.Verify, job.Recipient, job.AppName, job.AppURL, map[string]string{
+		"code": string(code),
+	})
+	if err != nil {
+		configuration.Password = ""
+		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -335,9 +340,12 @@ func (worker *Worker) deliverPasswordReset(ctx context.Context, job store.Passwo
 			plaintext[index] = 0
 		}
 	}
-	message := Message{
-		To: job.Recipient, Subject: fmt.Sprintf("%s邮箱验证码", strings.TrimSpace(job.AppName)),
-		Text: fmt.Sprintf("您的邮箱验证码是：%s\r\n验证码 5 分钟内有效，请勿泄露给他人。", string(code)),
+	message, err := worker.renderMailTemplate(ctx, mailtemplate.Verify, job.Recipient, job.AppName, job.AppURL, map[string]string{
+		"code": string(code),
+	})
+	if err != nil {
+		configuration.Password = ""
+		return worker.recordPasswordResetFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -348,6 +356,23 @@ func (worker *Worker) deliverPasswordReset(ctx context.Context, job store.Passwo
 		return fmt.Errorf("complete password reset email job: %w", err)
 	}
 	return nil
+}
+
+func (worker *Worker) renderMailTemplate(ctx context.Context, name mailtemplate.Name, recipient, appName, appURL string, values map[string]string) (Message, error) {
+	stored, err := worker.store.GetMailTemplate(ctx, name)
+	if err != nil {
+		return Message{}, err
+	}
+	if values == nil {
+		values = make(map[string]string, 2)
+	}
+	values["name"] = strings.TrimSpace(appName)
+	values["url"] = strings.TrimRight(strings.TrimSpace(appURL), "/")
+	rendered, err := mailtemplate.Render(mailtemplate.Template{Name: stored.Name, Subject: stored.Subject, Content: stored.Content}, values)
+	if err != nil {
+		return Message{}, err
+	}
+	return Message{To: recipient, Subject: rendered.Subject, Text: rendered.Text, HTML: rendered.HTML}, nil
 }
 
 func (worker *Worker) recordFailure(ctx context.Context, job store.TicketMailJob, claimToken string, now time.Time, deliveryError error) error {
