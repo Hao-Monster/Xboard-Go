@@ -1154,6 +1154,32 @@ export interface MailSettingsTestResult {
   recipient: string;
 }
 
+export interface TelegramSettings {
+  revision: number;
+  telegram_bot_enable: boolean;
+  telegram_bot_token_set: boolean;
+  telegram_webhook_url: string;
+  telegram_discuss_link: string;
+  telegram_bot_username: string;
+  telegram_webhook_configured_at: string | null;
+  updated_at: string;
+}
+
+export interface TelegramSettingsInput {
+  revision: number;
+  telegram_bot_enable: boolean;
+  telegram_bot_token?: string;
+  clear_telegram_bot_token?: boolean;
+  telegram_webhook_url: string;
+  telegram_discuss_link: string;
+}
+
+export interface TelegramProvisionResult {
+  settings: TelegramSettings;
+  webhook_url: string;
+  webhook_base_url: string;
+}
+
 export interface SiteSettings {
   revision: number;
   app_name: string;
@@ -1620,6 +1646,9 @@ export interface AdminAPI {
   getMailSettings: () => Promise<MailSettings>;
   updateMailSettings: (input: MailSettingsInput) => Promise<MailSettings>;
   testMailSettings: () => Promise<MailSettingsTestResult>;
+  getTelegramSettings: () => Promise<TelegramSettings>;
+  updateTelegramSettings: (input: TelegramSettingsInput) => Promise<TelegramSettings>;
+  provisionTelegramWebhook: (revision: number) => Promise<TelegramProvisionResult>;
   getSiteSettings: () => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   getCommissionSettings: () => Promise<CommissionSettings>;
@@ -2419,6 +2448,18 @@ export class APIClient implements AdminAPI {
 
   async testMailSettings(): Promise<MailSettingsTestResult> {
     return this.request<MailSettingsTestResult>("/api/v1/admin/mail-settings/test", { method: "POST", body: {} });
+  }
+
+  async getTelegramSettings(): Promise<TelegramSettings> {
+    return this.request<TelegramSettings>("/api/v1/admin/telegram-settings");
+  }
+
+  async updateTelegramSettings(input: TelegramSettingsInput): Promise<TelegramSettings> {
+    return this.request<TelegramSettings>("/api/v1/admin/telegram-settings", { method: "PUT", body: input });
+  }
+
+  async provisionTelegramWebhook(revision: number): Promise<TelegramProvisionResult> {
+    return this.request<TelegramProvisionResult>("/api/v1/admin/telegram-settings/webhook", { method: "POST", body: { revision } });
   }
 
   async getSiteSettings(): Promise<SiteSettings> {

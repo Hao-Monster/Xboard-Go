@@ -769,7 +769,11 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 		nullableIntValue(commissionRate), commissionBalance, nullableIntValue(discount), nullableInt64Value(telegramID),
 		remindExpire, remindTraffic, nullableStringValue(remarks), nullableTimeUnix(nextResetAt), now.Unix(), userID, input.Revision)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		lowerError := strings.ToLower(err.Error())
+		if strings.Contains(lowerError, "unique") && strings.Contains(lowerError, "users.telegram_id") {
+			return AdminUser{}, AdminUserMutation{}, ErrTelegramIDInUse
+		}
+		if strings.Contains(lowerError, "unique") {
 			return AdminUser{}, AdminUserMutation{}, ErrEmailInUse
 		}
 		return AdminUser{}, AdminUserMutation{}, fmt.Errorf("update user: %w", err)

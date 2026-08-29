@@ -24,6 +24,7 @@ const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagem
 const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
 const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
 const MailSettingsPage = lazy(async () => import("./features/settings/MailSettingsPage").then((module) => ({ default: module.MailSettingsPage })));
+const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
@@ -45,7 +46,7 @@ export function App() {
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<"system" | "settings" | "mail" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
+  const [page, setPage] = useState<"system" | "settings" | "mail" | "telegram" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account">("servers");
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -179,6 +180,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => setPage("system")}>系统状态</button>
           <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}>系统设置</button>
           <button className="nav-link" aria-current={page === "mail" ? "page" : undefined} onClick={() => setPage("mail")}>邮件设置</button>
+          <button className="nav-link" aria-current={page === "telegram" ? "page" : undefined} onClick={() => setPage("telegram")}>Telegram 设置</button>
           <button className="nav-link" aria-current={page === "commissions" ? "page" : undefined} onClick={() => setPage("commissions")}>佣金设置</button>
           <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => setPage("subscriptions")}>订阅设置</button>
           <button className="nav-link" aria-current={page === "node-settings" ? "page" : undefined} onClick={() => setPage("node-settings")}>节点配置</button>
@@ -207,6 +209,7 @@ export function App() {
       {page === "system" && <SystemOperationsPage api={api} />}
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
       {page === "mail" && <Suspense fallback={<div className="app-loading">正在加载邮件设置…</div>}><MailSettingsPage api={api} /></Suspense>}
+      {page === "telegram" && <Suspense fallback={<div className="app-loading">正在加载 Telegram 设置…</div>}><TelegramSettingsPage api={api} /></Suspense>}
       {page === "commissions" && <Suspense fallback={<div className="app-loading">正在加载佣金设置…</div>}><CommissionSettingsPage api={api} /></Suspense>}
       {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
       {page === "node-settings" && <Suspense fallback={<div className="app-loading">正在加载节点配置…</div>}><NodeAgentSettingsPage api={api} /></Suspense>}

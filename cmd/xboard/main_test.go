@@ -297,6 +297,58 @@ func TestInitializeSettingsCipherFailsClosedForStoredPaymentCredentials(t *testi
 	}
 }
 
+func TestInitializeSettingsCipherFailsClosedForStoredTelegramCredentials(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "telegram-settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "telegram-main@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x73}, 32)
+	cipherBox, err := appsettings.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenCipher, err := cipherBox.EncryptFor(appsettings.TelegramBotTokenPurpose, []byte("123456789:abcdefghijklmnopqrstuvwxyzABCDE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	webhookCipher, err := cipherBox.EncryptFor(appsettings.TelegramWebhookPurpose, []byte("telegram_webhook_secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := database.GetTelegramSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, err := database.UpdateTelegramSettings(ctx, administrator.ID, current.Revision, store.SaveTelegramSettingsInput{
+		BotEnabled: true, ReplaceBotToken: true, BotTokenCipher: tokenCipher, WebhookURL: "https://panel.example.test",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.BeginTelegramWebhookProvision(ctx, administrator.ID, configured.Revision, "0123456789abcdef0123456789abcdef", webhookCipher, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initializeSettingsCipher(ctx, database, nil); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted a missing key for Telegram credentials")
+	}
+	if _, err := initializeSettingsCipher(ctx, database, bytes.Repeat([]byte{0x24}, 32)); err == nil {
+		t.Fatal("initializeSettingsCipher() accepted the wrong key for Telegram credentials")
+	}
+	if initialized, err := initializeSettingsCipher(ctx, database, key); err != nil || initialized == nil {
+		t.Fatalf("initializeSettingsCipher() rejected the Telegram key: cipher=%v err=%v", initialized, err)
+	}
+}
+
 func saveSiteSettingsForMainTest(settings store.SiteSettings) store.SaveSiteSettingsInput {
 	return store.SaveSiteSettingsInput{
 		AppName: settings.AppName, AppDescription: settings.AppDescription, AppURL: settings.AppURL, TOSURL: settings.TOSURL, Logo: settings.Logo,

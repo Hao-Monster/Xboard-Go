@@ -313,6 +313,52 @@ func TestAdminUserMutationIsOptimisticAndRevokesSensitiveState(t *testing.T) {
 	}
 }
 
+func TestAdminUserUpdateReportsTelegramIDConflictWithoutMutatingUser(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	telegramID := int64(7788990011)
+
+	owner, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "telegram-owner@example.test", PasswordHash: "owner-hash",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(owner) error = %v", err)
+	}
+	subject, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "telegram-subject@example.test", PasswordHash: "subject-hash",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(subject) error = %v", err)
+	}
+	if _, _, err := database.UpdateAdminUser(ctx, owner.ID, UpdateAdminUserInput{
+		Revision: owner.Revision, Email: owner.Email, TransferEnable: owner.TransferEnable,
+		SpeedLimit: owner.SpeedLimit, DeviceLimit: owner.DeviceLimit, Banned: owner.Banned,
+		TelegramIDSet: true, TelegramID: &telegramID,
+	}, now.Add(time.Minute)); err != nil {
+		t.Fatalf("UpdateAdminUser(owner Telegram ID) error = %v", err)
+	}
+
+	_, _, err = database.UpdateAdminUser(ctx, subject.ID, UpdateAdminUserInput{
+		Revision: subject.Revision, Email: subject.Email, TransferEnable: subject.TransferEnable,
+		SpeedLimit: subject.SpeedLimit, DeviceLimit: subject.DeviceLimit, Banned: subject.Banned,
+		TelegramIDSet: true, TelegramID: &telegramID,
+	}, now.Add(2*time.Minute))
+	if !errors.Is(err, ErrTelegramIDInUse) {
+		t.Fatalf("duplicate Telegram ID error = %v, want ErrTelegramIDInUse", err)
+	}
+	if errors.Is(err, ErrEmailInUse) {
+		t.Fatalf("duplicate Telegram ID was misclassified as ErrEmailInUse: %v", err)
+	}
+	fresh, getErr := database.GetAdminUser(ctx, subject.ID)
+	if getErr != nil {
+		t.Fatalf("GetAdminUser(subject) error = %v", getErr)
+	}
+	if fresh.Revision != subject.Revision || fresh.TelegramID != nil {
+		t.Fatalf("failed Telegram ID update mutated subject: %#v", fresh)
+	}
+}
+
 func TestAdminUserFullProfileUpdateAppliesPlanAndSideEffectsAtomically(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

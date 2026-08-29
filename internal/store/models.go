@@ -13,6 +13,7 @@ var (
 	ErrAttachmentQuotaExceeded                = errors.New("attachment quota exceeded")
 	ErrRevisionConflict                       = fmt.Errorf("%w: revision conflict", ErrConflict)
 	ErrEmailInUse                             = fmt.Errorf("%w: email already in use", ErrConflict)
+	ErrTelegramIDInUse                        = fmt.Errorf("%w: Telegram id already in use", ErrConflict)
 	ErrAdminInviteUserNotFound                = errors.New("administrator invite user not found")
 	ErrAdminUserPlanNotFound                  = errors.New("administrator user plan not found")
 	ErrRegistrationClosed                     = errors.New("registration is closed")
@@ -220,6 +221,33 @@ type SaveMailSettingsInput struct {
 	SMTPEncryption      string
 	SMTPFromAddress     string
 	RemindMailEnabled   bool
+}
+
+type TelegramSettings struct {
+	Revision            int64      `json:"revision"`
+	BotEnabled          bool       `json:"telegram_bot_enable"`
+	BotTokenSet         bool       `json:"telegram_bot_token_set"`
+	WebhookURL          string     `json:"telegram_webhook_url"`
+	DiscussLink         string     `json:"telegram_discuss_link"`
+	BotUsername         string     `json:"telegram_bot_username"`
+	WebhookConfiguredAt *time.Time `json:"telegram_webhook_configured_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+type SaveTelegramSettingsInput struct {
+	BotEnabled      bool
+	ReplaceBotToken bool
+	BotTokenCipher  []byte
+	WebhookURL      string
+	DiscussLink     string
+}
+
+type TelegramSecretCiphers struct {
+	BotEnabled           bool
+	BotToken             []byte
+	WebhookSecret        []byte
+	PendingWebhookSecret []byte
+	ProvisionID          string
 }
 
 type SubscriptionReminderKind string

@@ -518,6 +518,14 @@ func etagMatches(header, target string) bool {
 }
 
 func decodeJSONLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
+	return decodeJSONLimitMode(w, r, target, limit, true)
+}
+
+func decodeJSONLimitAllowUnknown(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
+	return decodeJSONLimitMode(w, r, target, limit, false)
+}
+
+func decodeJSONLimitMode(w http.ResponseWriter, r *http.Request, target any, limit int64, disallowUnknownFields bool) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
@@ -525,7 +533,9 @@ func decodeJSONLimit(w http.ResponseWriter, r *http.Request, target any, limit i
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
+	if disallowUnknownFields {
+		decoder.DisallowUnknownFields()
+	}
 	if err := decoder.Decode(target); err != nil {
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {

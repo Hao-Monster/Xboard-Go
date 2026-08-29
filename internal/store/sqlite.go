@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 46
+const currentSchemaVersion = 47
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -348,6 +349,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v46: %w", err)
 		}
 		version = 46
+	}
+	if version < 47 {
+		if err := applySchemaV47(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v47: %w", err)
+		}
+		version = 47
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2170,6 +2177,67 @@ func applySchemaV46(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	if _, err := tx.ExecContext(ctx, schemaV46); err != nil {
+		return err
+	}
+	return nil
+}
+
+const schemaV47 = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unique_telegram_id
+    ON users(telegram_id) WHERE telegram_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS telegram_webhook_updates (
+    update_id INTEGER PRIMARY KEY CHECK (update_id > 0),
+    claim_id TEXT NOT NULL CHECK (length(claim_id) = 32 AND claim_id NOT GLOB '*[^0-9a-f]*'),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_telegram_webhook_updates_cleanup
+    ON telegram_webhook_updates(updated_at, update_id);
+`
+
+func applySchemaV47(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"telegram_bot_enable", `ALTER TABLE app_settings ADD COLUMN telegram_bot_enable INTEGER NOT NULL DEFAULT 0 CHECK (telegram_bot_enable IN (0, 1))`},
+		{"telegram_bot_token_cipher", `ALTER TABLE app_settings ADD COLUMN telegram_bot_token_cipher BLOB CHECK (telegram_bot_token_cipher IS NULL OR length(telegram_bot_token_cipher) BETWEEN 33 AND 8192)`},
+		{"telegram_webhook_url", `ALTER TABLE app_settings ADD COLUMN telegram_webhook_url TEXT NOT NULL DEFAULT '' CHECK (length(CAST(telegram_webhook_url AS BLOB)) <= 2048)`},
+		{"telegram_discuss_link", `ALTER TABLE app_settings ADD COLUMN telegram_discuss_link TEXT NOT NULL DEFAULT '' CHECK (length(CAST(telegram_discuss_link AS BLOB)) <= 2048)`},
+		{"telegram_webhook_secret_cipher", `ALTER TABLE app_settings ADD COLUMN telegram_webhook_secret_cipher BLOB CHECK (telegram_webhook_secret_cipher IS NULL OR length(telegram_webhook_secret_cipher) BETWEEN 33 AND 8192)`},
+		{"telegram_webhook_pending_secret_cipher", `ALTER TABLE app_settings ADD COLUMN telegram_webhook_pending_secret_cipher BLOB CHECK (telegram_webhook_pending_secret_cipher IS NULL OR length(telegram_webhook_pending_secret_cipher) BETWEEN 33 AND 8192)`},
+		{"telegram_webhook_provision_id", `ALTER TABLE app_settings ADD COLUMN telegram_webhook_provision_id TEXT CHECK (telegram_webhook_provision_id IS NULL OR (length(telegram_webhook_provision_id) = 32 AND telegram_webhook_provision_id NOT GLOB '*[^0-9a-f]*'))`},
+		{"telegram_bot_username", `ALTER TABLE app_settings ADD COLUMN telegram_bot_username TEXT NOT NULL DEFAULT '' CHECK (length(CAST(telegram_bot_username AS BLOB)) <= 64)`},
+		{"telegram_webhook_configured_at", `ALTER TABLE app_settings ADD COLUMN telegram_webhook_configured_at INTEGER CHECK (telegram_webhook_configured_at IS NULL OR telegram_webhook_configured_at >= 0)`},
+	}
+	for _, column := range columns {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect app_settings.%s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add app_settings.%s: %w", column.name, err)
+			}
+		}
+	}
+	var duplicateTelegramID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL
+		GROUP BY telegram_id HAVING COUNT(*) > 1 LIMIT 1
+	`).Scan(&duplicateTelegramID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect duplicate Telegram user ids: %w", err)
+	}
+	if err == nil {
+		return fmt.Errorf("users contain duplicate Telegram id %d", duplicateTelegramID)
+	}
+	if _, err := tx.ExecContext(ctx, schemaV47); err != nil {
+		return fmt.Errorf("add Telegram settings indexes: %w", err)
+	}
+	if err := validateTelegramIDIndex(ctx, tx); err != nil {
 		return err
 	}
 	return nil

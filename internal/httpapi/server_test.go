@@ -20,6 +20,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
 )
 
 func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
@@ -533,6 +534,14 @@ func newTestAPIWithAttachments(t *testing.T) (http.Handler, *store.Store) {
 }
 
 func newTestAPIWithAttachmentOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool) (http.Handler, *store.Store) {
+	return newTestAPIWithExtendedOptions(t, function, protectInvitations, captchaVerifier, gateway, enableAttachments, nil)
+}
+
+func newTestAPIWithTelegram(t *testing.T, telegramClient telegrambot.Client) (http.Handler, *store.Store) {
+	return newTestAPIWithExtendedOptions(t, nil, true, nil, nil, false, telegramClient)
+}
+
+func newTestAPIWithExtendedOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool, telegramClient telegrambot.Client) (http.Handler, *store.Store) {
 	t.Helper()
 	database := cloneHTTPAPITestDatabase(t)
 	hasher := newHTTPAPITestPasswordHasher()
@@ -602,6 +611,7 @@ func newTestAPIWithAttachmentOptions(t *testing.T, function func(*http.Request) 
 		PaymentGateway:             gateway,
 		Attachments:                attachmentService,
 		BulkOperations:             bulkService,
+		TelegramBot:                telegramClient,
 	})
 	return handler, database
 }

@@ -873,6 +873,56 @@ test("legacy and Go mail configuration expose the same seven business settings w
   }
 });
 
+test("legacy and Go Telegram configuration preserve four business settings while Go keeps credentials write-only", async ({ browser }) => {
+  const legacyContext = await browser.newContext();
+  const goContext = await browser.newContext();
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyErrors = watchErrors(legacyPage);
+  const goErrors = watchErrors(goPage);
+  try {
+    await loginLegacy(legacyPage);
+    const configResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    const authorization = (await configResponse).request().headers().authorization;
+    expect(authorization).toBeTruthy();
+    await legacyPage.getByRole("link", { name: "Telegram设置", exact: true }).filter({ visible: true }).click();
+    for (const field of ["启用Telegram绑定引导", "机器人令牌", "Webhook Base URL", "群组链接"]) {
+      await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), `legacy Telegram setting ${field}`).toBeVisible();
+    }
+    if (!authorization) throw new Error("legacy administrator authorization is missing");
+    const legacyResponse = await legacyPage.request.get(legacyAdminAPI("/config/fetch?key=telegram"), { headers: { authorization } });
+    expect(legacyResponse.status()).toBe(200);
+    const legacySettings = readObjectProperty(readProperty(await legacyResponse.json() as unknown, "data"), "telegram");
+    for (const key of ["telegram_bot_enable", "telegram_bot_token", "telegram_webhook_url", "telegram_discuss_link"]) {
+      expect(legacySettings, `legacy Telegram setting ${key}`).toHaveProperty(key);
+    }
+
+    await loginGo(goPage);
+    await goPage.getByRole("button", { name: "Telegram 设置", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "Telegram 设置", exact: true })).toBeVisible();
+    for (const field of ["启用 Telegram 绑定引导", "机器人令牌", "Webhook Base URL", "群组链接"]) {
+      await expect(goPage.getByLabel(field, { exact: true }), `Go Telegram setting ${field}`).toBeVisible();
+    }
+    await expect(goPage.getByRole("button", { name: "一键设置 Webhook", exact: true })).toBeVisible();
+    const goResponse = await goAdminRequest(goPage, "/api/v1/admin/telegram-settings", "GET");
+    expect(goResponse.status, goResponse.body).toBe(200);
+    const goSettings = readObjectProperty(JSON.parse(goResponse.body) as unknown, "data");
+    for (const key of ["telegram_bot_enable", "telegram_bot_token_set", "telegram_webhook_url", "telegram_discuss_link"]) {
+      expect(goSettings, `Go Telegram setting ${key}`).toHaveProperty(key);
+    }
+    expect(goSettings).not.toHaveProperty("telegram_bot_token");
+    expect(goSettings).not.toHaveProperty("telegram_bot_token_cipher");
+    expect(goSettings).not.toHaveProperty("telegram_webhook_secret");
+    expect(goSettings).not.toHaveProperty("telegram_webhook_secret_cipher");
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy and Go node configuration preserve six settings while exposing only the five observable controls", async ({ browser }) => {
   const legacyContext = await browser.newContext();
   const goContext = await browser.newContext();

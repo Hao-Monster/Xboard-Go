@@ -25,6 +25,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
 )
 
 const (
@@ -62,6 +63,7 @@ type Dependencies struct {
 	PaymentGateway             paymentGateway
 	Attachments                *attachments.Service
 	BulkOperations             *bulkops.Service
+	TelegramBot                telegrambot.Client
 }
 
 type paymentGateway interface {
@@ -126,6 +128,8 @@ type server struct {
 	paymentGateway             paymentGateway
 	attachments                *attachments.Service
 	bulkOperations             *bulkops.Service
+	telegramBot                telegrambot.Client
+	telegramProvisionRequests  *requestLimiter
 }
 
 type contextKey int
@@ -174,6 +178,13 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.PaymentGateway == nil {
 		dependencies.PaymentGateway = payment.NewService(payment.Options{})
+	}
+	if dependencies.TelegramBot == nil {
+		telegramClient, err := telegrambot.New(telegrambot.Options{})
+		if err != nil {
+			panic(fmt.Sprintf("httpapi: initialize Telegram client: %v", err))
+		}
+		dependencies.TelegramBot = telegramClient
 	}
 	dummyHash, err := dependencies.PasswordHasher.Hash("xboard-dummy-login-password")
 	if err != nil {
@@ -224,6 +235,7 @@ func New(dependencies Dependencies) http.Handler {
 		orderRequests:              newRequestLimitGroup(240, 60),
 		paymentWebhookRequests:     newRequestLimiter(600, time.Minute),
 		smtpTestRequests:           newRequestLimiter(3, time.Minute),
+		telegramProvisionRequests:  newRequestLimiter(3, time.Minute),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
@@ -240,6 +252,7 @@ func New(dependencies Dependencies) http.Handler {
 		paymentGateway:             dependencies.PaymentGateway,
 		attachments:                dependencies.Attachments,
 		bulkOperations:             dependencies.BulkOperations,
+		telegramBot:                dependencies.TelegramBot,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator)
@@ -255,6 +268,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /healthz", api.health)
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
+	root.HandleFunc("POST /api/v1/guest/telegram/webhook", api.telegramWebhook)
 	root.HandleFunc("GET /api/v1/guest/plans", api.listGuestPlans)
 	root.HandleFunc("GET /api/v1/guest/payment/notify/{method}/{uuid}", api.paymentWebhook)
 	root.HandleFunc("POST /api/v1/guest/payment/notify/{method}/{uuid}", api.paymentWebhook)
@@ -294,6 +308,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/user/getActiveSession", api.requireLegacyBearer(http.HandlerFunc(api.legacyListAccessTokens)))
 	root.Handle("POST /api/v1/user/removeActiveSession", api.requireLegacyBearer(http.HandlerFunc(api.legacyRemoveAccessToken)))
 	root.Handle("POST /api/v1/user/logout", api.requireLegacyBearer(http.HandlerFunc(api.legacyLogout)))
+	root.Handle("GET /api/v1/user/telegram/getBotInfo", api.requireLegacyBearer(http.HandlerFunc(api.legacyTelegramBotInfo)))
 	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
 	root.Handle("GET /api/v1/invitations/commissions", api.requireSession(http.HandlerFunc(api.listCommissionLogs)))
 	root.Handle("GET /api/v1/user/invite/fetch", api.requireSession(http.HandlerFunc(api.legacyGetInvitations)))
@@ -456,6 +471,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/config/fetch", api.legacyFetchConfigSettings)
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveConfigSettings)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/testSendMail", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyTestSendMail)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/setTelegramWebhook", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyProvisionTelegramWebhook)))
 	legacyKnowledgeAttachments := http.NewServeMux()
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
@@ -568,6 +584,9 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/mail-settings/test", api.testMailSettings)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
+	admin.HandleFunc("GET /api/v1/admin/telegram-settings", api.getTelegramSettings)
+	admin.HandleFunc("PUT /api/v1/admin/telegram-settings", api.updateTelegramSettings)
+	admin.HandleFunc("POST /api/v1/admin/telegram-settings/webhook", api.provisionTelegramWebhook)
 	admin.HandleFunc("GET /api/v1/admin/commission-settings", api.getCommissionSettings)
 	admin.HandleFunc("PUT /api/v1/admin/commission-settings", api.updateCommissionSettings)
 	admin.HandleFunc("GET /api/v1/admin/node-agent-settings", api.getNodeAgentSettings)

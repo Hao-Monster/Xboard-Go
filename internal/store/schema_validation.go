@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 var requiredSchemaTables = []struct {
@@ -140,6 +142,15 @@ var requiredSchemaColumnsV46 = map[string][]string{
 	},
 }
 
+var requiredSchemaColumnsV47 = map[string][]string{
+	"app_settings": {
+		"telegram_bot_enable", "telegram_bot_token_cipher", "telegram_webhook_url", "telegram_discuss_link",
+		"telegram_webhook_secret_cipher", "telegram_webhook_pending_secret_cipher", "telegram_webhook_provision_id", "telegram_bot_username",
+		"telegram_webhook_configured_at",
+	},
+	"telegram_webhook_updates": {"update_id", "claim_id", "completed", "updated_at"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -234,6 +245,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 47 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV47); err != nil {
+			return err
+		}
+		if err := validateTelegramIDIndex(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -253,6 +272,82 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		if missing {
 			return fmt.Errorf("Xboard schema version %d contains a node without a protocol definition", schemaVersion)
 		}
+	}
+	return nil
+}
+
+func validateTelegramIDIndex(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `PRAGMA index_list("users")`)
+	if err != nil {
+		return fmt.Errorf("inspect Telegram identity index: %w", err)
+	}
+	found := false
+	for rows.Next() {
+		var sequence, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Telegram identity index: %w", err)
+		}
+		if name == "idx_users_unique_telegram_id" {
+			found = unique == 1 && partial == 1
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index: %w", err)
+	}
+	if !found {
+		return errors.New("Telegram identity index must be unique and partial")
+	}
+	rows, err = database.QueryContext(ctx, `PRAGMA index_info("idx_users_unique_telegram_id")`)
+	if err != nil {
+		return fmt.Errorf("inspect Telegram identity index columns: %w", err)
+	}
+	columns := make([]string, 0, 1)
+	for rows.Next() {
+		var sequence, columnID int
+		var name string
+		if err := rows.Scan(&sequence, &columnID, &name); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Telegram identity index columns: %w", err)
+		}
+		columns = append(columns, name)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index columns: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index columns: %w", err)
+	}
+	if len(columns) != 1 || columns[0] != "telegram_id" {
+		return errors.New("Telegram identity index must cover only users.telegram_id")
+	}
+	rows, err = database.QueryContext(ctx, `
+		SELECT sql FROM sqlite_schema
+		WHERE type = 'index' AND name = 'idx_users_unique_telegram_id' AND tbl_name = 'users'
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect Telegram identity index predicate: %w", err)
+	}
+	var definition string
+	if rows.Next() {
+		if err := rows.Scan(&definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Telegram identity index predicate: %w", err)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index predicate: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Telegram identity index predicate: %w", err)
+	}
+	const expectedDefinition = "createuniqueindexidx_users_unique_telegram_idonusers(telegram_id)wheretelegram_idisnotnull"
+	if strings.Join(strings.Fields(strings.ToLower(definition)), "") != expectedDefinition {
+		return errors.New("Telegram identity index must exclude only null identities")
 	}
 	return nil
 }

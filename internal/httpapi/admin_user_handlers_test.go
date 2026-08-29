@@ -152,6 +152,54 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	}
 }
 
+func TestAdminUserTelegramIDConflictHasDistinctModernAndLegacyErrors(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	admin := loginAdmin(t, api)
+	telegramID := int64(7788990011)
+
+	owner, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "telegram-owner-http@example.test", PasswordHash: "owner-hash",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(owner) error = %v", err)
+	}
+	subject, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "telegram-subject-http@example.test", PasswordHash: "subject-hash",
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(subject) error = %v", err)
+	}
+	if _, _, err := database.UpdateAdminUser(ctx, owner.ID, store.UpdateAdminUserInput{
+		Revision: owner.Revision, Email: owner.Email, TransferEnable: owner.TransferEnable,
+		SpeedLimit: owner.SpeedLimit, DeviceLimit: owner.DeviceLimit, Banned: owner.Banned,
+		TelegramIDSet: true, TelegramID: &telegramID,
+	}, now.Add(time.Minute)); err != nil {
+		t.Fatalf("UpdateAdminUser(owner Telegram ID) error = %v", err)
+	}
+
+	modern := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", subject.ID), fmt.Sprintf(`{
+		"revision":%d,"email":%q,"group_id":null,"transfer_enable":%d,"expired_at":null,
+		"speed_limit":%d,"device_limit":%d,"banned":false,"telegram_id":%d
+	}`, subject.Revision, subject.Email, subject.TransferEnable, subject.SpeedLimit, subject.DeviceLimit, telegramID))
+	if modern.Code != http.StatusConflict || !containsAll(modern.Body.String(), `"code":"telegram_id_in_use"`, `"telegram_id":"Telegram ID 已被其他用户绑定"`) {
+		t.Fatalf("modern duplicate Telegram ID status=%d body=%s", modern.Code, modern.Body)
+	}
+
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	legacy := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/update", authorization,
+		fmt.Sprintf(`{"id":%d,"revision":%d,"telegram_id":%d}`, subject.ID, subject.Revision, telegramID))
+	if legacy.Code != http.StatusConflict || !strings.Contains(legacy.Body.String(), "Telegram ID 已被其他用户绑定") {
+		t.Fatalf("legacy duplicate Telegram ID status=%d body=%s", legacy.Code, legacy.Body)
+	}
+
+	fresh, err := database.GetAdminUser(ctx, subject.ID)
+	if err != nil || fresh.Revision != subject.Revision || fresh.TelegramID != nil {
+		t.Fatalf("duplicate Telegram ID requests mutated subject: %#v err=%v", fresh, err)
+	}
+}
+
 func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
