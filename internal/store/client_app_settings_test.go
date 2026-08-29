@@ -66,6 +66,7 @@ func TestClientAppSettingsRejectUnsafeAndOversizedValues(t *testing.T) {
 		"control version":   {WindowsVersion: "4.0\nmalformed"},
 		"oversized version": {WindowsVersion: strings.Repeat("a", maxClientAppVersionBytes+1)},
 		"oversized URL":     {WindowsDownloadURL: "https://download.example.test/" + strings.Repeat("a", maxClientAppURLBytes)},
+		"invalid UTF-8":     {WindowsVersion: string([]byte{0xff})},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := database.UpdateClientAppSettings(t.Context(), administrator.ID, initial.Revision, input, now); !errors.Is(err, ErrInvalidInput) {

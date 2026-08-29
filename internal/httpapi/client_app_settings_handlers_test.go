@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -81,6 +82,16 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 		"android_version":"","android_download_url":"","unexpected":true
 	}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
+	invalidUTF8Body := []byte(`{"revision":2,"windows_version":"`)
+	invalidUTF8Body = append(invalidUTF8Body, 0xff)
+	invalidUTF8Body = append(invalidUTF8Body, []byte(`","windows_download_url":"","macos_version":"","macos_download_url":"","android_version":"","android_download_url":""}`)...)
+	invalidUTF8Request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/client-app-settings", bytes.NewReader(invalidUTF8Body))
+	invalidUTF8Request.Header.Set("Content-Type", "application/json")
+	invalidUTF8Request.Header.Set("X-CSRF-Token", administrator.csrf)
+	administrator.addCookies(invalidUTF8Request)
+	invalidUTF8 := httptest.NewRecorder()
+	api.ServeHTTP(invalidUTF8, invalidUTF8Request)
+	expectAPIError(t, invalidUTF8, http.StatusBadRequest, "invalid_json")
 
 	legacyLogin := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123")
 	legacyFetch := bearerRequest(api, http.MethodGet, "/api/v2/admin/config/fetch?key=app", legacyLogin.Authorization, "")

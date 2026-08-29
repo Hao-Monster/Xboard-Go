@@ -1,9 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -43,7 +48,7 @@ func (s *server) getClientAppSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) updateClientAppSettings(w http.ResponseWriter, r *http.Request) {
 	var input clientAppSettingsRequest
-	if !decodeJSON(w, r, &input) {
+	if !decodeClientAppSettingsJSON(w, r, &input) {
 		return
 	}
 	if !input.complete() {
@@ -65,6 +70,31 @@ func (s *server) updateClientAppSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeSuccess(w, http.StatusOK, settings)
+}
+
+func decodeClientAppSettingsJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
+			return false
+		}
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求格式无效", nil)
+		return false
+	}
+	if !utf8.Valid(body) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求格式无效", nil)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return decodeJSON(w, r, target)
 }
 
 func (s *server) legacyClientAppVersion(w http.ResponseWriter, r *http.Request) {
