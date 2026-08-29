@@ -32,7 +32,7 @@ func TestWorkerDecryptsAndDeliversPasswordResetCodeBeforeTicketMail(t *testing.T
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "reset-mail@example.test", PasswordHash: "hash"}, now)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "reset-mail@example.test", PasswordHash: "hash", IsAdmin: true}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,15 @@ func TestWorkerDecryptsAndDeliversPasswordResetCodeBeforeTicketMail(t *testing.T
 	if _, err := database.UpdateTicketSettings(ctx, user.ID, settings.Revision, store.SaveTicketSettingsInput{
 		AppName: "Reset Board", AppURL: "https://panel.example.test", SMTPEnabled: true,
 		SMTPHost: "mailpit", SMTPPort: 1025, SMTPEncryption: EncryptionNone, SMTPFromAddress: "support@example.test",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	verifyTemplate, err := database.GetMailTemplate(ctx, "verify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateMailTemplate(ctx, user.ID, "verify", verifyTemplate.Revision, store.SaveMailTemplateInput{
+		Subject: "{{name}} - 自定义验证码", Content: "<p>自定义验证码：<strong>{{code}}</strong></p><p>{{url}}</p>",
 	}, now); err != nil {
 		t.Fatal(err)
 	}
@@ -71,8 +80,9 @@ func TestWorkerDecryptsAndDeliversPasswordResetCodeBeforeTicketMail(t *testing.T
 	if !worked || err != nil {
 		t.Fatalf("second RunOnce() = (%v, %v), want successful retry", worked, err)
 	}
-	if len(sender.messages) != 2 || sender.messages[1].To != user.Email || sender.messages[1].Subject != "Reset Board邮箱验证码" ||
-		!strings.Contains(sender.messages[1].Text, code) || !strings.Contains(sender.messages[1].Text, "5 分钟") {
+	if len(sender.messages) != 2 || sender.messages[1].To != user.Email || sender.messages[1].Subject != "Reset Board - 自定义验证码" ||
+		!strings.Contains(sender.messages[1].HTML, "自定义验证码") || !strings.Contains(sender.messages[1].Text, code) ||
+		!strings.Contains(sender.messages[1].Text, "https://panel.example.test") {
 		t.Fatalf("password reset message = %#v", sender.messages)
 	}
 	if _, claimed, err := database.ClaimPasswordResetMail(ctx, "after-send", now.Add(21*time.Second), time.Minute); err != nil || claimed {
@@ -136,7 +146,7 @@ func TestWorkerDecryptsAndDeliversRegistrationEmailCode(t *testing.T) {
 	if !worked || err != nil {
 		t.Fatalf("RunOnce() = (%v, %v)", worked, err)
 	}
-	if len(sender.messages) != 1 || sender.messages[0].To != email || sender.messages[0].Subject != "Registration Board邮箱验证码" ||
+	if len(sender.messages) != 1 || sender.messages[0].To != email || sender.messages[0].Subject != "Registration Board邮箱验证码" || sender.messages[0].HTML == "" ||
 		!strings.Contains(sender.messages[0].Text, code) || !strings.Contains(sender.messages[0].Text, "5 分钟") {
 		t.Fatalf("registration verification message = %#v", sender.messages)
 	}
@@ -205,7 +215,7 @@ func TestWorkerDecryptsAndDeliversOneTimeLoginLink(t *testing.T) {
 	}
 	expectedURL := "https://panel.example.test/#/login?verify=" + token + "&redirect=invite"
 	message := sender.messages[len(sender.messages)-1]
-	if len(sender.messages) != 2 || message.To != user.Email || message.Subject != "登录到Login Board" ||
+	if len(sender.messages) != 2 || message.To != user.Email || message.Subject != "登录到Login Board" || message.HTML == "" ||
 		!strings.Contains(message.Text, expectedURL) || !strings.Contains(message.Text, "5 分钟") ||
 		!strings.Contains(message.Text, "只能使用一次") {
 		t.Fatalf("login link message = %#v", sender.messages)
@@ -384,7 +394,7 @@ func TestWorkerDecryptsRetriesAndCompletesTicketNotification(t *testing.T) {
 	if configuration.Password != "smtp-password" || configuration.Encryption != EncryptionStartTLS || configuration.FromAddress != "support@example.test" {
 		t.Fatalf("decrypted SMTP configuration = %#v", configuration)
 	}
-	if message.To != "mail-user@example.test" || message.Subject != "您在Xboard的工单得到了回复" ||
+	if message.To != "mail-user@example.test" || message.Subject != "您在Xboard的工单得到了回复" || message.HTML == "" ||
 		!strings.Contains(message.Text, "主题：无法连接") || !strings.Contains(message.Text, "回复内容：请重新登录后再试") || !strings.Contains(message.Text, "https://panel.example.test") {
 		t.Fatalf("notification message = %#v", message)
 	}

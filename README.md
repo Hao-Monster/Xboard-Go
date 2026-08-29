@@ -563,6 +563,21 @@ reported and normalized to a disabled trial instead of creating a dangling
 reference. Repeating the same source verifies and reuses the recorded rollback
 archive.
 
+The five legacy system mail templates can be imported independently from
+`v2_mail_templates`. The importer accepts only the fixed template catalog,
+validates placeholders and size limits before writing, requires a pristine
+target, and never includes template bodies in its JSON report:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-mail-templates \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-mail-templates.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.

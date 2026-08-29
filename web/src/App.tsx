@@ -23,7 +23,7 @@ const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagem
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
 const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
 const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
-const MailSettingsPage = lazy(async () => import("./features/settings/MailSettingsPage").then((module) => ({ default: module.MailSettingsPage })));
+const EmailSettingsPage = lazy(async () => import("./features/settings/EmailSettingsPage").then((module) => ({ default: module.EmailSettingsPage })));
 const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
@@ -208,7 +208,7 @@ export function App() {
       </nav>
       {page === "system" && <SystemOperationsPage api={api} />}
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
-      {page === "mail" && <Suspense fallback={<div className="app-loading">正在加载邮件设置…</div>}><MailSettingsPage api={api} /></Suspense>}
+      {page === "mail" && <Suspense fallback={<div className="app-loading">正在加载邮件设置…</div>}><EmailSettingsPage api={api} /></Suspense>}
       {page === "telegram" && <Suspense fallback={<div className="app-loading">正在加载 Telegram 设置…</div>}><TelegramSettingsPage api={api} /></Suspense>}
       {page === "commissions" && <Suspense fallback={<div className="app-loading">正在加载佣金设置…</div>}><CommissionSettingsPage api={api} /></Suspense>}
       {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}

@@ -1,32 +1,27 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+const apiProxyTarget = process.env.XBOARD_API_PROXY_TARGET ?? "http://127.0.0.1:8080";
+const apiProxy = {
+  "/api": apiProxyTarget,
+  "/healthz": apiProxyTarget,
+  "/client-download": apiProxyTarget,
+  "/client-link": apiProxyTarget,
+  "/guide": apiProxyTarget,
+  "/guide-attachments": apiProxyTarget,
+  "/knowledge-attachments": apiProxyTarget
+};
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: {
-      "/api": "http://127.0.0.1:8080",
-      "/healthz": "http://127.0.0.1:8080",
-      "/client-download": "http://127.0.0.1:8080",
-      "/client-link": "http://127.0.0.1:8080",
-      "/guide": "http://127.0.0.1:8080",
-      "/guide-attachments": "http://127.0.0.1:8080",
-      "/knowledge-attachments": "http://127.0.0.1:8080"
-    }
+    proxy: apiProxy
   },
   preview: {
     host: "127.0.0.1",
     port: 4173,
-    proxy: {
-      "/api": "http://127.0.0.1:8080",
-      "/healthz": "http://127.0.0.1:8080",
-      "/client-download": "http://127.0.0.1:8080",
-      "/client-link": "http://127.0.0.1:8080",
-      "/guide": "http://127.0.0.1:8080",
-      "/guide-attachments": "http://127.0.0.1:8080",
-      "/knowledge-attachments": "http://127.0.0.1:8080"
-    }
+    proxy: apiProxy
   },
   test: {
     include: ["src/**/*.test.{ts,tsx}"],

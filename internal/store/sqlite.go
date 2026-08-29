@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 47
+const currentSchemaVersion = 48
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -355,6 +355,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v47: %w", err)
 		}
 		version = 47
+	}
+	if version < 48 {
+		if _, err := tx.ExecContext(ctx, schemaV48); err != nil {
+			return fmt.Errorf("apply schema v48: %w", err)
+		}
+		version = 48
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2195,6 +2201,23 @@ CREATE TABLE IF NOT EXISTS telegram_webhook_updates (
 
 CREATE INDEX IF NOT EXISTS idx_telegram_webhook_updates_cleanup
     ON telegram_webhook_updates(updated_at, update_id);
+`
+
+const schemaV48 = `
+CREATE TABLE IF NOT EXISTS mail_templates (
+    name TEXT PRIMARY KEY CHECK (name IN ('verify', 'notify', 'remindExpire', 'remindTraffic', 'mailLogin')),
+    subject TEXT,
+    content TEXT,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0),
+    CHECK ((subject IS NULL) = (content IS NULL)),
+    CHECK (subject IS NULL OR (length(subject) > 0 AND length(CAST(subject AS BLOB)) <= 1024)),
+    CHECK (content IS NULL OR (length(content) > 0 AND length(CAST(content AS BLOB)) <= 262144))
+) STRICT;
+
+INSERT OR IGNORE INTO mail_templates(name) VALUES
+    ('verify'), ('notify'), ('remindExpire'), ('remindTraffic'), ('mailLogin');
 `
 
 func applySchemaV47(ctx context.Context, tx *sql.Tx) error {

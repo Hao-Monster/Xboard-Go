@@ -178,7 +178,7 @@ async function waitForPasswordResetCode(request: APIRequestContext, recipient: s
     if (message?.ID === undefined) return 0;
     const detail = await request.get(`${mailpitURL}/api/v1/message/${encodeURIComponent(message.ID)}`);
     if (!detail.ok()) return 0;
-    const match = JSON.stringify(await detail.json()).match(/邮箱验证码是：(\d{6})/);
+    const match = JSON.stringify(await detail.json()).match(/\b(\d{6})\b/);
     code = match?.[1] ?? "";
     return code === "" ? 0 : 1;
   }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(1);

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Hao-Monster/Xboard-Go/internal/mailtemplate"
 )
 
 var (
@@ -221,6 +223,31 @@ type SaveMailSettingsInput struct {
 	SMTPEncryption      string
 	SMTPFromAddress     string
 	RemindMailEnabled   bool
+}
+
+type MailTemplate struct {
+	Name       mailtemplate.Name `json:"name"`
+	Label      string            `json:"label"`
+	Subject    string            `json:"subject"`
+	Content    string            `json:"content"`
+	Required   []string          `json:"required_variables"`
+	Optional   []string          `json:"optional_variables"`
+	Customized bool              `json:"customized"`
+	Revision   int64             `json:"revision"`
+	UpdatedAt  time.Time         `json:"updated_at"`
+}
+
+type MailTemplateSummary struct {
+	Name       mailtemplate.Name `json:"name"`
+	Label      string            `json:"label"`
+	Customized bool              `json:"customized"`
+	Revision   int64             `json:"revision"`
+	UpdatedAt  time.Time         `json:"updated_at"`
+}
+
+type SaveMailTemplateInput struct {
+	Subject string
+	Content string
 }
 
 type TelegramSettings struct {

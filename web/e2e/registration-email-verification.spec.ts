@@ -131,7 +131,7 @@ async function waitForEmailCode(request: APIRequestContext, recipient: string, s
     if (message?.ID === undefined) return 0;
     const detail = await request.get(`${mailpitURL}/api/v1/message/${encodeURIComponent(message.ID)}`);
     if (!detail.ok()) return 0;
-    code = JSON.stringify(await detail.json()).match(/邮箱验证码是：(\d{6})/)?.[1] ?? "";
+    code = JSON.stringify(await detail.json()).match(/\b(\d{6})\b/)?.[1] ?? "";
     return code === "" ? 0 : 1;
   }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(1);
   return code;

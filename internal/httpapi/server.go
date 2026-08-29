@@ -472,6 +472,14 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveConfigSettings)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/testSendMail", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyTestSendMail)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/setTelegramWebhook", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyProvisionTelegramWebhook)))
+	legacyMailTemplates := http.NewServeMux()
+	legacyMailTemplatePrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/mail/template"
+	legacyMailTemplates.HandleFunc("GET "+legacyMailTemplatePrefix+"/list", api.legacyListMailTemplates)
+	legacyMailTemplates.HandleFunc("GET "+legacyMailTemplatePrefix+"/get", api.legacyGetMailTemplate)
+	legacyMailTemplates.HandleFunc("POST "+legacyMailTemplatePrefix+"/save", api.legacySaveMailTemplate)
+	legacyMailTemplates.HandleFunc("POST "+legacyMailTemplatePrefix+"/reset", api.legacyResetMailTemplate)
+	legacyMailTemplates.HandleFunc("POST "+legacyMailTemplatePrefix+"/test", api.legacyTestMailTemplate)
+	legacyAdmin.Handle(legacyMailTemplatePrefix+"/", api.auditLegacyAdminMailTemplateMutations(api.recoverPanic(legacyMailTemplates)))
 	legacyKnowledgeAttachments := http.NewServeMux()
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
@@ -582,6 +590,12 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/mail-settings", api.getMailSettings)
 	admin.HandleFunc("PUT /api/v1/admin/mail-settings", api.updateMailSettings)
 	admin.HandleFunc("POST /api/v1/admin/mail-settings/test", api.testMailSettings)
+	admin.HandleFunc("GET /api/v1/admin/mail-templates", api.listMailTemplates)
+	admin.HandleFunc("GET /api/v1/admin/mail-templates/{name}", api.getMailTemplate)
+	admin.HandleFunc("PUT /api/v1/admin/mail-templates/{name}", api.updateMailTemplate)
+	admin.HandleFunc("POST /api/v1/admin/mail-templates/{name}/reset", api.resetMailTemplate)
+	admin.HandleFunc("POST /api/v1/admin/mail-templates/{name}/preview", api.previewMailTemplate)
+	admin.HandleFunc("POST /api/v1/admin/mail-templates/{name}/test", api.testMailTemplate)
 	admin.HandleFunc("GET /api/v1/admin/site-settings", api.getSiteSettings)
 	admin.HandleFunc("PUT /api/v1/admin/site-settings", api.updateSiteSettings)
 	admin.HandleFunc("GET /api/v1/admin/telegram-settings", api.getTelegramSettings)
@@ -831,6 +845,32 @@ func (s *server) auditLegacyAdminConfigMutations(next http.Handler) http.Handler
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/config/save", recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminMailTemplateMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		action := ""
+		for _, candidate := range []string{"save", "reset", "test"} {
+			if strings.HasSuffix(r.URL.Path, "/"+candidate) {
+				action = candidate
+				break
+			}
+		}
+		if action == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		session, ok := sessionFromContext(r.Context())
+		if ok {
+			s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/mail/template/"+action, recorder.statusCode())
+		}
 	})
 }
 

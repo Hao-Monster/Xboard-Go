@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +24,7 @@ const (
 	EncryptionStartTLS = "starttls"
 	EncryptionTLS      = "tls"
 	EncryptionNone     = "none"
-	maxMailBodyBytes   = 128 << 10
+	maxMailBodyBytes   = 1 << 20
 )
 
 type SMTPConfig struct {
@@ -38,6 +40,7 @@ type Message struct {
 	To      string
 	Subject string
 	Text    string
+	HTML    string
 }
 
 type Sender interface {
@@ -80,7 +83,7 @@ func (sender *SMTPSender) Send(ctx context.Context, configuration SMTPConfig, me
 	if err != nil {
 		return fmt.Errorf("invalid SMTP recipient: %w", err)
 	}
-	if message.Subject == "" || containsHeaderControl(message.Subject) || len(message.Text) > maxMailBodyBytes {
+	if message.Subject == "" || containsHeaderControl(message.Subject) || len(message.Text)+len(message.HTML) > maxMailBodyBytes {
 		return errors.New("invalid email message")
 	}
 
@@ -180,16 +183,48 @@ func buildMessage(from, to *mail.Address, message Message) (string, error) {
 		"To: " + to.String(),
 		"Subject: " + mime.QEncoding.Encode("UTF-8", message.Subject),
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
-		"Content-Transfer-Encoding: 8bit",
+	}
+	if message.HTML == "" {
+		headers = append(headers, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit")
+	} else {
+		headers = append(headers, `Content-Type: multipart/alternative; boundary="xboard-`+hex.EncodeToString(random)+`"`)
 	}
 	for _, header := range headers {
 		if _, err := writer.WriteString(header + "\r\n"); err != nil {
 			return "", err
 		}
 	}
-	if _, err := writer.WriteString("\r\n" + normalizeCRLF(message.Text)); err != nil {
+	if _, err := writer.WriteString("\r\n"); err != nil {
 		return "", err
+	}
+	if message.HTML == "" {
+		if _, err := writer.WriteString(normalizeCRLF(message.Text)); err != nil {
+			return "", err
+		}
+	} else {
+		boundary := "xboard-" + hex.EncodeToString(random)
+		multipartWriter := multipart.NewWriter(writer)
+		if err := multipartWriter.SetBoundary(boundary); err != nil {
+			return "", err
+		}
+		for _, part := range []struct {
+			contentType string
+			body        string
+		}{{"text/plain; charset=UTF-8", message.Text}, {"text/html; charset=UTF-8", message.HTML}} {
+			headers := make(textproto.MIMEHeader)
+			headers.Set("Content-Type", part.contentType)
+			headers.Set("Content-Transfer-Encoding", "8bit")
+			partWriter, err := multipartWriter.CreatePart(headers)
+			if err != nil {
+				return "", err
+			}
+			if _, err := io.WriteString(partWriter, normalizeCRLF(part.body)); err != nil {
+				return "", err
+			}
+		}
+		if err := multipartWriter.Close(); err != nil {
+			return "", err
+		}
 	}
 	if err := writer.Flush(); err != nil {
 		return "", err

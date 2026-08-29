@@ -75,6 +75,7 @@ var requiredSchemaTables = []struct {
 	{"admin_user_bulk_targets", 39},
 	{"node_agent_settings", 43},
 	{"subscription_reminder_outbox", 46},
+	{"mail_templates", 48},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -149,6 +150,10 @@ var requiredSchemaColumnsV47 = map[string][]string{
 		"telegram_webhook_configured_at",
 	},
 	"telegram_webhook_updates": {"update_id", "claim_id", "completed", "updated_at"},
+}
+
+var requiredSchemaColumnsV48 = map[string][]string{
+	"mail_templates": {"name", "subject", "content", "revision", "updated_by", "updated_at"},
 }
 
 type schemaQueryer interface {
@@ -253,6 +258,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
+	if schemaVersion >= 48 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV48); err != nil {
+			return err
+		}
+		if err := validateMailTemplateCatalog(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -271,6 +284,35 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if missing {
 			return fmt.Errorf("Xboard schema version %d contains a node without a protocol definition", schemaVersion)
+		}
+	}
+	return nil
+}
+
+func validateMailTemplateCatalog(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `SELECT name FROM mail_templates ORDER BY name`)
+	if err != nil {
+		return fmt.Errorf("inspect mail template catalog: %w", err)
+	}
+	defer rows.Close()
+	names := make([]string, 0, 5)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("inspect mail template catalog: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect mail template catalog: %w", err)
+	}
+	want := []string{"mailLogin", "notify", "remindExpire", "remindTraffic", "verify"}
+	if len(names) != len(want) {
+		return errors.New("mail template catalog must contain exactly five templates")
+	}
+	for index := range want {
+		if names[index] != want[index] {
+			return errors.New("mail template catalog contains an unexpected template")
 		}
 	}
 	return nil

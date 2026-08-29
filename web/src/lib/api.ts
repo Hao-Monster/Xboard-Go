@@ -1154,6 +1154,28 @@ export interface MailSettingsTestResult {
   recipient: string;
 }
 
+export type MailTemplateName = "verify" | "notify" | "remindExpire" | "remindTraffic" | "mailLogin";
+
+export interface MailTemplate {
+  name: MailTemplateName;
+  label: string;
+  subject: string;
+  content: string;
+  required_variables: string[];
+  optional_variables: string[];
+  customized: boolean;
+  revision: number;
+  updated_at: string;
+}
+
+export type MailTemplateSummary = Pick<MailTemplate, "name" | "label" | "customized" | "revision" | "updated_at">;
+
+export interface MailTemplatePreview {
+  subject: string;
+  html: string;
+  text: string;
+}
+
 export interface TelegramSettings {
   revision: number;
   telegram_bot_enable: boolean;
@@ -1646,6 +1668,12 @@ export interface AdminAPI {
   getMailSettings: () => Promise<MailSettings>;
   updateMailSettings: (input: MailSettingsInput) => Promise<MailSettings>;
   testMailSettings: () => Promise<MailSettingsTestResult>;
+  listMailTemplates: () => Promise<MailTemplateSummary[]>;
+  getMailTemplate: (name: MailTemplateName) => Promise<MailTemplate>;
+  updateMailTemplate: (name: MailTemplateName, revision: number, subject: string, content: string) => Promise<MailTemplate>;
+  resetMailTemplate: (name: MailTemplateName, revision: number) => Promise<MailTemplate>;
+  previewMailTemplate: (name: MailTemplateName, subject: string, content: string) => Promise<MailTemplatePreview>;
+  testMailTemplate: (name: MailTemplateName, email: string) => Promise<MailSettingsTestResult>;
   getTelegramSettings: () => Promise<TelegramSettings>;
   updateTelegramSettings: (input: TelegramSettingsInput) => Promise<TelegramSettings>;
   provisionTelegramWebhook: (revision: number) => Promise<TelegramProvisionResult>;
@@ -2448,6 +2476,30 @@ export class APIClient implements AdminAPI {
 
   async testMailSettings(): Promise<MailSettingsTestResult> {
     return this.request<MailSettingsTestResult>("/api/v1/admin/mail-settings/test", { method: "POST", body: {} });
+  }
+
+  async listMailTemplates(): Promise<MailTemplateSummary[]> {
+    return this.request<MailTemplateSummary[]>("/api/v1/admin/mail-templates");
+  }
+
+  async getMailTemplate(name: MailTemplateName): Promise<MailTemplate> {
+    return this.request<MailTemplate>(`/api/v1/admin/mail-templates/${encodeURIComponent(name)}`);
+  }
+
+  async updateMailTemplate(name: MailTemplateName, revision: number, subject: string, content: string): Promise<MailTemplate> {
+    return this.request<MailTemplate>(`/api/v1/admin/mail-templates/${encodeURIComponent(name)}`, { method: "PUT", body: { revision, subject, content } });
+  }
+
+  async resetMailTemplate(name: MailTemplateName, revision: number): Promise<MailTemplate> {
+    return this.request<MailTemplate>(`/api/v1/admin/mail-templates/${encodeURIComponent(name)}/reset`, { method: "POST", body: { revision } });
+  }
+
+  async previewMailTemplate(name: MailTemplateName, subject: string, content: string): Promise<MailTemplatePreview> {
+    return this.request<MailTemplatePreview>(`/api/v1/admin/mail-templates/${encodeURIComponent(name)}/preview`, { method: "POST", body: { subject, content } });
+  }
+
+  async testMailTemplate(name: MailTemplateName, email: string): Promise<MailSettingsTestResult> {
+    return this.request<MailSettingsTestResult>(`/api/v1/admin/mail-templates/${encodeURIComponent(name)}/test`, { method: "POST", body: { email } });
   }
 
   async getTelegramSettings(): Promise<TelegramSettings> {

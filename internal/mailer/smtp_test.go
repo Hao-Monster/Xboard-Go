@@ -25,7 +25,10 @@ func TestSMTPSenderDeliversUTF8MessageAndRejectsUnsafeTransport(t *testing.T) {
 		Host: "127.0.0.1", Port: port, Encryption: EncryptionNone,
 		FromAddress: "support@example.test",
 	}
-	message := Message{To: "user@example.test", Subject: "工单得到了回复", Text: "主题：连接问题\r\n回复内容：请重试"}
+	message := Message{
+		To: "user@example.test", Subject: "工单得到了回复",
+		Text: "主题：连接问题\r\n回复内容：请重试", HTML: "<p>主题：连接问题</p><p><strong>请重试</strong></p>",
+	}
 
 	secureSender := NewSMTPSender(3*time.Second, false)
 	if err := secureSender.Send(context.Background(), configuration, message); err == nil {
@@ -38,7 +41,10 @@ func TestSMTPSenderDeliversUTF8MessageAndRejectsUnsafeTransport(t *testing.T) {
 	}
 	select {
 	case payload := <-data:
-		if !strings.Contains(payload, "Subject: =?UTF-8?") || !strings.Contains(payload, "user@example.test") || !strings.Contains(payload, "主题：连接问题") {
+		if !strings.Contains(payload, "Subject: =?UTF-8?") || !strings.Contains(payload, "user@example.test") ||
+			!strings.Contains(payload, "multipart/alternative") || !strings.Contains(payload, "text/plain; charset=UTF-8") ||
+			!strings.Contains(payload, "text/html; charset=UTF-8") || !strings.Contains(payload, "主题：连接问题") ||
+			!strings.Contains(payload, "<strong>请重试</strong>") {
 			t.Fatalf("SMTP payload is incomplete:\n%s", payload)
 		}
 	case err := <-serverError:
@@ -49,6 +55,12 @@ func TestSMTPSenderDeliversUTF8MessageAndRejectsUnsafeTransport(t *testing.T) {
 
 	if err := sender.Send(context.Background(), configuration, Message{To: "user@example.test\r\nBcc: attacker@example.test", Subject: "unsafe", Text: "body"}); err == nil {
 		t.Fatal("Send() accepted a header-injection recipient")
+	}
+	if err := sender.Send(context.Background(), configuration, Message{To: "user@example.test", Subject: "unsafe\r\nBcc: attacker@example.test", Text: "body"}); err == nil {
+		t.Fatal("Send() accepted a header-injection subject")
+	}
+	if err := sender.Send(context.Background(), configuration, Message{To: "user@example.test", Subject: "oversized", HTML: strings.Repeat("x", maxMailBodyBytes+1)}); err == nil {
+		t.Fatal("Send() accepted an oversized message")
 	}
 }
 
