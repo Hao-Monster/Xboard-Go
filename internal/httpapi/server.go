@@ -380,6 +380,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v1/server/UniProxy/alivelist", api.xboardNodeAliveList)
 	root.HandleFunc("POST /api/v1/server/UniProxy/status", api.xboardNodeStatus)
 	root.HandleFunc("GET /{subscriptionPath}/{subscriptionToken}", api.dynamicClientSubscription)
+	legacyAdmin := http.NewServeMux()
 	legacyAdminOrder := http.NewServeMux()
 	legacyAdminOrder.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/fetch", api.legacyListAdminOrders)
@@ -396,20 +397,20 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/hwid/device/delete", api.legacyAdminDeleteDistributorHWIDDevice)
 	legacyAdminOrder.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/order/settlement/preview", api.legacyAdminDistributorSettlementPreview)
 	legacyAdminOrder.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/order/settlement/settle", api.legacyAdminSettleDistributorOrders)
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/order/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminOrderMutations(api.recoverPanic(legacyAdminOrder)))))
-	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/distributor/options", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyAdminDistributorOptions))))
-	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUsers))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/sendMail", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkMail)))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/dumpCSV", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkCSV)))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/ban", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkBan)))))
+	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/order/", api.auditLegacyAdminOrderMutations(api.recoverPanic(legacyAdminOrder)))
+	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/distributor/options", api.legacyAdminDistributorOptions)
+	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.legacyListAdminUsers)
+	legacyAdmin.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.legacyListAdminUsers)
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/sendMail", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkMail)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/dumpCSV", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkCSV)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/ban", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkBan)))
 	legacyAdminTrafficReset := http.NewServeMux()
 	legacyAdminTrafficReset.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/reset-user", api.legacyResetAdminUserTraffic)
 	legacyAdminTrafficReset.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/user/{userID}/history", api.legacyListAdminUserTrafficResets)
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminTrafficResetMutations(api.recoverPanic(legacyAdminTrafficReset)))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/stat/getStatUser", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyListAdminUserTraffic))))
+	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/", api.auditLegacyAdminTrafficResetMutations(api.recoverPanic(legacyAdminTrafficReset)))
+	legacyAdmin.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/stat/getStatUser", api.legacyListAdminUserTraffic)
 	legacyAdminCoupon := http.NewServeMux()
 	legacyAdminCoupon.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/fetch", api.legacyListAdminCoupons)
@@ -417,7 +418,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/show", api.legacyToggleAdminCoupon)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/update", api.legacyUpdateAdminCoupon)
 	legacyAdminCoupon.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/coupon/drop", api.legacyDeleteAdminCoupon)
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/coupon/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminCouponMutations(api.recoverPanic(legacyAdminCoupon)))))
+	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/coupon/", api.auditLegacyAdminCouponMutations(api.recoverPanic(legacyAdminCoupon)))
 	legacyAdminPayment := http.NewServeMux()
 	legacyAdminPayment.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/payment/fetch", api.legacyFetchPayments)
 	legacyAdminPayment.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/payment/getPaymentMethods", api.legacyListPaymentProviders)
@@ -426,7 +427,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/drop", api.legacyDeletePayment)
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/show", api.legacyTogglePayment)
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/sort", api.legacyReorderPayments)
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/payment/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminPaymentMutations(api.recoverPanic(legacyAdminPayment)))))
+	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/payment/", api.auditLegacyAdminPaymentMutations(api.recoverPanic(legacyAdminPayment)))
 	legacyAdminGiftCard := http.NewServeMux()
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)
 	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)
@@ -445,13 +446,14 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
 	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/statistics", api.legacyGiftCardStatistics)
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/types", api.legacyGiftCardTypes)
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))))
-	root.Handle("GET /api/v2/"+dependencies.LegacyAdminPath+"/config/fetch", api.requireLegacyBearer(api.requireAdmin(http.HandlerFunc(api.legacyFetchCommissionSettings))))
-	root.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveCommissionSettings)))))
+	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/gift-card/", api.auditLegacyAdminGiftCardMutations(api.recoverPanic(legacyAdminGiftCard)))
+	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/config/fetch", api.legacyFetchCommissionSettings)
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveCommissionSettings)))
 	legacyKnowledgeAttachments := http.NewServeMux()
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
-	root.Handle(legacyAttachmentPrefix+"/", api.requireLegacyBearer(api.requireAdmin(api.auditLegacyKnowledgeAttachmentMutations(api.recoverPanic(legacyKnowledgeAttachments)))))
+	legacyAdmin.Handle(legacyAttachmentPrefix+"/", api.auditLegacyKnowledgeAttachmentMutations(api.recoverPanic(legacyKnowledgeAttachments)))
+	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/", api.requireLegacyBearer(api.requireAdmin(api.recoverPanic(legacyAdmin))))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -644,6 +646,16 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := ""
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/order/remark/update"):
+			action = "remark/update"
+		case strings.HasSuffix(r.URL.Path, "/order/entitlement/update"):
+			action = "entitlement/update"
+		case strings.HasSuffix(r.URL.Path, "/order/hwid/update"):
+			action = "hwid/update"
+		case strings.HasSuffix(r.URL.Path, "/order/hwid/device/delete"):
+			action = "hwid/device/delete"
+		case strings.HasSuffix(r.URL.Path, "/order/settlement/settle"):
+			action = "settlement/settle"
 		case strings.HasSuffix(r.URL.Path, "/order/assign"):
 			action = "assign"
 		case strings.HasSuffix(r.URL.Path, "/order/paid"):
