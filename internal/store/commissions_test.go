@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -47,6 +48,65 @@ func TestSchemaV34PreservesV33DataAndAddsCommissionConstraints(t *testing.T) {
 	}
 	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET commission_distribution_l1 = 101 WHERE id = 1`); err == nil {
 		t.Fatal("commission distribution percentage above 100 must be rejected")
+	}
+}
+
+func TestCommissionSettingsAreRevisionSafeAndRejectUnsafeDistribution(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
+	initial, err := database.GetCommissionSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetCommissionSettings() error = %v", err)
+	}
+	if initial.Revision != 1 || initial.InviteCommission != 10 || !initial.FirstTimeEnabled ||
+		!initial.AutoCheckEnabled || initial.WithdrawClosed || initial.DistributionEnabled ||
+		initial.DistributionL1 != 100 || initial.DistributionL2 != 0 || initial.DistributionL3 != 0 {
+		t.Fatalf("initial commission settings = %#v", initial)
+	}
+	administrator, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "commission-settings-admin@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := database.UpdateCommissionSettings(ctx, administrator.ID, initial.Revision, SaveCommissionSettingsInput{
+		InviteCommission: 25, FirstTimeEnabled: false, AutoCheckEnabled: false, WithdrawClosed: true,
+		DistributionEnabled: true, DistributionL1: 50, DistributionL2: 30, DistributionL3: 20,
+	}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("UpdateCommissionSettings() error = %v", err)
+	}
+	if updated.Revision != 2 || updated.InviteCommission != 25 || updated.FirstTimeEnabled ||
+		updated.AutoCheckEnabled || !updated.WithdrawClosed || !updated.DistributionEnabled ||
+		updated.DistributionL1 != 50 || updated.DistributionL2 != 30 || updated.DistributionL3 != 20 ||
+		!updated.UpdatedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("updated commission settings = %#v", updated)
+	}
+	if _, err := database.UpdateCommissionSettings(ctx, administrator.ID, initial.Revision, SaveCommissionSettingsInput{
+		InviteCommission: 10, FirstTimeEnabled: true, AutoCheckEnabled: true,
+		DistributionL1: 100,
+	}, now.Add(2*time.Minute)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale UpdateCommissionSettings() error = %v, want ErrConflict", err)
+	}
+	for name, input := range map[string]SaveCommissionSettingsInput{
+		"negative global":          {InviteCommission: -1, DistributionL1: 100},
+		"global above one hundred": {InviteCommission: 101, DistributionL1: 100},
+		"negative level":           {InviteCommission: 10, DistributionL1: -1},
+		"level above one hundred":  {InviteCommission: 10, DistributionL1: 101},
+		"distribution above one hundred": {
+			InviteCommission: 10, DistributionEnabled: true, DistributionL1: 50, DistributionL2: 30, DistributionL3: 21,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := database.UpdateCommissionSettings(ctx, administrator.ID, updated.Revision, input, now.Add(3*time.Minute)); !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("UpdateCommissionSettings(%#v) error = %v, want ErrInvalidInput", input, err)
+			}
+		})
+	}
+	preserved, err := database.GetCommissionSettings(ctx)
+	if err != nil || preserved != updated {
+		t.Fatalf("invalid updates changed settings: got %#v want %#v err=%v", preserved, updated, err)
 	}
 }
 
@@ -140,6 +200,13 @@ func TestCommissionDistributionAndConcurrentTransferPreserveMoney(t *testing.T) 
 			commission_distribution_l3 = 20, withdraw_close_enable = 0 WHERE id = 1
 	`); err != nil {
 		t.Fatal(err)
+	}
+	summary, err := database.GetInvitationSummary(ctx, level1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !summary.CommissionDistributionEnabled || !reflect.DeepEqual(summary.CommissionDistributionRates, []int{5, 3, 2}) {
+		t.Fatalf("distribution summary = enabled %t rates %v, want true [5 3 2]", summary.CommissionDistributionEnabled, summary.CommissionDistributionRates)
 	}
 	order, err := database.CreateOrder(ctx, CreateOrderInput{UserID: buyerID, PlanID: plan.ID, Period: "monthly"}, now)
 	if err != nil {

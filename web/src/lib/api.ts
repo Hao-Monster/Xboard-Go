@@ -1211,6 +1211,21 @@ export interface SiteSettingsInput {
   clear_turnstile_secret?: boolean;
 }
 
+export interface CommissionSettings {
+  revision: number;
+  invite_commission: number;
+  commission_first_time_enable: boolean;
+  commission_auto_check_enable: boolean;
+  withdraw_close_enable: boolean;
+  commission_distribution_enable: boolean;
+  commission_distribution_l1: number;
+  commission_distribution_l2: number;
+  commission_distribution_l3: number;
+  updated_at: string;
+}
+
+export type CommissionSettingsInput = Omit<CommissionSettings, "updated_at">;
+
 export type SubscriptionTemplateName = "singbox" | "clash" | "clashmeta" | "stash" | "surge" | "surfboard";
 
 export interface SubscriptionSettings {
@@ -1278,6 +1293,8 @@ export interface InvitationSummary {
   valid_commission: number;
   pending_commission: number;
   commission_rate: number;
+  commission_distribution_enabled: boolean;
+  commission_distribution_rates: number[];
   available_commission: number;
 }
 
@@ -1557,6 +1574,8 @@ export interface AdminAPI {
   updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
   getSiteSettings: () => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
+  getCommissionSettings: () => Promise<CommissionSettings>;
+  updateCommissionSettings: (input: CommissionSettingsInput) => Promise<CommissionSettings>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
@@ -2348,6 +2367,14 @@ export class APIClient implements AdminAPI {
 
   async updateSiteSettings(input: SiteSettingsInput): Promise<SiteSettings> {
     return this.request<SiteSettings>("/api/v1/admin/site-settings", { method: "PUT", body: input });
+  }
+
+  async getCommissionSettings(): Promise<CommissionSettings> {
+    return this.request<CommissionSettings>("/api/v1/admin/commission-settings");
+  }
+
+  async updateCommissionSettings(input: CommissionSettingsInput): Promise<CommissionSettings> {
+    return this.request<CommissionSettings>("/api/v1/admin/commission-settings", { method: "PUT", body: input });
   }
 
   async getSubscriptionSettings(): Promise<SubscriptionSettings> {

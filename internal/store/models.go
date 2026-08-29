@@ -305,12 +305,38 @@ type InvitationCode struct {
 }
 
 type InvitationSummary struct {
-	Codes               []InvitationCode
-	InvitedCount        int64
-	ValidCommission     int64
-	PendingCommission   int64
-	CommissionRate      int
-	AvailableCommission int64
+	Codes                         []InvitationCode
+	InvitedCount                  int64
+	ValidCommission               int64
+	PendingCommission             int64
+	CommissionRate                int
+	CommissionDistributionEnabled bool
+	CommissionDistributionRates   []int
+	AvailableCommission           int64
+}
+
+type CommissionSettings struct {
+	Revision            int64     `json:"revision"`
+	InviteCommission    int       `json:"invite_commission"`
+	FirstTimeEnabled    bool      `json:"commission_first_time_enable"`
+	AutoCheckEnabled    bool      `json:"commission_auto_check_enable"`
+	WithdrawClosed      bool      `json:"withdraw_close_enable"`
+	DistributionEnabled bool      `json:"commission_distribution_enable"`
+	DistributionL1      int       `json:"commission_distribution_l1"`
+	DistributionL2      int       `json:"commission_distribution_l2"`
+	DistributionL3      int       `json:"commission_distribution_l3"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type SaveCommissionSettingsInput struct {
+	InviteCommission    int
+	FirstTimeEnabled    bool
+	AutoCheckEnabled    bool
+	WithdrawClosed      bool
+	DistributionEnabled bool
+	DistributionL1      int
+	DistributionL2      int
+	DistributionL3      int
 }
 
 type CommissionLog struct {

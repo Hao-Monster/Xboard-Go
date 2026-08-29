@@ -115,7 +115,7 @@ describe("App public identity bootstrap", () => {
 				requests.push({ path, method: init?.method ?? "GET", body: JSON.parse(typeof init?.body === "string" ? init.body : "{}") as unknown });
 				return Promise.resolve(jsonResponse(200, { status: "success", data: { id: 71, email: "linked@example.test", is_admin: false, redirect: "invite" } }));
 			}
-			if (path.endsWith("/api/v1/invitations")) return Promise.resolve(jsonResponse(200, { status: "success", data: { codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, available_commission: 0 } }));
+			if (path.endsWith("/api/v1/invitations")) return Promise.resolve(jsonResponse(200, { status: "success", data: { codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0 } }));
 			if (path.includes("/api/v1/invitations/commissions")) return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 50 } }));
 			throw new Error(`unexpected fetch ${path}`);
 		}));

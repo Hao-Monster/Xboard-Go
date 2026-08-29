@@ -9,6 +9,7 @@ export async function createAdminUserFixture(page: Page, input: {
   transferEnable?: number;
   isDistributor?: boolean;
   distributorName?: string;
+  inviteUserEmail?: string;
 }) {
   await expect(page.getByRole("button", { name: "退出" })).toBeVisible();
   const payload = {
@@ -37,6 +38,38 @@ export async function createAdminUserFixture(page: Page, input: {
     return { status: response.status, body: await response.text() };
   }, payload);
   expect(result.status, result.body).toBe(201);
+  if (input.inviteUserEmail === undefined) return;
+
+  const decoded: unknown = JSON.parse(result.body);
+  const created: unknown = typeof decoded === "object" && decoded !== null ? Reflect.get(decoded, "data") : null;
+  if (typeof created !== "object" || created === null) throw new Error("created user response is invalid");
+  const userID = Number(Reflect.get(created, "id"));
+  const revision = Number(Reflect.get(created, "revision"));
+  if (!Number.isSafeInteger(userID) || userID < 1 || !Number.isSafeInteger(revision) || revision < 1) {
+    throw new Error("created user identity is invalid");
+  }
+  const update = await page.evaluate(async ({ id, body }) => {
+    const prefix = "xboard_csrf=";
+    const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
+    const response = await fetch(`/api/v1/admin/users/${id}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
+      body: JSON.stringify(body)
+    });
+    return { status: response.status, body: await response.text() };
+  }, { id: userID, body: {
+    revision,
+    email: input.email,
+    group_id: null,
+    invite_user_email: input.inviteUserEmail,
+    transfer_enable: input.transferEnable ?? 0,
+    expired_at: null,
+    speed_limit: 0,
+    device_limit: 0,
+    banned: false
+  } });
+  expect(update.status, update.body).toBe(200);
 }
 
 export async function publicAppName(page: Page): Promise<string> {

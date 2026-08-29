@@ -87,6 +87,34 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 	if err != nil || processed.Paid != 1 {
 		t.Fatalf("ProcessCommissions() = (%#v, %v)", processed, err)
 	}
+	repeated, err := database.ProcessCommissions(t.Context(), fixedNow().Add(74*time.Hour), 100)
+	if err != nil || repeated.Paid != 0 {
+		t.Fatalf("repeated ProcessCommissions() = (%#v, %v)", repeated, err)
+	}
+	commissionSummary := admin.request(t, api, http.MethodGet, "/api/v1/invitations", "")
+	if commissionSummary.Code != http.StatusOK || !containsAll(commissionSummary.Body.String(),
+		fmt.Sprintf(`"valid_commission":%d`, order.CommissionBalance),
+		fmt.Sprintf(`"available_commission":%d`, order.CommissionBalance),
+		`"pending_commission":0`, `"commission_distribution_enabled":false`, `"commission_distribution_rates":[]`) {
+		t.Fatalf("paid invitation summary status=%d body=%s", commissionSummary.Code, commissionSummary.Body)
+	}
+	commissionLogs := admin.request(t, api, http.MethodGet, "/api/v1/invitations/commissions?page=1&page_size=20", "")
+	if commissionLogs.Code != http.StatusOK || !containsAll(commissionLogs.Body.String(), order.TradeNo,
+		fmt.Sprintf(`"get_amount":%d`, order.CommissionBalance), `"total":1`) {
+		t.Fatalf("paid commission logs status=%d body=%s", commissionLogs.Code, commissionLogs.Body)
+	}
+	transferAmount := order.CommissionBalance / 2
+	transferred := admin.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", fmt.Sprintf(`{"amount":%d}`, transferAmount))
+	if transferred.Code != http.StatusOK || !containsAll(transferred.Body.String(),
+		fmt.Sprintf(`"commission_balance":%d`, order.CommissionBalance-transferAmount),
+		fmt.Sprintf(`"balance":%d`, transferAmount)) {
+		t.Fatalf("positive commission transfer status=%d body=%s", transferred.Code, transferred.Body)
+	}
+	refreshedSummary := admin.request(t, api, http.MethodGet, "/api/v1/invitations", "")
+	if refreshedSummary.Code != http.StatusOK || !strings.Contains(refreshedSummary.Body.String(),
+		fmt.Sprintf(`"available_commission":%d`, order.CommissionBalance-transferAmount)) {
+		t.Fatalf("refreshed invitation summary status=%d body=%s", refreshedSummary.Code, refreshedSummary.Body)
+	}
 	rollback := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":1}`)
 	if rollback.Code != http.StatusConflict || !containsAll(rollback.Body.String(), `"code":"order_state_conflict"`) {
 		t.Fatalf("paid commission rollback status=%d body=%s", rollback.Code, rollback.Body)

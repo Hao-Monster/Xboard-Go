@@ -13,7 +13,7 @@ interface InvitationPageAPI {
 
 const emptySummary: InvitationSummary = {
   codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0,
-  commission_rate: 0, available_commission: 0
+  commission_rate: 0, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0
 };
 const emptyHistory: CommissionLogPage = { items: [], total: 0, page: 1, page_size: 50 };
 
@@ -130,7 +130,9 @@ export function InvitationPage({ api, locale = "zh-CN" }: { api: InvitationPageA
       <Metric label={labels.inviteUsers} value={String(summary.invited_count)} kind="good" />
       <Metric label={labels.validCommission} value={formatCents(summary.valid_commission)} />
       <Metric label={labels.pendingCommission} value={formatCents(summary.pending_commission)} kind="warning" />
-      <Metric label={labels.rate} value={`${summary.commission_rate}%`} />
+      <Metric label={labels.rate} value={summary.commission_distribution_enabled
+        ? summary.commission_distribution_rates.map((rate) => `${rate}%`).join(" / ")
+        : `${summary.commission_rate}%`} />
       <Metric label={labels.availableCommission} value={formatCents(summary.available_commission)} kind="good" />
     </div>
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
