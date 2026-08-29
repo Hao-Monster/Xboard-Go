@@ -17,6 +17,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
 	const unique = Date.now();
+	const telegramID = unique;
 	const planName = `E2E 用户套餐 ${unique}`;
 	await page.getByRole("button", { name: "套餐管理", exact: true }).click();
 	await page.getByRole("button", { name: "添加套餐", exact: true }).click();
@@ -120,7 +121,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await dialog.getByLabel("佣金余额（元）", { exact: true }).fill("8.09");
 	await dialog.getByLabel("佣金类型").selectOption("1");
 	await dialog.getByLabel("专享折扣（留空使用系统默认）").fill("75");
-	await dialog.getByLabel("Telegram ID（留空表示未绑定）").fill("778899");
+	await dialog.getByLabel("Telegram ID（留空表示未绑定）").fill(String(telegramID));
 	await dialog.getByLabel("到期提醒").check();
 	await dialog.getByLabel("流量提醒").check();
 	await dialog.getByLabel("备注").fill("E2E complete profile");
@@ -128,13 +129,15 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await dialog.getByLabel("员工", { exact: true }).check();
 	await dialog.getByLabel("分销商", { exact: true }).check();
 	await dialog.getByLabel("分销商名称").fill("E2E 混合角色");
-	const updateRequestPromise = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/v1/admin/users/"));
+	const updateResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/v1/admin/users/"));
 	await dialog.getByRole("button", { name: "保存" }).click();
-	const updatePayload = (await updateRequestPromise).postDataJSON();
+	const updateResponse = await updateResponsePromise;
+	expect(updateResponse.status(), await updateResponse.text()).toBe(200);
+	const updatePayload = updateResponse.request().postDataJSON();
 	expect(updatePayload).toMatchObject({
 		plan_id: expect.any(Number), transfer_enable: 68_719_476_736, speed_limit: 80, device_limit: 4,
 		invite_user_email: adminEmail, traffic_upload: 1_610_612_736, traffic_download: 2_147_483_648,
-		balance: 4567, commission_type: 1, commission_balance: 809, discount: 75, telegram_id: 778899,
+		balance: 4567, commission_type: 1, commission_balance: 809, discount: 75, telegram_id: telegramID,
 		remind_expire: true, remind_traffic: true, remarks: "E2E complete profile",
 		is_admin: true, is_staff: true, is_distributor: true, distributor_name: "E2E 混合角色"
 	});
@@ -148,7 +151,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	dialog = page.getByRole("dialog", { name: "用户详情" });
 	await expect(dialog).toContainText(adminEmail);
 	await expect(dialog).toContainText("E2E complete profile");
-	await expect(dialog).toContainText("778899");
+	await expect(dialog).toContainText(String(telegramID));
 	await expect(dialog).toContainText("¥45.67");
 	await expect(dialog).toContainText("¥8.09");
 	await expect(dialog).toContainText("到期提醒开启 · 流量提醒开启");
