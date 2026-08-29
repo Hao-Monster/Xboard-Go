@@ -121,6 +121,47 @@ func DefinitionFor(name Name) (Definition, bool) {
 	return result, true
 }
 
+// DeliverySubject preserves the subject chosen by each legacy business flow
+// when no administrator override exists. The editor's default subject is a
+// separate legacy surface and only becomes authoritative after it is saved.
+func DeliverySubject(name Name, appName string) (string, bool) {
+	switch name {
+	case Verify:
+		return appName + "邮箱验证码", true
+	case Notify:
+		return "您在" + appName + "的工单得到了回复", true
+	case RemindExpire:
+		return "您在" + appName + "的服务即将到期", true
+	case RemindTraffic:
+		return "您在" + appName + "的流量使用已达到80%", true
+	case MailLogin:
+		return "登录到" + appName, true
+	default:
+		return "", false
+	}
+}
+
+// TestSubject matches the legacy controller's subject for an unsaved default
+// template. A saved subject still overrides this value.
+func TestSubject(name Name, appName string) (string, bool) {
+	var suffix string
+	switch name {
+	case Verify:
+		suffix = "验证码测试"
+	case Notify:
+		suffix = "通知测试"
+	case RemindExpire:
+		suffix = "到期提醒测试"
+	case RemindTraffic:
+		suffix = "流量提醒测试"
+	case MailLogin:
+		suffix = "登录链接测试"
+	default:
+		return "", false
+	}
+	return appName + " - " + suffix, true
+}
+
 func Validate(name Name, subject, content string) error {
 	if _, err := validateTemplateSyntax(name, subject, content); err != nil {
 		return err

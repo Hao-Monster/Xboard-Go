@@ -368,7 +368,15 @@ func (worker *Worker) renderMailTemplate(ctx context.Context, name mailtemplate.
 	}
 	values["name"] = strings.TrimSpace(appName)
 	values["url"] = strings.TrimRight(strings.TrimSpace(appURL), "/")
-	rendered, err := mailtemplate.Render(mailtemplate.Template{Name: stored.Name, Subject: stored.Subject, Content: stored.Content}, values)
+	subject := stored.Subject
+	if !stored.Customized {
+		var ok bool
+		subject, ok = mailtemplate.DeliverySubject(name, values["name"])
+		if !ok {
+			return Message{}, errors.New("unknown default mail delivery subject")
+		}
+	}
+	rendered, err := mailtemplate.Render(mailtemplate.Template{Name: stored.Name, Subject: subject, Content: stored.Content}, values)
 	if err != nil {
 		return Message{}, err
 	}

@@ -55,7 +55,7 @@ func TestAdminMailTemplateModernLegacyAndDeliverySurface(t *testing.T) {
 		t.Fatalf("template SMTP configuration=%#v", sender.configurations[0])
 	}
 	fallbackSend := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-templates/verify/test", `{}`)
-	if fallbackSend.Code != http.StatusOK || len(sender.messages) != 2 || sender.messages[1].To != "admin@example.test" {
+	if fallbackSend.Code != http.StatusOK || len(sender.messages) != 2 || sender.messages[1].To != "admin@example.test" || sender.messages[1].Subject != "Xboard-Go - 验证码测试" {
 		t.Fatalf("template administrator fallback status=%d messages=%#v body=%s", fallbackSend.Code, sender.messages, fallbackSend.Body)
 	}
 

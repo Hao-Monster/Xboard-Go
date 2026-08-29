@@ -146,7 +146,7 @@ func TestWorkerDecryptsAndDeliversRegistrationEmailCode(t *testing.T) {
 	if !worked || err != nil {
 		t.Fatalf("RunOnce() = (%v, %v)", worked, err)
 	}
-	if len(sender.messages) != 1 || sender.messages[0].To != email || sender.messages[0].Subject != "Registration Board - 邮箱验证码" || sender.messages[0].HTML == "" ||
+	if len(sender.messages) != 1 || sender.messages[0].To != email || sender.messages[0].Subject != "Registration Board邮箱验证码" || sender.messages[0].HTML == "" ||
 		!strings.Contains(sender.messages[0].Text, code) || !strings.Contains(sender.messages[0].Text, "5 分钟") {
 		t.Fatalf("registration verification message = %#v", sender.messages)
 	}
@@ -215,7 +215,7 @@ func TestWorkerDecryptsAndDeliversOneTimeLoginLink(t *testing.T) {
 	}
 	expectedURL := "https://panel.example.test/#/login?verify=" + token + "&redirect=invite"
 	message := sender.messages[len(sender.messages)-1]
-	if len(sender.messages) != 2 || message.To != user.Email || message.Subject != "Login Board - 邮件登录" || message.HTML == "" ||
+	if len(sender.messages) != 2 || message.To != user.Email || message.Subject != "登录到Login Board" || message.HTML == "" ||
 		!strings.Contains(message.Text, expectedURL) || !strings.Contains(message.Text, "5 分钟") ||
 		!strings.Contains(message.Text, "只能使用一次") {
 		t.Fatalf("login link message = %#v", sender.messages)
@@ -318,7 +318,7 @@ func TestWorkerRetriesAndDeliversBothSubscriptionReminderKinds(t *testing.T) {
 		}
 		subjects[message.Subject] = true
 	}
-	if !subjects["Xboard-Go - 服务即将到期"] || !subjects["Xboard-Go - 流量使用提醒"] {
+	if !subjects["您在Xboard-Go的服务即将到期"] || !subjects["您在Xboard-Go的流量使用已达到80%"] {
 		t.Fatalf("reminder subjects=%#v", subjects)
 	}
 }
@@ -394,7 +394,7 @@ func TestWorkerDecryptsRetriesAndCompletesTicketNotification(t *testing.T) {
 	if configuration.Password != "smtp-password" || configuration.Encryption != EncryptionStartTLS || configuration.FromAddress != "support@example.test" {
 		t.Fatalf("decrypted SMTP configuration = %#v", configuration)
 	}
-	if message.To != "mail-user@example.test" || message.Subject != "Xboard - 站点通知" || message.HTML == "" ||
+	if message.To != "mail-user@example.test" || message.Subject != "您在Xboard的工单得到了回复" || message.HTML == "" ||
 		!strings.Contains(message.Text, "主题：无法连接") || !strings.Contains(message.Text, "回复内容：请重新登录后再试") || !strings.Contains(message.Text, "https://panel.example.test") {
 		t.Fatalf("notification message = %#v", message)
 	}

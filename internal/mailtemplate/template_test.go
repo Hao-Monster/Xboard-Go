@@ -22,6 +22,24 @@ func TestDefinitionsMatchLegacyFiveTemplateContract(t *testing.T) {
 	}
 }
 
+func TestLegacyDefaultEditorDeliveryAndTestSubjectsRemainDistinct(t *testing.T) {
+	wantDelivery := map[Name]string{
+		Verify: "XBoard邮箱验证码", Notify: "您在XBoard的工单得到了回复",
+		RemindExpire: "您在XBoard的服务即将到期", RemindTraffic: "您在XBoard的流量使用已达到80%", MailLogin: "登录到XBoard",
+	}
+	wantTest := map[Name]string{
+		Verify: "XBoard - 验证码测试", Notify: "XBoard - 通知测试",
+		RemindExpire: "XBoard - 到期提醒测试", RemindTraffic: "XBoard - 流量提醒测试", MailLogin: "XBoard - 登录链接测试",
+	}
+	for _, definition := range Definitions() {
+		delivery, deliveryOK := DeliverySubject(definition.Name, "XBoard")
+		testSubject, testOK := TestSubject(definition.Name, "XBoard")
+		if !deliveryOK || delivery != wantDelivery[definition.Name] || !testOK || testSubject != wantTest[definition.Name] || definition.DefaultSubject == delivery {
+			t.Fatalf("subject contract for %q: editor=%q delivery=(%q,%t) test=(%q,%t)", definition.Name, definition.DefaultSubject, delivery, deliveryOK, testSubject, testOK)
+		}
+	}
+}
+
 func TestValidateRejectsUnknownMalformedAndMissingPlaceholders(t *testing.T) {
 	tests := []struct {
 		name    Name

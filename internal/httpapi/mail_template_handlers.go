@@ -141,7 +141,15 @@ func (s *server) sendMailTemplateTest(ctx context.Context, name mailtemplate.Nam
 	if err != nil {
 		return err
 	}
-	rendered, err := mailtemplate.Render(mailtemplate.Template{Name: template.Name, Subject: template.Subject, Content: template.Content}, s.mailTemplateTestValues(name, site))
+	subject := template.Subject
+	if !template.Customized {
+		var ok bool
+		subject, ok = mailtemplate.TestSubject(name, strings.TrimSpace(site.AppName))
+		if !ok {
+			return store.ErrNotFound
+		}
+	}
+	rendered, err := mailtemplate.Render(mailtemplate.Template{Name: template.Name, Subject: subject, Content: template.Content}, s.mailTemplateTestValues(name, site))
 	if err != nil {
 		return err
 	}
