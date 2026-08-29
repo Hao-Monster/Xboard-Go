@@ -1239,6 +1239,21 @@ export interface SubscriptionSettings {
 
 export type SubscriptionSettingsInput = Omit<SubscriptionSettings, "updated_at">;
 
+export interface SubscriptionPolicySettings {
+  revision: number;
+  plan_change_enable: boolean;
+  reset_traffic_method: number;
+  surplus_enable: boolean;
+  new_order_event_id: number;
+  renew_order_event_id: number;
+  change_order_event_id: number;
+  default_remind_expire: boolean;
+  default_remind_traffic: boolean;
+  updated_at: string;
+}
+
+export type SubscriptionPolicySettingsInput = Omit<SubscriptionPolicySettings, "updated_at">;
+
 export interface UserSubscription {
   plan_id: number | null;
   token: string;
@@ -2383,6 +2398,14 @@ export class APIClient implements AdminAPI {
 
   async updateSubscriptionSettings(input: SubscriptionSettingsInput): Promise<SubscriptionSettings> {
     return this.request<SubscriptionSettings>("/api/v1/admin/subscription-settings", { method: "PUT", body: input });
+  }
+
+  async getSubscriptionPolicySettings(): Promise<SubscriptionPolicySettings> {
+    return this.request<SubscriptionPolicySettings>("/api/v1/admin/subscription-policy-settings");
+  }
+
+  async updateSubscriptionPolicySettings(input: SubscriptionPolicySettingsInput): Promise<SubscriptionPolicySettings> {
+    return this.request<SubscriptionPolicySettings>("/api/v1/admin/subscription-policy-settings", { method: "PUT", body: input });
   }
 
   async getSubscription(): Promise<UserSubscription> {

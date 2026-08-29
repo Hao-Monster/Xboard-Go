@@ -51,6 +51,8 @@ type registrationPolicy struct {
 	trialPlanID                int64
 	trialHours                 int
 	systemTrafficResetMethod   int
+	defaultRemindExpire        bool
+	defaultRemindTraffic       bool
 }
 
 func CheckRegistrationEmailPolicy(settings SiteSettings, email string) error {
@@ -162,10 +164,12 @@ func (s *Store) registerUser(ctx context.Context, input RegisterUserInput, sessi
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users (
 			email, password_hash, is_admin, banned, account_kind, uuid, group_id, plan_id, transfer_enable,
-			expired_at, speed_limit, device_limit, subscription_token, invite_user_id, next_reset_at, created_at, updated_at
-		) VALUES (?, ?, 0, 0, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			expired_at, speed_limit, device_limit, subscription_token, invite_user_id, next_reset_at,
+			remind_expire, remind_traffic, created_at, updated_at
+		) VALUES (?, ?, 0, 0, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Email, input.PasswordHash, uuid.NewString(), groupID, planID, transferEnable, expiredAt, speedLimit, deviceLimit,
-		subscriptionToken, nullableInvitationOwner(invitation), nextResetAt, now.Unix(), now.Unix())
+		subscriptionToken, nullableInvitationOwner(invitation), nextResetAt,
+		policy.defaultRemindExpire, policy.defaultRemindTraffic, now.Unix(), now.Unix())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			var existing int
@@ -253,12 +257,14 @@ func readRegistrationPolicy(ctx context.Context, query registrationPolicyRow) (r
 	err := query.QueryRowContext(ctx, `
 		SELECT stop_register, email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
-		       invite_force, invite_never_expire, try_out_plan_id, try_out_hour, traffic_reset_method
+		       invite_force, invite_never_expire, try_out_plan_id, try_out_hour, traffic_reset_method,
+		       default_remind_expire, default_remind_traffic
 		FROM app_settings WHERE id = 1
 	`).Scan(
 		&policy.stopRegister, &policy.emailVerificationEnabled, &policy.emailWhitelistEnabled, &suffixStorage, &policy.gmailAliasLimitEnabled,
 		&policy.registrationIPLimitEnabled, &policy.registrationIPLimitCount, &policy.registrationIPLimitMinutes,
 		&policy.invitationForceEnabled, &policy.invitationNeverExpire, &policy.trialPlanID, &policy.trialHours, &policy.systemTrafficResetMethod,
+		&policy.defaultRemindExpire, &policy.defaultRemindTraffic,
 	)
 	if err != nil {
 		return registrationPolicy{}, err

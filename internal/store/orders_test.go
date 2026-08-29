@@ -52,6 +52,63 @@ func TestCreateOrderUsesServerPriceBalanceAndDatabaseActiveOrderInvariant(t *tes
 	}
 }
 
+func TestSubscriptionPolicyUpdateImmediatelyControlsPlanChangeAndCompletionEvent(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	currentPlan, userID := createOrderFixture(t, database, now, PlanPrices{"monthly": 1_000}, nil)
+	targetPlan, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "Target plan", GroupID: currentPlan.GroupID, TransferEnableGiB: 200, Prices: PlanPrices{"monthly": 0},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPlan, err = database.SetPlanState(ctx, targetPlan.ID, targetPlan.Revision, PlanState{Show: true, Sell: true, Renew: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires := now.Add(30 * 24 * time.Hour)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE users SET plan_id = ?, expired_at = ?, transfer_enable = ?, traffic_u = 123, traffic_d = 456 WHERE id = ?
+	`, currentPlan.ID, expires.Unix(), currentPlan.TransferEnableGiB*bytesPerGiB, userID); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := database.GetSubscriptionPolicySettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := database.UpdateSubscriptionPolicySettings(ctx, userID, policy.Revision, SaveSubscriptionPolicySettingsInput{
+		PlanChangeEnabled: false, ResetTrafficMethod: policy.ResetTrafficMethod, SurplusEnabled: false,
+		DefaultRemindExpire: true, DefaultRemindTraffic: true,
+	}, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateOrder(ctx, CreateOrderInput{UserID: userID, PlanID: targetPlan.ID, Period: "monthly"}, now.Add(2*time.Second)); !errors.Is(err, ErrPlanUnavailable) {
+		t.Fatalf("disabled plan change error=%v, want ErrPlanUnavailable", err)
+	}
+	if _, err := database.UpdateSubscriptionPolicySettings(ctx, userID, disabled.Revision, SaveSubscriptionPolicySettingsInput{
+		PlanChangeEnabled: true, ResetTrafficMethod: disabled.ResetTrafficMethod, SurplusEnabled: false,
+		ChangeOrderEventID: 1, DefaultRemindExpire: true, DefaultRemindTraffic: true,
+	}, now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, CreateOrderInput{UserID: userID, PlanID: targetPlan.ID, Period: "monthly"}, now.Add(4*time.Second))
+	if err != nil || order.Type != OrderTypeUpgrade || order.TotalAmount != 0 {
+		t.Fatalf("enabled plan change order=%#v err=%v", order, err)
+	}
+	if _, err := database.CompleteOrder(ctx, order.TradeNo, order.TradeNo, now.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var upload, download, planID int64
+	if err := database.db.QueryRowContext(ctx, `SELECT traffic_u, traffic_d, plan_id FROM users WHERE id = ?`, userID).Scan(&upload, &download, &planID); err != nil {
+		t.Fatal(err)
+	}
+	if upload != 0 || download != 0 || planID != targetPlan.ID {
+		t.Fatalf("completion event result upload=%d download=%d plan=%d want plan=%d", upload, download, planID, targetPlan.ID)
+	}
+}
+
 func TestOrderCommissionPreservesLegacyInviterRelationship(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

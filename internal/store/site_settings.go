@@ -146,6 +146,11 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	if rows != 1 {
 		return SiteSettings{}, ErrConflict
 	}
+	if *normalized.TrafficResetMethod != currentTrafficResetMethod {
+		if err := rescheduleSystemTrafficResetUsers(ctx, tx, *normalized.TrafficResetMethod, now); err != nil {
+			return SiteSettings{}, err
+		}
+	}
 	if !normalized.RegistrationIPLimitEnabled {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM registration_ip_limits`); err != nil {
 			return SiteSettings{}, fmt.Errorf("clear disabled registration IP limits: %w", err)

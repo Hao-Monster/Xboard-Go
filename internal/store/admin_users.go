@@ -432,17 +432,21 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 		return nil, fmt.Errorf("begin create users: %w", err)
 	}
 	defer tx.Rollback()
+	var trialPlanID int64
+	var trialHours, configuredSystemResetMethod int
+	var defaultRemindExpire, defaultRemindTraffic bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT try_out_plan_id, try_out_hour, traffic_reset_method, default_remind_expire, default_remind_traffic
+		FROM app_settings WHERE id = 1
+	`).Scan(&trialPlanID, &trialHours, &configuredSystemResetMethod, &defaultRemindExpire, &defaultRemindTraffic); err != nil {
+		return nil, fmt.Errorf("read administrator user defaults: %w", err)
+	}
 	var configuredTrial *registrationTrial
 	for _, input := range normalized {
 		if input.PlanID != nil || input.IsDistributor {
 			continue
 		}
-		var trialPlanID int64
-		var trialHours, systemResetMethod int
-		if err := tx.QueryRowContext(ctx, `SELECT try_out_plan_id, try_out_hour, traffic_reset_method FROM app_settings WHERE id = 1`).Scan(&trialPlanID, &trialHours, &systemResetMethod); err != nil {
-			return nil, fmt.Errorf("read administrator registration trial settings: %w", err)
-		}
-		configuredTrial, err = resolveRegistrationTrial(ctx, tx, trialPlanID, trialHours, systemResetMethod, now)
+		configuredTrial, err = resolveRegistrationTrial(ctx, tx, trialPlanID, trialHours, configuredSystemResetMethod, now)
 		if err != nil {
 			return nil, fmt.Errorf("resolve administrator registration trial: %w", err)
 		}
@@ -540,12 +544,12 @@ func (s *Store) CreateAdminUsers(ctx context.Context, inputs []CreateAdminUserIn
 			INSERT INTO users (
 				email, password_hash, is_admin, is_staff, is_distributor, distributor_name, banned, account_kind,
 				uuid, group_id, plan_id, transfer_enable, expired_at, speed_limit, device_limit, subscription_token,
-				next_reset_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				next_reset_at, remind_expire, remind_traffic, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'human', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, input.Email, input.PasswordHash, input.IsAdmin, input.IsStaff, input.IsDistributor,
 			nullableStringValue(distributorNames[index]), input.Banned, userUUID, nullableInt64Value(groupID),
 			nullableInt64Value(planID), transferEnable, nullableTimeUnix(expiredAt), speedLimit, deviceLimit,
-			subscriptionToken, nullableTimeUnix(nextResetAt), now.Unix(), now.Unix())
+			subscriptionToken, nullableTimeUnix(nextResetAt), defaultRemindExpire, defaultRemindTraffic, now.Unix(), now.Unix())
 		if err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "unique") {
 				return nil, ErrEmailInUse

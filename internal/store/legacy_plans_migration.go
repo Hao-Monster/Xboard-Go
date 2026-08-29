@@ -186,7 +186,7 @@ func (s *Store) ImportLegacyPlans(ctx context.Context, input LegacyPlansImport, 
 	if err := tx.QueryRowContext(ctx, `SELECT traffic_reset_method FROM app_settings WHERE id = 1`).Scan(&targetTrafficResetMethod); err != nil {
 		return LegacyPlansImportReport{}, fmt.Errorf("read target traffic reset method: %w", err)
 	}
-	if targetTrafficResetMethod != 1 {
+	if targetTrafficResetMethod != 0 {
 		return LegacyPlansImportReport{}, fmt.Errorf("%w: legacy plan import requires the default target traffic reset method", ErrConflict)
 	}
 	if err := validateLegacyPlanGroups(ctx, tx, input.Plans); err != nil {
