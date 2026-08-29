@@ -54,6 +54,7 @@ describe("ClientAppSettingsPage", () => {
 
   it("keeps a failed save editable and can recover from an initial load failure", async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm");
     const api = {
       getClientAppSettings: vi.fn().mockRejectedValueOnce(new Error("客户端版本暂时不可用")).mockResolvedValue(initial),
       updateClientAppSettings: vi.fn().mockRejectedValue(new Error("设置已被其他管理员修改"))
@@ -67,5 +68,16 @@ describe("ClientAppSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "保存客户端版本" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("设置已被其他管理员修改");
     expect(screen.getByLabelText("Windows 版本")).toHaveValue("5.0.0");
+
+    confirm.mockReturnValueOnce(false);
+    await user.click(screen.getByRole("button", { name: "重新加载最新设置" }));
+    expect(screen.getByLabelText("Windows 版本")).toHaveValue("5.0.0");
+    expect(api.getClientAppSettings).toHaveBeenCalledTimes(2);
+
+    confirm.mockReturnValueOnce(true);
+    await user.click(screen.getByRole("button", { name: "重新加载最新设置" }));
+    await waitFor(() => expect(screen.getByLabelText("Windows 版本")).toHaveValue("4.8.1"));
+    expect(api.getClientAppSettings).toHaveBeenCalledTimes(3);
+    confirm.mockRestore();
   });
 });

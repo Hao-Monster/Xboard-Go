@@ -64,6 +64,11 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
     }
   };
 
+  const reload = () => {
+    if (dirty && !window.confirm("客户端版本有未保存的修改，确认重新加载并放弃这些修改吗？")) return;
+    void load();
+  };
+
   useEffect(() => {
     let live = true;
     void api.getClientAppSettings().then((settings) => {
@@ -101,7 +106,7 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
     <header className="page-header"><div><p className="eyebrow">Client applications</p><h1>客户端版本</h1><p className="muted">配置与旧版 Xboard 一致的 Windows、macOS 和 Android 客户端版本及下载地址。</p></div></header>
     {loading && absent && <div className="empty-card">正在加载客户端版本设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
-    {absent && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载客户端版本设置</button>}
+    {absent && !loading && <button className="button secondary" type="button" onClick={reload}>重新加载客户端版本设置</button>}
     {!absent && <form className="client-app-settings-form" onSubmit={(event) => void save(event)}>
       <div className="section-heading"><div><h2>应用发布信息</h2><p className="muted">留空表示暂不提供该平台的版本信息；下载地址仅接受绝对 HTTPS URL。</p></div><span className="count-pill">Revision {current.revision}</span></div>
       <div className="client-app-platform-grid">
@@ -114,7 +119,10 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
         </section>)}
       </div>
       {success !== "" && <div className="alert success" role="status">{success}</div>}
-      <div className="form-actions"><button className="button primary" type="submit" disabled={saving || !dirty}>{saving ? "正在保存…" : "保存客户端版本"}</button></div>
+      <div className="form-actions">
+        {error !== "" && <button className="button secondary" type="button" disabled={saving || loading} onClick={reload}>重新加载最新设置</button>}
+        <button className="button primary" type="submit" disabled={saving || !dirty}>{saving ? "正在保存…" : "保存客户端版本"}</button>
+      </div>
     </form>}
   </main>;
 }
