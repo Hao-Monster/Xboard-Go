@@ -55,6 +55,30 @@ test("client app settings show all legacy fields, guard edits, validate and pers
     await expect(page.getByLabel("Windows 下载地址", { exact: true })).toHaveValue(`https://download.example.test/windows-${marker}.exe`);
     await expect(page.getByLabel("macOS 版本", { exact: true })).toHaveValue(original.macos_version);
     await expect(page.getByLabel("Android 版本", { exact: true })).toHaveValue(original.android_version);
+
+    const beforeConflict = await getClientAppSettings(page);
+    const staleWindowsVersion = `5.1.${marker.slice(-4)}`;
+    const concurrentAndroidVersion = `5.2.${marker.slice(-4)}`;
+    await page.getByLabel("Windows 版本", { exact: true }).fill(staleWindowsVersion);
+    const concurrent = await adminRequest(page, "/api/v1/admin/client-app-settings", "PUT", {
+      revision: beforeConflict.revision,
+      windows_version: beforeConflict.windows_version, windows_download_url: beforeConflict.windows_download_url,
+      macos_version: beforeConflict.macos_version, macos_download_url: beforeConflict.macos_download_url,
+      android_version: concurrentAndroidVersion, android_download_url: beforeConflict.android_download_url
+    });
+    expect(concurrent.status, concurrent.body).toBe(200);
+    const conflictResponsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/admin/client-app-settings") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "保存客户端版本", exact: true }).click();
+    expect((await conflictResponsePromise).status()).toBe(409);
+    await expect(page.getByRole("alert")).toContainText("设置已被其他管理员修改");
+
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("重新加载并放弃");
+      await dialog.accept();
+    });
+    await page.getByRole("button", { name: "重新加载最新设置", exact: true }).click();
+    await expect(page.getByLabel("Windows 版本", { exact: true })).toHaveValue(beforeConflict.windows_version);
+    await expect(page.getByLabel("Android 版本", { exact: true })).toHaveValue(concurrentAndroidVersion);
     expect(pageErrors).toEqual([]);
     expect(serverErrors).toEqual([]);
   } finally {
