@@ -77,6 +77,9 @@ var requiredSchemaTables = []struct {
 	{"subscription_reminder_outbox", 46},
 	{"mail_templates", 48},
 	{"client_app_settings", 49},
+	{"themes", 51},
+	{"theme_assets", 51},
+	{"theme_settings", 51},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -166,6 +169,15 @@ var requiredSchemaColumnsV49 = map[string][]string{
 
 var requiredSchemaColumnsV50 = map[string][]string{
 	"app_settings": {"currency", "currency_symbol"},
+}
+
+var requiredSchemaColumnsV51 = map[string][]string{
+	"themes": {
+		"name", "description", "version", "manifest_json", "config_json", "package_sha256",
+		"revision", "is_system", "created_by", "updated_by", "created_at", "updated_at",
+	},
+	"theme_assets":   {"theme_name", "path", "mime_type", "size", "sha256", "width", "height", "body"},
+	"theme_settings": {"id", "active_theme", "revision", "updated_by", "updated_at"},
 }
 
 type schemaQueryer interface {
@@ -291,6 +303,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 51 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV51); err != nil {
+			return err
+		}
+		if err := validateThemeCatalog(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -367,6 +387,56 @@ func validateClientAppSettingsSingleton(ctx context.Context, database schemaQuer
 		return errors.New("client app settings must contain exactly one row")
 	}
 	return nil
+}
+
+func validateThemeCatalog(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `SELECT id, active_theme FROM theme_settings ORDER BY id`)
+	if err != nil {
+		return fmt.Errorf("inspect theme settings singleton: %w", err)
+	}
+	count := 0
+	activeTheme := ""
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id, &activeTheme); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect theme settings singleton: %w", err)
+		}
+		if id != 1 {
+			_ = rows.Close()
+			return errors.New("theme settings contains an unexpected row")
+		}
+		count++
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect theme settings singleton: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect theme settings singleton: %w", err)
+	}
+	if count != 1 {
+		return errors.New("theme settings must contain exactly one row")
+	}
+	rows, err = database.QueryContext(ctx, `SELECT name, is_system FROM themes WHERE name = 'Xboard' COLLATE NOCASE`)
+	if err != nil {
+		return fmt.Errorf("inspect built-in Xboard theme: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return errors.New("theme catalog must contain the built-in Xboard theme")
+	}
+	var name string
+	var system int
+	if err := rows.Scan(&name, &system); err != nil {
+		return fmt.Errorf("inspect built-in Xboard theme: %w", err)
+	}
+	if !strings.EqualFold(name, "Xboard") || system != 1 || activeTheme == "" {
+		return errors.New("theme catalog contains an invalid built-in or active theme")
+	}
+	if rows.Next() {
+		return errors.New("theme catalog contains duplicate built-in themes")
+	}
+	return rows.Err()
 }
 
 func validateTelegramIDIndex(ctx context.Context, database schemaQueryer) error {

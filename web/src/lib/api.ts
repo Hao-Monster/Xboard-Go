@@ -1371,6 +1371,57 @@ export interface SubscriptionQR {
   qr_code: string;
 }
 
+export interface ThemePalette {
+  background: string;
+  surface: string;
+  text: string;
+  muted: string;
+  primary: string;
+  primary_text: string;
+  border: string;
+}
+
+export interface ThemeConfig {
+  theme_color: string;
+  background_url: string;
+  font_scale: "small" | "normal" | "large";
+  radius: "compact" | "rounded" | "pill";
+}
+
+export interface ThemeAppearance {
+  name: string;
+  revision: number;
+  package_sha256: string;
+  palette: ThemePalette;
+  config: ThemeConfig;
+}
+
+export interface ThemeItem {
+  name: string;
+  description: string;
+  version: string;
+  images: string[];
+  backgrounds: string[];
+  palettes: Record<string, ThemePalette>;
+  config: ThemeConfig;
+  package_sha256: string;
+  revision: number;
+  is_system: boolean;
+  is_active: boolean;
+  can_delete: boolean;
+  updated_at: string;
+}
+
+export interface ThemeCatalog {
+  active_theme: string;
+  revision: number;
+  themes: ThemeItem[];
+}
+
+export interface ThemeConfigInput extends ThemeConfig {
+  revision: number;
+}
+
 export interface GuestConfig {
   app_name: string;
   app_description: string | null;
@@ -1388,6 +1439,7 @@ export interface GuestConfig {
   recaptcha_v3_score_threshold: number;
   turnstile_site_key: string | null;
   is_recaptcha: number;
+  theme?: ThemeAppearance;
 }
 
 export interface InvitationCode {
@@ -2541,6 +2593,32 @@ export class APIClient implements AdminAPI {
     return this.request<ClientAppSettings>("/api/v1/admin/client-app-settings", { method: "PUT", body: input });
   }
 
+  async listThemes(): Promise<ThemeCatalog> {
+    return this.request<ThemeCatalog>("/api/v1/admin/themes");
+  }
+
+  async uploadTheme(file: File): Promise<ThemeItem> {
+    const body = new FormData();
+    body.set("file", file);
+    return this.requestForm<ThemeItem>("/api/v1/admin/themes", body);
+  }
+
+  async getTheme(name: string): Promise<ThemeItem> {
+    return this.request<ThemeItem>(`/api/v1/admin/themes/${encodeURIComponent(name)}/config`);
+  }
+
+  async updateThemeConfig(name: string, input: ThemeConfigInput): Promise<ThemeItem> {
+    return this.request<ThemeItem>(`/api/v1/admin/themes/${encodeURIComponent(name)}/config`, { method: "PATCH", body: input });
+  }
+
+  async activateTheme(name: string, revision: number): Promise<ThemeCatalog> {
+    return this.request<ThemeCatalog>(`/api/v1/admin/themes/${encodeURIComponent(name)}/activate`, { method: "POST", body: { revision } });
+  }
+
+  async deleteTheme(name: string): Promise<void> {
+    return this.request<void>(`/api/v1/admin/themes/${encodeURIComponent(name)}`, { method: "DELETE" });
+  }
+
   async getSiteSettings(): Promise<SiteSettings> {
     return this.request<SiteSettings>("/api/v1/admin/site-settings");
   }
@@ -2801,6 +2879,11 @@ export class APIClient implements AdminAPI {
     }
     return response.blob();
   }
+}
+
+export function themeAssetURL(theme: Pick<ThemeItem, "name" | "package_sha256">, assetPath: string): string {
+  const path = assetPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  return `/api/v1/theme-assets/${encodeURIComponent(theme.name)}/${theme.package_sha256}/${path}`;
 }
 
 function readCookie(name: string): string | null {

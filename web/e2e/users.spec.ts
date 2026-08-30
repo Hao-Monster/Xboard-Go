@@ -32,6 +32,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
   await page.getByRole("button", { name: "用户管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "用户管理" })).toBeVisible();
   const table = page.getByRole("table", { name: "用户列表" });
+  await expect(table).toBeAttached();
   const attachedHeaders = await table.locator("th").allTextContents();
   for (const heading of ["ID", "邮箱", "在线设备", "状态", "订阅", "权限组", "已用流量", "总流量", "到期时间", "余额", "佣金", "注册时间", "操作"]) {
     const column = table.getByRole("columnheader", { name: heading });

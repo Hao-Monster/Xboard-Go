@@ -279,6 +279,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /healthz", api.health)
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
+	root.HandleFunc("GET /api/v1/theme-assets/{name}/{digest}/{path...}", api.getThemeAsset)
 	root.HandleFunc("POST /api/v1/guest/telegram/webhook", api.telegramWebhook)
 	root.HandleFunc("GET /api/v1/guest/plans", api.listGuestPlans)
 	root.HandleFunc("GET /api/v1/guest/payment/notify/{method}/{uuid}", api.paymentWebhook)
@@ -487,6 +488,14 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/save", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacySaveConfigSettings)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/testSendMail", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyTestSendMail)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/config/setTelegramWebhook", api.auditLegacyAdminConfigMutations(http.HandlerFunc(api.legacyProvisionTelegramWebhook)))
+	legacyThemes := http.NewServeMux()
+	legacyThemePrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/theme"
+	legacyThemes.HandleFunc("GET "+legacyThemePrefix+"/getThemes", api.legacyListThemes)
+	legacyThemes.HandleFunc("POST "+legacyThemePrefix+"/upload", api.legacyUploadTheme)
+	legacyThemes.HandleFunc("POST "+legacyThemePrefix+"/delete", api.legacyDeleteTheme)
+	legacyThemes.HandleFunc("POST "+legacyThemePrefix+"/getThemeConfig", api.legacyGetThemeConfig)
+	legacyThemes.HandleFunc("POST "+legacyThemePrefix+"/saveThemeConfig", api.legacySaveThemeConfig)
+	legacyAdmin.Handle(legacyThemePrefix+"/", api.auditLegacyAdminThemeMutations(api.recoverPanic(legacyThemes)))
 	legacyMailTemplates := http.NewServeMux()
 	legacyMailTemplatePrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/mail/template"
 	legacyMailTemplates.HandleFunc("GET "+legacyMailTemplatePrefix+"/list", api.legacyListMailTemplates)
@@ -601,6 +610,12 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/client-catalog", api.saveClientCatalog)
 	admin.HandleFunc("GET /api/v1/admin/client-app-settings", api.getClientAppSettings)
 	admin.HandleFunc("PUT /api/v1/admin/client-app-settings", api.updateClientAppSettings)
+	admin.HandleFunc("GET /api/v1/admin/themes", api.listThemes)
+	admin.HandleFunc("POST /api/v1/admin/themes", api.uploadTheme)
+	admin.HandleFunc("GET /api/v1/admin/themes/{name}/config", api.getThemeConfig)
+	admin.HandleFunc("PATCH /api/v1/admin/themes/{name}/config", api.updateThemeConfig)
+	admin.HandleFunc("POST /api/v1/admin/themes/{name}/activate", api.activateTheme)
+	admin.HandleFunc("DELETE /api/v1/admin/themes/{name}", api.deleteTheme)
 	admin.HandleFunc("GET /api/v1/admin/tickets", api.listAdminTickets)
 	admin.HandleFunc("GET /api/v1/admin/ticket-settings", api.getTicketSettings)
 	admin.HandleFunc("PUT /api/v1/admin/ticket-settings", api.updateTicketSettings)
@@ -862,6 +877,31 @@ func (s *server) auditLegacyAdminConfigMutations(next http.Handler) http.Handler
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/config/save", recorder.statusCode())
+	})
+}
+
+func (s *server) auditLegacyAdminThemeMutations(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		action := ""
+		for _, candidate := range []string{"upload", "delete", "saveThemeConfig"} {
+			if strings.HasSuffix(r.URL.Path, "/theme/"+candidate) {
+				action = candidate
+				break
+			}
+		}
+		if action == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		recorder := &responseStatusRecorder{ResponseWriter: w}
+		next.ServeHTTP(recorder, r)
+		if session, ok := sessionFromContext(r.Context()); ok {
+			s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/theme/"+action, recorder.statusCode())
+		}
 	})
 }
 

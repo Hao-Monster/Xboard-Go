@@ -12,15 +12,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 50
+const currentSchemaVersion = 51
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
 }
 
 type Store struct {
-	db      *sql.DB
-	writeMu sync.Mutex
+	db                *sql.DB
+	writeMu           sync.Mutex
+	themeAppearanceMu sync.RWMutex
+	themeAppearance   themeAppearanceCacheEntry
 }
 
 func (s *Store) lockWrite() func() {
@@ -373,6 +375,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v50: %w", err)
 		}
 		version = 50
+	}
+	if version < 51 {
+		if _, err := tx.ExecContext(ctx, schemaV51); err != nil {
+			return fmt.Errorf("apply schema v51: %w", err)
+		}
+		version = 51
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2265,6 +2273,84 @@ CREATE TABLE IF NOT EXISTS client_app_settings (
 ) STRICT;
 
 INSERT OR IGNORE INTO client_app_settings(id) VALUES (1);
+`
+
+const schemaV51 = `
+CREATE TABLE IF NOT EXISTS themes (
+    name TEXT PRIMARY KEY COLLATE NOCASE CHECK (
+        length(name) BETWEEN 1 AND 64
+        AND name NOT GLOB '*[^A-Za-z0-9._-]*'
+    ),
+    description TEXT NOT NULL DEFAULT '' CHECK (
+        length(CAST(description AS BLOB)) <= 512 AND instr(description, char(0)) = 0
+    ),
+    version TEXT NOT NULL CHECK (
+        length(version) BETWEEN 5 AND 32 AND version NOT GLOB '*[^0-9.]*'
+    ),
+    manifest_json TEXT NOT NULL CHECK (
+        length(CAST(manifest_json AS BLOB)) BETWEEN 2 AND 262144 AND json_valid(manifest_json)
+    ),
+    config_json TEXT NOT NULL CHECK (
+        length(CAST(config_json AS BLOB)) BETWEEN 2 AND 8192 AND json_valid(config_json)
+    ),
+    package_sha256 TEXT NOT NULL CHECK (
+        length(package_sha256) = 64 AND package_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    is_system INTEGER NOT NULL DEFAULT 0 CHECK (is_system IN (0, 1)),
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL DEFAULT 0 CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS theme_assets (
+    theme_name TEXT NOT NULL COLLATE NOCASE REFERENCES themes(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    path TEXT NOT NULL CHECK (
+        length(CAST(path AS BLOB)) BETWEEN 1 AND 512
+        AND instr(path, char(0)) = 0 AND instr(path, char(92)) = 0
+        AND substr(path, 1, 1) <> '/'
+    ),
+    mime_type TEXT NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/gif')),
+    size INTEGER NOT NULL CHECK (size BETWEEN 1 AND 8388608),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
+    width INTEGER NOT NULL CHECK (width > 0),
+    height INTEGER NOT NULL CHECK (height > 0 AND width * height <= 20000000),
+    body BLOB NOT NULL CHECK (length(body) = size),
+    PRIMARY KEY(theme_name, path)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS theme_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active_theme TEXT NOT NULL COLLATE NOCASE REFERENCES themes(name) ON UPDATE CASCADE ON DELETE RESTRICT,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS themes_protect_system_delete
+BEFORE DELETE ON themes WHEN OLD.is_system = 1
+BEGIN
+    SELECT RAISE(ABORT, 'system theme cannot be deleted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS themes_protect_identity
+BEFORE UPDATE OF name, is_system ON themes
+WHEN OLD.is_system = 1 OR NEW.is_system <> OLD.is_system
+BEGIN
+    SELECT RAISE(ABORT, 'theme identity cannot be changed');
+END;
+
+INSERT OR IGNORE INTO themes (
+    name, description, version, manifest_json, config_json, package_sha256, revision, is_system
+) VALUES (
+    'Xboard', 'Xboard built-in safe theme', '1.0.0',
+    '{"format_version":1,"name":"Xboard","description":"Xboard built-in safe theme","version":"1.0.0","images":[],"backgrounds":[],"palettes":{"default":{"background":"#0b0d12","surface":"#151922","text":"#e8ebf2","muted":"#9ba3b5","primary":"#9ab2ff","primary_text":"#101218","border":"#303746"},"blue":{"background":"#0c1426","surface":"#14213a","text":"#e8efff","muted":"#9cabc5","primary":"#8fb5ff","primary_text":"#0a1020","border":"#30466d"},"black":{"background":"#050505","surface":"#111111","text":"#f5f5f5","muted":"#a3a3a3","primary":"#d4d4d4","primary_text":"#0a0a0a","border":"#333333"},"darkblue":{"background":"#07111f","surface":"#0d1b2d","text":"#e5f0ff","muted":"#94a8c3","primary":"#82b7ff","primary_text":"#07111f","border":"#294462"}},"default_config":{"theme_color":"default","background_url":"","font_scale":"normal","radius":"rounded"}}',
+    '{"theme_color":"default","background_url":"","font_scale":"normal","radius":"rounded"}',
+    '0000000000000000000000000000000000000000000000000000000000000000', 1, 1
+);
+
+INSERT OR IGNORE INTO theme_settings(id, active_theme) VALUES (1, 'Xboard');
 `
 
 func applySchemaV50(ctx context.Context, tx *sql.Tx) error {

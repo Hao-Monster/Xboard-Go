@@ -5,7 +5,7 @@ import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
 import { ServerManagementPage } from "./features/servers/ServerManagementPage";
-import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type UserSession } from "./lib/api";
+import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
 import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
 import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagementPage";
@@ -26,19 +26,25 @@ const CommissionSettingsPage = lazy(async () => import("./features/settings/Comm
 const EmailSettingsPage = lazy(async () => import("./features/settings/EmailSettingsPage").then((module) => ({ default: module.EmailSettingsPage })));
 const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
 const ClientAppSettingsPage = lazy(async () => import("./features/settings/ClientAppSettingsPage").then((module) => ({ default: module.ClientAppSettingsPage })));
+const ThemeManagementPage = lazy(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const DistributorPortal = lazy(async () => import("./features/distributor/DistributorPortal").then((module) => ({ default: module.DistributorPortal })));
 const AdminDistributorPage = lazy(async () => import("./features/distributor/AdminDistributorPage").then((module) => ({ default: module.AdminDistributorPage })));
+const defaultThemeAppearance: ThemeAppearance = {
+  name: "Xboard", revision: 1, package_sha256: "0".repeat(64),
+  palette: { background: "#0b0d12", surface: "#151922", text: "#e8ebf2", muted: "#9ba3b5", primary: "#9ab2ff", primary_text: "#101218", border: "#303746" },
+  config: { theme_color: "default", background_url: "", font_scale: "normal", radius: "rounded" }
+};
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
   is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
   captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
-  recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+  recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0, theme: defaultThemeAppearance
 };
 type AuthMode = "login" | "register" | "recover";
-type AdminPage = "system" | "settings" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -50,6 +56,7 @@ export function App() {
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<AdminPage>("servers");
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
+  const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
 
   useEffect(() => {
@@ -97,6 +104,22 @@ export function App() {
     }
     description.content = guestConfig.app_description ?? `${guestConfig.app_name} 控制面板`;
   }, [authMode, guestConfig, session]);
+
+  useEffect(() => {
+    const current = guestConfig.theme ?? defaultThemeAppearance;
+    const root = document.documentElement;
+    root.style.setProperty("--theme-background", current.palette.background);
+    root.style.setProperty("--theme-surface", current.palette.surface);
+    root.style.setProperty("--theme-text", current.palette.text);
+    root.style.setProperty("--theme-muted", current.palette.muted);
+    root.style.setProperty("--theme-primary", current.palette.primary);
+    root.style.setProperty("--theme-primary-text", current.palette.primary_text);
+    root.style.setProperty("--theme-border", current.palette.border);
+    root.style.setProperty("--theme-background-image", current.config.background_url === "" ? "none" : `url(${JSON.stringify(current.config.background_url)})`);
+    root.dataset.themeFontScale = current.config.font_scale;
+    root.dataset.themeRadius = current.config.radius;
+    root.dataset.themeName = current.name;
+  }, [guestConfig.theme]);
 
   useEffect(() => {
     let active = true;
@@ -163,8 +186,12 @@ export function App() {
     }));
   };
 
-  const canLeaveAdminPage = () => page !== "client-app" || !clientAppSettingsDirty ||
-    window.confirm("客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
+  const canLeaveAdminPage = () => {
+    if (page === "client-app" && clientAppSettingsDirty) return window.confirm("客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
+    if (page === "themes" && themeSettingsDirty) return window.confirm("主题设置有未保存的修改，确认离开并放弃这些修改吗？");
+    return true;
+  };
+  const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
     if (nextPage !== page && canLeaveAdminPage()) setPage(nextPage);
   };
@@ -192,6 +219,7 @@ export function App() {
         <div className="admin-nav">
           <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>系统状态</button>
           <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigateAdminPage("settings")}>系统设置</button>
+          <button className="nav-link" aria-current={page === "themes" ? "page" : undefined} onClick={() => navigateAdminPage("themes")}>主题配置</button>
           <button className="nav-link" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigateAdminPage("mail")}>邮件设置</button>
           <button className="nav-link" aria-current={page === "telegram" ? "page" : undefined} onClick={() => navigateAdminPage("telegram")}>Telegram 设置</button>
           <button className="nav-link" aria-current={page === "client-app" ? "page" : undefined} onClick={() => navigateAdminPage("client-app")}>客户端版本</button>
@@ -222,6 +250,7 @@ export function App() {
       </nav>
       {page === "system" && <SystemOperationsPage api={api} />}
       {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
+      {page === "themes" && <Suspense fallback={<div className="app-loading">正在加载主题配置…</div>}><ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} /></Suspense>}
       {page === "mail" && <Suspense fallback={<div className="app-loading">正在加载邮件设置…</div>}><EmailSettingsPage api={api} /></Suspense>}
       {page === "telegram" && <Suspense fallback={<div className="app-loading">正在加载 Telegram 设置…</div>}><TelegramSettingsPage api={api} /></Suspense>}
       {page === "client-app" && <Suspense fallback={<div className="app-loading">正在加载客户端版本…</div>}><ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} /></Suspense>}

@@ -12,6 +12,7 @@ interface ModalProps {
   title: string;
   className?: string;
   role?: "dialog" | "alertdialog";
+  restoreFocusRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
   children: ReactNode;
 }
@@ -37,9 +38,9 @@ export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
   );
 }
 
-export function Modal({ title, className = "", role = "dialog", onClose, children }: ModalProps) {
+export function Modal({ title, className = "", role = "dialog", restoreFocusRef, onClose, children }: ModalProps) {
   const contentRef = useRef<HTMLElement>(null);
-  useDialogFocus(contentRef, true, onClose);
+  useDialogFocus(contentRef, true, onClose, restoreFocusRef);
   useDocumentScrollLock();
   return createPortal(
     <div className="overlay-layer modal-layer" data-testid="modal-layer">
@@ -69,14 +70,20 @@ function useDocumentScrollLock() {
   }, []);
 }
 
-function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boolean, onClose: () => void) {
+function useDialogFocus(
+  ref: RefObject<HTMLElement | null>,
+  active: boolean,
+  onClose: () => void,
+  restoreFocusRef?: RefObject<HTMLElement | null>
+) {
   const closeRef = useRef(onClose);
   useEffect(() => {
     closeRef.current = onClose;
   }, [onClose]);
 
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = restoreFocusRef?.current
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const frame = window.requestAnimationFrame(() => {
       const container = ref.current;
       // A fast keyboard or pointer user may reach the dialog before this frame.
@@ -95,7 +102,7 @@ function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boolean, onC
         }
       });
     };
-  }, [ref]);
+  }, [ref, restoreFocusRef]);
 
   useEffect(() => {
     if (!active) {

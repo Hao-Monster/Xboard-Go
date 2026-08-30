@@ -171,16 +171,23 @@ test("visitor completes modern and Passport-compatible password recovery through
 async function waitForPasswordResetCode(request: APIRequestContext, recipient: string, subject: string): Promise<string> {
   let code = "";
   await expect.poll(async () => {
-    const response = await request.get(`${mailpitURL}/api/v1/messages`);
-    if (!response.ok()) return 0;
-    const payload = await response.json() as { messages?: Array<{ ID?: string; Subject?: string; To?: Array<{ Address?: string }> }> };
-    const message = payload.messages?.find((item) => item.Subject === subject && item.To?.some((address) => address.Address === recipient));
-    if (message?.ID === undefined) return 0;
-    const detail = await request.get(`${mailpitURL}/api/v1/message/${encodeURIComponent(message.ID)}`);
-    if (!detail.ok()) return 0;
-    const match = JSON.stringify(await detail.json()).match(/\b(\d{6})\b/);
-    code = match?.[1] ?? "";
-    return code === "" ? 0 : 1;
+    try {
+      const response = await request.get(`${mailpitURL}/api/v1/messages`);
+      if (!response.ok()) return 0;
+      const payload = await response.json() as { messages?: Array<{ ID?: string; Subject?: string; To?: Array<{ Address?: string }> }> };
+      const message = payload.messages?.find((item) => item.Subject === subject && item.To?.some((address) => address.Address === recipient));
+      if (message?.ID === undefined) return 0;
+      const detail = await request.get(`${mailpitURL}/api/v1/message/${encodeURIComponent(message.ID)}`);
+      if (!detail.ok()) return 0;
+      const match = JSON.stringify(await detail.json()).match(/\b(\d{6})\b/);
+      code = match?.[1] ?? "";
+      return code === "" ? 0 : 1;
+    } catch {
+      // Mailpit is eventually consistent and the Docker bridge can briefly
+      // reset a poll connection; the exact message must still arrive before
+      // the existing 15-second deadline.
+      return 0;
+    }
   }, { timeout: 15_000, intervals: [250, 500, 1_000] }).toBe(1);
   return code;
 }
