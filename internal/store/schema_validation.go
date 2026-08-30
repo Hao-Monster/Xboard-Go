@@ -184,6 +184,10 @@ var requiredSchemaColumnsV52 = map[string][]string{
 	"app_settings": {"force_https", "subscribe_url"},
 }
 
+var requiredSchemaColumnsV53 = map[string][]string{
+	"app_settings": {"safe_mode_enable", "secure_path"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -317,6 +321,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 52 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV52); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 53 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV53); err != nil {
 			return err
 		}
 	}

@@ -7,6 +7,8 @@ interface SiteSettings {
   app_name: string;
   app_description: string;
   app_url: string;
+  safe_mode_enable: boolean;
+  secure_path: string;
   force_https: boolean;
   subscribe_url: string;
   tos_url: string;
@@ -68,7 +70,7 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     await page.getByLabel("站点名称").fill(changed.app_name);
     await page.getByLabel("站点描述").fill(changed.app_description);
-    await page.getByLabel("站点网址").fill(changed.app_url);
+    await page.getByLabel("站点网址", { exact: true }).fill(changed.app_url);
     await page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" }).check();
     await page.getByLabel("订阅公开地址").fill(`${changed.subscribe_url}/`);
     await page.getByLabel("用户条款(TOS)URL").fill(changed.tos_url);
@@ -93,7 +95,9 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
-    await expect(page.getByLabel("站点网址")).toHaveValue(changed.app_url);
+    await expect(page.getByLabel("站点网址", { exact: true })).toHaveValue(changed.app_url);
+    await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).not.toBeChecked();
+    await expect(page.getByLabel("后台路径")).toHaveValue(original.secure_path);
     await expect(page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).toBeChecked();
     await expect(page.getByLabel("订阅公开地址")).toHaveValue(changed.subscribe_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
@@ -114,6 +118,8 @@ test("administrator site identity persists into the public shell and can be rest
       tos_url: changed.tos_url, logo: changed.logo, email_whitelist_suffix: changed.email_whitelist_suffix
     });
     expect(publicPayload.data).not.toHaveProperty("stop_register");
+    expect(publicPayload.data).not.toHaveProperty("safe_mode_enable");
+    expect(publicPayload.data).not.toHaveProperty("secure_path");
     expect(publicPayload.data).not.toHaveProperty("force_https");
     expect(publicPayload.data).not.toHaveProperty("subscribe_url");
     expect(publicPayload.data).not.toHaveProperty("email_whitelist_enable");
@@ -197,6 +203,8 @@ test("administrator site identity persists into the public shell and can be rest
         app_name: original.app_name,
         app_description: original.app_description,
         app_url: original.app_url,
+        safe_mode_enable: original.safe_mode_enable,
+        secure_path: original.secure_path,
         force_https: original.force_https,
         subscribe_url: original.subscribe_url,
         tos_url: original.tos_url,

@@ -115,6 +115,16 @@ jobs:
           printf '%s' "$settings_key" > .local/settings-encryption-key.txt
           printf 'XBOARD_PACKAGED_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
           docker compose -f compose.local.yaml --profile e2e up --build --wait
+      - name: Verify packaged maintenance temporary workspace
+        run: |
+          set +e
+          output="$(docker run --rm --entrypoint /xboard xboard-go:local backup verify --input /missing 2>&1)"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || ! grep -q '^open backup archive:' <<<"$output"; then
+            printf '%s\n' "$output"
+            exit 1
+          fi
       - name: Run isolated registration-trial desktop browser test
         env:
           XBOARD_E2E_BASE_URL: http://127.0.0.1:7080

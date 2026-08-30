@@ -14,8 +14,8 @@ COPY internal ./internal
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${APP_REVISION}" -o /out/xboard ./cmd/xboard \
-    && mkdir -p /out/data/admin-exports /out/backups \
-    && chmod 0700 /out/data /out/data/admin-exports /out/backups
+    && mkdir -p /out/data/admin-exports /out/backups /out/tmp \
+    && chmod 0700 /out/data /out/data/admin-exports /out/backups /out/tmp
 
 FROM node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573 AS web-build
 WORKDIR /src/web
@@ -34,6 +34,7 @@ COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 COPY --from=go-build /out/xboard /xboard
 COPY --chown=65532:65532 --from=go-build /out/data /var/lib/xboard
 COPY --chown=65532:65532 --from=go-build /out/backups /var/lib/xboard-backups
+COPY --chown=65532:65532 --from=go-build /out/tmp /tmp
 COPY --chown=65532:65532 --from=web-build /src/web/dist /srv/xboard/web
 USER 65532:65532
 EXPOSE 8080

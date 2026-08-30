@@ -51,11 +51,13 @@ type commissionSettingsRequest struct {
 }
 
 type legacyConfigSaveRequest struct {
-	Currency       *string `json:"currency"`
-	CurrencySymbol *string `json:"currency_symbol"`
-	ForceHTTPS     *bool   `json:"force_https"`
-	SubscribeURL   *string `json:"subscribe_url"`
-	FrontendTheme  *string `json:"frontend_theme"`
+	Currency        *string `json:"currency"`
+	CurrencySymbol  *string `json:"currency_symbol"`
+	ForceHTTPS      *bool   `json:"force_https"`
+	SubscribeURL    *string `json:"subscribe_url"`
+	SafeModeEnabled *bool   `json:"safe_mode_enable"`
+	SecurePath      *string `json:"secure_path"`
+	FrontendTheme   *string `json:"frontend_theme"`
 
 	InviteCommission    *int  `json:"invite_commission"`
 	FirstTimeEnabled    *bool `json:"commission_first_time_enable"`
@@ -107,6 +109,10 @@ func (input legacyConfigSaveRequest) hasInvite() bool {
 
 func (input legacyConfigSaveRequest) hasSite() bool {
 	return input.Currency != nil || input.CurrencySymbol != nil || input.ForceHTTPS != nil || input.SubscribeURL != nil
+}
+
+func (input legacyConfigSaveRequest) hasSafe() bool {
+	return input.SafeModeEnabled != nil || input.SecurePath != nil
 }
 
 func (input legacyConfigSaveRequest) hasTheme() bool {
@@ -206,6 +212,15 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			"currency": settings.Currency, "currency_symbol": settings.CurrencySymbol,
 			"force_https": settings.ForceHTTPS, "subscribe_url": settings.SubscribeURL,
 		}})
+	case "safe":
+		settings, err := s.store.GetSiteAccessSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "安全配置读取失败")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"safe": map[string]any{
+			"safe_mode_enable": settings.SafeModeEnabled, "secure_path": settings.SecurePath,
+		}})
 	case "subscribe":
 		settings, err := s.store.GetLegacyAdminSubscriptionConfig(r.Context())
 		if err != nil {
@@ -244,9 +259,9 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
-	site, invite, subscribe, email, telegram, clientApp, themeConfig := input.hasSite(), input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp(), input.hasTheme()
+	site, safe, invite, subscribe, email, telegram, clientApp, themeConfig := input.hasSite(), input.hasSafe(), input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp(), input.hasTheme()
 	groupCount := 0
-	for _, present := range []bool{site, invite, subscribe, email, telegram, clientApp, themeConfig} {
+	for _, present := range []bool{site, safe, invite, subscribe, email, telegram, clientApp, themeConfig} {
 		if present {
 			groupCount++
 		}
@@ -287,6 +302,23 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
 			} else if !errors.Is(err, store.ErrInvalidInput) {
 				status, message = http.StatusInternalServerError, "站点配置保存失败"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
+	if safe {
+		_, err := s.store.UpdateLegacySiteSettings(r.Context(), session.UserID, store.SaveLegacySiteSettingsInput{
+			SafeModeEnabled: input.SafeModeEnabled, SecurePath: input.SecurePath,
+		}, s.now())
+		if err != nil {
+			status, message := http.StatusUnprocessableEntity, "安全配置无效"
+			if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+			} else if !errors.Is(err, store.ErrInvalidInput) {
+				status, message = http.StatusInternalServerError, "安全配置保存失败"
 			}
 			writeLegacyInviteFailure(w, status, message)
 			return

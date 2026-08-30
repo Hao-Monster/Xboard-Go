@@ -161,6 +161,9 @@ func New(dependencies Dependencies) http.Handler {
 	if !validLegacyAdminPath(dependencies.LegacyAdminPath) {
 		panic("httpapi: LegacyAdminPath must contain 1 to 64 ASCII letters, digits, underscores, or hyphens")
 	}
+	if err := dependencies.Store.EnsureSiteAccessSettings(dependencies.Context, dependencies.LegacyAdminPath, dependencies.Now()); err != nil {
+		panic(fmt.Sprintf("httpapi: ensure site access settings: %v", err))
+	}
 	if dependencies.NodePushInterval == 0 {
 		dependencies.NodePushInterval = 60
 	}
@@ -508,7 +511,8 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAttachmentPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/knowledge/attachment"
 	registerKnowledgeAttachmentRoutes(legacyKnowledgeAttachments, legacyAttachmentPrefix, api)
 	legacyAdmin.Handle(legacyAttachmentPrefix+"/", api.auditLegacyKnowledgeAttachmentMutations(api.recoverPanic(legacyKnowledgeAttachments)))
-	root.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/", api.requireLegacyBearer(api.requireAdmin(api.recoverPanic(legacyAdmin))))
+	protectedLegacyAdmin := api.requireLegacyBearer(api.requireAdmin(api.recoverPanic(legacyAdmin)))
+	root.Handle("/api/v2/{legacyAdminPath}/", api.dynamicLegacyAdminPath(dependencies.LegacyAdminPath, protectedLegacyAdmin))
 
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/machines", api.listMachines)
@@ -689,6 +693,32 @@ func validLegacyAdminPath(value string) bool {
 		return false
 	}
 	return true
+}
+
+func (s *server) dynamicLegacyAdminPath(routingPath string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		candidate := r.PathValue("legacyAdminPath")
+		if !validLegacyAdminPath(candidate) {
+			http.NotFound(w, r)
+			return
+		}
+		settings, err := s.store.GetSiteAccessSettings(r.Context())
+		if err != nil {
+			s.logger.Error("read secure admin path", "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		if len(candidate) != len(settings.SecurePath) || subtle.ConstantTimeCompare([]byte(candidate), []byte(settings.SecurePath)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		request := r.Clone(r.Context())
+		requestURL := *r.URL
+		request.URL = &requestURL
+		request.URL.Path = "/api/v2/" + routingPath + strings.TrimPrefix(r.URL.Path, "/api/v2/"+candidate)
+		request.URL.RawPath = ""
+		next.ServeHTTP(w, request)
+	})
 }
 
 func (s *server) auditAdminMutations(next http.Handler) http.Handler {

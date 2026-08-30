@@ -309,6 +309,8 @@ type SiteSettings struct {
 	AppName                     string    `json:"app_name"`
 	AppDescription              string    `json:"app_description"`
 	AppURL                      string    `json:"app_url"`
+	SafeModeEnabled             bool      `json:"safe_mode_enable"`
+	SecurePath                  string    `json:"secure_path"`
 	ForceHTTPS                  bool      `json:"force_https"`
 	SubscribeURL                string    `json:"subscribe_url"`
 	TOSURL                      string    `json:"tos_url"`
@@ -350,6 +352,8 @@ type SaveSiteSettingsInput struct {
 	AppName                    string
 	AppDescription             string
 	AppURL                     string
+	SafeModeEnabled            *bool
+	SecurePath                 *string
 	ForceHTTPS                 *bool
 	SubscribeURL               *string
 	TOSURL                     string
@@ -390,10 +394,18 @@ type SaveSiteSettingsInput struct {
 }
 
 type SaveLegacySiteSettingsInput struct {
-	Currency       *string
-	CurrencySymbol *string
-	ForceHTTPS     *bool
-	SubscribeURL   *string
+	Currency        *string
+	CurrencySymbol  *string
+	SafeModeEnabled *bool
+	SecurePath      *string
+	ForceHTTPS      *bool
+	SubscribeURL    *string
+}
+
+type SiteAccessSettings struct {
+	AppURL          string
+	SafeModeEnabled bool
+	SecurePath      string
 }
 
 type ClientAppSettings struct {

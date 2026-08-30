@@ -3,7 +3,9 @@ package webui
 import (
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -19,12 +21,21 @@ type staticFile struct {
 	modTime  time.Time
 }
 
+type FrontendAccessChecker func(*http.Request) (bool, error)
+
 // New serves an immutable frontend build and delegates all API and realtime
 // traffic to api. The build directory is trusted release input, not writable
 // user content.
-func New(root string, api http.Handler) (http.Handler, error) {
+func New(root string, api http.Handler, accessChecks ...FrontendAccessChecker) (http.Handler, error) {
 	if api == nil {
 		return nil, errors.New("webui: API handler is required")
+	}
+	if len(accessChecks) > 1 {
+		return nil, errors.New("webui: at most one frontend access checker is supported")
+	}
+	var accessCheck FrontendAccessChecker
+	if len(accessChecks) == 1 {
+		accessCheck = accessChecks[0]
 	}
 	absoluteRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -60,6 +71,9 @@ func New(root string, api http.Handler) (http.Handler, error) {
 			return
 		}
 		if file, exists := files[requestPath]; exists {
+			if requestPath == "index.html" && !frontendAccessAllowed(w, r, accessCheck) {
+				return
+			}
 			if strings.HasPrefix(requestPath, "assets/") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			} else if requestPath == "index.html" {
@@ -74,9 +88,46 @@ func New(root string, api http.Handler) (http.Handler, error) {
 			http.NotFound(w, r)
 			return
 		}
+		if !frontendAccessAllowed(w, r, accessCheck) {
+			return
+		}
 		w.Header().Set("Cache-Control", "no-store")
 		serveStaticFile(w, r, index)
 	}), nil
+}
+
+func frontendAccessAllowed(w http.ResponseWriter, r *http.Request, check FrontendAccessChecker) bool {
+	if check == nil {
+		return true
+	}
+	allowed, err := check(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return false
+	}
+	if !allowed {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func HostMatchesURL(requestHost, configuredURL string) bool {
+	configured, err := url.Parse(configuredURL)
+	if err != nil || configured.User != nil || configured.Hostname() == "" || (configured.Scheme != "http" && configured.Scheme != "https") {
+		return false
+	}
+	request, err := url.Parse("//" + requestHost)
+	if err != nil || request.User != nil || request.Hostname() == "" || request.RawQuery != "" || request.Fragment != "" {
+		return false
+	}
+	want := strings.TrimSuffix(strings.ToLower(configured.Hostname()), ".")
+	got := strings.TrimSuffix(strings.ToLower(request.Hostname()), ".")
+	wantIP, gotIP := net.ParseIP(want), net.ParseIP(got)
+	if wantIP != nil || gotIP != nil {
+		return wantIP != nil && gotIP != nil && wantIP.Equal(gotIP)
+	}
+	return got == want
 }
 
 func buildManifest(root string) (map[string]staticFile, error) {

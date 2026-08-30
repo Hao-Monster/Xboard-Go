@@ -92,6 +92,13 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
           <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
         </div>
         <fieldset className="settings-fieldset">
+          <legend>访问安全</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
+          <label>后台路径<input required minLength={1} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
+          <p className="small muted">新路径至少 8 位，仅限字母、数字、下划线和连字符。修改后旧 V2 管理接口路径立即失效；后台路径不能替代登录和权限校验。</p>
+          {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
+        </fieldset>
+        <fieldset className="settings-fieldset">
           <legend>订阅公开地址</legend>
           <label className="switch-label"><input type="checkbox" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
           <label>订阅公开地址<textarea aria-describedby="subscribe-url-help" placeholder={"https://subscribe-a.example.com\nhttps://subscribe-b.example.com"} value={draft.subscribe_url.split(",").join("\n")} onChange={(event) => updateDraft("subscribe_url", event.target.value)} /></label>
@@ -192,6 +199,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     app_name: settings.app_name,
     app_description: settings.app_description,
     app_url: settings.app_url,
+    safe_mode_enable: settings.safe_mode_enable,
+    secure_path: settings.secure_path,
     force_https: settings.force_https,
     subscribe_url: settings.subscribe_url,
     tos_url: settings.tos_url,

@@ -1220,6 +1220,8 @@ export interface SiteSettings {
   app_name: string;
   app_description: string;
   app_url: string;
+  safe_mode_enable: boolean;
+  secure_path: string;
   force_https: boolean;
   subscribe_url: string;
   tos_url: string;
@@ -1270,6 +1272,8 @@ export interface SiteSettingsInput {
   app_name: string;
   app_description: string;
   app_url: string;
+  safe_mode_enable: boolean;
+  secure_path: string;
   force_https: boolean;
   subscribe_url: string;
   tos_url: string;
