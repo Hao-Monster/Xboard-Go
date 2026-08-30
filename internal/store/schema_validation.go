@@ -164,6 +164,10 @@ var requiredSchemaColumnsV49 = map[string][]string{
 	},
 }
 
+var requiredSchemaColumnsV50 = map[string][]string{
+	"app_settings": {"currency", "currency_symbol"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -280,6 +284,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if err := validateClientAppSettingsSingleton(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 50 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV50); err != nil {
+			return err
 		}
 	}
 	if schemaVersion >= 42 {

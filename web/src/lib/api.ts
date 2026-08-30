@@ -1222,6 +1222,8 @@ export interface SiteSettings {
   app_url: string;
   tos_url: string;
   logo: string;
+  currency: string;
+  currency_symbol: string;
   stop_register: boolean;
   email_verify: boolean;
   email_whitelist_enable: boolean;
@@ -1268,6 +1270,8 @@ export interface SiteSettingsInput {
   app_url: string;
   tos_url: string;
   logo: string;
+  currency: string;
+  currency_symbol: string;
   stop_register: boolean;
   email_verify: boolean;
   email_whitelist_enable: boolean;

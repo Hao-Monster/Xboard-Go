@@ -91,20 +91,24 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
           <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
           <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
         </div>
+        <div className="site-settings-url-grid">
+          <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
+          <label>货币符号<input maxLength={16} value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
+        </div>
         <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
         <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
-		<fieldset className="settings-fieldset">
-		  <legend>流量重置策略</legend>
-		  <label>系统默认重置方式<select value={draft.traffic_reset_method} onChange={(event) => updateDraft("traffic_reset_method", Number(event.target.value))}>
-			<option value={0}>每月 1 日</option><option value={1}>按用户到期日每月重置</option><option value={2}>永不重置</option><option value={3}>每年 1 月 1 日</option><option value={4}>按用户到期月日每年重置</option>
-		  </select></label>
-		  <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
-		</fieldset>
-		<fieldset className="settings-fieldset">
-		  <legend>优惠券系统</legend>
-		  <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
-		  <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
-		</fieldset>
+        <fieldset className="settings-fieldset">
+          <legend>流量重置策略</legend>
+          <label>系统默认重置方式<select value={draft.traffic_reset_method} onChange={(event) => updateDraft("traffic_reset_method", Number(event.target.value))}>
+            <option value={0}>每月 1 日</option><option value={1}>按用户到期日每月重置</option><option value={2}>永不重置</option><option value={3}>每年 1 月 1 日</option><option value={4}>按用户到期月日每年重置</option>
+          </select></label>
+          <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
+        </fieldset>
+        <fieldset className="settings-fieldset">
+          <legend>优惠券系统</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
+          <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
+        </fieldset>
         <fieldset className="settings-fieldset">
           <legend>注册安全策略</legend>
           <label>注册试用<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
@@ -184,6 +188,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     app_url: settings.app_url,
     tos_url: settings.tos_url,
     logo: settings.logo,
+    currency: settings.currency,
+    currency_symbol: settings.currency_symbol,
     stop_register: settings.stop_register,
     email_verify: settings.email_verify,
     email_whitelist_enable: settings.email_whitelist_enable,

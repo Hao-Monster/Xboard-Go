@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 49
+const currentSchemaVersion = 50
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -367,6 +367,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v49: %w", err)
 		}
 		version = 49
+	}
+	if version < 50 {
+		if err := applySchemaV50(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v50: %w", err)
+		}
+		version = 50
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2260,6 +2266,28 @@ CREATE TABLE IF NOT EXISTS client_app_settings (
 
 INSERT OR IGNORE INTO client_app_settings(id) VALUES (1);
 `
+
+func applySchemaV50(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"currency", `ALTER TABLE app_settings ADD COLUMN currency TEXT NOT NULL DEFAULT 'CNY' CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*')`},
+		{"currency_symbol", `ALTER TABLE app_settings ADD COLUMN currency_symbol TEXT NOT NULL DEFAULT '¥' CHECK (length(CAST(currency_symbol AS BLOB)) <= 16 AND instr(currency_symbol, char(0)) = 0)`},
+	}
+	for _, column := range columns {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect app_settings.%s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add app_settings.%s: %w", column.name, err)
+			}
+		}
+	}
+	return nil
+}
 
 func applySchemaV47(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {

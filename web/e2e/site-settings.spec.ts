@@ -9,6 +9,8 @@ interface SiteSettings {
   app_url: string;
   tos_url: string;
   logo: string;
+  currency: string;
+  currency_symbol: string;
   stop_register: boolean;
   email_verify: boolean;
   email_whitelist_enable: boolean;
@@ -36,6 +38,8 @@ test("administrator site identity persists into the public shell and can be rest
     app_url: `https://site-${unique}.example.test/`,
     tos_url: `https://site-${unique}.example.test/terms/`,
     logo: `https://images.example.test/brand-${unique}.svg`,
+    currency: "USD",
+    currency_symbol: "$",
     stop_register: true,
     email_whitelist_enable: true,
     email_whitelist_suffix: ["example.test", "gmail.com"],
@@ -63,6 +67,9 @@ test("administrator site identity persists into the public shell and can be rest
     await page.getByLabel("站点网址").fill(changed.app_url);
     await page.getByLabel("用户条款(TOS)URL").fill(changed.tos_url);
     await page.getByLabel("LOGO").fill(changed.logo);
+    await page.getByLabel("货币代码").fill(changed.currency.toLowerCase());
+    await expect(page.getByLabel("货币代码")).toHaveValue(changed.currency);
+    await page.getByLabel("货币符号").fill(changed.currency_symbol);
     await page.getByRole("checkbox", { name: "停止新用户注册" }).check();
     await page.getByRole("checkbox", { name: "邮箱后缀白名单" }).check();
     await page.getByRole("textbox", { name: "邮箱后缀", exact: true }).fill(changed.email_whitelist_suffix.join("\n"));
@@ -82,6 +89,8 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址")).toHaveValue(changed.app_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
+    await expect(page.getByLabel("货币代码")).toHaveValue(changed.currency);
+    await expect(page.getByLabel("货币符号")).toHaveValue(changed.currency_symbol);
     await expect(page.getByRole("checkbox", { name: "停止新用户注册" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "邮箱后缀白名单" })).toBeChecked();
     await expect(page.getByRole("textbox", { name: "邮箱后缀", exact: true })).toHaveValue(changed.email_whitelist_suffix.join("\n"));
@@ -105,6 +114,25 @@ test("administrator site identity persists into the public shell and can be rest
     expect(publicPayload.data).not.toHaveProperty("password_limit_enable");
     expect(publicPayload.data).not.toHaveProperty("password_limit_count");
     expect(publicPayload.data).not.toHaveProperty("password_limit_expire");
+
+    const subscriptionResponse = await page.request.get("/api/v1/subscription");
+    expect(subscriptionResponse.status()).toBe(200);
+    const subscriptionPayload = await subscriptionResponse.json() as { data?: { token?: string } };
+    expect(subscriptionPayload.data?.token).toMatch(/^[0-9a-f]{32}$/);
+    const appConfigResponse = await page.request.get(
+      `/api/v2/client/app/getConfig?token=${encodeURIComponent(subscriptionPayload.data?.token ?? "")}`
+    );
+    expect(appConfigResponse.status()).toBe(200);
+    expect(appConfigResponse.headers()["cache-control"]).toBe("no-store, private");
+    const appConfigPayload = await appConfigResponse.json() as { data?: Record<string, unknown> };
+    expect(Object.keys(appConfigPayload.data ?? {})).toEqual([
+      "app_info", "features", "ui_config", "business_rules", "server_config", "security_config",
+      "payment_config", "notification_config", "cache_config", "last_updated", "config_hash"
+    ]);
+    expect(appConfigPayload.data?.payment_config).toMatchObject({
+      currency: changed.currency, currency_symbol: changed.currency_symbol
+    });
+    expect(appConfigPayload.data?.config_hash).toMatch(/^[0-9a-f]{32}$/);
 
     const knowledgeResponse = await adminRequest(page, "/api/v1/admin/knowledge", "POST", {
       language: "zh-CN", category: "Brand parity", title: `Brand guide ${unique}`,
@@ -160,6 +188,8 @@ test("administrator site identity persists into the public shell and can be rest
         app_url: original.app_url,
         tos_url: original.tos_url,
         logo: original.logo,
+        currency: original.currency,
+        currency_symbol: original.currency_symbol,
         stop_register: original.stop_register,
         email_verify: original.email_verify,
         email_whitelist_enable: original.email_whitelist_enable,

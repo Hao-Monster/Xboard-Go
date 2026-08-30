@@ -101,9 +101,25 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 	if strings.Contains(legacyFetch.Body.String(), "commission_withdraw_limit") || strings.Contains(legacyFetch.Body.String(), "revision") {
 		t.Fatalf("legacy invite fetch disclosed unsupported/internal fields: %s", legacyFetch.Body)
 	}
-	unsupportedGroup := bearerRequest(api, http.MethodGet, "/api/v2/admin/config/fetch?key=site", legacyAuthorization, "")
-	if unsupportedGroup.Code != http.StatusUnprocessableEntity || !strings.Contains(unsupportedGroup.Body.String(), `"status":"fail"`) {
-		t.Fatalf("unsupported legacy config group status=%d body=%s", unsupportedGroup.Code, unsupportedGroup.Body)
+	legacySite := bearerRequest(api, http.MethodGet, "/api/v2/admin/config/fetch?key=site", legacyAuthorization, "")
+	if legacySite.Code != http.StatusOK || !containsAll(legacySite.Body.String(), `"currency":"CNY"`, `"currency_symbol":"¥"`) {
+		t.Fatalf("legacy site config status=%d body=%s", legacySite.Code, legacySite.Body)
+	}
+	legacySiteSaved := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
+		"currency":"usd","currency_symbol":" $ "
+	}`)
+	if legacySiteSaved.Code != http.StatusOK || !containsAll(legacySiteSaved.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("legacy site config save status=%d body=%s", legacySiteSaved.Code, legacySiteSaved.Body)
+	}
+	updatedSite, err := database.GetSiteSettings(t.Context())
+	if err != nil || updatedSite.Currency != "USD" || updatedSite.CurrencySymbol != "$" {
+		t.Fatalf("legacy site config persisted=%#v err=%v", updatedSite, err)
+	}
+	invalidLegacySite := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
+		"currency":"US","currency_symbol":"$"
+	}`)
+	if invalidLegacySite.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid legacy site status=%d body=%s", invalidLegacySite.Code, invalidLegacySite.Body)
 	}
 	legacySaved := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
 		"invite_commission":20,"commission_first_time_enable":true,
@@ -135,7 +151,7 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 		t.Fatalf("distribution summary status=%d body=%s", summary.Code, summary.Body)
 	}
 	preserved, err := database.GetCommissionSettings(t.Context())
-	if err != nil || preserved.Revision != 3 || preserved.InviteCommission != 20 || !preserved.DistributionEnabled {
+	if err != nil || preserved.Revision != 4 || preserved.InviteCommission != 20 || !preserved.DistributionEnabled {
 		t.Fatalf("rejected requests changed settings: settings=%#v err=%v", preserved, err)
 	}
 	audits, err := database.ListAdminAuditLogs(t.Context(), store.AdminAuditFilter{Page: 1, PageSize: 20, Query: "commission-settings"})

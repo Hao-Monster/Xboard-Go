@@ -59,13 +59,16 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
 	t.Setenv("XBOARD_WEB_ROOT", filepath.Join(t.TempDir(), "web"))
+	legacyAppTemplate := filepath.Join(t.TempDir(), "legacy-app-clash.yaml")
+	t.Setenv("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE", legacyAppTemplate)
 
 	settings, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if settings.Address != "127.0.0.1:9090" || settings.DatabaseDSN != "file:test.db" || !settings.CookieSecure || settings.SchedulerInterval != 2*time.Second ||
-		settings.LegacyAdminPath != "53815c85" || !settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" {
+		settings.LegacyAdminPath != "53815c85" || !settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" ||
+		settings.LegacyAppClashTemplateFile != legacyAppTemplate {
 		t.Fatalf("unexpected settings: %#v", settings)
 	}
 	if len(settings.AllowedOrigins) != 2 || settings.AllowedOrigins[1] != "https://admin.example.test" {
@@ -114,6 +117,16 @@ func TestLoadRejectsRelativeWebRoot(t *testing.T) {
 	t.Setenv("XBOARD_WEB_ROOT", "web/dist")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() accepted a relative web root")
+	}
+}
+
+func TestLoadRejectsRelativeLegacyAppClashTemplate(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE", "config/app.clash.yaml")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative legacy app Clash template")
 	}
 }
 

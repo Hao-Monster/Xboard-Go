@@ -92,7 +92,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
-		"logo":"https://images.example.test/brand.svg","stop_register":true,
+		"logo":"https://images.example.test/brand.svg","currency":" usd ","currency_symbol":" $ ","stop_register":true,
 		"email_whitelist_enable":true,"email_whitelist_suffix":[" Allowed.Test ","allowed.test","GMAIL.COM"],
 		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":true,
 		"register_limit_count":2,"register_limit_expire":30,
@@ -105,7 +105,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updated := decodeSiteSettingsEnvelope(t, updatedResponse)
 	if updated.Revision != 2 || updated.AppName != "Example Board" || updated.AppDescription != "Fast and safe control plane" ||
 		updated.AppURL != "https://panel.example.test/" || updated.TOSURL != "https://panel.example.test/terms/" ||
-		updated.Logo != "https://images.example.test/brand.svg" || !updated.StopRegister || !updated.EmailWhitelistEnabled ||
+		updated.Logo != "https://images.example.test/brand.svg" || updated.Currency != "USD" || updated.CurrencySymbol != "$" || !updated.StopRegister || !updated.EmailWhitelistEnabled ||
 		len(updated.EmailWhitelistSuffixes) != 2 || updated.EmailWhitelistSuffixes[0] != "allowed.test" || updated.EmailWhitelistSuffixes[1] != "gmail.com" ||
 		!updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled || updated.RegistrationIPLimitCount != 2 ||
 		updated.RegistrationIPLimitMinutes != 30 || !updated.PasswordLimitEnabled || updated.PasswordLimitCount != 2 ||
@@ -138,7 +138,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		t.Fatalf("legacy-shape settings update status=%d body=%s", preservedResponse.Code, preservedResponse.Body)
 	}
 	preserved := decodeSiteSettingsEnvelope(t, preservedResponse)
-	if preserved.Revision != 3 || !preserved.StopRegister || !preserved.EmailWhitelistEnabled ||
+	if preserved.Revision != 3 || preserved.Currency != "USD" || preserved.CurrencySymbol != "$" || !preserved.StopRegister || !preserved.EmailWhitelistEnabled ||
 		len(preserved.EmailWhitelistSuffixes) != 2 || !preserved.GmailAliasLimitEnabled || !preserved.RegistrationIPLimitEnabled ||
 		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 ||
 		!preserved.PasswordLimitEnabled || preserved.PasswordLimitCount != 2 || preserved.PasswordLimitMinutes != 30 || preserved.CouponEnabled {
@@ -154,6 +154,11 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		"logo":"https://user@example.test/logo.png"
 	}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
+	invalidCurrency := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
+		"currency":"US","currency_symbol":"$"
+	}`)
+	expectAPIError(t, invalidCurrency, http.StatusUnprocessableEntity, "validation_failed")
 	invalidWhitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"email_whitelist_enable":true,"email_whitelist_suffix":["*.example.test"]
