@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 51
+const currentSchemaVersion = 52
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -381,6 +381,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v51: %w", err)
 		}
 		version = 51
+	}
+	if version < 52 {
+		if err := applySchemaV52(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v52: %w", err)
+		}
+		version = 52
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2352,6 +2358,28 @@ INSERT OR IGNORE INTO themes (
 
 INSERT OR IGNORE INTO theme_settings(id, active_theme) VALUES (1, 'Xboard');
 `
+
+func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"force_https", `ALTER TABLE app_settings ADD COLUMN force_https INTEGER NOT NULL DEFAULT 0 CHECK (force_https IN (0, 1))`},
+		{"subscribe_url", `ALTER TABLE app_settings ADD COLUMN subscribe_url TEXT NOT NULL DEFAULT '' CHECK (length(CAST(subscribe_url AS BLOB)) <= 8192 AND instr(subscribe_url, char(0)) = 0)`},
+	}
+	for _, column := range columns {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('app_settings') WHERE name = ?)`, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect app_settings.%s: %w", column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add app_settings.%s: %w", column.name, err)
+			}
+		}
+	}
+	return nil
+}
 
 func applySchemaV50(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {

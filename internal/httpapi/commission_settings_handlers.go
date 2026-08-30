@@ -53,6 +53,8 @@ type commissionSettingsRequest struct {
 type legacyConfigSaveRequest struct {
 	Currency       *string `json:"currency"`
 	CurrencySymbol *string `json:"currency_symbol"`
+	ForceHTTPS     *bool   `json:"force_https"`
+	SubscribeURL   *string `json:"subscribe_url"`
 	FrontendTheme  *string `json:"frontend_theme"`
 
 	InviteCommission    *int  `json:"invite_commission"`
@@ -104,7 +106,7 @@ func (input legacyConfigSaveRequest) hasInvite() bool {
 }
 
 func (input legacyConfigSaveRequest) hasSite() bool {
-	return input.Currency != nil || input.CurrencySymbol != nil
+	return input.Currency != nil || input.CurrencySymbol != nil || input.ForceHTTPS != nil || input.SubscribeURL != nil
 }
 
 func (input legacyConfigSaveRequest) hasTheme() bool {
@@ -200,8 +202,9 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			writeLegacyInviteFailure(w, http.StatusInternalServerError, "站点配置读取失败")
 			return
 		}
-		writeLegacySuccess(w, http.StatusOK, map[string]any{"site": map[string]string{
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"site": map[string]any{
 			"currency": settings.Currency, "currency_symbol": settings.CurrencySymbol,
+			"force_https": settings.ForceHTTPS, "subscribe_url": settings.SubscribeURL,
 		}})
 	case "subscribe":
 		settings, err := s.store.GetLegacyAdminSubscriptionConfig(r.Context())
@@ -276,6 +279,7 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if site {
 		_, err := s.store.UpdateLegacySiteSettings(r.Context(), session.UserID, store.SaveLegacySiteSettingsInput{
 			Currency: input.Currency, CurrencySymbol: input.CurrencySymbol,
+			ForceHTTPS: input.ForceHTTPS, SubscribeURL: input.SubscribeURL,
 		}, s.now())
 		if err != nil {
 			status, message := http.StatusUnprocessableEntity, "站点配置无效"

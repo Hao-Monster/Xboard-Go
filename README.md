@@ -629,6 +629,22 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+The legacy `force_https` and `subscribe_url` values also use an independent
+slice, leaving the frozen `content-settings-v1` checksum and ledger identity
+unchanged. External subscription origins must use HTTPS; loopback HTTP remains
+available for isolated local testing. The importer rejects credentials, query
+strings, fragments, duplicate source rows, and non-pristine target fields:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-public-origin-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-public-origin-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.

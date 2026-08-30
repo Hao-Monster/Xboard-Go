@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,6 +24,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/subscription"
 )
 
 const (
@@ -352,6 +352,18 @@ func (service *Service) waitForCSVJob(ctx context.Context, jobID string) (store.
 
 func (service *Service) processClaimedCSVWithToken(ctx context.Context, job store.AdminUserBulkJob, claimToken string, now time.Time) (store.AdminUserBulkJob, error) {
 	startedClock := time.Now()
+	renderConfig, err := service.store.GetSubscriptionRenderConfig(ctx, "")
+	if err != nil {
+		_ = service.store.FailAdminUserBulkCSV(ctx, job.ID, claimToken, "read subscription URL settings", now)
+		return store.AdminUserBulkJob{}, fmt.Errorf("read subscription URL settings: %w", err)
+	}
+	if strings.TrimSpace(job.AppURL) != "" {
+		renderConfig.AppURL = job.AppURL
+	}
+	publicURLConfig := subscription.PublicURLConfig{
+		Origins: renderConfig.SubscribeURL, AppURL: renderConfig.AppURL, PanelURL: service.panelURL,
+		Path: renderConfig.Path, ForceHTTPS: renderConfig.ForceHTTPS,
+	}
 	root, err := os.OpenRoot(service.exportRoot)
 	if err != nil {
 		_ = service.store.FailAdminUserBulkCSV(ctx, job.ID, claimToken, "open protected export directory", now)
@@ -403,7 +415,11 @@ func (service *Service) processClaimedCSVWithToken(ctx context.Context, job stor
 			break
 		}
 		for _, target := range targets {
-			if err := writer.Write(service.csvRow(job, target)); err != nil {
+			row, err := service.csvRow(publicURLConfig, target)
+			if err != nil {
+				return service.failCSVFile(ctx, job, claimToken, temporary, "build subscription URL", err, now)
+			}
+			if err := writer.Write(row); err != nil {
 				return service.failCSVFile(ctx, job, claimToken, temporary, "write export row", err, now)
 			}
 			after = target.Sequence
@@ -454,7 +470,7 @@ func (service *Service) failCSVFile(ctx context.Context, job store.AdminUserBulk
 	return store.AdminUserBulkJob{}, fmt.Errorf("%s: %w", publicReason, cause)
 }
 
-func (service *Service) csvRow(job store.AdminUserBulkJob, target store.AdminUserBulkTarget) []string {
+func (service *Service) csvRow(config subscription.PublicURLConfig, target store.AdminUserBulkTarget) ([]string, error) {
 	expiry := "长期有效"
 	if target.ExpiredAt != nil {
 		expiry = target.ExpiredAt.UTC().Format("2006-01-02 15:04:05")
@@ -463,16 +479,15 @@ func (service *Service) csvRow(job store.AdminUserBulkJob, target store.AdminUse
 	if planName == "" {
 		planName = "无订阅"
 	}
-	baseURL := strings.TrimRight(job.AppURL, "/")
-	if baseURL == "" {
-		baseURL = service.panelURL
+	subscriptionURL, err := subscription.BuildPublicURL(config, target.SubscriptionToken, "")
+	if err != nil {
+		return nil, err
 	}
-	subscriptionURL := baseURL + "/api/v1/client/subscribe?token=" + url.QueryEscape(target.SubscriptionToken)
 	return []string{
 		safeSpreadsheetCell(target.Email), money(target.Balance), money(target.CommissionBalance),
 		trafficConvert(target.TransferEnable), trafficConvert(target.TransferEnable - target.TransferUsed),
 		expiry, safeSpreadsheetCell(planName), safeSpreadsheetCell(subscriptionURL),
-	}
+	}, nil
 }
 
 func (service *Service) OpenCSV(ctx context.Context, jobID string, now time.Time) (*os.File, store.AdminUserBulkJob, error) {

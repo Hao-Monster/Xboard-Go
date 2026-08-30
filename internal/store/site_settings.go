@@ -3,6 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -24,13 +27,15 @@ const (
 	maxCurrencySymbolBytes  = 16
 	maxSettingsCipherBytes  = 8_192
 	minSettingsCipherBytes  = 33
+	maxSubscribeURLItems    = 32
+	maxSubscribeURLBytes    = 8_192
 )
 
 const defaultEmailWhitelistStorage = "gmail.com,qq.com,163.com,yahoo.com,sina.com,126.com,outlook.com,yeah.net,foxmail.com"
 
 func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
+		SELECT revision, app_name, app_description, app_url, force_https, subscribe_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
@@ -56,18 +61,18 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, fmt.Errorf("begin site settings update: %w", err)
 	}
 	defer tx.Rollback()
-	var currentEmailVerificationEnabled, currentMailLoginEnabled, smtpEnabled bool
+	var currentEmailVerificationEnabled, currentMailLoginEnabled, currentForceHTTPS, smtpEnabled bool
 	var currentTrialPlanID int64
 	var currentTrialHours, currentTrafficResetMethod int
 	var currentCouponEnabled bool
-	var currentCurrency, currentCurrencySymbol string
+	var currentCurrency, currentCurrencySymbol, currentSubscribeURL string
 	var captchaSecrets CaptchaSecretCiphers
 	if err := tx.QueryRowContext(ctx, `
-		SELECT email_verify, login_with_mail_link_enable, smtp_enabled, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, currency, currency_symbol,
+		SELECT email_verify, login_with_mail_link_enable, force_https, subscribe_url, smtp_enabled, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, currency, currency_symbol,
 		       recaptcha_secret_cipher, recaptcha_v3_secret_cipher, turnstile_secret_cipher
 		FROM app_settings WHERE id = 1
 	`).Scan(
-		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled, &currentTrialPlanID, &currentTrialHours, &currentTrafficResetMethod, &currentCouponEnabled, &currentCurrency, &currentCurrencySymbol,
+		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &currentForceHTTPS, &currentSubscribeURL, &smtpEnabled, &currentTrialPlanID, &currentTrialHours, &currentTrafficResetMethod, &currentCouponEnabled, &currentCurrency, &currentCurrencySymbol,
 		&captchaSecrets.Recaptcha, &captchaSecrets.RecaptchaV3, &captchaSecrets.Turnstile,
 	); err != nil {
 		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
@@ -77,6 +82,12 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	}
 	if input.CurrencySymbol == nil {
 		input.CurrencySymbol = &currentCurrencySymbol
+	}
+	if input.ForceHTTPS == nil {
+		input.ForceHTTPS = &currentForceHTTPS
+	}
+	if input.SubscribeURL == nil {
+		input.SubscribeURL = &currentSubscribeURL
 	}
 	normalized, err := normalizeSiteSettings(input)
 	if err != nil {
@@ -123,7 +134,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
-		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, currency = ?, currency_symbol = ?, stop_register = ?,
+		SET app_name = ?, app_description = ?, app_url = ?, force_https = ?, subscribe_url = ?, tos_url = ?, logo = ?, currency = ?, currency_symbol = ?, stop_register = ?,
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
 		    password_limit_enable = ?, password_limit_count = ?, password_limit_expire = ?,
@@ -134,7 +145,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		    turnstile_site_key = ?, turnstile_secret_cipher = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
-	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, *normalized.Currency, *normalized.CurrencySymbol, normalized.StopRegister,
+	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, *normalized.ForceHTTPS, *normalized.SubscribeURL, normalized.TOSURL, normalized.Logo, *normalized.Currency, *normalized.CurrencySymbol, normalized.StopRegister,
 		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
@@ -196,7 +207,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		}
 	}
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
+		SELECT revision, app_name, app_description, app_url, force_https, subscribe_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
@@ -215,12 +226,12 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	return settings, nil
 }
 
-// UpdateLegacySiteSettings applies the two site fields supported by the old
-// partial config endpoint without requiring a revision that endpoint cannot
+// UpdateLegacySiteSettings applies supported site fields from the old partial
+// config endpoint without requiring a revision that endpoint cannot
 // provide. The write lock and in-transaction revision predicate preserve the
 // same lost-update protection as other legacy settings adapters.
 func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID int64, input SaveLegacySiteSettingsInput, now time.Time) (SiteSettings, error) {
-	if administratorID < 1 || now.Unix() < 0 || (input.Currency == nil && input.CurrencySymbol == nil) {
+	if administratorID < 1 || now.Unix() < 0 || (input.Currency == nil && input.CurrencySymbol == nil && input.ForceHTTPS == nil && input.SubscribeURL == nil) {
 		return SiteSettings{}, ErrInvalidInput
 	}
 	defer s.lockWrite()()
@@ -230,10 +241,11 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 	}
 	defer tx.Rollback()
 	var revision int64
-	var currency, symbol string
+	var currency, symbol, subscribeURL string
+	var forceHTTPS bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT revision, currency, currency_symbol FROM app_settings WHERE id = 1
-	`).Scan(&revision, &currency, &symbol); err != nil {
+		SELECT revision, currency, currency_symbol, force_https, subscribe_url FROM app_settings WHERE id = 1
+	`).Scan(&revision, &currency, &symbol, &forceHTTPS, &subscribeURL); err != nil {
 		return SiteSettings{}, fmt.Errorf("read legacy site settings: %w", err)
 	}
 	if input.Currency != nil {
@@ -242,14 +254,24 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 	if input.CurrencySymbol != nil {
 		symbol = strings.TrimSpace(*input.CurrencySymbol)
 	}
+	if input.ForceHTTPS != nil {
+		forceHTTPS = *input.ForceHTTPS
+	}
+	if input.SubscribeURL != nil {
+		var err error
+		subscribeURL, err = normalizeSubscribeURLStorage(*input.SubscribeURL)
+		if err != nil {
+			return SiteSettings{}, err
+		}
+	}
 	if !validCurrencyCode(currency) || !utf8.ValidString(symbol) || len(symbol) > maxCurrencySymbolBytes || strings.IndexFunc(symbol, unicode.IsControl) >= 0 {
 		return SiteSettings{}, fmt.Errorf("%w: invalid legacy site settings", ErrInvalidInput)
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
-		SET currency = ?, currency_symbol = ?, updated_by = ?, updated_at = ?, revision = revision + 1
+		SET currency = ?, currency_symbol = ?, force_https = ?, subscribe_url = ?, updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
-	`, currency, symbol, administratorID, now.Unix(), revision)
+	`, currency, symbol, forceHTTPS, subscribeURL, administratorID, now.Unix(), revision)
 	if err != nil {
 		return SiteSettings{}, fmt.Errorf("update legacy site settings: %w", err)
 	}
@@ -261,7 +283,7 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 		return SiteSettings{}, ErrConflict
 	}
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
+		SELECT revision, app_name, app_description, app_url, force_https, subscribe_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
@@ -284,6 +306,18 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 	input.AppName = strings.TrimSpace(input.AppName)
 	input.AppDescription = strings.TrimSpace(input.AppDescription)
 	input.AppURL = strings.TrimSpace(input.AppURL)
+	if input.ForceHTTPS == nil {
+		forceHTTPS := false
+		input.ForceHTTPS = &forceHTTPS
+	}
+	if input.SubscribeURL == nil {
+		input.SubscribeURL = stringCopyPointer("")
+	}
+	subscribeURL, err := normalizeSubscribeURLStorage(*input.SubscribeURL)
+	if err != nil {
+		return SaveSiteSettingsInput{}, err
+	}
+	input.SubscribeURL = &subscribeURL
 	input.TOSURL = strings.TrimSpace(input.TOSURL)
 	input.Logo = strings.TrimSpace(input.Logo)
 	if input.Currency == nil {
@@ -352,6 +386,71 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 		}
 	}
 	return input, nil
+}
+
+func normalizeSubscribeURLStorage(value string) (string, error) {
+	if !utf8.ValidString(value) || len(value) > maxSubscribeURLBytes || strings.IndexByte(value, 0) >= 0 {
+		return "", fmt.Errorf("%w: invalid subscription origins", ErrInvalidInput)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	raw := strings.FieldsFunc(value, func(character rune) bool {
+		return character == ',' || character == '\r' || character == '\n'
+	})
+	if len(raw) > maxSubscribeURLItems {
+		return "", fmt.Errorf("%w: too many subscription origins", ErrInvalidInput)
+	}
+	seen := make(map[string]struct{}, len(raw))
+	normalized := make([]string, 0, len(raw))
+	for _, candidate := range raw {
+		candidate = strings.TrimSpace(candidate)
+		parsed, err := url.Parse(candidate)
+		if err != nil || parsed.IsAbs() == false || parsed.Host == "" || parsed.Hostname() == "" || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || !validPublicOriginPort(parsed.Port()) {
+			return "", fmt.Errorf("%w: invalid subscription origin", ErrInvalidInput)
+		}
+		parsed.Scheme = strings.ToLower(parsed.Scheme)
+		if parsed.Scheme != "https" && (parsed.Scheme != "http" || !isLoopbackHostname(parsed.Hostname())) {
+			return "", fmt.Errorf("%w: subscription origins require HTTPS", ErrInvalidInput)
+		}
+		parsed.Path = strings.TrimRight(parsed.Path, "/")
+		parsed.RawPath = ""
+		candidate = parsed.String()
+		if _, exists := seen[candidate]; exists {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		normalized = append(normalized, candidate)
+	}
+	storage := strings.Join(normalized, ",")
+	if len(storage) > maxSubscribeURLBytes {
+		return "", fmt.Errorf("%w: subscription origins are too large", ErrInvalidInput)
+	}
+	return storage, nil
+}
+
+// NormalizeSubscribeURL validates and canonicalizes the legacy comma/newline
+// representation used by Xboard's offline migration reader.
+func NormalizeSubscribeURL(value string) (string, error) {
+	return normalizeSubscribeURLStorage(value)
+}
+
+func isLoopbackHostname(hostname string) bool {
+	hostname = strings.TrimSuffix(strings.ToLower(hostname), ".")
+	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
+		return true
+	}
+	address := net.ParseIP(hostname)
+	return address != nil && address.IsLoopback()
+}
+
+func validPublicOriginPort(value string) bool {
+	if value == "" {
+		return true
+	}
+	port, err := strconv.Atoi(value)
+	return err == nil && port >= 1 && port <= 65_535
 }
 
 func validCurrencyCode(value string) bool {
@@ -443,7 +542,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	var suffixStorage string
 	var recaptchaSecretCipher, recaptchaV3SecretCipher, turnstileSecretCipher []byte
 	if err := row.Scan(
-		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo, &settings.Currency, &settings.CurrencySymbol,
+		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.ForceHTTPS, &settings.SubscribeURL, &settings.TOSURL, &settings.Logo, &settings.Currency, &settings.CurrencySymbol,
 		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
 		&settings.PasswordLimitEnabled, &settings.PasswordLimitCount, &settings.PasswordLimitMinutes,

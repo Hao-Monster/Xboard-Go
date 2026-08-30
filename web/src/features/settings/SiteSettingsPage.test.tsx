@@ -10,6 +10,8 @@ const initial: SiteSettings = {
   app_name: "Xboard-Go",
   app_description: "Existing description",
   app_url: "https://old.example.test",
+  force_https: false,
+  subscribe_url: "",
   tos_url: "https://old.example.test/terms",
   logo: "https://old.example.test/logo.png",
   currency: "CNY",
@@ -51,6 +53,7 @@ describe("SiteSettingsPage", () => {
     const updated: SiteSettings = {
       ...initial, revision: 5, app_name: "Example Board", app_description: "Fast control plane",
       app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/",
+      force_https: true, subscribe_url: "https://subscribe-a.example.test,https://subscribe-b.example.test/root",
       logo: "https://images.example.test/brand.svg", stop_register: true,
       currency: "USD", currency_symbol: "$",
       email_verify: true,
@@ -80,6 +83,8 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("站点名称")).toHaveValue("Xboard-Go");
     expect(screen.getByLabelText("站点描述")).toHaveValue("Existing description");
     expect(screen.getByLabelText("站点网址")).toHaveValue("https://old.example.test");
+    expect(screen.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).not.toBeChecked();
+    expect(screen.getByLabelText("订阅公开地址")).toHaveValue("");
     expect(screen.getByLabelText("用户条款(TOS)URL")).toHaveValue("https://old.example.test/terms");
     expect(screen.getByLabelText("LOGO")).toHaveValue("https://old.example.test/logo.png");
     expect(screen.getByLabelText("货币代码")).toHaveValue("CNY");
@@ -106,6 +111,8 @@ describe("SiteSettingsPage", () => {
     changeValue("站点名称", updated.app_name);
     changeValue("站点描述", updated.app_description);
     changeValue("站点网址", updated.app_url);
+    await user.click(screen.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" }));
+    fireEvent.change(screen.getByLabelText("订阅公开地址"), { target: { value: " https://subscribe-a.example.test/\nhttps://subscribe-b.example.test/root " } });
     changeValue("用户条款(TOS)URL", updated.tos_url);
     changeValue("LOGO", updated.logo);
     changeValue("货币代码", updated.currency.toLowerCase());
@@ -139,6 +146,8 @@ describe("SiteSettingsPage", () => {
       app_name: updated.app_name,
       app_description: updated.app_description,
       app_url: updated.app_url,
+      force_https: true,
+      subscribe_url: " https://subscribe-a.example.test/\nhttps://subscribe-b.example.test/root ",
       tos_url: updated.tos_url,
       logo: updated.logo,
       currency: updated.currency,

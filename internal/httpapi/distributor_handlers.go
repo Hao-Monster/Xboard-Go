@@ -650,12 +650,7 @@ func (s *server) distributorSubscriptionURL(r *http.Request, value store.Distrib
 	if err != nil {
 		return "", err
 	}
-	base := strings.TrimRight(config.AppURL, "/")
-	if base == "" {
-		base = strings.TrimRight(s.panelURL, "/")
-	}
-	subscribeURL := base + "/" + config.Path + "/" + value.Subscription.SubscriptionToken + "#" + url.PathEscape(value.Subscription.OriginalTradeNo)
-	return subscribeURL, nil
+	return s.publicSubscriptionURLFromConfig(config, value.Subscription.SubscriptionToken, value.Subscription.OriginalTradeNo)
 }
 
 func (s *server) claimDistributorSubscription(w http.ResponseWriter, r *http.Request) {
@@ -687,11 +682,12 @@ func (s *server) claimDistributorSubscription(w http.ResponseWriter, r *http.Req
 		handleStoreError(w, err)
 		return
 	}
-	base := strings.TrimRight(config.AppURL, "/")
-	if base == "" {
-		base = strings.TrimRight(s.panelURL, "/")
+	targetURL, err := s.publicSubscriptionURLFromConfig(config, claim.SubscriptionToken, claim.OriginalTradeNo)
+	if err != nil {
+		handleStoreError(w, err)
+		return
 	}
-	target, err := url.Parse(base + "/" + config.Path + "/" + claim.SubscriptionToken)
+	target, err := url.Parse(targetURL)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -699,7 +695,6 @@ func (s *server) claimDistributorSubscription(w http.ResponseWriter, r *http.Req
 	query := r.URL.Query()
 	query.Del("token")
 	target.RawQuery = query.Encode()
-	target.Fragment = claim.OriginalTradeNo
 	w.Header().Set("Pragma", "no-cache")
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }

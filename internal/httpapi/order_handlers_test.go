@@ -16,6 +16,10 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 	api, database := newTestAPI(t)
 	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 1_000})
 	admin := loginAdmin(t, api)
+	publicOrigin := "https://order-subscriptions.example.test"
+	if _, err := database.UpdateLegacySiteSettings(t.Context(), 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	generated := admin.request(t, api, http.MethodPost, "/api/v1/invitations", `{}`)
 	if generated.Code != http.StatusOK {
 		t.Fatalf("generate invitation status=%d body=%s", generated.Code, generated.Body)
@@ -62,13 +66,13 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders/"+order.TradeNo, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(),
 		`"callback_no":"gateway-parity-callback"`, `"invite_user":{"id":`, `"email":"admin@example.test"`,
-		`"commission_log":[]`, `"subscribe_url":"https://panel.example.test/s/`) {
+		`"commission_log":[]`, `"subscribe_url":"https://order-subscriptions.example.test/s/`) {
 		t.Fatalf("administrator order detail status=%d body=%s", detail.Code, detail.Body)
 	}
 
 	updated := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
 	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"commission_status":3`,
-		`"invite_user":{"id":`, `"commission_log":[]`, `"subscribe_url":"https://panel.example.test/s/`) {
+		`"invite_user":{"id":`, `"commission_log":[]`, `"subscribe_url":"https://order-subscriptions.example.test/s/`) {
 		t.Fatalf("modern commission update status=%d body=%s", updated.Code, updated.Body)
 	}
 	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization

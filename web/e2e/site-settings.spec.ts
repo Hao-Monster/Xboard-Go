@@ -7,6 +7,8 @@ interface SiteSettings {
   app_name: string;
   app_description: string;
   app_url: string;
+  force_https: boolean;
+  subscribe_url: string;
   tos_url: string;
   logo: string;
   currency: string;
@@ -24,7 +26,7 @@ interface SiteSettings {
   password_limit_expire: number;
 }
 
-test("administrator site identity persists into the public shell and can be restored", async ({ page, request }) => {
+test("administrator site identity persists into the public shell and can be restored", { tag: "@fresh-server" }, async ({ page, request }) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -36,6 +38,8 @@ test("administrator site identity persists into the public shell and can be rest
     app_name: `Site parity ${unique}`,
     app_description: `Observable identity ${unique}`,
     app_url: `https://site-${unique}.example.test/`,
+    force_https: true,
+    subscribe_url: `https://subscriptions-${unique}.example.test/root`,
     tos_url: `https://site-${unique}.example.test/terms/`,
     logo: `https://images.example.test/brand-${unique}.svg`,
     currency: "USD",
@@ -65,6 +69,8 @@ test("administrator site identity persists into the public shell and can be rest
     await page.getByLabel("站点名称").fill(changed.app_name);
     await page.getByLabel("站点描述").fill(changed.app_description);
     await page.getByLabel("站点网址").fill(changed.app_url);
+    await page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" }).check();
+    await page.getByLabel("订阅公开地址").fill(`${changed.subscribe_url}/`);
     await page.getByLabel("用户条款(TOS)URL").fill(changed.tos_url);
     await page.getByLabel("LOGO").fill(changed.logo);
     await page.getByLabel("货币代码").fill(changed.currency.toLowerCase());
@@ -88,6 +94,8 @@ test("administrator site identity persists into the public shell and can be rest
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址")).toHaveValue(changed.app_url);
+    await expect(page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).toBeChecked();
+    await expect(page.getByLabel("订阅公开地址")).toHaveValue(changed.subscribe_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
     await expect(page.getByLabel("货币代码")).toHaveValue(changed.currency);
     await expect(page.getByLabel("货币符号")).toHaveValue(changed.currency_symbol);
@@ -106,6 +114,8 @@ test("administrator site identity persists into the public shell and can be rest
       tos_url: changed.tos_url, logo: changed.logo, email_whitelist_suffix: changed.email_whitelist_suffix
     });
     expect(publicPayload.data).not.toHaveProperty("stop_register");
+    expect(publicPayload.data).not.toHaveProperty("force_https");
+    expect(publicPayload.data).not.toHaveProperty("subscribe_url");
     expect(publicPayload.data).not.toHaveProperty("email_whitelist_enable");
     expect(publicPayload.data).not.toHaveProperty("email_gmail_limit_enable");
     expect(publicPayload.data).not.toHaveProperty("register_limit_by_ip_enable");
@@ -117,8 +127,9 @@ test("administrator site identity persists into the public shell and can be rest
 
     const subscriptionResponse = await page.request.get("/api/v1/subscription");
     expect(subscriptionResponse.status()).toBe(200);
-    const subscriptionPayload = await subscriptionResponse.json() as { data?: { token?: string } };
+    const subscriptionPayload = await subscriptionResponse.json() as { data?: { token?: string; subscribe_url?: string } };
     expect(subscriptionPayload.data?.token).toMatch(/^[0-9a-f]{32}$/);
+    expect(subscriptionPayload.data?.subscribe_url).toBe(`${changed.subscribe_url}/s/${subscriptionPayload.data?.token}`);
     const appConfigResponse = await page.request.get(
       `/api/v2/client/app/getConfig?token=${encodeURIComponent(subscriptionPayload.data?.token ?? "")}`
     );
@@ -186,6 +197,8 @@ test("administrator site identity persists into the public shell and can be rest
         app_name: original.app_name,
         app_description: original.app_description,
         app_url: original.app_url,
+        force_https: original.force_https,
+        subscribe_url: original.subscribe_url,
         tos_url: original.tos_url,
         logo: original.logo,
         currency: original.currency,

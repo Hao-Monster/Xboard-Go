@@ -20,6 +20,10 @@ func TestDistributorLegacyPurchaseRenewDeliveryAndAllowlist(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
 	admin := loginAdmin(t, api)
+	publicOrigin := "https://distributor-subscriptions.example.test"
+	if _, err := database.UpdateLegacySiteSettings(t.Context(), 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
 		"email":"dealer-api@example.test","password":"dealer-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
@@ -197,6 +201,10 @@ func TestAdministratorDistributorOrderManagementAndSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
+	publicOrigin := "https://distributor-subscriptions.example.test"
+	if _, err := database.UpdateLegacySiteSettings(t.Context(), 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 
 	options := admin.request(t, api, http.MethodGet, "/api/v1/admin/distributors/options", "")
 	if options.Code != http.StatusOK || !containsAll(options.Body.String(), `"id":`, `"email":"direct-dealer@example.test"`, `"distributor_name":"直连渠道"`) {
@@ -213,7 +221,7 @@ func TestAdministratorDistributorOrderManagementAndSettlement(t *testing.T) {
 	detailPath := fmt.Sprintf("/api/v1/admin/distributor-orders/%d", created.Order.ID)
 	detail := admin.request(t, api, http.MethodGet, detailPath, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(), created.Order.TradeNo, `"registered_count":0`,
-		`"subscribe_url":"https://panel.example.test/s/`) || strings.Contains(detail.Body.String(), `internal.invalid`) ||
+		`"subscribe_url":"https://distributor-subscriptions.example.test/s/`) || strings.Contains(detail.Body.String(), `internal.invalid`) ||
 		strings.Contains(detail.Body.String(), `"subscription_token"`) {
 		t.Fatalf("distributor detail status=%d body=%s", detail.Code, detail.Body)
 	}

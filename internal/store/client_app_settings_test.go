@@ -98,7 +98,7 @@ func TestSchemaV49CreatesAndValidatesClientAppSettingsSingleton(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM mail_templates`).Scan(&mailTemplates); err != nil {
 		t.Fatal(err)
 	}
-	if version != 51 || rows != 1 || mailTemplates != 5 {
+	if version != CurrentSchemaVersion() || rows != 1 || mailTemplates != 5 {
 		t.Fatalf("schema version=%d client app rows=%d mail templates=%d", version, rows, mailTemplates)
 	}
 	if err := database.ValidateCurrentSchema(ctx); err != nil {

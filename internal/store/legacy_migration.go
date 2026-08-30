@@ -427,7 +427,7 @@ func readLegacyImportSiteSettings(ctx context.Context, database interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }) (SiteSettings, error) {
 	settings, err := scanSiteSettings(database.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
+		SELECT revision, app_name, app_description, app_url, force_https, subscribe_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,

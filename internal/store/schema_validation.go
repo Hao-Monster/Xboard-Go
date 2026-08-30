@@ -180,6 +180,10 @@ var requiredSchemaColumnsV51 = map[string][]string{
 	"theme_settings": {"id", "active_theme", "revision", "updated_by", "updated_at"},
 }
 
+var requiredSchemaColumnsV52 = map[string][]string{
+	"app_settings": {"force_https", "subscribe_url"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -309,6 +313,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if err := validateThemeCatalog(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 52 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV52); err != nil {
+			return err
 		}
 	}
 	if schemaVersion >= 42 {

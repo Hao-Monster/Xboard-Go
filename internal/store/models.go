@@ -309,6 +309,8 @@ type SiteSettings struct {
 	AppName                     string    `json:"app_name"`
 	AppDescription              string    `json:"app_description"`
 	AppURL                      string    `json:"app_url"`
+	ForceHTTPS                  bool      `json:"force_https"`
+	SubscribeURL                string    `json:"subscribe_url"`
 	TOSURL                      string    `json:"tos_url"`
 	Logo                        string    `json:"logo"`
 	Currency                    string    `json:"currency"`
@@ -348,6 +350,8 @@ type SaveSiteSettingsInput struct {
 	AppName                    string
 	AppDescription             string
 	AppURL                     string
+	ForceHTTPS                 *bool
+	SubscribeURL               *string
 	TOSURL                     string
 	Logo                       string
 	Currency                   *string
@@ -388,6 +392,8 @@ type SaveSiteSettingsInput struct {
 type SaveLegacySiteSettingsInput struct {
 	Currency       *string
 	CurrencySymbol *string
+	ForceHTTPS     *bool
+	SubscribeURL   *string
 }
 
 type ClientAppSettings struct {
@@ -789,6 +795,8 @@ type SubscriptionRenderConfig struct {
 	ShowProtocol bool
 	AppName      string
 	AppURL       string
+	ForceHTTPS   bool
+	SubscribeURL string
 	Templates    map[string]string
 }
 

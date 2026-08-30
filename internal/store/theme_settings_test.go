@@ -148,7 +148,7 @@ func TestSchemaV51CreatesAndValidatesThemeCatalog(t *testing.T) {
 	}
 	_ = database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM themes`).Scan(&themes)
 	_ = database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM theme_settings`).Scan(&settings)
-	if version != 51 || themes != 1 || settings != 1 {
+	if version != CurrentSchemaVersion() || themes != 1 || settings != 1 {
 		t.Fatalf("version=%d themes=%d settings=%d", version, themes, settings)
 	}
 	if err := database.ValidateCurrentSchema(ctx); err != nil {

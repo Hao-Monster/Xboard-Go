@@ -17,6 +17,10 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 	ctx := context.Background()
 	now := fixedNow()
 	admin := loginAdmin(t, api)
+	publicOrigin := "https://admin-subscriptions.example.test"
+	if _, err := database.UpdateLegacySiteSettings(ctx, 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, now); err != nil {
+		t.Fatal(err)
+	}
 	groupID := int64(7)
 	resetMethod := 1
 	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
@@ -96,7 +100,7 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 	}
 	subscription := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d/subscription-url", account.ID), "")
 	if subscription.Code != http.StatusOK || subscription.Header().Get("Cache-Control") != "no-store" ||
-		!strings.Contains(subscription.Body.String(), token) || !strings.Contains(subscription.Body.String(), "/api/v1/client/subscribe?token=") {
+		!strings.Contains(subscription.Body.String(), token) || !strings.Contains(subscription.Body.String(), "https://admin-subscriptions.example.test/s/") {
 		t.Fatalf("subscription status=%d headers=%v body=%s", subscription.Code, subscription.Header(), subscription.Body)
 	}
 	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?page=1&page_size=20", "")
