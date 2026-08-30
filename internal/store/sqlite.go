@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 53
+const currentSchemaVersion = 54
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -393,6 +393,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v53: %w", err)
 		}
 		version = 53
+	}
+	if version < 54 {
+		if err := applySchemaV54(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v54: %w", err)
+		}
+		version = 54
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2405,6 +2411,69 @@ func applySchemaV53(ctx context.Context, tx *sql.Tx) error {
 				return fmt.Errorf("add app_settings.%s: %w", column.name, err)
 			}
 		}
+	}
+	return nil
+}
+
+func applySchemaV54(ctx context.Context, tx *sql.Tx) error {
+	tables := []struct {
+		table string
+		name  string
+		ddl   string
+	}{
+		{
+			"app_settings", "commission_withdraw_limit",
+			`ALTER TABLE app_settings ADD COLUMN commission_withdraw_limit INTEGER NOT NULL DEFAULT 10000 CHECK (commission_withdraw_limit BETWEEN 0 AND 9000000000000000)`,
+		},
+		{
+			"app_settings", "commission_withdraw_method",
+			`ALTER TABLE app_settings ADD COLUMN commission_withdraw_method TEXT NOT NULL DEFAULT '["支付宝","USDT","Paypal"]' CHECK (length(CAST(commission_withdraw_method AS BLOB)) BETWEEN 2 AND 4096 AND json_valid(commission_withdraw_method) AND json_type(commission_withdraw_method) = 'array')`,
+		},
+		{
+			"theme_settings", "sidebar_style",
+			`ALTER TABLE theme_settings ADD COLUMN sidebar_style TEXT NOT NULL DEFAULT 'light' CHECK (sidebar_style IN ('light', 'dark'))`,
+		},
+		{
+			"theme_settings", "header_style",
+			`ALTER TABLE theme_settings ADD COLUMN header_style TEXT NOT NULL DEFAULT 'dark' CHECK (header_style IN ('light', 'dark'))`,
+		},
+	}
+	for _, column := range tables {
+		var exists bool
+		query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('%s') WHERE name = ?)`, column.table)
+		if err := tx.QueryRowContext(ctx, query, column.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s.%s: %w", column.table, column.name, err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+				return fmt.Errorf("add %s.%s: %w", column.table, column.name, err)
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS app_settings_validate_commission_withdraw_method_insert
+		BEFORE INSERT ON app_settings
+		WHEN json_array_length(NEW.commission_withdraw_method) > 32 OR EXISTS (
+			SELECT 1 FROM json_each(NEW.commission_withdraw_method)
+			WHERE type <> 'text' OR length(CAST(value AS BLOB)) NOT BETWEEN 1 AND 64
+			   OR instr(value, char(0)) <> 0 OR value <> trim(value)
+		)
+		BEGIN
+			SELECT RAISE(ABORT, 'invalid commission withdrawal method');
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS app_settings_validate_commission_withdraw_method_update
+		BEFORE UPDATE OF commission_withdraw_method ON app_settings
+		WHEN json_array_length(NEW.commission_withdraw_method) > 32 OR EXISTS (
+			SELECT 1 FROM json_each(NEW.commission_withdraw_method)
+			WHERE type <> 'text' OR length(CAST(value AS BLOB)) NOT BETWEEN 1 AND 64
+			   OR instr(value, char(0)) <> 0 OR value <> trim(value)
+		)
+		BEGIN
+			SELECT RAISE(ABORT, 'invalid commission withdrawal method');
+		END;
+	`); err != nil {
+		return fmt.Errorf("create commission withdrawal method validation triggers: %w", err)
 	}
 	return nil
 }

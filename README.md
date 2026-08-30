@@ -613,6 +613,22 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+The four legacy configuration-compatibility values for commission withdrawal
+limits/methods and sidebar/header light/dark styles use a further independent
+slice. It reads only those fixed keys, stores withdrawal limits as exact
+hundredths (accepting at most two decimal places), validates bounded string
+array values, requires pristine target fields, and records no secret values:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-configuration-compat-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-configuration-compat-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 The legacy `currency` and `currency_symbol` site settings use a separate
 migration slice so previously completed content migrations keep their original
 checksum identity. The importer accepts only those two fixed keys, normalizes
@@ -668,7 +684,6 @@ docker compose -f compose.local.yaml up -d --wait xboard-go
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; commission settlement,
-distributor workflows, attachments, and other
-remaining legacy domains still require separate mappings and migration
-evidence.
+This remains a local/isolated-test workflow; commission withdrawal settlement
+and other remaining legacy domains still require separate mappings and
+migration evidence.

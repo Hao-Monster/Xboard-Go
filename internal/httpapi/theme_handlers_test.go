@@ -28,7 +28,7 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
 	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/themes", "")
-	if initial.Code != http.StatusOK || !containsAll(initial.Body.String(), `"active_theme":"Xboard"`, `"revision":1`, `"is_system":true`, `"theme_color":"default"`, `"default":{`, `"blue":{`, `"black":{`, `"darkblue":{`, `"images":[]`, `"backgrounds":[]`) {
+	if initial.Code != http.StatusOK || !containsAll(initial.Body.String(), `"active_theme":"Xboard"`, `"revision":1`, `"sidebar_style":"light"`, `"header_style":"dark"`, `"is_system":true`, `"theme_color":"default"`, `"default":{`, `"blue":{`, `"black":{`, `"darkblue":{`, `"images":[]`, `"backgrounds":[]`) {
 		t.Fatalf("initial themes status=%d body=%s", initial.Code, initial.Body)
 	}
 	guest := plainAPIRequest(api, http.MethodGet, "/api/v1/guest/comm/config", "")
@@ -56,12 +56,16 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 	if activated.Code != http.StatusOK || !containsAll(activated.Body.String(), `"active_theme":"Aurora"`, `"revision":2`) {
 		t.Fatalf("activate theme status=%d body=%s", activated.Code, activated.Body)
 	}
+	layout := administrator.request(t, api, http.MethodPut, "/api/v1/admin/themes/layout", `{"revision":2,"sidebar_style":"dark","header_style":"light"}`)
+	if layout.Code != http.StatusOK || !containsAll(layout.Body.String(), `"active_theme":"Aurora"`, `"revision":3`, `"sidebar_style":"dark"`, `"header_style":"light"`) {
+		t.Fatalf("update theme layout status=%d body=%s", layout.Code, layout.Body)
+	}
 	guest = plainAPIRequest(api, http.MethodGet, "/api/v1/guest/comm/config", "")
-	if !containsAll(guest.Body.String(), `"name":"Aurora"`, `"theme_color":"blue"`, `"font_scale":"large"`) {
+	if !containsAll(guest.Body.String(), `"name":"Aurora"`, `"theme_color":"blue"`, `"font_scale":"large"`, `"sidebar_style":"dark"`, `"header_style":"light"`) {
 		t.Fatalf("updated guest theme body=%s", guest.Body)
 	}
 
-	catalog := decodeThemeCatalogEnvelope(t, activated)
+	catalog := decodeThemeCatalogEnvelope(t, layout)
 	var aurora store.Theme
 	for _, item := range catalog.Themes {
 		if item.Name == "Aurora" {

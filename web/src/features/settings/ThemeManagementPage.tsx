@@ -5,6 +5,7 @@ import { themeAssetURL, type ThemeCatalog, type ThemeConfig, type ThemeConfigInp
 
 interface ThemeManagementAPI {
   listThemes: () => Promise<ThemeCatalog>;
+  updateThemeLayout: (revision: number, sidebarStyle: "light" | "dark", headerStyle: "light" | "dark") => Promise<ThemeCatalog>;
   uploadTheme: (file: File) => Promise<ThemeItem>;
   getTheme: (name: string) => Promise<ThemeItem>;
   updateThemeConfig: (name: string, input: ThemeConfigInput) => Promise<ThemeItem>;
@@ -148,6 +149,19 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
   };
 
   const showPreview = (item: ThemeItem) => { setPreview(item); setPreviewIndex(0); };
+  const updateLayout = async (sidebarStyle: "light" | "dark", headerStyle: "light" | "dark") => {
+    if (catalog === null || busy !== "") return;
+    setBusy("layout"); setError(""); setSuccess("");
+    try {
+      setCatalog(await api.updateThemeLayout(catalog.revision, sidebarStyle, headerStyle));
+      setSuccess("导航样式已保存");
+      onThemeChanged();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy("");
+    }
+  };
   const themes = catalog?.themes ?? [];
   return <main className="page-shell theme-management-page">
     <header className="page-header"><div><p className="eyebrow">Appearance</p><h1>主题配置</h1><p className="muted">上传安全的声明式主题，预览后配置并激活；主题不会执行第三方脚本或模板代码。</p></div>
@@ -161,6 +175,13 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
     {loading && catalog === null && <div className="empty-card">正在加载主题…</div>}
     {!loading && catalog === null && <button className="button secondary" type="button" onClick={() => void load()}>重新加载主题</button>}
     {catalog !== null && <>
+      <section className="site-settings-card" aria-labelledby="theme-layout-heading">
+        <div className="section-heading"><div><h2 id="theme-layout-heading">导航样式</h2><p className="muted">保持旧版前端的侧栏和顶栏明暗配置。</p></div></div>
+        <div className="commission-settings-grid">
+          <label>侧栏样式<select value={catalog.sidebar_style} disabled={busy !== ""} onChange={(event) => void updateLayout(event.target.value as "light" | "dark", catalog.header_style)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
+          <label>顶栏样式<select value={catalog.header_style} disabled={busy !== ""} onChange={(event) => void updateLayout(catalog.sidebar_style, event.target.value as "light" | "dark")}><option value="light">浅色</option><option value="dark">深色</option></select></label>
+        </div>
+      </section>
       <div className="section-heading theme-catalog-heading"><div><h2>主题目录</h2><p className="muted">当前主题：{catalog.active_theme}</p></div><span className="count-pill">{themes.length} 个主题 · Revision {catalog.revision}</span></div>
       <div className="theme-grid">
         {themes.map((item) => <article className={`theme-card${item.is_active ? " active" : ""}`} key={item.name}>

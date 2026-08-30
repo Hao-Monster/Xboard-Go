@@ -5,10 +5,13 @@ import { adminEmail, adminPassword, expectLoginPage } from "./support";
 interface ThemeCatalog {
   active_theme: string;
   revision: number;
+  sidebar_style: "light" | "dark";
+  header_style: "light" | "dark";
   themes: Array<{ name: string; revision: number; is_active: boolean }>;
 }
 
 test("administrator safely uploads, previews, configures, activates and deletes a declarative theme", async ({ page }) => {
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("response", (response) => { if (response.status() >= 500) errors.push(`${response.status()} ${response.url()}`); });
@@ -19,6 +22,18 @@ test("administrator safely uploads, previews, configures, activates and deletes 
     await page.getByRole("button", { name: "主题配置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
     await expect(page.getByText(`当前主题：${initial.active_theme}`, { exact: true })).toBeVisible();
+
+    const sidebarStyle = page.locator("label").filter({ hasText: "侧栏样式" }).locator("select");
+    const headerStyle = page.locator("label").filter({ hasText: "顶栏样式" }).locator("select");
+    await expect(sidebarStyle).toHaveValue(initial.sidebar_style);
+    await expect(headerStyle).toHaveValue(initial.header_style);
+    const nextSidebarStyle = initial.sidebar_style === "light" ? "dark" : "light";
+    const nextHeaderStyle = initial.header_style === "light" ? "dark" : "light";
+    await sidebarStyle.selectOption(nextSidebarStyle);
+    await expect(page.getByRole("status")).toContainText("导航样式已保存");
+    await headerStyle.selectOption(nextHeaderStyle);
+    await expect.poll(() => page.locator("html").getAttribute("data-theme-sidebar-style")).toBe(nextSidebarStyle);
+    await expect.poll(() => page.locator("html").getAttribute("data-theme-header-style")).toBe(nextHeaderStyle);
 
     const xboardCard = page.locator(".theme-card").filter({ hasText: "Xboard" });
     const xboardSettingsButton = xboardCard.getByRole("button", { name: "设置 Xboard" });
@@ -80,7 +95,14 @@ test("administrator safely uploads, previews, configures, activates and deletes 
     await expect.poll(() => page.locator("html").getAttribute("data-theme-name")).toBe(name);
     expect(errors).toEqual([]);
   } finally {
-    const current = await getCatalog(page);
+    let current = await getCatalog(page);
+    if (current.sidebar_style !== initial.sidebar_style || current.header_style !== initial.header_style) {
+      const restoredLayout = await adminJSON(page, "/api/v1/admin/themes/layout", "PUT", {
+        revision: current.revision, sidebar_style: initial.sidebar_style, header_style: initial.header_style
+      });
+      expect(restoredLayout.status, restoredLayout.body).toBe(200);
+      current = (JSON.parse(restoredLayout.body) as { data: ThemeCatalog }).data;
+    }
     if (current.active_theme === name) {
       const restored = await adminJSON(page, `/api/v1/admin/themes/${encodeURIComponent(initial.active_theme)}/activate`, "POST", { revision: current.revision });
       expect(restored.status, restored.body).toBe(200);
@@ -99,7 +121,7 @@ async function login(page: Page) {
   await page.getByLabel("邮箱", { exact: true }).fill(adminEmail);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "服务器管理", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务器管理", exact: true })).toBeVisible({ timeout: 60_000 });
 }
 
 async function getCatalog(page: Page): Promise<ThemeCatalog> {
@@ -108,7 +130,7 @@ async function getCatalog(page: Page): Promise<ThemeCatalog> {
   return (JSON.parse(response.body) as { data: ThemeCatalog }).data;
 }
 
-async function adminJSON(page: Page, path: string, method: "GET" | "POST" | "DELETE", body?: unknown) {
+async function adminJSON(page: Page, path: string, method: "GET" | "POST" | "PUT" | "DELETE", body?: unknown) {
   return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

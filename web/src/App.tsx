@@ -35,7 +35,8 @@ const AdminDistributorPage = lazy(async () => import("./features/distributor/Adm
 const defaultThemeAppearance: ThemeAppearance = {
   name: "Xboard", revision: 1, package_sha256: "0".repeat(64),
   palette: { background: "#0b0d12", surface: "#151922", text: "#e8ebf2", muted: "#9ba3b5", primary: "#9ab2ff", primary_text: "#101218", border: "#303746" },
-  config: { theme_color: "default", background_url: "", font_scale: "normal", radius: "rounded" }
+  config: { theme_color: "default", background_url: "", font_scale: "normal", radius: "rounded" },
+  sidebar_style: "light", header_style: "dark"
 };
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
@@ -119,6 +120,8 @@ export function App() {
     root.dataset.themeFontScale = current.config.font_scale;
     root.dataset.themeRadius = current.config.radius;
     root.dataset.themeName = current.name;
+    root.dataset.themeSidebarStyle = current.sidebar_style;
+    root.dataset.themeHeaderStyle = current.header_style;
   }, [guestConfig.theme]);
 
   useEffect(() => {

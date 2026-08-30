@@ -615,6 +615,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/client-app-settings", api.getClientAppSettings)
 	admin.HandleFunc("PUT /api/v1/admin/client-app-settings", api.updateClientAppSettings)
 	admin.HandleFunc("GET /api/v1/admin/themes", api.listThemes)
+	admin.HandleFunc("PUT /api/v1/admin/themes/layout", api.updateThemeLayout)
 	admin.HandleFunc("POST /api/v1/admin/themes", api.uploadTheme)
 	admin.HandleFunc("GET /api/v1/admin/themes/{name}/config", api.getThemeConfig)
 	admin.HandleFunc("PATCH /api/v1/admin/themes/{name}/config", api.updateThemeConfig)
@@ -901,13 +902,29 @@ func (s *server) auditLegacyAdminConfigMutations(next http.Handler) http.Handler
 			return
 		}
 		recorder := &responseStatusRecorder{ResponseWriter: w}
-		next.ServeHTTP(recorder, r)
+		auditState := &requestMutationAuditState{}
+		next.ServeHTTP(recorder, r.WithContext(context.WithValue(r.Context(), requestMutationAuditStateKey{}, auditState)))
+		if auditState.recorded {
+			return
+		}
 		session, ok := sessionFromContext(r.Context())
 		if !ok {
 			return
 		}
 		s.recordAdminAudit(r.Context(), session, r.Method, "/api/v2/{secure_admin}/config/save", recorder.statusCode())
 	})
+}
+
+type requestMutationAuditStateKey struct{}
+
+type requestMutationAuditState struct {
+	recorded bool
+}
+
+func markRequestMutationAudited(r *http.Request) {
+	if state, ok := r.Context().Value(requestMutationAuditStateKey{}).(*requestMutationAuditState); ok {
+		state.recorded = true
+	}
 }
 
 func (s *server) auditLegacyAdminThemeMutations(next http.Handler) http.Handler {
