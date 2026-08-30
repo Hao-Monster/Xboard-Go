@@ -81,6 +81,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		AppURL                     string    `json:"app_url"`
 		TOSURL                     string    `json:"tos_url"`
 		Logo                       string    `json:"logo"`
+		Currency                   *string   `json:"currency"`
+		CurrencySymbol             *string   `json:"currency_symbol"`
 		StopRegister               *bool     `json:"stop_register"`
 		EmailVerificationEnabled   *bool     `json:"email_verify"`
 		EmailWhitelistEnabled      *bool     `json:"email_whitelist_enable"`
@@ -123,6 +125,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	next := store.SaveSiteSettingsInput{
 		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
+		Currency: &current.Currency, CurrencySymbol: &current.CurrencySymbol,
 		StopRegister: current.StopRegister, EmailVerificationEnabled: current.EmailVerificationEnabled,
 		EmailWhitelistEnabled:  current.EmailWhitelistEnabled,
 		EmailWhitelistSuffixes: current.EmailWhitelistSuffixes, GmailAliasLimitEnabled: current.GmailAliasLimitEnabled,
@@ -146,6 +149,12 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		RecaptchaV3SiteKey:         current.RecaptchaV3SiteKey,
 		RecaptchaV3ScoreThreshold:  current.RecaptchaV3ScoreThreshold,
 		TurnstileSiteKey:           current.TurnstileSiteKey,
+	}
+	if input.Currency != nil {
+		next.Currency = input.Currency
+	}
+	if input.CurrencySymbol != nil {
+		next.CurrencySymbol = input.CurrencySymbol
 	}
 	if input.StopRegister != nil {
 		next.StopRegister = *input.StopRegister

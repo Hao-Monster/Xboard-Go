@@ -51,6 +51,9 @@ type commissionSettingsRequest struct {
 }
 
 type legacyConfigSaveRequest struct {
+	Currency       *string `json:"currency"`
+	CurrencySymbol *string `json:"currency_symbol"`
+
 	InviteCommission    *int  `json:"invite_commission"`
 	FirstTimeEnabled    *bool `json:"commission_first_time_enable"`
 	AutoCheckEnabled    *bool `json:"commission_auto_check_enable"`
@@ -97,6 +100,10 @@ func (input legacyConfigSaveRequest) hasInvite() bool {
 	return input.InviteCommission != nil || input.FirstTimeEnabled != nil || input.AutoCheckEnabled != nil ||
 		input.WithdrawClosed != nil || input.DistributionEnabled != nil || input.DistributionL1 != nil ||
 		input.DistributionL2 != nil || input.DistributionL3 != nil
+}
+
+func (input legacyConfigSaveRequest) hasSite() bool {
+	return input.Currency != nil || input.CurrencySymbol != nil
 }
 
 func (input legacyConfigSaveRequest) completeInvite() bool {
@@ -182,6 +189,15 @@ func (s *server) legacyFetchConfigSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeLegacySuccess(w, http.StatusOK, map[string]any{"invite": legacyCommissionSettings(settings)})
+	case "site":
+		settings, err := s.store.GetSiteSettings(r.Context())
+		if err != nil {
+			writeLegacyInviteFailure(w, http.StatusInternalServerError, "站点配置读取失败")
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, map[string]any{"site": map[string]string{
+			"currency": settings.Currency, "currency_symbol": settings.CurrencySymbol,
+		}})
 	case "subscribe":
 		settings, err := s.store.GetLegacyAdminSubscriptionConfig(r.Context())
 		if err != nil {
@@ -220,9 +236,9 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
-	invite, subscribe, email, telegram, clientApp := input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp()
+	site, invite, subscribe, email, telegram, clientApp := input.hasSite(), input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp()
 	groupCount := 0
-	for _, present := range []bool{invite, subscribe, email, telegram, clientApp} {
+	for _, present := range []bool{site, invite, subscribe, email, telegram, clientApp} {
 		if present {
 			groupCount++
 		}
@@ -232,6 +248,23 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if site {
+		_, err := s.store.UpdateLegacySiteSettings(r.Context(), session.UserID, store.SaveLegacySiteSettingsInput{
+			Currency: input.Currency, CurrencySymbol: input.CurrencySymbol,
+		}, s.now())
+		if err != nil {
+			status, message := http.StatusUnprocessableEntity, "站点配置无效"
+			if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "配置已被其他管理员修改，请重试"
+			} else if !errors.Is(err, store.ErrInvalidInput) {
+				status, message = http.StatusInternalServerError, "站点配置保存失败"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	if clientApp {
 		_, err := s.store.UpdateLegacyClientAppSettings(r.Context(), session.UserID, store.SaveLegacyClientAppSettingsInput{
 			WindowsVersion: input.WindowsVersion, WindowsDownloadURL: input.WindowsDownloadURL,

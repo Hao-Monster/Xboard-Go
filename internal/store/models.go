@@ -311,6 +311,8 @@ type SiteSettings struct {
 	AppURL                      string    `json:"app_url"`
 	TOSURL                      string    `json:"tos_url"`
 	Logo                        string    `json:"logo"`
+	Currency                    string    `json:"currency"`
+	CurrencySymbol              string    `json:"currency_symbol"`
 	StopRegister                bool      `json:"stop_register"`
 	EmailVerificationEnabled    bool      `json:"email_verify"`
 	EmailWhitelistEnabled       bool      `json:"email_whitelist_enable"`
@@ -348,6 +350,8 @@ type SaveSiteSettingsInput struct {
 	AppURL                     string
 	TOSURL                     string
 	Logo                       string
+	Currency                   *string
+	CurrencySymbol             *string
 	StopRegister               bool
 	EmailVerificationEnabled   bool
 	EmailWhitelistEnabled      bool
@@ -381,6 +385,11 @@ type SaveSiteSettingsInput struct {
 	TurnstileSecretCipher      []byte
 }
 
+type SaveLegacySiteSettingsInput struct {
+	Currency       *string
+	CurrencySymbol *string
+}
+
 type ClientAppSettings struct {
 	Revision           int64     `json:"revision"`
 	WindowsVersion     string    `json:"windows_version"`
@@ -399,6 +408,27 @@ type SaveClientAppSettingsInput struct {
 	MacOSDownloadURL   string
 	AndroidVersion     string
 	AndroidDownloadURL string
+}
+
+type ClientAppRuntimeSettings struct {
+	AppName                     string
+	AppDescription              string
+	AppURL                      string
+	Logo                        string
+	TOSURL                      string
+	Currency                    string
+	CurrencySymbol              string
+	TelegramBotEnabled          bool
+	TicketMustWaitReply         bool
+	EmailVerificationEnabled    bool
+	InvitationForceEnabled      bool
+	EmailWhitelistSuffixPresent bool
+	CaptchaEnabled              bool
+	CaptchaType                 string
+	RecaptchaSiteKey            string
+	RecaptchaV3SiteKey          string
+	RecaptchaV3ScoreThreshold   float64
+	TurnstileSiteKey            string
 }
 
 type SaveLegacyClientAppSettingsInput struct {

@@ -341,6 +341,7 @@ func validLowerSHA256(value string) bool {
 func validateAndMergeLegacySiteSettings(current SiteSettings, legacy LegacySiteSettings) (SiteSettings, error) {
 	input := SaveSiteSettingsInput{
 		AppName: current.AppName, AppDescription: current.AppDescription, AppURL: current.AppURL, TOSURL: current.TOSURL, Logo: current.Logo,
+		Currency: stringCopyPointer(current.Currency), CurrencySymbol: stringCopyPointer(current.CurrencySymbol),
 		StopRegister: current.StopRegister, EmailVerificationEnabled: current.EmailVerificationEnabled,
 		EmailWhitelistEnabled: current.EmailWhitelistEnabled, EmailWhitelistSuffixes: current.EmailWhitelistSuffixes,
 		GmailAliasLimitEnabled: current.GmailAliasLimitEnabled, RegistrationIPLimitEnabled: current.RegistrationIPLimitEnabled,
@@ -426,7 +427,7 @@ func readLegacyImportSiteSettings(ctx context.Context, database interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }) (SiteSettings, error) {
 	settings, err := scanSiteSettings(database.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,

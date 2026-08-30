@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -20,6 +21,7 @@ const (
 	maxPasswordLimitCount   = 20
 	maxPasswordLimitWindow  = 1_440
 	maxCaptchaSiteKeyBytes  = 512
+	maxCurrencySymbolBytes  = 16
 	maxSettingsCipherBytes  = 8_192
 	minSettingsCipherBytes  = 33
 )
@@ -28,7 +30,7 @@ const defaultEmailWhitelistStorage = "gmail.com,qq.com,163.com,yahoo.com,sina.co
 
 func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 	settings, err := scanSiteSettings(s.db.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
@@ -48,10 +50,6 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	if administratorID < 1 || revision < 1 {
 		return SiteSettings{}, ErrInvalidInput
 	}
-	normalized, err := normalizeSiteSettings(input)
-	if err != nil {
-		return SiteSettings{}, err
-	}
 	defer s.lockWrite()()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -62,16 +60,27 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	var currentTrialPlanID int64
 	var currentTrialHours, currentTrafficResetMethod int
 	var currentCouponEnabled bool
+	var currentCurrency, currentCurrencySymbol string
 	var captchaSecrets CaptchaSecretCiphers
 	if err := tx.QueryRowContext(ctx, `
-		SELECT email_verify, login_with_mail_link_enable, smtp_enabled, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
+		SELECT email_verify, login_with_mail_link_enable, smtp_enabled, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, currency, currency_symbol,
 		       recaptcha_secret_cipher, recaptcha_v3_secret_cipher, turnstile_secret_cipher
 		FROM app_settings WHERE id = 1
 	`).Scan(
-		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled, &currentTrialPlanID, &currentTrialHours, &currentTrafficResetMethod, &currentCouponEnabled,
+		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &smtpEnabled, &currentTrialPlanID, &currentTrialHours, &currentTrafficResetMethod, &currentCouponEnabled, &currentCurrency, &currentCurrencySymbol,
 		&captchaSecrets.Recaptcha, &captchaSecrets.RecaptchaV3, &captchaSecrets.Turnstile,
 	); err != nil {
 		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
+	}
+	if input.Currency == nil {
+		input.Currency = &currentCurrency
+	}
+	if input.CurrencySymbol == nil {
+		input.CurrencySymbol = &currentCurrencySymbol
+	}
+	normalized, err := normalizeSiteSettings(input)
+	if err != nil {
+		return SiteSettings{}, err
 	}
 	if normalized.TrafficResetMethod == nil {
 		normalized.TrafficResetMethod = &currentTrafficResetMethod
@@ -114,7 +123,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
-		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, stop_register = ?,
+		SET app_name = ?, app_description = ?, app_url = ?, tos_url = ?, logo = ?, currency = ?, currency_symbol = ?, stop_register = ?,
 		    email_verify = ?, email_whitelist_enable = ?, email_whitelist_suffix = ?, email_gmail_limit_enable = ?,
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
 		    password_limit_enable = ?, password_limit_count = ?, password_limit_expire = ?,
@@ -125,7 +134,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		    turnstile_site_key = ?, turnstile_secret_cipher = ?,
 		    updated_by = ?, updated_at = ?, revision = revision + 1
 		WHERE id = 1 AND revision = ?
-	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, normalized.StopRegister,
+	`, normalized.AppName, normalized.AppDescription, normalized.AppURL, normalized.TOSURL, normalized.Logo, *normalized.Currency, *normalized.CurrencySymbol, normalized.StopRegister,
 		normalized.EmailVerificationEnabled,
 		normalized.EmailWhitelistEnabled, strings.Join(normalized.EmailWhitelistSuffixes, ","), normalized.GmailAliasLimitEnabled,
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
@@ -187,7 +196,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		}
 	}
 	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
-		SELECT revision, app_name, app_description, app_url, tos_url, logo, stop_register,
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
@@ -206,12 +215,87 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	return settings, nil
 }
 
+// UpdateLegacySiteSettings applies the two site fields supported by the old
+// partial config endpoint without requiring a revision that endpoint cannot
+// provide. The write lock and in-transaction revision predicate preserve the
+// same lost-update protection as other legacy settings adapters.
+func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID int64, input SaveLegacySiteSettingsInput, now time.Time) (SiteSettings, error) {
+	if administratorID < 1 || now.Unix() < 0 || (input.Currency == nil && input.CurrencySymbol == nil) {
+		return SiteSettings{}, ErrInvalidInput
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SiteSettings{}, fmt.Errorf("begin legacy site settings update: %w", err)
+	}
+	defer tx.Rollback()
+	var revision int64
+	var currency, symbol string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT revision, currency, currency_symbol FROM app_settings WHERE id = 1
+	`).Scan(&revision, &currency, &symbol); err != nil {
+		return SiteSettings{}, fmt.Errorf("read legacy site settings: %w", err)
+	}
+	if input.Currency != nil {
+		currency = strings.ToUpper(strings.TrimSpace(*input.Currency))
+	}
+	if input.CurrencySymbol != nil {
+		symbol = strings.TrimSpace(*input.CurrencySymbol)
+	}
+	if !validCurrencyCode(currency) || !utf8.ValidString(symbol) || len(symbol) > maxCurrencySymbolBytes || strings.IndexFunc(symbol, unicode.IsControl) >= 0 {
+		return SiteSettings{}, fmt.Errorf("%w: invalid legacy site settings", ErrInvalidInput)
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE app_settings
+		SET currency = ?, currency_symbol = ?, updated_by = ?, updated_at = ?, revision = revision + 1
+		WHERE id = 1 AND revision = ?
+	`, currency, symbol, administratorID, now.Unix(), revision)
+	if err != nil {
+		return SiteSettings{}, fmt.Errorf("update legacy site settings: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return SiteSettings{}, fmt.Errorf("count legacy site settings update: %w", err)
+	}
+	if changed != 1 {
+		return SiteSettings{}, ErrConflict
+	}
+	settings, err := scanSiteSettings(tx.QueryRowContext(ctx, `
+		SELECT revision, app_name, app_description, app_url, tos_url, logo, currency, currency_symbol, stop_register,
+		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
+		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
+		       password_limit_enable, password_limit_count, password_limit_expire,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
+		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
+		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
+		       turnstile_site_key, turnstile_secret_cipher, updated_at
+		FROM app_settings WHERE id = 1
+	`))
+	if err != nil {
+		return SiteSettings{}, fmt.Errorf("read updated legacy site settings: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SiteSettings{}, fmt.Errorf("commit legacy site settings update: %w", err)
+	}
+	return settings, nil
+}
+
 func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, error) {
 	input.AppName = strings.TrimSpace(input.AppName)
 	input.AppDescription = strings.TrimSpace(input.AppDescription)
 	input.AppURL = strings.TrimSpace(input.AppURL)
 	input.TOSURL = strings.TrimSpace(input.TOSURL)
 	input.Logo = strings.TrimSpace(input.Logo)
+	if input.Currency == nil {
+		input.Currency = stringCopyPointer("CNY")
+	}
+	if input.CurrencySymbol == nil {
+		input.CurrencySymbol = stringCopyPointer("¥")
+	}
+	currency := strings.ToUpper(strings.TrimSpace(*input.Currency))
+	currencySymbol := strings.TrimSpace(*input.CurrencySymbol)
+	input.Currency = &currency
+	input.CurrencySymbol = &currencySymbol
 	input.CaptchaType = strings.TrimSpace(input.CaptchaType)
 	input.RecaptchaSiteKey = strings.TrimSpace(input.RecaptchaSiteKey)
 	input.RecaptchaV3SiteKey = strings.TrimSpace(input.RecaptchaV3SiteKey)
@@ -225,6 +309,7 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 	input.EmailWhitelistSuffixes = normalizeEmailWhitelistSuffixes(input.EmailWhitelistSuffixes)
 	if !utf8.ValidString(input.AppName) || !utf8.ValidString(input.AppDescription) ||
 		!utf8.ValidString(input.AppURL) || !utf8.ValidString(input.TOSURL) || !utf8.ValidString(input.Logo) ||
+		!validCurrencyCode(*input.Currency) || !utf8.ValidString(*input.CurrencySymbol) || len(*input.CurrencySymbol) > maxCurrencySymbolBytes || strings.IndexFunc(*input.CurrencySymbol, unicode.IsControl) >= 0 ||
 		utf8.RuneCountInString(input.AppName) < 1 || utf8.RuneCountInString(input.AppName) > maxSiteAppNameRunes ||
 		utf8.RuneCountInString(input.AppDescription) > maxSiteDescriptionRunes ||
 		containsUnsafeTicketControl(input.AppName, false) || containsUnsafeTicketControl(input.AppDescription, true) ||
@@ -267,6 +352,18 @@ func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, 
 		}
 	}
 	return input, nil
+}
+
+func validCurrencyCode(value string) bool {
+	if len(value) != 3 {
+		return false
+	}
+	for _, character := range value {
+		if character < 'A' || character > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) GetCaptchaSecretCiphers(ctx context.Context) (CaptchaSecretCiphers, error) {
@@ -346,7 +443,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 	var suffixStorage string
 	var recaptchaSecretCipher, recaptchaV3SecretCipher, turnstileSecretCipher []byte
 	if err := row.Scan(
-		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo,
+		&settings.Revision, &settings.AppName, &settings.AppDescription, &settings.AppURL, &settings.TOSURL, &settings.Logo, &settings.Currency, &settings.CurrencySymbol,
 		&settings.StopRegister, &settings.EmailVerificationEnabled, &settings.EmailWhitelistEnabled, &suffixStorage, &settings.GmailAliasLimitEnabled,
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
 		&settings.PasswordLimitEnabled, &settings.PasswordLimitCount, &settings.PasswordLimitMinutes,

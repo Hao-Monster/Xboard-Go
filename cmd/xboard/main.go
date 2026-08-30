@@ -34,6 +34,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/subscription"
 	"github.com/Hao-Monster/Xboard-Go/internal/webui"
 )
 
@@ -188,6 +189,19 @@ func main() {
 		os.Exit(1)
 	}
 	go bulkService.Run(ctx)
+	legacyAppClashTemplate := ""
+	if settings.LegacyAppClashTemplateFile != "" {
+		legacyAppClashTemplate, err = subscription.LoadLegacyAppClashTemplateFile(settings.LegacyAppClashTemplateFile)
+		if err != nil {
+			logger.Error("load legacy app Clash template", "error", err)
+			os.Exit(1)
+		}
+	}
+	legacyAppClashRenderer, err := subscription.NewLegacyAppClashRenderer(legacyAppClashTemplate)
+	if err != nil {
+		logger.Error("initialize legacy app Clash renderer", "error", err)
+		os.Exit(1)
+	}
 
 	var handler http.Handler = httpapi.New(httpapi.Dependencies{
 		Store:                      database,
@@ -215,6 +229,7 @@ func main() {
 		CaptchaVerifier:            captchaVerifier,
 		Attachments:                attachmentService,
 		BulkOperations:             bulkService,
+		LegacyAppClashRenderer:     legacyAppClashRenderer,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler)
@@ -557,7 +572,7 @@ func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, std
 
 func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-telegram-settings, import-legacy-mail-templates, import-legacy-client-app-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
+		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-telegram-settings, import-legacy-mail-templates, import-legacy-client-app-settings, import-legacy-currency-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
 	}
 	if arguments[0] == "import-legacy-registration-trial-settings" {
 		return runLegacyRegistrationTrialSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
@@ -573,6 +588,9 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	}
 	if arguments[0] == "import-legacy-client-app-settings" {
 		return runLegacyClientAppSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
+	if arguments[0] == "import-legacy-currency-settings" {
+		return runLegacyCurrencySettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] == "import-legacy-subscription-config" {
 		return runLegacySubscriptionConfigMigrationCommand(ctx, arguments[1:], stdout, stderr, now)

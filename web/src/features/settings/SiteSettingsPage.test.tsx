@@ -12,6 +12,8 @@ const initial: SiteSettings = {
   app_url: "https://old.example.test",
   tos_url: "https://old.example.test/terms",
   logo: "https://old.example.test/logo.png",
+  currency: "CNY",
+  currency_symbol: "¥",
   stop_register: false,
   email_verify: false,
   email_whitelist_enable: false,
@@ -27,9 +29,9 @@ const initial: SiteSettings = {
   invite_gen_limit: 5,
   invite_never_expire: false,
   login_with_mail_link_enable: false,
-	try_out_plan_id: 0,
-	try_out_hour: 1,
-	traffic_reset_method: 1,
+  try_out_plan_id: 0,
+  try_out_hour: 1,
+  traffic_reset_method: 1,
   coupon_enabled: true,
   captcha_enable: false,
   captcha_type: "recaptcha",
@@ -45,11 +47,12 @@ const initial: SiteSettings = {
 
 describe("SiteSettingsPage", () => {
   it("loads all legacy identity fields and publishes the saved identity", async () => {
-	const plans = [{ id: 17, name: "试用套餐" }] as Plan[];
+    const plans = [{ id: 17, name: "试用套餐" }] as Plan[];
     const updated: SiteSettings = {
       ...initial, revision: 5, app_name: "Example Board", app_description: "Fast control plane",
       app_url: "https://panel.example.test/", tos_url: "https://panel.example.test/terms/",
       logo: "https://images.example.test/brand.svg", stop_register: true,
+      currency: "USD", currency_symbol: "$",
       email_verify: true,
       email_whitelist_enable: true, email_whitelist_suffix: ["allowed.test", "gmail.com"],
       email_gmail_limit_enable: true, register_limit_by_ip_enable: true,
@@ -57,9 +60,9 @@ describe("SiteSettingsPage", () => {
       password_limit_enable: true, password_limit_count: 2, password_limit_expire: 30,
       invite_force: true, invite_gen_limit: 7, invite_never_expire: true,
       login_with_mail_link_enable: true,
-	  try_out_plan_id: 17,
-	  try_out_hour: 48,
-	  traffic_reset_method: 1,
+      try_out_plan_id: 17,
+      try_out_hour: 48,
+      traffic_reset_method: 1,
       coupon_enabled: false,
       captcha_enable: true, captcha_type: "turnstile", turnstile_site_key: "turnstile-site",
       turnstile_secret_configured: true
@@ -79,6 +82,8 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("站点网址")).toHaveValue("https://old.example.test");
     expect(screen.getByLabelText("用户条款(TOS)URL")).toHaveValue("https://old.example.test/terms");
     expect(screen.getByLabelText("LOGO")).toHaveValue("https://old.example.test/logo.png");
+    expect(screen.getByLabelText("货币代码")).toHaveValue("CNY");
+    expect(screen.getByLabelText("货币符号")).toHaveValue("¥");
     expect(screen.getByRole("checkbox", { name: "停止新用户注册" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "邮箱验证" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "邮箱后缀白名单" })).not.toBeChecked();
@@ -103,6 +108,9 @@ describe("SiteSettingsPage", () => {
     changeValue("站点网址", updated.app_url);
     changeValue("用户条款(TOS)URL", updated.tos_url);
     changeValue("LOGO", updated.logo);
+    changeValue("货币代码", updated.currency.toLowerCase());
+    expect(screen.getByLabelText("货币代码")).toHaveValue("USD");
+    changeValue("货币符号", updated.currency_symbol);
     await user.click(screen.getByRole("checkbox", { name: "停止新用户注册" }));
     await user.click(screen.getByRole("checkbox", { name: "启用优惠券" }));
     await user.click(screen.getByRole("checkbox", { name: "验证码" }));
@@ -133,6 +141,8 @@ describe("SiteSettingsPage", () => {
       app_url: updated.app_url,
       tos_url: updated.tos_url,
       logo: updated.logo,
+      currency: updated.currency,
+      currency_symbol: updated.currency_symbol,
       stop_register: true,
       email_verify: true,
       email_whitelist_enable: true,
@@ -148,9 +158,9 @@ describe("SiteSettingsPage", () => {
       invite_gen_limit: 7,
       invite_never_expire: true,
       login_with_mail_link_enable: true,
-	  try_out_plan_id: 17,
-	  try_out_hour: 48,
-	  traffic_reset_method: 1,
+      try_out_plan_id: 17,
+      try_out_hour: 48,
+      traffic_reset_method: 1,
       coupon_enabled: false,
       captcha_enable: true,
       captcha_type: "turnstile",

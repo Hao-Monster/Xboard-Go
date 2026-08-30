@@ -25,6 +25,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/subscription"
 	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
 )
 
@@ -64,6 +65,7 @@ type Dependencies struct {
 	Attachments                *attachments.Service
 	BulkOperations             *bulkops.Service
 	TelegramBot                telegrambot.Client
+	LegacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 }
 
 type paymentGateway interface {
@@ -130,6 +132,7 @@ type server struct {
 	bulkOperations             *bulkops.Service
 	telegramBot                telegrambot.Client
 	telegramProvisionRequests  *requestLimiter
+	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 }
 
 type contextKey int
@@ -185,6 +188,13 @@ func New(dependencies Dependencies) http.Handler {
 			panic(fmt.Sprintf("httpapi: initialize Telegram client: %v", err))
 		}
 		dependencies.TelegramBot = telegramClient
+	}
+	if dependencies.LegacyAppClashRenderer == nil {
+		renderer, err := subscription.NewLegacyAppClashRenderer("")
+		if err != nil {
+			panic(fmt.Sprintf("httpapi: initialize embedded legacy app Clash template: %v", err))
+		}
+		dependencies.LegacyAppClashRenderer = renderer
 	}
 	dummyHash, err := dependencies.PasswordHasher.Hash("xboard-dummy-login-password")
 	if err != nil {
@@ -253,6 +263,7 @@ func New(dependencies Dependencies) http.Handler {
 		attachments:                dependencies.Attachments,
 		bulkOperations:             dependencies.BulkOperations,
 		telegramBot:                dependencies.TelegramBot,
+		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator)
@@ -275,6 +286,8 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v1/client/subscribe", api.clientSubscription)
 	root.HandleFunc("GET /api/v1/client/app/getVersion", api.legacyClientAppVersion)
 	root.HandleFunc("GET /api/v2/client/app/getVersion", api.legacyClientAppVersion)
+	root.HandleFunc("GET /api/v1/client/app/getConfig", api.legacyClientAppConfigV1)
+	root.HandleFunc("GET /api/v2/client/app/getConfig", api.legacyClientAppConfigV2)
 	root.HandleFunc("POST /api/v1/auth/login", api.login)
 	root.Handle("POST /api/v1/passport/auth/login", api.requireTrustedOrigin(http.HandlerFunc(api.legacyLogin)))
 	root.Handle("POST /api/v2/passport/auth/login", api.requireTrustedOrigin(http.HandlerFunc(api.legacyLogin)))

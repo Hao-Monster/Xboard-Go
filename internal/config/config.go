@@ -20,41 +20,42 @@ var (
 )
 
 type Config struct {
-	Address                 string
-	DatabaseDSN             string
-	PanelURL                string
-	LegacyAdminPath         string
-	AllowedOrigins          []string
-	CookieSecure            bool
-	NodeRelease             string
-	BootstrapAdminEmail     string
-	BootstrapAdminPassword  string
-	SchedulerInterval       time.Duration
-	MailPollInterval        time.Duration
-	BulkPollInterval        time.Duration
-	SMTPAllowInsecure       bool
-	CaptchaAllowInsecure    bool
-	CaptchaRecaptchaURL     string
-	CaptchaRecaptchaV3URL   string
-	CaptchaTurnstileURL     string
-	SettingsEncryptionKey   []byte
-	WebSocketEnabled        bool
-	WebSocketURL            string
-	NodePushInterval        int
-	NodePullInterval        int
-	NodeCoordinationMode    string
-	RedisURL                string
-	RedisKeyPrefix          string
-	WebRoot                 string
-	AttachmentRoot          string
-	AttachmentChunkSize     int64
-	AttachmentMaxFileSize   int64
-	AttachmentTotalQuota    int64
-	AttachmentSignedURLTTL  time.Duration
-	AttachmentDraftTTL      time.Duration
-	AttachmentTrashTTL      time.Duration
-	AttachmentMaxPerArticle int
-	AdminExportRoot         string
+	Address                    string
+	DatabaseDSN                string
+	PanelURL                   string
+	LegacyAdminPath            string
+	AllowedOrigins             []string
+	CookieSecure               bool
+	NodeRelease                string
+	BootstrapAdminEmail        string
+	BootstrapAdminPassword     string
+	SchedulerInterval          time.Duration
+	MailPollInterval           time.Duration
+	BulkPollInterval           time.Duration
+	SMTPAllowInsecure          bool
+	CaptchaAllowInsecure       bool
+	CaptchaRecaptchaURL        string
+	CaptchaRecaptchaV3URL      string
+	CaptchaTurnstileURL        string
+	SettingsEncryptionKey      []byte
+	WebSocketEnabled           bool
+	WebSocketURL               string
+	NodePushInterval           int
+	NodePullInterval           int
+	NodeCoordinationMode       string
+	RedisURL                   string
+	RedisKeyPrefix             string
+	WebRoot                    string
+	AttachmentRoot             string
+	AttachmentChunkSize        int64
+	AttachmentMaxFileSize      int64
+	AttachmentTotalQuota       int64
+	AttachmentSignedURLTTL     time.Duration
+	AttachmentDraftTTL         time.Duration
+	AttachmentTrashTTL         time.Duration
+	AttachmentMaxPerArticle    int
+	AdminExportRoot            string
+	LegacyAppClashTemplateFile string
 }
 
 func Load() (Config, error) {
@@ -152,40 +153,41 @@ func Load() (Config, error) {
 	}
 
 	config := Config{
-		Address:                 envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
-		DatabaseDSN:             DatabaseDSN(),
-		PanelURL:                panelURL,
-		LegacyAdminPath:         envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
-		CookieSecure:            cookieSecure,
-		NodeRelease:             envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
-		BootstrapAdminEmail:     strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
-		BootstrapAdminPassword:  bootstrapPassword,
-		SchedulerInterval:       interval,
-		MailPollInterval:        mailPollInterval,
-		BulkPollInterval:        bulkPollInterval,
-		SMTPAllowInsecure:       smtpAllowInsecure,
-		CaptchaAllowInsecure:    captchaAllowInsecure,
-		CaptchaRecaptchaURL:     strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
-		CaptchaRecaptchaV3URL:   strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL")),
-		CaptchaTurnstileURL:     strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL")),
-		SettingsEncryptionKey:   append([]byte(nil), settingsEncryptionKey...),
-		WebSocketEnabled:        webSocketEnabled,
-		WebSocketURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
-		NodePushInterval:        nodePushInterval,
-		NodePullInterval:        nodePullInterval,
-		NodeCoordinationMode:    strings.ToLower(strings.TrimSpace(envOrDefault("XBOARD_NODE_COORDINATION_MODE", "local"))),
-		RedisURL:                strings.TrimSpace(redisURL),
-		RedisKeyPrefix:          strings.TrimSpace(envOrDefault("XBOARD_REDIS_KEY_PREFIX", "xboard-go:")),
-		WebRoot:                 strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
-		AttachmentRoot:          strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")),
-		AttachmentChunkSize:     attachmentChunkSize,
-		AttachmentMaxFileSize:   attachmentMaxFileSize,
-		AttachmentTotalQuota:    attachmentTotalQuota,
-		AttachmentSignedURLTTL:  attachmentSignedURLTTL,
-		AttachmentDraftTTL:      attachmentDraftTTL,
-		AttachmentTrashTTL:      attachmentTrashTTL,
-		AttachmentMaxPerArticle: attachmentMaxPerArticle,
-		AdminExportRoot:         adminExportRoot,
+		Address:                    envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
+		DatabaseDSN:                DatabaseDSN(),
+		PanelURL:                   panelURL,
+		LegacyAdminPath:            envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
+		CookieSecure:               cookieSecure,
+		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
+		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
+		BootstrapAdminPassword:     bootstrapPassword,
+		SchedulerInterval:          interval,
+		MailPollInterval:           mailPollInterval,
+		BulkPollInterval:           bulkPollInterval,
+		SMTPAllowInsecure:          smtpAllowInsecure,
+		CaptchaAllowInsecure:       captchaAllowInsecure,
+		CaptchaRecaptchaURL:        strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL")),
+		CaptchaRecaptchaV3URL:      strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL")),
+		CaptchaTurnstileURL:        strings.TrimSpace(os.Getenv("XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL")),
+		SettingsEncryptionKey:      append([]byte(nil), settingsEncryptionKey...),
+		WebSocketEnabled:           webSocketEnabled,
+		WebSocketURL:               strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_WEBSOCKET_URL")), "/"),
+		NodePushInterval:           nodePushInterval,
+		NodePullInterval:           nodePullInterval,
+		NodeCoordinationMode:       strings.ToLower(strings.TrimSpace(envOrDefault("XBOARD_NODE_COORDINATION_MODE", "local"))),
+		RedisURL:                   strings.TrimSpace(redisURL),
+		RedisKeyPrefix:             strings.TrimSpace(envOrDefault("XBOARD_REDIS_KEY_PREFIX", "xboard-go:")),
+		WebRoot:                    strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
+		AttachmentRoot:             strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")),
+		AttachmentChunkSize:        attachmentChunkSize,
+		AttachmentMaxFileSize:      attachmentMaxFileSize,
+		AttachmentTotalQuota:       attachmentTotalQuota,
+		AttachmentSignedURLTTL:     attachmentSignedURLTTL,
+		AttachmentDraftTTL:         attachmentDraftTTL,
+		AttachmentTrashTTL:         attachmentTrashTTL,
+		AttachmentMaxPerArticle:    attachmentMaxPerArticle,
+		AdminExportRoot:            adminExportRoot,
+		LegacyAppClashTemplateFile: strings.TrimSpace(os.Getenv("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE")),
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -205,6 +207,9 @@ func Load() (Config, error) {
 	}
 	if config.WebRoot != "" && !filepath.IsAbs(config.WebRoot) {
 		return Config{}, errors.New("XBOARD_WEB_ROOT must be an absolute path")
+	}
+	if config.LegacyAppClashTemplateFile != "" && !filepath.IsAbs(config.LegacyAppClashTemplateFile) {
+		return Config{}, errors.New("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE must be an absolute path")
 	}
 	if config.AttachmentRoot != "" {
 		if !filepath.IsAbs(config.AttachmentRoot) {
