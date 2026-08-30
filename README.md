@@ -367,6 +367,29 @@ must resolve within the snapshot, and password hashes must be bounded legacy
 bcrypt values. Repeating the same source verifies the recorded rollback archive
 and returns the existing result without rewriting users.
 
+Existing legacy Bearer sessions can then be imported from the same standalone
+snapshot. The command preserves token IDs, user ownership, SHA-256 token
+digests, device names, last-use and expiry times, and therefore does not need
+or reveal any plaintext credential:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-access-tokens \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-access-tokens.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The human-account slice from the identical source must already be recorded and
+the target access-token table must be empty. Only Xboard user tokens with the
+existing wildcard ability contract are accepted; unknown tokenable types,
+restricted abilities, malformed hashes, missing users, oversized data, or a
+different prior snapshot fail before commit. A canonical checksum verifies the
+atomic import and repeating the same source verifies the recorded rollback
+archive without rewriting credentials.
+
 Ticket history can then be imported after the human-account slice from the
 same standalone snapshot. The target tickets, messages, reply-mail outbox, and
 reply throttle must all be empty. Ticket and message identifiers, ownership,
