@@ -919,15 +919,16 @@ func (s *server) generateAdminUsersFromRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 	credentials := make([]adminUserGeneratedCredential, len(created))
-	appURL := strings.TrimRight(config.AppURL, "/")
-	if appURL == "" {
-		appURL = s.panelURL
-	}
 	for index, item := range created {
+		subscribeURL, err := s.publicSubscriptionURLFromConfig(config, item.SubscriptionToken, "")
+		if err != nil {
+			s.writeAdminUserGenerateError(w, err, legacy)
+			return
+		}
 		credentials[index] = adminUserGeneratedCredential{
 			ID: item.User.ID, Email: item.User.Email, Password: plaintexts[index], ExpiredAt: item.User.ExpiredAt,
 			UUID: item.UUID, CreatedAt: item.User.CreatedAt,
-			SubscribeURL: appURL + "/" + config.Path + "/" + item.SubscriptionToken,
+			SubscribeURL: subscribeURL,
 		}
 		if s.hub != nil {
 			s.hub.NotifyUserMutation(r.Context(), item.User.ID, "", nil, item.User.GroupID, false)

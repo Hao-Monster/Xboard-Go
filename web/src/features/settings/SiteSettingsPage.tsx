@@ -77,7 +77,7 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
   };
 
   return <main className="page-shell site-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Configuration</p><h1>系统设置</h1><p className="muted">配置站点身份、公开品牌信息和注册安全策略。</p></div></header>
+    <header className="page-header"><div><p className="eyebrow">Configuration</p><h1>系统设置</h1><p className="muted">配置站点身份、订阅公开地址和注册安全策略。</p></div></header>
     {loading && draft === null && <div className="empty-card">正在加载站点设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {draft === null && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载站点设置</button>}
@@ -91,6 +91,12 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
           <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
           <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
         </div>
+        <fieldset className="settings-fieldset">
+          <legend>订阅公开地址</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
+          <label>订阅公开地址<textarea aria-describedby="subscribe-url-help" placeholder={"https://subscribe-a.example.com\nhttps://subscribe-b.example.com"} value={draft.subscribe_url.split(",").join("\n")} onChange={(event) => updateDraft("subscribe_url", event.target.value)} /></label>
+          <p className="small muted" id="subscribe-url-help">每行一个地址，最多 32 个。外网地址必须使用 HTTPS，不能包含账号、查询参数或片段；留空时使用站点网址。</p>
+        </fieldset>
         <div className="site-settings-url-grid">
           <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
           <label>货币符号<input maxLength={16} value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
@@ -186,6 +192,8 @@ function toDraft(settings: SiteSettings): SiteDraft {
     app_name: settings.app_name,
     app_description: settings.app_description,
     app_url: settings.app_url,
+    force_https: settings.force_https,
+    subscribe_url: settings.subscribe_url,
     tos_url: settings.tos_url,
     logo: settings.logo,
     currency: settings.currency,

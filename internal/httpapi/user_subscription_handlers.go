@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
@@ -211,15 +210,15 @@ func (s *server) userSubscriptionForAccount(ctx context.Context, account store.S
 		}
 		plan = &item
 	}
-	appURL := strings.TrimRight(config.AppURL, "/")
-	if appURL == "" {
-		appURL = s.panelURL
+	subscribeURL, err := s.publicSubscriptionURLFromConfig(config, account.SubscriptionToken, "")
+	if err != nil {
+		return userSubscriptionResponse{}, err
 	}
 	return userSubscriptionResponse{
 		PlanID: account.PlanID, Token: account.SubscriptionToken, ExpiredAt: account.ExpiredAt,
 		Upload: account.TrafficUpload, Download: account.TrafficDownload, TransferEnable: account.TransferEnable,
 		Email: account.Email, UUID: account.UUID, DeviceLimit: account.DeviceLimit, SpeedLimit: account.SpeedLimit,
-		NextResetAt: account.NextResetAt, Plan: plan, SubscribeURL: appURL + "/" + config.Path + "/" + account.SubscriptionToken,
+		NextResetAt: account.NextResetAt, Plan: plan, SubscribeURL: subscribeURL,
 		ResetDay: resetDay(account.NextResetAt, s.now()), SubscriptionValid: account.AvailableAt(s.now()),
 	}, nil
 }

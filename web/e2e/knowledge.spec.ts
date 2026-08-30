@@ -65,7 +65,7 @@ test("administrator manages knowledge while active, inactive, and public readers
   await page.getByRole("button", { name: `阅读：${editedTitle}` }).click();
   dialog = page.getByRole("dialog", { name: editedTitle });
   await expect(dialog.getByText(privateText, { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "Subscription" })).toHaveAttribute("href", /\/api\/v1\/client\/subscribe\?token=[0-9a-f]{32}$/);
+  await expect(dialog.getByRole("link", { name: "Subscription" })).toHaveAttribute("href", /\/s\/[0-9a-f]{32}$/);
   await expect(dialog.locator("script")).toHaveCount(0);
   await dialog.getByRole("button", { name: `关闭${editedTitle}` }).click();
 

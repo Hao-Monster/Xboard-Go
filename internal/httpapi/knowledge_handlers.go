@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -180,14 +179,19 @@ func (s *server) listUserKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	settings, err := s.store.GetSiteSettings(r.Context())
+	config, err := s.store.GetSubscriptionRenderConfig(r.Context(), "")
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	subscribeURL, err := s.publicSubscriptionURLFromConfig(config, viewer.SubscriptionToken, "")
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
 	responses := make([]knowledgeResponse, 0, len(items))
 	for _, item := range items {
-		item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+		item.Body = knowledgecontent.UserContent(item.Body, config.AppName, subscribeURL, viewer.SubscriptionValid)
 		if s.attachments != nil {
 			item.Body, err = s.attachments.RenderKnowledgeBody(r.Context(), item.ID, item.Body, false, s.now())
 			if err != nil {
@@ -214,12 +218,17 @@ func (s *server) getUserKnowledge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	settings, err := s.store.GetSiteSettings(r.Context())
+	config, err := s.store.GetSubscriptionRenderConfig(r.Context(), "")
 	if err != nil {
 		handleStoreError(w, err)
 		return
 	}
-	item.Body = knowledgecontent.UserContent(item.Body, settings.AppName, s.subscriptionURL(viewer.SubscriptionToken), viewer.SubscriptionValid)
+	subscribeURL, err := s.publicSubscriptionURLFromConfig(config, viewer.SubscriptionToken, "")
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	item.Body = knowledgecontent.UserContent(item.Body, config.AppName, subscribeURL, viewer.SubscriptionValid)
 	if s.attachments != nil {
 		item.Body, err = s.attachments.RenderKnowledgeBody(r.Context(), item.ID, item.Body, false, s.now())
 		if err != nil {
@@ -371,10 +380,6 @@ func (s *server) knowledgeResponses(items []store.Knowledge, includeBody bool) [
 
 func (s *server) knowledgeShareURL(item store.Knowledge) string {
 	return fmt.Sprintf("%s/guide/%d/%s", s.panelURL, item.ID, knowledgecontent.Slug(item.Title))
-}
-
-func (s *server) subscriptionURL(token string) string {
-	return s.panelURL + "/api/v1/client/subscribe?token=" + url.QueryEscape(token)
 }
 
 func handleKnowledgeMutationError(w http.ResponseWriter, err error) {

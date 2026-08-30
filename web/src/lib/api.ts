@@ -1220,6 +1220,8 @@ export interface SiteSettings {
   app_name: string;
   app_description: string;
   app_url: string;
+  force_https: boolean;
+  subscribe_url: string;
   tos_url: string;
   logo: string;
   currency: string;
@@ -1268,6 +1270,8 @@ export interface SiteSettingsInput {
   app_name: string;
   app_description: string;
   app_url: string;
+  force_https: boolean;
+  subscribe_url: string;
   tos_url: string;
   logo: string;
   currency: string;

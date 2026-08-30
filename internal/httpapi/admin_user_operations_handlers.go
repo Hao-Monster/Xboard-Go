@@ -20,9 +20,14 @@ func (s *server) getAdminUserSubscriptionURL(w http.ResponseWriter, r *http.Requ
 		handleStoreError(w, err)
 		return
 	}
+	subscribeURL, err := s.publicSubscriptionURL(r.Context(), token, "")
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
-	writeSuccess(w, http.StatusOK, map[string]string{"subscribe_url": s.subscriptionURL(token)})
+	writeSuccess(w, http.StatusOK, map[string]string{"subscribe_url": subscribeURL})
 }
 
 func (s *server) listAdminUserOrders(w http.ResponseWriter, r *http.Request) {

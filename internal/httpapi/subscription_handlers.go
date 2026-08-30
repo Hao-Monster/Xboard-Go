@@ -133,7 +133,12 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 	if appURL == "" {
 		appURL = s.panelURL
 	}
-	subscriptionURL := appURL + "/" + config.Path + "/" + token
+	subscriptionURL, err := s.publicSubscriptionURLFromConfig(config, token, "")
+	if err != nil {
+		s.logger.Error("build subscription URL", "user_id", account.ID, "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return
+	}
 	response, err := subscription.Render(subscription.RenderInput{
 		Account: account, Nodes: filtered, Client: client, AppName: config.AppName, AppURL: appURL,
 		RequestHost: r.Host, SubscriptionURL: subscriptionURL, Templates: config.Templates,

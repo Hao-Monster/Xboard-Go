@@ -19,6 +19,7 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 	admin := loginAdmin(t, api)
 	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Tenant Knowledge","app_description":"","app_url":"https://panel.example.test",
+		"subscribe_url":"https://knowledge-subscriptions.example.test/root/",
 		"tos_url":"","logo":"https://images.example.test/tenant.png"
 	}`)
 	if siteResponse.Code != http.StatusOK {
@@ -60,7 +61,7 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 		t.Fatalf("active user status=%d body=%s", activeResponse.Code, activeResponse.Body)
 	}
 	if !strings.Contains(activeResponse.Body.String(), "订阅专属") || !strings.Contains(activeResponse.Body.String(), "Tenant Knowledge") ||
-		!strings.Contains(activeResponse.Body.String(), "https://panel.example.test/api/v1/client/subscribe?token=") || strings.Contains(activeResponse.Body.String(), "{{siteName}}") {
+		!strings.Contains(activeResponse.Body.String(), "https://knowledge-subscriptions.example.test/root/s/") || strings.Contains(activeResponse.Body.String(), "{{siteName}}") {
 		t.Fatalf("active user content = %s", activeResponse.Body)
 	}
 

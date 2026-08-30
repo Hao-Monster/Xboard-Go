@@ -89,6 +89,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		AppName                    string    `json:"app_name"`
 		AppDescription             string    `json:"app_description"`
 		AppURL                     string    `json:"app_url"`
+		ForceHTTPS                 *bool     `json:"force_https"`
+		SubscribeURL               *string   `json:"subscribe_url"`
 		TOSURL                     string    `json:"tos_url"`
 		Logo                       string    `json:"logo"`
 		Currency                   *string   `json:"currency"`
@@ -135,6 +137,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	next := store.SaveSiteSettingsInput{
 		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
+		ForceHTTPS: &current.ForceHTTPS, SubscribeURL: &current.SubscribeURL,
 		Currency: &current.Currency, CurrencySymbol: &current.CurrencySymbol,
 		StopRegister: current.StopRegister, EmailVerificationEnabled: current.EmailVerificationEnabled,
 		EmailWhitelistEnabled:  current.EmailWhitelistEnabled,
@@ -162,6 +165,12 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Currency != nil {
 		next.Currency = input.Currency
+	}
+	if input.ForceHTTPS != nil {
+		next.ForceHTTPS = input.ForceHTTPS
+	}
+	if input.SubscribeURL != nil {
+		next.SubscribeURL = input.SubscribeURL
 	}
 	if input.CurrencySymbol != nil {
 		next.CurrencySymbol = input.CurrencySymbol

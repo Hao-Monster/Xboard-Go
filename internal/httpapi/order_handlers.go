@@ -227,12 +227,11 @@ func (s *server) attachAdminOrderSubscribeURL(ctx context.Context, detail *store
 		if err != nil {
 			return err
 		}
-		base := strings.TrimRight(config.AppURL, "/")
-		if base == "" {
-			base = strings.TrimRight(s.panelURL, "/")
+		subscribeURL, err := s.publicSubscriptionURLFromConfig(config, distributorOrder.Subscription.SubscriptionToken, distributorOrder.Subscription.OriginalTradeNo)
+		if err != nil {
+			return err
 		}
-		url := base + "/" + config.Path + "/" + distributorOrder.Subscription.SubscriptionToken + "#" + distributorOrder.Subscription.OriginalTradeNo
-		detail.SubscribeURL = &url
+		detail.SubscribeURL = &subscribeURL
 		return nil
 	}
 	subscription, err := s.userSubscription(ctx, detail.UserID)
@@ -557,11 +556,11 @@ func (s *server) legacyGetAdminOrder(w http.ResponseWriter, r *http.Request) {
 			writeLegacyAdminDistributorError(w, configErr)
 			return
 		}
-		base := strings.TrimRight(config.AppURL, "/")
-		if base == "" {
-			base = strings.TrimRight(s.panelURL, "/")
+		subscribeURL, configErr := s.publicSubscriptionURLFromConfig(config, distributorOrder.Subscription.SubscriptionToken, distributorOrder.Subscription.OriginalTradeNo)
+		if configErr != nil {
+			writeLegacyAdminDistributorError(w, configErr)
+			return
 		}
-		subscribeURL := base + "/" + config.Path + "/" + distributorOrder.Subscription.SubscriptionToken + "#" + distributorOrder.Subscription.OriginalTradeNo
 		response.SubscribeURL = &subscribeURL
 		response.Plan = legacyRawPlanResponse(plan)
 		writeLegacySuccess(w, http.StatusOK, response)

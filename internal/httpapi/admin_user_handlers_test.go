@@ -23,7 +23,6 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	ctx := context.Background()
 	now := fixedNow()
 	admin := loginAdmin(t, api)
-
 	resetMethod, speedLimit, deviceLimit := 1, 125, 5
 	planGroupID := int64(8)
 	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
@@ -205,6 +204,10 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 	ctx := context.Background()
 	now := fixedNow()
 	admin := loginAdmin(t, api)
+	publicOrigin := "https://generated-subscriptions.example.test"
+	if _, err := database.UpdateLegacySiteSettings(ctx, 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, now); err != nil {
+		t.Fatal(err)
+	}
 	groupID := int64(7)
 	resetMethod, speedLimit, deviceLimit := 1, 96, 4
 	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
@@ -238,7 +241,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 	decodeResponse(t, singleResponse, &singlePayload)
 	if len(singlePayload.Data.Items) != 1 || singlePayload.Data.Items[0].Email != "generated-single@example.test" ||
 		len(singlePayload.Data.Items[0].Password) < 24 || singlePayload.Data.Items[0].Password == singlePayload.Data.Items[0].Email ||
-		!strings.HasPrefix(singlePayload.Data.Items[0].SubscribeURL, "https://panel.example.test/s/") || singlePayload.Data.Items[0].UUID == "" {
+		!strings.HasPrefix(singlePayload.Data.Items[0].SubscribeURL, "https://generated-subscriptions.example.test/s/") || singlePayload.Data.Items[0].UUID == "" {
 		t.Fatalf("single generation payload = %#v", singlePayload.Data.Items)
 	}
 	if login := loginAccountResponse(api, singlePayload.Data.Items[0].Email, singlePayload.Data.Items[0].Password); login.Code != http.StatusOK {

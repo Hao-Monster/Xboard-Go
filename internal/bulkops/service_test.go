@@ -253,6 +253,12 @@ func TestServiceRunsFourBoundedMailWorkersWithoutStarvingJobs(t *testing.T) {
 
 func TestServiceStreamsSafeLegacyCompatibleCSV(t *testing.T) {
 	database, administrator, target, cipherBox, now := newBulkServiceFixture(t)
+	subscribeURL := "https://subscriptions.example.test/base"
+	if _, err := database.UpdateLegacySiteSettings(context.Background(), administrator.ID, store.SaveLegacySiteSettingsInput{
+		SubscribeURL: &subscribeURL,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
 	job, err := database.CreateAdminUserBulkJob(context.Background(), store.CreateAdminUserBulkJobInput{
 		Kind: store.AdminUserBulkKindCSV, AdministratorID: administrator.ID,
 		Scope: store.AdminUserBulkScope{Scope: store.AdminUserBulkScopeSelected, UserIDs: []int64{target.ID}},
@@ -279,7 +285,7 @@ func TestServiceStreamsSafeLegacyCompatibleCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.HasPrefix(contents, []byte{0xef, 0xbb, 0xbf}) || !bytes.Contains(contents, []byte("邮箱,余额,推广佣金,总流量,剩余流量,套餐到期时间,订阅计划,订阅地址\r\n")) ||
-		!bytes.Contains(contents, []byte(target.Email+",0.00,0.00,20 GB,20 GB,长期有效,无订阅,https://panel.example.test/api/v1/client/subscribe?token=")) {
+		!bytes.Contains(contents, []byte(target.Email+",0.00,0.00,20 GB,20 GB,长期有效,无订阅,https://subscriptions.example.test/base/s/")) {
 		t.Fatalf("CSV contents:\n%s", contents)
 	}
 	info, err := os.Stat(filepath.Join(exportRoot, filepath.FromSlash(finished.OutputRelativePath)))

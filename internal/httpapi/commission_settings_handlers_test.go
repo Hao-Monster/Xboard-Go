@@ -102,17 +102,18 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 		t.Fatalf("legacy invite fetch disclosed unsupported/internal fields: %s", legacyFetch.Body)
 	}
 	legacySite := bearerRequest(api, http.MethodGet, "/api/v2/admin/config/fetch?key=site", legacyAuthorization, "")
-	if legacySite.Code != http.StatusOK || !containsAll(legacySite.Body.String(), `"currency":"CNY"`, `"currency_symbol":"¥"`) {
+	if legacySite.Code != http.StatusOK || !containsAll(legacySite.Body.String(), `"currency":"CNY"`, `"currency_symbol":"¥"`, `"force_https":false`, `"subscribe_url":""`) {
 		t.Fatalf("legacy site config status=%d body=%s", legacySite.Code, legacySite.Body)
 	}
 	legacySiteSaved := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
-		"currency":"usd","currency_symbol":" $ "
+		"currency":"usd","currency_symbol":" $ ","force_https":true,
+		"subscribe_url":"https://legacy-a.example.test/, https://legacy-b.example.test/root/"
 	}`)
 	if legacySiteSaved.Code != http.StatusOK || !containsAll(legacySiteSaved.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("legacy site config save status=%d body=%s", legacySiteSaved.Code, legacySiteSaved.Body)
 	}
 	updatedSite, err := database.GetSiteSettings(t.Context())
-	if err != nil || updatedSite.Currency != "USD" || updatedSite.CurrencySymbol != "$" {
+	if err != nil || updatedSite.Currency != "USD" || updatedSite.CurrencySymbol != "$" || !updatedSite.ForceHTTPS || updatedSite.SubscribeURL != "https://legacy-a.example.test,https://legacy-b.example.test/root" {
 		t.Fatalf("legacy site config persisted=%#v err=%v", updatedSite, err)
 	}
 	invalidLegacySite := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
@@ -120,6 +121,12 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 	}`)
 	if invalidLegacySite.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid legacy site status=%d body=%s", invalidLegacySite.Code, invalidLegacySite.Body)
+	}
+	invalidLegacyOrigin := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
+		"subscribe_url":"http://external.example.test"
+	}`)
+	if invalidLegacyOrigin.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid legacy origin status=%d body=%s", invalidLegacyOrigin.Code, invalidLegacyOrigin.Body)
 	}
 	legacySaved := bearerRequest(api, http.MethodPost, "/api/v2/admin/config/save", legacyAuthorization, `{
 		"invite_commission":20,"commission_first_time_enable":true,

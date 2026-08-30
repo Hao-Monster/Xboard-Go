@@ -48,12 +48,13 @@ func (s *Store) GetSubscriptionRenderConfig(ctx context.Context, templateName st
 	var content string
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT subscription_settings.path, subscription_settings.show_info, subscription_settings.show_protocol,
-		       app_settings.app_name, app_settings.app_url, COALESCE(subscription_templates.content, '')
+		       app_settings.app_name, app_settings.app_url, app_settings.force_https, app_settings.subscribe_url,
+		       COALESCE(subscription_templates.content, '')
 		FROM subscription_settings
 		CROSS JOIN app_settings
 		LEFT JOIN subscription_templates ON subscription_templates.name = ?
 		WHERE subscription_settings.id = 1 AND app_settings.id = 1
-	`, templateName).Scan(&config.Path, &config.ShowInfo, &config.ShowProtocol, &config.AppName, &config.AppURL, &content); err != nil {
+	`, templateName).Scan(&config.Path, &config.ShowInfo, &config.ShowProtocol, &config.AppName, &config.AppURL, &config.ForceHTTPS, &config.SubscribeURL, &content); err != nil {
 		return SubscriptionRenderConfig{}, fmt.Errorf("get subscription render config: %w", err)
 	}
 	config.Templates = make(map[string]string, 1)

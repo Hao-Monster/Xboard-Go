@@ -207,6 +207,10 @@ func TestUserSubscriptionOverviewAndSecurityResetPreserveLegacyBusinessFlow(t *t
 	}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}
+	publicOrigin := "https://subscriptions.example.test/root/"
+	if _, err := database.UpdateLegacySiteSettings(t.Context(), 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	client := loginAs(t, api, created.email, created.password)
 	before, err := database.GetSubscriptionAccount(t.Context(), created.id)
 	if err != nil {
@@ -215,14 +219,14 @@ func TestUserSubscriptionOverviewAndSecurityResetPreserveLegacyBusinessFlow(t *t
 
 	overview := client.request(t, api, http.MethodGet, "/api/v1/subscription", "")
 	if overview.Code != http.StatusOK || !containsAll(overview.Body.String(), before.SubscriptionToken,
-		`"subscribe_url":"https://public.example.test/root/s/`, `"plan":null`, `"transfer_enable":10737418240`) {
+		`"subscribe_url":"https://subscriptions.example.test/root/s/`, `"plan":null`, `"transfer_enable":10737418240`) {
 		t.Fatalf("subscription overview status=%d body=%s", overview.Code, overview.Body)
 	}
 	if overview.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("subscription overview cache policy = %q", overview.Header().Get("Cache-Control"))
 	}
 	qr := client.request(t, api, http.MethodGet, "/api/v1/subscription/qr", "")
-	if qr.Code != http.StatusOK || !containsAll(qr.Body.String(), `"subscribe_url":"https://public.example.test/root/s/`, `"qr_code":"data:image/svg+xml;base64,`) {
+	if qr.Code != http.StatusOK || !containsAll(qr.Body.String(), `"subscribe_url":"https://subscriptions.example.test/root/s/`, `"qr_code":"data:image/svg+xml;base64,`) {
 		t.Fatalf("subscription QR status=%d body=%s", qr.Code, qr.Body)
 	}
 
@@ -248,7 +252,7 @@ func TestUserSubscriptionOverviewAndSecurityResetPreserveLegacyBusinessFlow(t *t
 	}
 	decodeResponse(t, reset, &payload)
 	if payload.Data.Token == "" || payload.Data.Token == before.SubscriptionToken || payload.Data.UUID == before.UUID ||
-		payload.Data.SubscribeURL != "https://public.example.test/root/s/"+payload.Data.Token {
+		payload.Data.SubscribeURL != "https://subscriptions.example.test/root/s/"+payload.Data.Token {
 		t.Fatalf("reset payload = %#v", payload.Data)
 	}
 	if old := requestSubscription(api, "/s/"+before.SubscriptionToken); old.Code != http.StatusForbidden || !strings.Contains(old.Body.String(), "token is error") {
@@ -267,7 +271,7 @@ func TestUserSubscriptionOverviewAndSecurityResetPreserveLegacyBusinessFlow(t *t
 		t.Fatalf("legacy no-plan response contains Go-only fields: %s", legacyOverview.Body)
 	}
 	legacyReset := bearerRequest(api, http.MethodGet, "/api/v1/user/resetSecurity", legacy.Authorization, "")
-	if legacyReset.Code != http.StatusOK || !containsAll(legacyReset.Body.String(), `"message":"操作成功"`, `https://public.example.test/root/s/`) || strings.Contains(legacyReset.Body.String(), payload.Data.Token) {
+	if legacyReset.Code != http.StatusOK || !containsAll(legacyReset.Body.String(), `"message":"操作成功"`, `https://subscriptions.example.test/root/s/`) || strings.Contains(legacyReset.Body.String(), payload.Data.Token) {
 		t.Fatalf("legacy subscription reset status=%d body=%s", legacyReset.Code, legacyReset.Body)
 	}
 }
