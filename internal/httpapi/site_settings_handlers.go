@@ -11,24 +11,25 @@ import (
 )
 
 type guestConfigResponse struct {
-	TOSURL                    *string `json:"tos_url"`
-	IsEmailVerify             int     `json:"is_email_verify"`
-	IsInviteForce             int     `json:"is_invite_force"`
-	EnableCouponSystem        int     `json:"enable_coupon_system"`
-	EmailWhitelistSuffix      any     `json:"email_whitelist_suffix"`
-	IsCaptcha                 int     `json:"is_captcha"`
-	CaptchaType               string  `json:"captcha_type"`
-	RecaptchaSiteKey          *string `json:"recaptcha_site_key"`
-	RecaptchaV3SiteKey        *string `json:"recaptcha_v3_site_key"`
-	RecaptchaV3ScoreThreshold float64 `json:"recaptcha_v3_score_threshold"`
-	TurnstileSiteKey          *string `json:"turnstile_site_key"`
-	AppName                   string  `json:"app_name"`
-	AppDescription            *string `json:"app_description"`
-	AppURL                    *string `json:"app_url"`
-	Logo                      *string `json:"logo"`
-	IsRecaptcha               int     `json:"is_recaptcha"`
-	IsTelegram                int     `json:"is_telegram"`
-	TelegramDiscussLink       *string `json:"telegram_discuss_link"`
+	TOSURL                    *string               `json:"tos_url"`
+	IsEmailVerify             int                   `json:"is_email_verify"`
+	IsInviteForce             int                   `json:"is_invite_force"`
+	EnableCouponSystem        int                   `json:"enable_coupon_system"`
+	EmailWhitelistSuffix      any                   `json:"email_whitelist_suffix"`
+	IsCaptcha                 int                   `json:"is_captcha"`
+	CaptchaType               string                `json:"captcha_type"`
+	RecaptchaSiteKey          *string               `json:"recaptcha_site_key"`
+	RecaptchaV3SiteKey        *string               `json:"recaptcha_v3_site_key"`
+	RecaptchaV3ScoreThreshold float64               `json:"recaptcha_v3_score_threshold"`
+	TurnstileSiteKey          *string               `json:"turnstile_site_key"`
+	AppName                   string                `json:"app_name"`
+	AppDescription            *string               `json:"app_description"`
+	AppURL                    *string               `json:"app_url"`
+	Logo                      *string               `json:"logo"`
+	IsRecaptcha               int                   `json:"is_recaptcha"`
+	IsTelegram                int                   `json:"is_telegram"`
+	TelegramDiscussLink       *string               `json:"telegram_discuss_link"`
+	Theme                     store.ThemeAppearance `json:"theme"`
 }
 
 func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +42,14 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		handleStoreError(w, err)
 		return
+	}
+	themeAppearance, err := s.store.GetActiveThemeAppearance(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	if themeAppearance.Config.BackgroundURL != "" {
+		themeAppearance.Config.BackgroundURL = themeAssetURL(themeAppearance.Name, themeAppearance.PackageSHA256, themeAppearance.Config.BackgroundURL)
 	}
 	emailWhitelistSuffix := any(0)
 	if settings.EmailWhitelistEnabled {
@@ -61,6 +70,7 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		EnableCouponSystem:  boolToInt(settings.CouponEnabled),
 		IsTelegram:          boolToInt(telegramSettings.BotEnabled),
 		TelegramDiscussLink: nullablePublicString(telegramSettings.DiscussLink),
+		Theme:               themeAppearance,
 	})
 }
 

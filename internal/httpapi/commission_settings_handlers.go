@@ -53,6 +53,7 @@ type commissionSettingsRequest struct {
 type legacyConfigSaveRequest struct {
 	Currency       *string `json:"currency"`
 	CurrencySymbol *string `json:"currency_symbol"`
+	FrontendTheme  *string `json:"frontend_theme"`
 
 	InviteCommission    *int  `json:"invite_commission"`
 	FirstTimeEnabled    *bool `json:"commission_first_time_enable"`
@@ -104,6 +105,10 @@ func (input legacyConfigSaveRequest) hasInvite() bool {
 
 func (input legacyConfigSaveRequest) hasSite() bool {
 	return input.Currency != nil || input.CurrencySymbol != nil
+}
+
+func (input legacyConfigSaveRequest) hasTheme() bool {
+	return input.FrontendTheme != nil
 }
 
 func (input legacyConfigSaveRequest) completeInvite() bool {
@@ -236,9 +241,9 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
-	site, invite, subscribe, email, telegram, clientApp := input.hasSite(), input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp()
+	site, invite, subscribe, email, telegram, clientApp, themeConfig := input.hasSite(), input.hasInvite(), input.hasSubscribe(), input.hasEmail(), input.hasTelegram(), input.hasClientApp(), input.hasTheme()
 	groupCount := 0
-	for _, present := range []bool{site, invite, subscribe, email, telegram, clientApp} {
+	for _, present := range []bool{site, invite, subscribe, email, telegram, clientApp, themeConfig} {
 		if present {
 			groupCount++
 		}
@@ -248,6 +253,26 @@ func (s *server) legacySaveConfigSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
+	if themeConfig {
+		catalog, err := s.store.ListThemes(r.Context())
+		if err == nil {
+			_, err = s.store.ActivateTheme(r.Context(), session.UserID, *input.FrontendTheme, catalog.Revision, s.now())
+		}
+		if err != nil {
+			status, message := http.StatusInternalServerError, "主题激活失败"
+			if errors.Is(err, store.ErrNotFound) {
+				status, message = http.StatusNotFound, "主题不存在"
+			} else if errors.Is(err, store.ErrConflict) {
+				status, message = http.StatusConflict, "主题已被其他管理员修改，请重试"
+			} else if errors.Is(err, store.ErrInvalidInput) {
+				status, message = http.StatusUnprocessableEntity, "主题配置无效"
+			}
+			writeLegacyInviteFailure(w, status, message)
+			return
+		}
+		writeLegacySuccess(w, http.StatusOK, true)
+		return
+	}
 	if site {
 		_, err := s.store.UpdateLegacySiteSettings(r.Context(), session.UserID, store.SaveLegacySiteSettingsInput{
 			Currency: input.Currency, CurrencySymbol: input.CurrencySymbol,

@@ -62,7 +62,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	if string(initialGuest.EmailWhitelistSuffix) != "0" {
 		t.Fatalf("disabled public email whitelist = %s, want 0", initialGuest.EmailWhitelistSuffix)
 	}
-	if strings.Contains(publicInitial.Body.String(), "revision") || strings.Contains(publicInitial.Body.String(), "smtp") || strings.Contains(publicInitial.Body.String(), "stop_register") {
+	if strings.Contains(publicInitial.Body.String(), "smtp") || strings.Contains(publicInitial.Body.String(), "stop_register") {
 		t.Fatalf("public config disclosed internal settings: %s", publicInitial.Body)
 	}
 	assertGuestConfigKeys(t, publicInitial)
@@ -254,7 +254,7 @@ func assertGuestConfigKeys(t *testing.T, response *httptest.ResponseRecorder) {
 		"tos_url", "is_email_verify", "is_invite_force", "email_whitelist_suffix", "is_captcha", "captcha_type",
 		"recaptcha_site_key", "recaptcha_v3_site_key", "recaptcha_v3_score_threshold", "turnstile_site_key",
 		"app_name", "app_description", "app_url", "logo", "is_recaptcha", "enable_coupon_system",
-		"is_telegram", "telegram_discuss_link",
+		"is_telegram", "telegram_discuss_link", "theme",
 	} {
 		if _, ok := envelope.Data[key]; !ok {
 			t.Errorf("guest config key %q is missing", key)

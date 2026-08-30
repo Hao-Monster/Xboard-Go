@@ -2645,6 +2645,165 @@ test("legacy subscription settings remain observable and map to Go policy and ou
   }
 });
 
+test("legacy and Go theme administration preserve upload preview configuration activation and deletion", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const suffix = Date.now();
+  const legacyName = `LegacyParity${suffix}`;
+  const goName = `GoParity${suffix}`;
+  let legacyAuthorization = "";
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    const legacyCatalogRequest = legacyPage.waitForResponse((response) => response.url().includes("/theme/getThemes"));
+    await legacyPage.getByRole("link", { name: "主题配置", exact: true }).click();
+    const legacyCatalogResponse = await legacyCatalogRequest;
+    expect(legacyCatalogResponse.status()).toBe(200);
+    legacyAuthorization = legacyCatalogResponse.request().headers().authorization;
+    expect(legacyAuthorization).toBeTruthy();
+    await expect(legacyPage.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
+    await expect(legacyThemeCard(legacyPage, "Xboard").getByRole("button", { name: "当前主题", exact: true })).toBeDisabled();
+
+    const goCatalogRequest = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes"));
+    await goPage.getByRole("button", { name: "主题配置", exact: true }).click();
+    expect((await goCatalogRequest).status()).toBe(200);
+    await expect(goPage.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
+    await expect(goPage.getByText("当前主题：Xboard", { exact: true })).toBeVisible();
+
+    await legacyPage.getByRole("button", { name: "上传主题", exact: true }).click();
+    const legacyUploadDialog = legacyPage.getByRole("dialog");
+    await expect(legacyUploadDialog.getByText("支持 .zip 格式的主题包", { exact: true })).toBeVisible();
+    const legacyUpload = legacyPage.waitForResponse((response) => response.url().includes("/theme/upload") && response.request().method() === "POST");
+    await legacyUploadDialog.locator('input[type="file"]').setInputFiles({
+      name: `${legacyName}.zip`, mimeType: "application/zip", buffer: legacyThemeArchive(legacyName)
+    });
+    expect((await legacyUpload).status()).toBe(200);
+
+    const goUpload = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes") && response.request().method() === "POST");
+    await goPage.getByLabel("上传主题包").setInputFiles({
+      name: `${goName}.zip`, mimeType: "application/zip", buffer: declarativeThemeArchive(goName)
+    });
+    expect((await goUpload).status()).toBe(201);
+
+    const legacyCard = legacyThemeCard(legacyPage, legacyName);
+    const goCard = goPage.locator(".theme-card").filter({ hasText: goName });
+    await expect(legacyCard).toContainText("版本: 1.0.0");
+    await expect(goCard).toContainText("v1.0.0");
+    for (const action of ["主题设置", "激活主题"]) {
+      await expect(legacyCard.getByRole("button", { name: action, exact: true })).toBeVisible();
+    }
+    await expect(goCard.getByRole("button", { name: `预览 ${goName}` })).toBeVisible();
+    await expect(goCard.getByRole("button", { name: `设置 ${goName}` })).toBeVisible();
+    await expect(goCard.getByRole("button", { name: `激活 ${goName}` })).toBeVisible();
+    await expect(goCard.getByRole("button", { name: `删除 ${goName}` })).toBeVisible();
+
+    await legacyCard.locator("button:has(svg.lucide-image)").click();
+    const legacyPreview = legacyPage.getByRole("dialog");
+    await expect(legacyPreview.getByText(`${legacyName} 主题预览`, { exact: true })).toBeVisible();
+    await expect(legacyPreview.locator("img")).toBeVisible();
+    await legacyPreview.getByRole("button", { name: "Close" }).click();
+
+    const goImage = goPage.waitForResponse((response) => response.url().includes(`/api/v1/theme-assets/${goName}/`) && response.status() === 200);
+    await goCard.getByRole("button", { name: `预览 ${goName}` }).click();
+    const goPreview = goPage.getByRole("dialog", { name: `${goName} 主题预览` });
+    await expect(goPreview.getByRole("img", { name: `${goName} 预览 1` })).toBeVisible();
+    expect((await goImage).headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
+    await goPreview.getByRole("button", { name: "关闭预览" }).click();
+
+    const legacyConfig = legacyPage.waitForResponse((response) => response.url().includes("/theme/getThemeConfig"));
+    await legacyCard.getByRole("button", { name: "主题设置", exact: true }).click();
+    expect((await legacyConfig).status()).toBe(200);
+    const legacySettings = legacyPage.getByRole("dialog");
+    await expect(legacySettings.locator('select[name="theme_color"]')).toHaveValue("default");
+    await legacySettings.locator('select[name="theme_color"]').selectOption("blue");
+    await expect(legacySettings.locator('input[name="background_url"]')).toHaveValue("");
+    await expect(legacySettings.locator('textarea[name="custom_html"]')).toHaveValue("");
+    const legacySave = legacyPage.waitForResponse((response) => response.url().includes("/theme/saveThemeConfig") && response.request().method() === "POST");
+    await legacySettings.getByRole("button", { name: "保存", exact: true }).click();
+    expect((await legacySave).status()).toBe(200);
+
+    await goCard.getByRole("button", { name: `设置 ${goName}` }).click();
+    const goSettings = goPage.getByRole("dialog", { name: `${goName} 主题设置` });
+    await goSettings.getByLabel("主题色").selectOption("blue");
+    await goSettings.getByLabel("字号").selectOption("large");
+    await goSettings.getByLabel("圆角").selectOption("pill");
+    await goSettings.getByRole("button", { name: "保存主题设置" }).click();
+    await expect(goPage.getByRole("status")).toContainText("主题设置已保存");
+    await goSettings.getByRole("button", { name: "关闭主题设置" }).click();
+
+    const legacyActivate = legacyPage.waitForResponse((response) => response.url().includes("/config/save") && response.request().method() === "POST");
+    await legacyCard.getByRole("button", { name: "激活主题", exact: true }).click();
+    expect((await legacyActivate).status()).toBe(200);
+    await expect(legacyCard.getByRole("button", { name: "当前主题", exact: true })).toBeDisabled();
+
+    await goCard.getByRole("button", { name: `激活 ${goName}` }).click();
+    await expect(goPage.getByRole("status")).toContainText(`${goName} 已设为当前主题`);
+    await expect(goCard.getByRole("button", { name: `当前主题 ${goName}` })).toBeDisabled();
+    await expect.poll(() => goPage.locator("html").getAttribute("data-theme-name")).toBe(goName);
+
+    const legacyRestore = legacyPage.waitForResponse((response) => response.url().includes("/config/save") && response.request().method() === "POST");
+    await legacyThemeCard(legacyPage, "Xboard").getByRole("button", { name: "激活主题", exact: true }).click();
+    expect((await legacyRestore).status()).toBe(200);
+    await expect(legacyThemeCard(legacyPage, "Xboard").getByRole("button", { name: "当前主题", exact: true })).toBeDisabled();
+
+    const goXboard = goPage.locator(".theme-card").filter({ hasText: "Xboard" });
+    await goXboard.getByRole("button", { name: "激活 Xboard" }).click();
+    await expect(goXboard.getByRole("button", { name: "当前主题 Xboard" })).toBeDisabled();
+
+    await legacyCard.locator("button:has(svg.lucide-trash2)").click();
+    const legacyDeleteDialog = legacyPage.getByRole("alertdialog");
+    await expect(legacyDeleteDialog).toContainText("确定要删除该主题吗？删除后无法恢复。");
+    const legacyDelete = legacyPage.waitForResponse((response) => response.url().includes("/theme/delete") && response.request().method() === "POST");
+    await legacyDeleteDialog.getByRole("button", { name: "删除", exact: true }).click();
+    expect((await legacyDelete).status()).toBe(200);
+    await expect(legacyCard).toHaveCount(0);
+
+    goPage.once("dialog", (dialog) => dialog.accept());
+    const goDelete = goPage.waitForResponse((response) => response.url().includes(`/api/v1/admin/themes/${goName}`) && response.request().method() === "DELETE");
+    await goCard.getByRole("button", { name: `删除 ${goName}` }).click();
+    expect((await goDelete).status()).toBe(204);
+    await expect(goCard).toHaveCount(0);
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    if (legacyAuthorization !== "") {
+      const listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), { headers: { authorization: legacyAuthorization } });
+      if (listed.status() === 200) {
+        const envelope = readObjectProperty(await listed.json() as unknown, "data");
+        const data = readObjectProperty(envelope, "themes");
+        const active = readProperty(envelope, "active");
+        if (active === legacyName) {
+          await legacyPage.request.post(legacyAdminAPI("/config/save"), { headers: { authorization: legacyAuthorization }, data: { frontend_theme: "Xboard" } });
+        }
+        if (Object.hasOwn(data, legacyName)) {
+          await legacyPage.request.post(legacyAdminAPI("/theme/delete"), { headers: { authorization: legacyAuthorization }, data: { name: legacyName } });
+        }
+      }
+    }
+    const goCatalog = await goAdminRequest(goPage, "/api/v1/admin/themes", "GET").catch(() => null);
+    if (goCatalog?.status === 200) {
+      const catalog = readObjectProperty(JSON.parse(goCatalog.body) as unknown, "data");
+      if (readProperty(catalog, "active_theme") === goName) {
+        const restored = await goAdminRequest(goPage, "/api/v1/admin/themes/Xboard/activate", "POST", { revision: readProperty(catalog, "revision") });
+        expect(restored.status, restored.body).toBe(200);
+      }
+      const refreshed = await goAdminRequest(goPage, "/api/v1/admin/themes", "GET");
+      const themes = readProperty(readObjectProperty(JSON.parse(refreshed.body) as unknown, "data"), "themes");
+      if (Array.isArray(themes) && themes.some((item) => readProperty(item, "name") === goName)) {
+        const removed = await goAdminRequest(goPage, `/api/v1/admin/themes/${goName}`, "DELETE");
+        expect(removed.status, removed.body).toBe(204);
+      }
+    }
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 async function exerciseLegacyCaptchaContract(page: Page) {
   await loginLegacy(page);
   const configResponse = page.waitForResponse((response) => response.url().includes("/config/fetch"));
@@ -2775,6 +2934,77 @@ function goSiteIdentityInput(settings: Record<string, unknown>) {
     app_name: readProperty(settings, "app_name"), app_description: readProperty(settings, "app_description"),
     app_url: readProperty(settings, "app_url"), tos_url: readProperty(settings, "tos_url"), logo: readProperty(settings, "logo")
   };
+}
+
+function legacyThemeCard(page: Page, name: string) {
+  return page.getByText(name, { exact: true }).first().locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]");
+}
+
+function legacyThemeArchive(name: string): Buffer {
+  const config = Buffer.from(JSON.stringify({
+    name, description: "Parity theme", version: "1.0.0", images: ["preview.png"],
+    configs: [
+      { label: "主题色", field_name: "theme_color", field_type: "select", select_options: { default: "默认", blue: "蓝色" }, default_value: "default" },
+      { label: "背景", field_name: "background_url", field_type: "input", default_value: "" },
+      { label: "自定义页脚HTML", field_name: "custom_html", field_type: "textarea", default_value: "" }
+    ]
+  }));
+  return storedThemeZip([
+    ["config.json", config],
+    ["dashboard.blade.php", Buffer.from("<!doctype html><html><body>Parity theme</body></html>")],
+    ["preview.png", parityThemePNG()]
+  ]);
+}
+
+function declarativeThemeArchive(name: string): Buffer {
+  const manifest = Buffer.from(JSON.stringify({
+    format_version: 1, name, description: "Parity theme", version: "1.0.0",
+    images: ["assets/preview.png"], backgrounds: [],
+    palettes: {
+      default: { background: "#111111", surface: "#18181b", text: "#f4f4f5", muted: "#a1a1aa", primary: "#a5b4fc", primary_text: "#111111", border: "#3f3f46" },
+      blue: { background: "#101827", surface: "#172033", text: "#f4f4f5", muted: "#a1a1aa", primary: "#93c5fd", primary_text: "#111111", border: "#334155" }
+    },
+    default_config: { theme_color: "default", background_url: "", font_scale: "normal", radius: "rounded" }
+  }));
+  return storedThemeZip([["manifest.json", manifest], ["assets/preview.png", parityThemePNG()]]);
+}
+
+function parityThemePNG(): Buffer {
+  return Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGElEQVR4nGP4////fwYGBgYmBiYGJgYGBgAABQAB/9Z9JAAAAABJRU5ErkJggg==", "base64");
+}
+
+function storedThemeZip(entries: Array<[string, Buffer]>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  for (const [name, body] of entries) {
+    const filename = Buffer.from(name);
+    const checksum = themeCRC32(body);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6); local.writeUInt16LE(0, 8);
+    local.writeUInt32LE(checksum, 14); local.writeUInt32LE(body.length, 18); local.writeUInt32LE(body.length, 22); local.writeUInt16LE(filename.length, 26);
+    localParts.push(local, filename, body);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(0, 10); central.writeUInt32LE(checksum, 16); central.writeUInt32LE(body.length, 20); central.writeUInt32LE(body.length, 24);
+    central.writeUInt16LE(filename.length, 28); central.writeUInt32LE(offset, 42);
+    centralParts.push(central, filename);
+    offset += local.length + filename.length + body.length;
+  }
+  const central = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(central.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...localParts, central, end]);
+}
+
+function themeCRC32(body: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of body) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 async function loginLegacy(page: Page) {
