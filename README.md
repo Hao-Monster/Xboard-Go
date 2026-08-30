@@ -569,6 +569,28 @@ legacy target contains duplicate non-null `users.telegram_id` values, migration
 stops transactionally and reports the conflicting ID so the duplicate can be
 resolved before retrying.
 
+Legacy registration, login-limit, invitation, CAPTCHA, and ticket-reply policy
+settings use another independent offline slice. The importer reads only the 24
+fixed `v2_settings` keys, requires pristine target policy fields, and validates
+all bounds before writing. Legacy CAPTCHA secrets are encrypted with the
+existing purpose-isolated settings cipher and are excluded from JSON evidence;
+`XBOARD_SETTINGS_ENCRYPTION_KEY` is therefore required when any CAPTCHA secret
+is configured:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-site-policy-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-site-policy-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+An enabled CAPTCHA provider must have both its site key and secret; incomplete
+or unsafe legacy policy values stop the import instead of being silently
+disabled or normalized to weaker security.
+
 After plans have been imported, migrate the legacy registration-trial plan and
 duration while the target remains offline:
 
