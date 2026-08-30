@@ -578,7 +578,7 @@ func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, std
 
 func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-telegram-settings, import-legacy-mail-templates, import-legacy-client-app-settings, import-legacy-theme-settings, import-legacy-configuration-compat-settings, import-legacy-currency-settings, import-legacy-public-origin-settings, import-legacy-safe-access-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
+		return true, errors.New("migration subcommand is required: import-legacy-content, import-legacy-groups-routes, import-legacy-knowledge, import-legacy-human-users, import-legacy-access-tokens, import-legacy-nodes, import-legacy-node-agent-settings, import-legacy-telegram-settings, import-legacy-mail-templates, import-legacy-client-app-settings, import-legacy-theme-settings, import-legacy-configuration-compat-settings, import-legacy-currency-settings, import-legacy-public-origin-settings, import-legacy-safe-access-settings, import-legacy-registration-trial-settings, import-legacy-plans, import-legacy-coupons, import-legacy-gift-cards, import-legacy-payments, import-legacy-orders, import-legacy-tickets, import-legacy-commissions, import-legacy-distributors, or import-legacy-subscription-config")
 	}
 	if arguments[0] == "import-legacy-registration-trial-settings" {
 		return runLegacyRegistrationTrialSettingsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
@@ -642,6 +642,9 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	}
 	if arguments[0] == "import-legacy-human-users" {
 		return runLegacyHumanUsersMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
+	if arguments[0] == "import-legacy-access-tokens" {
+		return runLegacyAccessTokensMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
 	if arguments[0] == "import-legacy-knowledge" {
 		return runLegacyKnowledgeMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
