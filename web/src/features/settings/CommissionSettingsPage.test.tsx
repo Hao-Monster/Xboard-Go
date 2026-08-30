@@ -10,6 +10,8 @@ const initial: CommissionSettings = {
   invite_commission: 20,
   commission_first_time_enable: true,
   commission_auto_check_enable: true,
+  commission_withdraw_limit: 100,
+  commission_withdraw_method: ["支付宝", "USDT", "Paypal"],
   withdraw_close_enable: false,
   commission_distribution_enable: true,
   commission_distribution_l1: 50,
@@ -44,6 +46,8 @@ describe("CommissionSettingsPage", () => {
     expect(screen.getByRole("checkbox", { name: "仅首次有效订单返佣" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "自动确认到期佣金" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "佣金直接计入账户余额" })).not.toBeChecked();
+    expect(screen.getByLabelText("最低提现金额")).toHaveValue(100);
+    expect(screen.getByLabelText("允许的提现方式（每行一个）")).toHaveValue("支付宝\nUSDT\nPaypal");
     expect(screen.getByRole("checkbox", { name: "启用三级分佣" })).toBeChecked();
     expect(screen.getByText("当前用户侧有效比例：10% / 6% / 4%", { exact: true })).toBeVisible();
 
@@ -52,6 +56,10 @@ describe("CommissionSettingsPage", () => {
     await user.click(screen.getByRole("checkbox", { name: "仅首次有效订单返佣" }));
     await user.click(screen.getByRole("checkbox", { name: "自动确认到期佣金" }));
     await user.click(screen.getByRole("checkbox", { name: "佣金直接计入账户余额" }));
+    const methods = screen.getByLabelText("允许的提现方式（每行一个）");
+    await user.clear(methods);
+    await user.type(methods, "银行转账{enter}  USDT  ");
+    expect(methods).toHaveValue("银行转账\n  USDT  ");
     for (const [label, value] of [["一级分佣比例（%）", "40"], ["二级分佣比例（%）", "35"], ["三级分佣比例（%）", "25"]] as const) {
       await user.clear(screen.getByLabelText(label));
       await user.type(screen.getByLabelText(label), value);
@@ -62,6 +70,8 @@ describe("CommissionSettingsPage", () => {
       invite_commission: 25,
       commission_first_time_enable: false,
       commission_auto_check_enable: false,
+      commission_withdraw_limit: 100,
+      commission_withdraw_method: ["银行转账", "USDT"],
       withdraw_close_enable: true,
       commission_distribution_enable: true,
       commission_distribution_l1: 40,

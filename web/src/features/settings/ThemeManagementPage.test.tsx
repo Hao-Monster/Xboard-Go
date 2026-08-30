@@ -24,7 +24,7 @@ const aurora: ThemeItem = {
   updated_at: "2026-08-30T12:00:00Z"
 };
 
-const catalog: ThemeCatalog = { active_theme: "Xboard", revision: 1, themes: [xboard, aurora] };
+const catalog: ThemeCatalog = { active_theme: "Xboard", revision: 1, sidebar_style: "light", header_style: "dark", themes: [xboard, aurora] };
 
 describe("ThemeManagementPage", () => {
   it("shows legacy-equivalent actions on first open and keeps the config modal interactive", async () => {
@@ -34,6 +34,7 @@ describe("ThemeManagementPage", () => {
     const saved = { ...aurora, revision: 2, config: { ...aurora.config, theme_color: "blue", font_scale: "large" } };
     const api = {
       listThemes: vi.fn().mockResolvedValue(catalog),
+	  updateThemeLayout: vi.fn(),
       uploadTheme: vi.fn(), getTheme: vi.fn().mockImplementation((name: string) => Promise.resolve(name === "Xboard" ? xboard : aurora)),
       updateThemeConfig: vi.fn().mockResolvedValue(saved), activateTheme: vi.fn(), deleteTheme: vi.fn()
     };
@@ -74,11 +75,12 @@ describe("ThemeManagementPage", () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
     const activated: ThemeCatalog = {
-      active_theme: "Aurora", revision: 2,
+      active_theme: "Aurora", revision: 2, sidebar_style: "light", header_style: "dark",
       themes: [{ ...xboard, is_active: false }, { ...aurora, is_active: true, can_delete: false }]
     };
     const api = {
       listThemes: vi.fn().mockResolvedValue(catalog),
+      updateThemeLayout: vi.fn(),
       uploadTheme: vi.fn().mockResolvedValue(aurora), getTheme: vi.fn(), updateThemeConfig: vi.fn(),
       activateTheme: vi.fn().mockResolvedValue(activated), deleteTheme: vi.fn().mockResolvedValue(undefined)
     };
@@ -118,6 +120,7 @@ describe("ThemeManagementPage", () => {
     let resolveTheme: (item: ThemeItem) => void = () => undefined;
     const api = {
       listThemes: vi.fn().mockResolvedValue(catalog),
+	  updateThemeLayout: vi.fn(),
       uploadTheme: vi.fn(),
       getTheme: vi.fn().mockImplementation(() => new Promise<ThemeItem>((resolve) => { resolveTheme = resolve; })),
       updateThemeConfig: vi.fn(), activateTheme: vi.fn(), deleteTheme: vi.fn()
@@ -140,6 +143,7 @@ describe("ThemeManagementPage", () => {
     let resolveSave: (item: ThemeItem) => void = () => undefined;
     const api = {
       listThemes: vi.fn().mockResolvedValue(catalog), uploadTheme: vi.fn(),
+	  updateThemeLayout: vi.fn(),
       getTheme: vi.fn().mockResolvedValue(aurora),
       updateThemeConfig: vi.fn().mockImplementation(() => new Promise<ThemeItem>((resolve) => { resolveSave = resolve; })),
       activateTheme: vi.fn(), deleteTheme: vi.fn()
@@ -157,5 +161,20 @@ describe("ThemeManagementPage", () => {
     act(() => resolveSave({ ...aurora, revision: 2, config: { ...aurora.config, theme_color: "blue" } }));
     expect(await screen.findByRole("status")).toHaveTextContent("主题设置已保存");
     confirm.mockRestore();
+  });
+
+  it("updates the legacy-compatible sidebar and header styles with the catalog revision", async () => {
+    const user = userEvent.setup();
+    const changed = vi.fn();
+    const updated = { ...catalog, revision: 2, sidebar_style: "dark" as const };
+    const api = {
+      listThemes: vi.fn().mockResolvedValue(catalog), updateThemeLayout: vi.fn().mockResolvedValue(updated),
+      uploadTheme: vi.fn(), getTheme: vi.fn(), updateThemeConfig: vi.fn(), activateTheme: vi.fn(), deleteTheme: vi.fn()
+    };
+    render(<ThemeManagementPage api={api} onThemeChanged={changed} />);
+    await user.selectOptions(await screen.findByLabelText("侧栏样式"), "dark");
+    await waitFor(() => expect(api.updateThemeLayout).toHaveBeenCalledWith(1, "dark", "dark"));
+    expect(await screen.findByRole("status")).toHaveTextContent("导航样式已保存");
+    expect(changed).toHaveBeenCalledTimes(1);
   });
 });

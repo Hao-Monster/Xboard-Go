@@ -73,12 +73,16 @@ func (s *server) updateClientAppSettings(w http.ResponseWriter, r *http.Request)
 }
 
 func decodeStrictUTF8JSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	return decodeStrictUTF8JSONLimit(w, r, target, maxJSONBody)
+}
+
+func decodeStrictUTF8JSONLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeAPIError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "请求必须使用 application/json", nil)
 		return false
 	}
-	limitedBody := http.MaxBytesReader(w, r.Body, maxJSONBody)
+	limitedBody := http.MaxBytesReader(w, r.Body, limit)
 	body, err := io.ReadAll(limitedBody)
 	if closeErr := limitedBody.Close(); err == nil {
 		err = closeErr
@@ -86,7 +90,7 @@ func decodeStrictUTF8JSON(w http.ResponseWriter, r *http.Request, target any) bo
 	if err != nil {
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {
-			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", maxJSONBody), nil)
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", fmt.Sprintf("请求不得超过 %d 字节", limit), nil)
 			return false
 		}
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", "请求格式无效", nil)

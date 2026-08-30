@@ -500,22 +500,26 @@ type InvitationSummary struct {
 }
 
 type CommissionSettings struct {
-	Revision            int64     `json:"revision"`
-	InviteCommission    int       `json:"invite_commission"`
-	FirstTimeEnabled    bool      `json:"commission_first_time_enable"`
-	AutoCheckEnabled    bool      `json:"commission_auto_check_enable"`
-	WithdrawClosed      bool      `json:"withdraw_close_enable"`
-	DistributionEnabled bool      `json:"commission_distribution_enable"`
-	DistributionL1      int       `json:"commission_distribution_l1"`
-	DistributionL2      int       `json:"commission_distribution_l2"`
-	DistributionL3      int       `json:"commission_distribution_l3"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	Revision            int64          `json:"revision"`
+	InviteCommission    int            `json:"invite_commission"`
+	FirstTimeEnabled    bool           `json:"commission_first_time_enable"`
+	AutoCheckEnabled    bool           `json:"commission_auto_check_enable"`
+	WithdrawLimit       CurrencyAmount `json:"commission_withdraw_limit"`
+	WithdrawMethods     []string       `json:"commission_withdraw_method"`
+	WithdrawClosed      bool           `json:"withdraw_close_enable"`
+	DistributionEnabled bool           `json:"commission_distribution_enable"`
+	DistributionL1      int            `json:"commission_distribution_l1"`
+	DistributionL2      int            `json:"commission_distribution_l2"`
+	DistributionL3      int            `json:"commission_distribution_l3"`
+	UpdatedAt           time.Time      `json:"updated_at"`
 }
 
 type SaveCommissionSettingsInput struct {
 	InviteCommission    int
 	FirstTimeEnabled    bool
 	AutoCheckEnabled    bool
+	WithdrawLimit       *CurrencyAmount
+	WithdrawMethods     *[]string
 	WithdrawClosed      bool
 	DistributionEnabled bool
 	DistributionL1      int

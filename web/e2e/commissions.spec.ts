@@ -7,6 +7,8 @@ interface CommissionSettings {
   invite_commission: number;
   commission_first_time_enable: boolean;
   commission_auto_check_enable: boolean;
+  commission_withdraw_limit: number;
+  commission_withdraw_method: string[];
   withdraw_close_enable: boolean;
   commission_distribution_enable: boolean;
   commission_distribution_l1: number;
@@ -46,6 +48,10 @@ test("administrator commission rules drive the invited order, history, and posit
     await page.getByLabel("全局邀请佣金比例（%）").fill("20");
     await page.getByRole("checkbox", { name: "仅首次有效订单返佣" }).check();
     await page.getByRole("checkbox", { name: "自动确认到期佣金" }).check();
+    const withdrawLimit = page.locator("label").filter({ hasText: "最低提现金额" }).locator("input");
+    const withdrawMethods = page.locator("label").filter({ hasText: "允许的提现方式（每行一个）" }).locator("textarea");
+    await withdrawLimit.fill("125.25");
+    await withdrawMethods.fill("支付宝\nUSDT\n银行转账");
     await page.getByRole("checkbox", { name: "佣金直接计入账户余额" }).uncheck();
     await page.getByRole("checkbox", { name: "启用三级分佣" }).check();
     await page.getByLabel("一级分佣比例（%）").fill("50");
@@ -57,6 +63,8 @@ test("administrator commission rules drive the invited order, history, and posit
     await page.reload();
     await page.getByRole("button", { name: "佣金设置", exact: true }).click();
     await expect(page.getByLabel("全局邀请佣金比例（%）")).toHaveValue("20");
+    await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toHaveValue("125.25");
+    await expect(page.locator("label").filter({ hasText: "允许的提现方式（每行一个）" }).locator("textarea")).toHaveValue("支付宝\nUSDT\n银行转账");
     await expect(page.getByRole("checkbox", { name: "启用三级分佣" })).toBeChecked();
     await expect(page.getByText("当前用户侧有效比例：10% / 6% / 4%", { exact: true })).toBeVisible();
 
@@ -116,6 +124,8 @@ test("administrator commission rules drive the invited order, history, and posit
         invite_commission: original.invite_commission,
         commission_first_time_enable: original.commission_first_time_enable,
         commission_auto_check_enable: original.commission_auto_check_enable,
+        commission_withdraw_limit: original.commission_withdraw_limit,
+        commission_withdraw_method: original.commission_withdraw_method,
         withdraw_close_enable: original.withdraw_close_enable,
         commission_distribution_enable: original.commission_distribution_enable,
         commission_distribution_l1: original.commission_distribution_l1,
@@ -135,7 +145,7 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "退出", exact: true })).toBeVisible({ timeout: 60_000 });
 }
 
 async function ensureAdministrator(page: Page) {

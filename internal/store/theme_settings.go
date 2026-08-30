@@ -34,9 +34,11 @@ type Theme struct {
 }
 
 type ThemeCatalog struct {
-	ActiveTheme string  `json:"active_theme"`
-	Revision    int64   `json:"revision"`
-	Themes      []Theme `json:"themes"`
+	ActiveTheme  string  `json:"active_theme"`
+	Revision     int64   `json:"revision"`
+	SidebarStyle string  `json:"sidebar_style"`
+	HeaderStyle  string  `json:"header_style"`
+	Themes       []Theme `json:"themes"`
 }
 
 type ThemeAppearance struct {
@@ -45,6 +47,8 @@ type ThemeAppearance struct {
 	PackageSHA256 string        `json:"package_sha256"`
 	Palette       theme.Palette `json:"palette"`
 	Config        theme.Config  `json:"config"`
+	SidebarStyle  string        `json:"sidebar_style"`
+	HeaderStyle   string        `json:"header_style"`
 }
 
 type ThemeAsset struct {
@@ -285,6 +289,41 @@ func (s *Store) ActivateTheme(ctx context.Context, administratorID int64, name s
 	return catalog, nil
 }
 
+func (s *Store) UpdateThemeLayoutSettings(ctx context.Context, administratorID, revision int64, sidebarStyle, headerStyle string, now time.Time) (ThemeCatalog, error) {
+	if administratorID < 1 || revision < 1 || now.Unix() < 0 || !validThemeLayoutStyle(sidebarStyle) || !validThemeLayoutStyle(headerStyle) {
+		return ThemeCatalog{}, ErrInvalidInput
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ThemeCatalog{}, fmt.Errorf("begin theme layout update: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE theme_settings
+		SET sidebar_style = ?, header_style = ?, revision = revision + 1, updated_by = ?, updated_at = ?
+		WHERE id = 1 AND revision = ?
+	`, sidebarStyle, headerStyle, administratorID, now.Unix(), revision)
+	if err != nil {
+		return ThemeCatalog{}, fmt.Errorf("update theme layout: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return ThemeCatalog{}, fmt.Errorf("count theme layout update: %w", err)
+	}
+	if changed != 1 {
+		return ThemeCatalog{}, ErrConflict
+	}
+	catalog, err := readThemeCatalog(ctx, tx)
+	if err != nil {
+		return ThemeCatalog{}, fmt.Errorf("read updated theme layout: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return ThemeCatalog{}, fmt.Errorf("commit theme layout update: %w", err)
+	}
+	return catalog, nil
+}
+
 func (s *Store) DeleteTheme(ctx context.Context, administratorID int64, name string, now time.Time) error {
 	if administratorID < 1 || now.Unix() < 0 || !validThemeLookupName(name) {
 		return ErrInvalidInput
@@ -324,10 +363,12 @@ func (s *Store) GetActiveThemeAppearance(ctx context.Context) (ThemeAppearance, 
 	var themeRevision int64
 	var manifestJSON, configJSON string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT t.name, settings.revision, t.revision, t.package_sha256, t.manifest_json, t.config_json
+		SELECT t.name, settings.revision, t.revision, t.package_sha256, t.manifest_json, t.config_json,
+		       settings.sidebar_style, settings.header_style
 		FROM theme_settings settings JOIN themes t ON t.name = settings.active_theme COLLATE NOCASE
 		WHERE settings.id = 1
-	`).Scan(&appearance.Name, &appearance.Revision, &themeRevision, &appearance.PackageSHA256, &manifestJSON, &configJSON)
+	`).Scan(&appearance.Name, &appearance.Revision, &themeRevision, &appearance.PackageSHA256, &manifestJSON, &configJSON,
+		&appearance.SidebarStyle, &appearance.HeaderStyle)
 	if err != nil {
 		return ThemeAppearance{}, fmt.Errorf("get active theme appearance: %w", err)
 	}
@@ -385,7 +426,9 @@ type themeQuery interface {
 
 func readThemeCatalog(ctx context.Context, query themeQuery) (ThemeCatalog, error) {
 	var catalog ThemeCatalog
-	if err := query.QueryRowContext(ctx, `SELECT active_theme, revision FROM theme_settings WHERE id = 1`).Scan(&catalog.ActiveTheme, &catalog.Revision); err != nil {
+	if err := query.QueryRowContext(ctx, `
+		SELECT active_theme, revision, sidebar_style, header_style FROM theme_settings WHERE id = 1
+	`).Scan(&catalog.ActiveTheme, &catalog.Revision, &catalog.SidebarStyle, &catalog.HeaderStyle); err != nil {
 		return ThemeCatalog{}, fmt.Errorf("read theme catalog settings: %w", err)
 	}
 	rows, err := query.QueryContext(ctx, `
@@ -489,4 +532,8 @@ func validThemeLookupName(name string) bool {
 		}
 	}
 	return true
+}
+
+func validThemeLayoutStyle(style string) bool {
+	return style == "light" || style == "dark"
 }

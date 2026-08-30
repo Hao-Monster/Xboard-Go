@@ -105,7 +105,7 @@ func TestCommissionSettingsAreRevisionSafeAndRejectUnsafeDistribution(t *testing
 		})
 	}
 	preserved, err := database.GetCommissionSettings(ctx)
-	if err != nil || preserved != updated {
+	if err != nil || !reflect.DeepEqual(preserved, updated) {
 		t.Fatalf("invalid updates changed settings: got %#v want %#v err=%v", preserved, updated, err)
 	}
 }

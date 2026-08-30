@@ -188,6 +188,11 @@ var requiredSchemaColumnsV53 = map[string][]string{
 	"app_settings": {"safe_mode_enable", "secure_path"},
 }
 
+var requiredSchemaColumnsV54 = map[string][]string{
+	"app_settings":   {"commission_withdraw_limit", "commission_withdraw_method"},
+	"theme_settings": {"sidebar_style", "header_style"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -326,6 +331,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 53 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV53); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 54 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV54); err != nil {
 			return err
 		}
 	}

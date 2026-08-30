@@ -36,6 +36,23 @@ func (s *server) listThemes(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, catalog)
 }
 
+func (s *server) updateThemeLayout(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Revision     int64  `json:"revision"`
+		SidebarStyle string `json:"sidebar_style"`
+		HeaderStyle  string `json:"header_style"`
+	}
+	if !decodeStrictUTF8JSON(w, r, &input) {
+		return
+	}
+	session, _ := sessionFromContext(r.Context())
+	catalog, err := s.store.UpdateThemeLayoutSettings(r.Context(), session.UserID, input.Revision, input.SidebarStyle, input.HeaderStyle, s.now())
+	if writeThemeStoreError(w, err) {
+		return
+	}
+	writeSuccess(w, http.StatusOK, catalog)
+}
+
 func (s *server) uploadTheme(w http.ResponseWriter, r *http.Request) {
 	archive, err := readThemeUpload(w, r)
 	if err != nil {

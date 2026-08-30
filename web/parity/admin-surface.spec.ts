@@ -783,6 +783,7 @@ test("legacy and Go gift-card administration expose the same four surfaces and b
 });
 
 test("legacy system configuration exposes its observable sections and API groups", async ({ page }) => {
+  test.setTimeout(180_000);
   const errors = watchErrors(page);
   await loginLegacy(page);
 
@@ -801,7 +802,8 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(allConfig.status()).toBe(200);
   const payload: unknown = await allConfig.json();
   const data = readProperty(payload, "data");
-  for (const group of ["invite", "site", "subscribe", "frontend", "server", "email", "telegram", "app", "safe", "subscribe_template"]) {
+  const expectedGroups = ["invite", "site", "subscribe", "frontend", "server", "email", "telegram", "app", "safe", "subscribe_template"];
+  for (const group of expectedGroups) {
     expect(readProperty(data, group), `legacy config group ${group}`).toBeDefined();
   }
   expect(Object.keys(readObjectProperty(data, "site"))).toEqual(expect.arrayContaining([
@@ -820,7 +822,135 @@ test("legacy system configuration exposes its observable sections and API groups
   for (const field of ["邮箱验证", "禁止使用Gmail多别名", "邮箱后缀白名单", "IP注册限制"]) {
     await expect(page.getByText(field, { exact: true }).filter({ visible: true }).first(), field).toBeVisible();
   }
+  await page.getByRole("link", { name: "邀请&佣金设置", exact: true }).filter({ visible: true }).click();
+  for (const field of ["提现单申请门槛(元)", "提现方式"]) {
+    await expect(page.getByText(field, { exact: true }).filter({ visible: true }).first(), `legacy invite setting ${field}`).toBeVisible();
+  }
+
+  await loginGo(page);
+  const goConfigResult = await page.evaluate(async ({ email, password }) => {
+    const login = await fetch("/api/v2/passport/auth/login", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const loginBody = await login.text();
+    if (!login.ok) return { loginStatus: login.status, loginBody, configStatus: 0, configBody: "", inviteStatus: 0, inviteBody: "" };
+    const parsed = JSON.parse(loginBody) as { data?: { auth_data?: string } };
+    const authorization = parsed.data?.auth_data ?? "";
+    const config = await fetch("/api/v2/admin/config/fetch", { headers: { authorization } });
+    const invite = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+    return {
+      loginStatus: login.status, loginBody, configStatus: config.status, configBody: await config.text(),
+      inviteStatus: invite.status, inviteBody: await invite.text()
+    };
+  }, { email: goEmail, password: goPassword });
+  expect(goConfigResult.loginStatus, goConfigResult.loginBody).toBe(200);
+  expect(goConfigResult.configStatus, goConfigResult.configBody).toBe(200);
+  const goData = readObjectProperty(JSON.parse(goConfigResult.configBody) as unknown, "data");
+  expect(Object.keys(goData).sort()).toEqual([...expectedGroups].sort());
+  for (const group of expectedGroups) {
+    const legacyKeys = Object.keys(readObjectProperty(data, group));
+    const goKeys = Object.keys(readObjectProperty(goData, group));
+    expect(goKeys, `Go legacy config keys for ${group}`).toEqual(expect.arrayContaining(legacyKeys));
+  }
+  expect(readProperty(readProperty(goData, "server"), "server_token")).toBe("");
+  expect(readProperty(readProperty(goData, "email"), "email_password")).toBe("");
+  expect(readProperty(readProperty(goData, "telegram"), "telegram_bot_token")).toBe("");
+  for (const secret of ["recaptcha_key", "recaptcha_v3_secret_key", "turnstile_secret_key"]) {
+    expect(readProperty(readProperty(goData, "safe"), secret), `redacted Go secret ${secret}`).toBe("");
+  }
+
+  expect(goConfigResult.inviteStatus, goConfigResult.inviteBody).toBe(200);
+  expect(Object.keys(readObjectProperty(JSON.parse(goConfigResult.inviteBody) as unknown, "data"))).toEqual(["invite"]);
+
+  await page.getByRole("button", { name: "佣金设置", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "佣金设置", exact: true })).toBeVisible();
+  await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toBeVisible();
+  await expect(page.locator("label").filter({ hasText: "允许的提现方式（每行一个）" }).locator("textarea")).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("legacy and Go preserve a fractional commission withdrawal threshold", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const legacyContext = await browser.newContext();
+  const goContext = await browser.newContext();
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  let legacyAuthorization = "";
+  let legacyOriginal: unknown;
+  try {
+    await loginLegacy(legacyPage);
+    const configResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    legacyAuthorization = (await configResponse).request().headers().authorization;
+    expect(legacyAuthorization).toBeTruthy();
+    const legacyBefore = await legacyPage.request.get(legacyAdminAPI("/config/fetch?key=invite"), {
+      headers: { authorization: legacyAuthorization }
+    });
+    expect(legacyBefore.status()).toBe(200);
+    legacyOriginal = readProperty(readObjectProperty(readProperty(await legacyBefore.json() as unknown, "data"), "invite"), "commission_withdraw_limit");
+    const legacySaved = await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+      headers: { authorization: legacyAuthorization }, data: { commission_withdraw_limit: "100.50" }
+    });
+    expect(legacySaved.status(), await legacySaved.text()).toBe(200);
+    const legacyAfter = await legacyPage.request.get(legacyAdminAPI("/config/fetch?key=invite"), {
+      headers: { authorization: legacyAuthorization }
+    });
+    expect(readProperty(readObjectProperty(readProperty(await legacyAfter.json() as unknown, "data"), "invite"), "commission_withdraw_limit")).toBe(100.5);
+
+    await loginGo(goPage);
+    const goResult = await goPage.evaluate(async ({ email, password }) => {
+      const login = await fetch("/api/v2/passport/auth/login", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const loginBody = await login.text();
+      if (!login.ok) return { loginStatus: login.status, loginBody, savedStatus: 0, savedBody: "", fetchedStatus: 0, fetchedBody: "", restoredStatus: 0, restoredBody: "" };
+      const authorization = (JSON.parse(loginBody) as { data?: { auth_data?: string } }).data?.auth_data ?? "";
+      const before = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+      const beforeBody = await before.text();
+      if (!before.ok) return { loginStatus: login.status, loginBody, savedStatus: 0, savedBody: beforeBody, fetchedStatus: before.status, fetchedBody: beforeBody, restoredStatus: 0, restoredBody: "" };
+      const original = (JSON.parse(beforeBody) as { data: { invite: { commission_withdraw_limit: unknown } } }).data.invite.commission_withdraw_limit;
+      let savedResult: { status: number; body: string } | undefined;
+      let fetchedResult: { status: number; body: string } | undefined;
+      let restoredResult: { status: number; body: string } | undefined;
+      try {
+        const saved = await fetch("/api/v2/admin/config/save", {
+          method: "POST", headers: { authorization, "Content-Type": "application/json" },
+          body: JSON.stringify({ commission_withdraw_limit: "100.50" })
+        });
+        savedResult = { status: saved.status, body: await saved.text() };
+        const fetched = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+        fetchedResult = { status: fetched.status, body: await fetched.text() };
+      } finally {
+        const restored = await fetch("/api/v2/admin/config/save", {
+          method: "POST", headers: { authorization, "Content-Type": "application/json" },
+          body: JSON.stringify({ commission_withdraw_limit: original })
+        });
+        restoredResult = { status: restored.status, body: await restored.text() };
+      }
+      return {
+        loginStatus: login.status, loginBody,
+        savedStatus: savedResult?.status ?? 0, savedBody: savedResult?.body ?? "",
+        fetchedStatus: fetchedResult?.status ?? 0, fetchedBody: fetchedResult?.body ?? "",
+        restoredStatus: restoredResult.status, restoredBody: restoredResult.body
+      };
+    }, { email: goEmail, password: goPassword });
+    expect(goResult.loginStatus, goResult.loginBody).toBe(200);
+    expect(goResult.savedStatus, goResult.savedBody).toBe(200);
+    expect(goResult.fetchedStatus, goResult.fetchedBody).toBe(200);
+    expect(readProperty(readObjectProperty(readProperty(JSON.parse(goResult.fetchedBody) as unknown, "data"), "invite"), "commission_withdraw_limit")).toBe(100.5);
+    expect(goResult.restoredStatus, goResult.restoredBody).toBe(200);
+  } finally {
+    if (legacyAuthorization !== "" && legacyOriginal !== undefined) {
+      const restored = await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+        headers: { authorization: legacyAuthorization }, data: { commission_withdraw_limit: legacyOriginal }
+      });
+      expect(restored.status(), await restored.text()).toBe(200);
+    }
+    await legacyContext.close();
+    await goContext.close();
+  }
 });
 
 test("legacy and Go mail configuration expose the same seven business settings without returning the SMTP secret", async ({ browser }) => {
@@ -2646,6 +2776,7 @@ test("legacy subscription settings remain observable and map to Go policy and ou
 });
 
 test("legacy and Go theme administration preserve upload preview configuration activation and deletion", async ({ browser }) => {
+  test.setTimeout(180_000);
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
   const legacyPage = await legacyContext.newPage();
@@ -2674,6 +2805,22 @@ test("legacy and Go theme administration preserve upload preview configuration a
     expect((await goCatalogRequest).status()).toBe(200);
     await expect(goPage.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
     await expect(goPage.getByText("当前主题：Xboard", { exact: true })).toBeVisible();
+
+    const goSidebarStyle = goPage.locator("label").filter({ hasText: "侧栏样式" }).locator("select");
+    const goHeaderStyle = goPage.locator("label").filter({ hasText: "顶栏样式" }).locator("select");
+    await expect(goSidebarStyle).toBeVisible();
+    await expect(goHeaderStyle).toBeVisible();
+    const originalSidebarStyle = await goSidebarStyle.inputValue();
+    const changedSidebarStyle = originalSidebarStyle === "light" ? "dark" : "light";
+    const layoutUpdate = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    await goSidebarStyle.selectOption(changedSidebarStyle);
+    expect((await layoutUpdate).status()).toBe(200);
+    await expect(goPage.getByRole("status")).toContainText("导航样式已保存");
+    await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(changedSidebarStyle);
+    const layoutRestore = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    await goSidebarStyle.selectOption(originalSidebarStyle);
+    expect((await layoutRestore).status()).toBe(200);
+    await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(originalSidebarStyle);
 
     await legacyPage.getByRole("button", { name: "上传主题", exact: true }).click();
     const legacyUploadDialog = legacyPage.getByRole("dialog");
@@ -3014,7 +3161,7 @@ async function loginLegacy(page: Page) {
   await fields.first().fill(legacyEmail);
   await fields.nth(1).fill(legacyPassword);
   await fields.nth(1).press("Enter");
-  await expect(page.locator('a[href="#/server/machine"]')).toBeVisible();
+  await expect(page.locator('a[href="#/server/machine"]')).toBeVisible({ timeout: 60_000 });
 }
 
 async function loginGo(page: Page) {
@@ -3022,7 +3169,7 @@ async function loginGo(page: Page) {
   await page.getByLabel("邮箱").fill(goEmail);
   await page.getByLabel("密码").fill(goPassword);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible({ timeout: 60_000 });
 }
 
 async function goAdminRequest(page: Page, path: string, method: string, body?: unknown) {

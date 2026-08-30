@@ -764,6 +764,17 @@ input, textarea, select { color: var(--theme-text); border-color: var(--theme-bo
 .button.secondary, .icon-button { color: var(--theme-text); border-color: var(--theme-border); background: color-mix(in srgb, var(--theme-surface) 90%, var(--theme-background)); }
 .eyebrow, a { color: var(--theme-primary); }
 
+html[data-theme-header-style="light"] .app-frame > .topbar {
+  color: #172033; border-color: #d8deea; background: rgb(250 252 255 / 92%);
+}
+html[data-theme-header-style="light"] .app-frame > .topbar .account { color: #566178; }
+html[data-theme-sidebar-style="light"] .app-frame > .topbar .admin-nav {
+  border: 1px solid #d8deea; border-radius: var(--theme-control-radius); background: rgb(239 243 250 / 92%);
+}
+html[data-theme-sidebar-style="light"] .app-frame > .topbar .admin-nav .nav-link { color: #566178; }
+html[data-theme-sidebar-style="light"] .app-frame > .topbar .admin-nav .nav-link:hover { color: #172033; background: #dfe6f2; }
+html[data-theme-sidebar-style="light"] .app-frame > .topbar .admin-nav .nav-link[aria-current="page"] { color: #254c9d; background: #d6e2fb; }
+
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 .theme-catalog-heading { margin-top: 32px; }
 .theme-status { width: min(1180px, calc(100% - 40px)); margin: 20px auto 0; }

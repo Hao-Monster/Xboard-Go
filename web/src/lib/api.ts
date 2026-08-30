@@ -1318,6 +1318,8 @@ export interface CommissionSettings {
   invite_commission: number;
   commission_first_time_enable: boolean;
   commission_auto_check_enable: boolean;
+  commission_withdraw_limit: number;
+  commission_withdraw_method: string[];
   withdraw_close_enable: boolean;
   commission_distribution_enable: boolean;
   commission_distribution_l1: number;
@@ -1402,6 +1404,8 @@ export interface ThemeAppearance {
   package_sha256: string;
   palette: ThemePalette;
   config: ThemeConfig;
+  sidebar_style: "light" | "dark";
+  header_style: "light" | "dark";
 }
 
 export interface ThemeItem {
@@ -1423,6 +1427,8 @@ export interface ThemeItem {
 export interface ThemeCatalog {
   active_theme: string;
   revision: number;
+  sidebar_style: "light" | "dark";
+  header_style: "light" | "dark";
   themes: ThemeItem[];
 }
 
@@ -2603,6 +2609,12 @@ export class APIClient implements AdminAPI {
 
   async listThemes(): Promise<ThemeCatalog> {
     return this.request<ThemeCatalog>("/api/v1/admin/themes");
+  }
+
+  async updateThemeLayout(revision: number, sidebarStyle: "light" | "dark", headerStyle: "light" | "dark"): Promise<ThemeCatalog> {
+    return this.request<ThemeCatalog>("/api/v1/admin/themes/layout", {
+      method: "PUT", body: { revision, sidebar_style: sidebarStyle, header_style: headerStyle }
+    });
   }
 
   async uploadTheme(file: File): Promise<ThemeItem> {
