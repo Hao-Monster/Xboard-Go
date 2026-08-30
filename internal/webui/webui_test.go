@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -110,6 +111,77 @@ func TestDynamicSubscriptionPathsAreDelegatedWithoutCatchingOrdinarySPARoutes(t 
 		if got := isBackendPath(test.path); got != test.want {
 			t.Errorf("isBackendPath(%q) = %v, want %v", test.path, got, test.want)
 		}
+	}
+}
+
+func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "index.html", "protected")
+	writeTestFile(t, root, "assets/app.js", "asset")
+	checks := 0
+	handler, err := New(root, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), func(request *http.Request) (bool, error) {
+		checks++
+		return HostMatchesURL(request.Host, "https://panel.example.test:8443"), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		path, host string
+		status     int
+	}{
+		{path: "/", host: "PANEL.EXAMPLE.TEST.:443", status: http.StatusOK},
+		{path: "/account", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/index.html", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/assets/app.js", host: "attacker.example.test", status: http.StatusOK},
+		{path: "/api/v1/auth/session", host: "attacker.example.test", status: http.StatusNoContent},
+	} {
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		request.Host = test.host
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != test.status {
+			t.Fatalf("GET %s Host %q status=%d want=%d body=%s", test.path, test.host, response.Code, test.status, response.Body)
+		}
+	}
+	if checks != 3 {
+		t.Fatalf("frontend access checks = %d, want 3 HTML entries only", checks)
+	}
+}
+
+func TestHostMatchesURLHandlesPortsIPv6AndRejectsMalformedInputs(t *testing.T) {
+	for _, test := range []struct {
+		host, configured string
+		want             bool
+	}{
+		{host: "panel.example.test:1234", configured: "https://panel.example.test/root", want: true},
+		{host: "PANEL.EXAMPLE.TEST.", configured: "https://panel.example.test", want: true},
+		{host: "[0:0:0:0:0:0:0:1]:8080", configured: "http://[::1]:7080", want: true},
+		{host: "attacker.example.test", configured: "https://panel.example.test", want: false},
+		{host: "panel.example.test", configured: "", want: false},
+		{host: "user@panel.example.test", configured: "https://panel.example.test", want: false},
+	} {
+		if got := HostMatchesURL(test.host, test.configured); got != test.want {
+			t.Errorf("HostMatchesURL(%q, %q) = %v, want %v", test.host, test.configured, got, test.want)
+		}
+	}
+}
+
+func TestFrontendAccessCheckerFailsClosedOnSettingsError(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "index.html", "protected")
+	handler, err := New(root, http.NotFoundHandler(), func(*http.Request) (bool, error) {
+		return false, errors.New("settings unavailable")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/account", nil))
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "settings unavailable") {
+		t.Fatalf("settings failure status=%d body=%q", response.Code, response.Body.String())
 	}
 }
 

@@ -63,6 +63,7 @@ services:
         GO_MODULE_PROXY: ${XBOARD_GO_MODULE_PROXY:-https://proxy.golang.org,direct}
     environment:
       XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_LEGACY_ADMIN_PATH:-admin}
       XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
       XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
       XBOARD_ATTACHMENT_ROOT: ${XBOARD_ATTACHMENT_ROOT:-/var/lib/xboard/knowledge-attachments}

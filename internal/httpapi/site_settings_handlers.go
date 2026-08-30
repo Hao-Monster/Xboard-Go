@@ -89,6 +89,8 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		AppName                    string    `json:"app_name"`
 		AppDescription             string    `json:"app_description"`
 		AppURL                     string    `json:"app_url"`
+		SafeModeEnabled            *bool     `json:"safe_mode_enable"`
+		SecurePath                 *string   `json:"secure_path"`
 		ForceHTTPS                 *bool     `json:"force_https"`
 		SubscribeURL               *string   `json:"subscribe_url"`
 		TOSURL                     string    `json:"tos_url"`
@@ -137,6 +139,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	next := store.SaveSiteSettingsInput{
 		AppName: input.AppName, AppDescription: input.AppDescription, AppURL: input.AppURL, TOSURL: input.TOSURL, Logo: input.Logo,
+		SafeModeEnabled: &current.SafeModeEnabled, SecurePath: &current.SecurePath,
 		ForceHTTPS: &current.ForceHTTPS, SubscribeURL: &current.SubscribeURL,
 		Currency: &current.Currency, CurrencySymbol: &current.CurrencySymbol,
 		StopRegister: current.StopRegister, EmailVerificationEnabled: current.EmailVerificationEnabled,
@@ -168,6 +171,12 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.ForceHTTPS != nil {
 		next.ForceHTTPS = input.ForceHTTPS
+	}
+	if input.SafeModeEnabled != nil {
+		next.SafeModeEnabled = input.SafeModeEnabled
+	}
+	if input.SecurePath != nil {
+		next.SecurePath = input.SecurePath
 	}
 	if input.SubscribeURL != nil {
 		next.SubscribeURL = input.SubscribeURL

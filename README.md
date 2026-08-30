@@ -645,6 +645,26 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+The legacy `safe_mode_enable` and `secure_path` values use another independent
+slice. The importer reads only those fixed keys, requires an explicit secure
+path of 8–64 ASCII letters, numbers, underscores, or hyphens, rejects reserved
+API namespaces, and only replaces a pristine empty or deployment-default
+target path. Enabling safe mode also requires the site URL to have been
+migrated first. If the old database has no `secure_path` row because Xboard was
+using the APP_KEY-derived default, pass that observed effective value with
+`--source-effective-secure-path`; the importer never guesses it or reads the
+old APP_KEY:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-safe-access-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-safe-access-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
