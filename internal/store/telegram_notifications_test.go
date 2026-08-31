@@ -170,7 +170,8 @@ func TestTelegramTicketNotificationIncludesPlanTrafficAndExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertTelegramNotificationRows(t, database, "ticket", ticketMessageID(t, database, ticket.ID, 0), []int64{9351},
-		"套餐: Order plan", "流量: 7.00G / 10.00G", "已用: 2.00G / 1.00G", "到期: "+expiresAt.Format("2006-01-02 15:04:05"))
+		"套餐: Order plan", "流量: 7.00G / 10.00G", "已用: 2.00G / 1.00G",
+		"到期: "+expiresAt.In(telegramLegacyLocation).Format("2006-01-02 15:04:05"))
 }
 
 func TestTelegramPaymentNotificationIsFirstCompletionOnly(t *testing.T) {

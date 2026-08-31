@@ -17,6 +17,8 @@ const (
 	telegramNotificationPayment telegramNotificationKind = "payment"
 )
 
+var telegramLegacyLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
 func enqueueTelegramTicketNotificationTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -57,7 +59,7 @@ func enqueueTelegramTicketNotificationTx(
 		fmt.Fprintf(&text, "📊 流量: %sG / %sG (剩余/总计)\n", formatTelegramGiB(remaining), formatTelegramGiB(transferEnable))
 		fmt.Fprintf(&text, "⬆️⬇️ 已用: %sG / %sG\n", formatTelegramGiB(upload), formatTelegramGiB(download))
 		if expiredAt.Valid {
-			fmt.Fprintf(&text, "⏰ 到期: %s\n", time.Unix(expiredAt.Int64, 0).UTC().Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(&text, "⏰ 到期: %s\n", time.Unix(expiredAt.Int64, 0).In(telegramLegacyLocation).Format("2006-01-02 15:04:05"))
 		} else {
 			text.WriteString("⏰ 到期: 长期有效\n")
 		}
