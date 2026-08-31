@@ -199,6 +199,17 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 		return Ticket{}, fmt.Errorf("begin ticket reply: %w", err)
 	}
 	defer tx.Rollback()
+	updated, err := replyTicketTx(ctx, tx, ownerID, ticketID, authorID, requireOpen, message, now)
+	if err != nil {
+		return Ticket{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Ticket{}, fmt.Errorf("commit ticket reply: %w", err)
+	}
+	return updated, nil
+}
+
+func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID int64, requireOpen bool, message string, now time.Time) (Ticket, error) {
 	query := `SELECT id, user_id, '', subject, level, status, reply_status, last_reply_user_id, created_at, updated_at FROM tickets WHERE id = ?`
 	args := []any{ticketID}
 	if ownerID > 0 {
@@ -258,9 +269,6 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 	updated, err := getTicketTx(ctx, tx, ticketID, false)
 	if err != nil {
 		return Ticket{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Ticket{}, fmt.Errorf("commit ticket reply: %w", err)
 	}
 	return updated, nil
 }

@@ -33,10 +33,11 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 			Scheduler     map[string]any         `json:"scheduler"`
 			MailWorker    map[string]any         `json:"mail_worker"`
 			MailQueue     store.SystemQueueStats `json:"mail_queue"`
+			TelegramQueue store.SystemQueueStats `json:"telegram_queue"`
 		} `json:"data"`
 	}
 	decodeResponse(t, statusResponse, &statusPayload)
-	if statusPayload.Data.SchemaVersion != store.CurrentSchemaVersion() || statusPayload.Data.Scheduler["healthy"] != true || statusPayload.Data.MailWorker["healthy"] != true {
+	if statusPayload.Data.SchemaVersion != store.CurrentSchemaVersion() || statusPayload.Data.Scheduler["healthy"] != true || statusPayload.Data.MailWorker["healthy"] != true || statusPayload.Data.TelegramQueue.Pending != 0 {
 		t.Fatalf("system status payload = %#v", statusPayload.Data)
 	}
 

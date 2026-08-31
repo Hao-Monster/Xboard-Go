@@ -1534,6 +1534,7 @@ export interface SystemStatus {
   scheduler: WorkerStatus;
   mail_worker: WorkerStatus;
   mail_queue: SystemQueueStats;
+  telegram_queue: SystemQueueStats;
 }
 
 export type AuditMethod = "POST" | "PUT" | "PATCH" | "DELETE";

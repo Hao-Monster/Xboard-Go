@@ -293,6 +293,24 @@ type TelegramSecretCiphers struct {
 	ProvisionID          string
 }
 
+type TelegramMessageUpdateInput struct {
+	UpdateID  int64
+	ClaimID   string
+	ChatID    int64
+	ChatType  string
+	Text      string
+	ReplyText string
+	PanelURL  string
+}
+
+type TelegramDeliveryJob struct {
+	ID             int64
+	Attempt        int
+	ChatID         int64
+	Text           string
+	BotTokenCipher []byte
+}
+
 type SubscriptionReminderKind string
 
 const (

@@ -9,7 +9,8 @@ const status: SystemStatus = {
   started_at: "2026-08-24T10:00:00Z", uptime_seconds: 3661, schema_version: 18,
   scheduler: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
   mail_worker: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
-  mail_queue: { pending: 2, claimed: 1, sent: 12, failed: 1, oldest_pending_at: "2026-08-24T11:00:00Z" }
+  mail_queue: { pending: 2, claimed: 1, sent: 12, failed: 1, oldest_pending_at: "2026-08-24T11:00:00Z" },
+  telegram_queue: { pending: 3, claimed: 1, sent: 20, failed: 2, oldest_pending_at: "2026-08-24T11:02:00Z" }
 };
 
 const audit: AdminAuditPage = {
@@ -50,6 +51,8 @@ describe("SystemOperationsPage", () => {
     expect(await screen.findByRole("heading", { name: "系统状态" })).toBeVisible();
     expect(await screen.findByText("Schema v18", { exact: true })).toBeVisible();
     expect(screen.getByText("待处理 2", { exact: true })).toBeVisible();
+    expect(screen.getByText("待处理 3", { exact: true })).toBeVisible();
+    expect(screen.getByText("Telegram 失败", { exact: true })).toBeVisible();
     expect(screen.getByText("Unable to connect", { exact: true })).toBeVisible();
     expect(screen.getByText("登录链接", { exact: true })).toBeVisible();
     expect(screen.getByText("到期提醒", { exact: true })).toBeVisible();

@@ -94,7 +94,7 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
   };
 
   return <main className="page-shell system-operations-page">
-    <header className="page-header"><div><p className="eyebrow">Operations</p><h1>系统状态</h1><p className="muted">查看调度器、邮件队列、失败任务和管理员操作审计。</p></div>
+    <header className="page-header"><div><p className="eyebrow">Operations</p><h1>系统状态</h1><p className="muted">查看调度器、邮件与 Telegram 队列、失败任务和管理员操作审计。</p></div>
       <button className="button secondary" disabled={loading} onClick={() => void loadAll()}>{loading ? "正在刷新…" : "刷新系统状态"}</button>
     </header>
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
@@ -106,6 +106,8 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
         <Metric label="运行时间" value={formatDuration(status.uptime_seconds)} hint={`启动于 ${formatDate(status.started_at)}`} />
         <Metric label="邮件队列" value={`待处理 ${status.mail_queue.pending}`} hint={`执行中 ${status.mail_queue.claimed} · 已发送 ${status.mail_queue.sent}`} tone={status.mail_queue.pending > 0 ? "warning" : "good"} />
         <Metric label="失败邮件" value={String(status.mail_queue.failed)} hint={status.mail_queue.oldest_pending_at === null ? "当前无待发送任务" : `最早待发送 ${formatDate(status.mail_queue.oldest_pending_at)}`} tone={status.mail_queue.failed > 0 ? "danger" : "good"} />
+        <Metric label="Telegram 队列" value={`待处理 ${status.telegram_queue.pending}`} hint={`执行中 ${status.telegram_queue.claimed} · 已发送 ${status.telegram_queue.sent}`} tone={status.telegram_queue.pending > 0 ? "warning" : "good"} />
+        <Metric label="Telegram 失败" value={String(status.telegram_queue.failed)} hint={status.telegram_queue.oldest_pending_at === null ? "当前无待发送任务" : `最早待发送 ${formatDate(status.telegram_queue.oldest_pending_at)}`} tone={status.telegram_queue.failed > 0 ? "danger" : "good"} />
       </section>
     </>}
 

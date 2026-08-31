@@ -133,6 +133,11 @@ func (s *Store) UpdateTelegramSettings(ctx context.Context, administratorID, rev
 	if rows != 1 {
 		return TelegramSettings{}, ErrConflict
 	}
+	if !normalized.BotEnabled || normalized.ReplaceBotToken {
+		if err := cancelPendingTelegramMessagesTx(ctx, tx, "cancelled because Telegram bot settings changed", now); err != nil {
+			return TelegramSettings{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return TelegramSettings{}, fmt.Errorf("commit Telegram settings: %w", err)
 	}

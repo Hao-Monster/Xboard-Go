@@ -81,6 +81,7 @@ var requiredSchemaTables = []struct {
 	{"theme_assets", 51},
 	{"theme_settings", 51},
 	{"trusted_plugins", 55},
+	{"telegram_message_outbox", 56},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -196,6 +197,13 @@ var requiredSchemaColumnsV54 = map[string][]string{
 
 var requiredSchemaColumnsV55 = map[string][]string{
 	"trusted_plugins": {"code", "name", "type", "version", "enabled", "config_json", "revision", "updated_by", "updated_at"},
+}
+
+var requiredSchemaColumnsV56 = map[string][]string{
+	"telegram_message_outbox": {
+		"id", "source_kind", "source_id", "chat_id", "text", "attempt_count", "available_at",
+		"claim_token", "claimed_at", "sent_at", "failed_at", "cancelled_at", "last_error", "created_at", "updated_at",
+	},
 }
 
 type schemaQueryer interface {
@@ -346,6 +354,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 55 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV55); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 56 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV56); err != nil {
 			return err
 		}
 	}

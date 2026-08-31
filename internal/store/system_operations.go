@@ -137,6 +137,27 @@ func (s *Store) GetSystemQueueStats(ctx context.Context) (SystemQueueStats, erro
 	return stats, nil
 }
 
+func (s *Store) GetTelegramQueueStats(ctx context.Context) (SystemQueueStats, error) {
+	var stats SystemQueueStats
+	var oldestPending sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL THEN 1 ELSE 0 END),0),
+			COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL AND claim_token IS NOT NULL THEN 1 ELSE 0 END),0),
+			COALESCE(SUM(CASE WHEN sent_at IS NOT NULL THEN 1 ELSE 0 END),0),
+			COALESCE(SUM(CASE WHEN failed_at IS NOT NULL THEN 1 ELSE 0 END),0),
+			MIN(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL THEN available_at END)
+		FROM telegram_message_outbox
+	`).Scan(&stats.Pending, &stats.Claimed, &stats.Sent, &stats.Failed, &oldestPending); err != nil {
+		return SystemQueueStats{}, fmt.Errorf("get Telegram queue stats: %w", err)
+	}
+	if oldestPending.Valid {
+		value := time.Unix(oldestPending.Int64, 0).UTC()
+		stats.OldestPendingAt = &value
+	}
+	return stats, nil
+}
+
 func (s *Store) ListTicketMailFailures(ctx context.Context, page, pageSize int) (TicketMailFailurePage, error) {
 	if page < 1 || page > maxAdminAuditPage || pageSize < 1 || pageSize > maxAdminAuditPageSize {
 		return TicketMailFailurePage{}, ErrInvalidInput

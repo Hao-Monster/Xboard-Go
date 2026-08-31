@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 55
+const currentSchemaVersion = 56
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -405,6 +405,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v55: %w", err)
 		}
 		version = 55
+	}
+	if version < 56 {
+		if _, err := tx.ExecContext(ctx, schemaV56); err != nil {
+			return fmt.Errorf("apply schema v56: %w", err)
+		}
+		version = 56
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2485,6 +2491,48 @@ INSERT INTO trusted_plugins(code,name,type,version,enabled,config_json,revision,
 ('mgate','MGate','payment','1.0.0',1,'{}',1,0);
 
 CREATE INDEX idx_trusted_plugins_type_enabled ON trusted_plugins(type, enabled, code);
+`
+
+const schemaV56 = `
+-- No supported schema before v56 contains this queue. Recreate an unversioned
+-- same-name table instead of trusting attacker-controlled delivery rows.
+DROP TABLE IF EXISTS telegram_message_outbox;
+
+CREATE TABLE telegram_message_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('command','ticket','payment')),
+    source_id INTEGER NOT NULL CHECK (source_id > 0),
+    chat_id INTEGER NOT NULL CHECK (chat_id <> 0),
+    text TEXT NOT NULL CHECK (
+        length(text) BETWEEN 1 AND 4096
+        AND length(CAST(text AS BLOB)) <= 16384
+        AND instr(text, char(0)) = 0
+    ),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    available_at INTEGER NOT NULL CHECK (available_at >= 0),
+    claim_token TEXT CHECK (claim_token IS NULL OR length(claim_token) BETWEEN 1 AND 128),
+    claimed_at INTEGER CHECK (claimed_at IS NULL OR claimed_at >= 0),
+    sent_at INTEGER CHECK (sent_at IS NULL OR sent_at >= 0),
+    failed_at INTEGER CHECK (failed_at IS NULL OR failed_at >= 0),
+    cancelled_at INTEGER CHECK (cancelled_at IS NULL OR cancelled_at >= 0),
+    last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 1024),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+    UNIQUE(source_kind, source_id, chat_id),
+    CHECK ((claim_token IS NULL) = (claimed_at IS NULL)),
+    CHECK (
+        (sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NOT NULL AND failed_at IS NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NULL AND failed_at IS NOT NULL AND cancelled_at IS NULL) OR
+        (sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NOT NULL)
+    )
+);
+CREATE INDEX idx_telegram_message_outbox_due
+    ON telegram_message_outbox(available_at, id)
+    WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
+CREATE INDEX idx_telegram_message_outbox_failed
+    ON telegram_message_outbox(failed_at DESC, id DESC)
+    WHERE failed_at IS NOT NULL;
 `
 
 func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
