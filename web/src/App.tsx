@@ -1,25 +1,25 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 
-import { AccountSecurityPage } from "./features/account/AccountSecurityPage";
-import { RoutingRulesPage } from "./features/admin/RoutingRulesPage";
-import { UsersPage } from "./features/users/UsersPage";
-import { ServerGroupsPage } from "./features/admin/ServerGroupsPage";
-import { ServerManagementPage } from "./features/servers/ServerManagementPage";
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
-import { NoticeManagementPage } from "./features/notices/NoticeManagementPage";
-import { ClientCatalogManagementPage } from "./features/clients/ClientCatalogManagementPage";
-import { KnowledgeManagementPage } from "./features/knowledge/KnowledgeManagementPage";
-import { TicketManagementPage } from "./features/tickets/TicketManagementPage";
-import { SystemOperationsPage } from "./features/system/SystemOperationsPage";
-import { SiteSettingsPage } from "./features/settings/SiteSettingsPage";
-import { SubscriptionSettingsPage } from "./features/settings/SubscriptionSettingsPage";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
-import { OrderManagementPage } from "./features/orders/OrderManagementPage";
-import { CouponManagementPage } from "./features/coupons/CouponManagementPage";
 
 const api = new APIClient();
+const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
+const RoutingRulesPage = lazy(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
+const ServerGroupsPage = lazy(async () => import("./features/admin/ServerGroupsPage").then((module) => ({ default: module.ServerGroupsPage })));
+const ClientCatalogManagementPage = lazy(async () => import("./features/clients/ClientCatalogManagementPage").then((module) => ({ default: module.ClientCatalogManagementPage })));
+const CouponManagementPage = lazy(async () => import("./features/coupons/CouponManagementPage").then((module) => ({ default: module.CouponManagementPage })));
+const KnowledgeManagementPage = lazy(async () => import("./features/knowledge/KnowledgeManagementPage").then((module) => ({ default: module.KnowledgeManagementPage })));
+const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeManagementPage").then((module) => ({ default: module.NoticeManagementPage })));
+const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
+const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
+const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
+const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
+const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
+const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
+const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
 const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
 const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
@@ -253,32 +253,34 @@ export function App() {
           <button className="button ghost compact" onClick={signOut}>退出</button>
         </div>
       </nav>
-      {page === "system" && <SystemOperationsPage api={api} />}
-      {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
-      {page === "themes" && <Suspense fallback={<div className="app-loading">正在加载主题配置…</div>}><ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} /></Suspense>}
-      {page === "mail" && <Suspense fallback={<div className="app-loading">正在加载邮件设置…</div>}><EmailSettingsPage api={api} /></Suspense>}
-      {page === "telegram" && <Suspense fallback={<div className="app-loading">正在加载 Telegram 设置…</div>}><TelegramSettingsPage api={api} /></Suspense>}
-      {page === "client-app" && <Suspense fallback={<div className="app-loading">正在加载客户端版本…</div>}><ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} /></Suspense>}
-      {page === "commissions" && <Suspense fallback={<div className="app-loading">正在加载佣金设置…</div>}><CommissionSettingsPage api={api} /></Suspense>}
-      {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
-      {page === "node-settings" && <Suspense fallback={<div className="app-loading">正在加载节点配置…</div>}><NodeAgentSettingsPage api={api} /></Suspense>}
-      {page === "servers" && <ServerManagementPage api={api} />}
-      {page === "nodes" && <Suspense fallback={<div className="app-loading">正在加载节点管理…</div>}><NodeManagementPage api={api} /></Suspense>}
-      {page === "plans" && <PlanManagementPage api={api} />}
-      {page === "orders" && <OrderManagementPage api={api} />}
-      {page === "distributors" && <Suspense fallback={<div className="app-loading">正在加载分销管理…</div>}><AdminDistributorPage api={api} /></Suspense>}
-      {page === "plugins" && <Suspense fallback={<div className="app-loading">正在加载插件管理…</div>}><PluginManagementPage api={api} onNavigate={navigateAdminPage} /></Suspense>}
-      {page === "payments" && <PaymentManagementPage api={api} />}
-      {page === "coupons" && <CouponManagementPage api={api} />}
-      {page === "gift-cards" && <Suspense fallback={<div className="app-loading">正在加载礼品卡管理…</div>}><GiftCardManagementPage api={api} /></Suspense>}
-      {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
-      {page === "tickets" && <TicketManagementPage api={api} />}
-      {page === "groups" && <ServerGroupsPage api={api} />}
-      {page === "routes" && <RoutingRulesPage api={api} />}
-      {page === "notices" && <NoticeManagementPage api={api} />}
-      {page === "knowledge" && <KnowledgeManagementPage api={api} />}
-      {page === "clients" && <ClientCatalogManagementPage api={api} />}
-      {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
+      <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
+        {page === "system" && <SystemOperationsPage api={api} />}
+        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
+        {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
+        {page === "mail" && <EmailSettingsPage api={api} />}
+        {page === "telegram" && <TelegramSettingsPage api={api} />}
+        {page === "client-app" && <ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} />}
+        {page === "commissions" && <CommissionSettingsPage api={api} />}
+        {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
+        {page === "node-settings" && <NodeAgentSettingsPage api={api} />}
+        {page === "servers" && <ServerManagementPage api={api} />}
+        {page === "nodes" && <NodeManagementPage api={api} />}
+        {page === "plans" && <PlanManagementPage api={api} />}
+        {page === "orders" && <OrderManagementPage api={api} />}
+        {page === "distributors" && <AdminDistributorPage api={api} />}
+        {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
+        {page === "payments" && <PaymentManagementPage api={api} />}
+        {page === "coupons" && <CouponManagementPage api={api} />}
+        {page === "gift-cards" && <GiftCardManagementPage api={api} />}
+        {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
+        {page === "tickets" && <TicketManagementPage api={api} />}
+        {page === "groups" && <ServerGroupsPage api={api} />}
+        {page === "routes" && <RoutingRulesPage api={api} />}
+        {page === "notices" && <NoticeManagementPage api={api} />}
+        {page === "knowledge" && <KnowledgeManagementPage api={api} />}
+        {page === "clients" && <ClientCatalogManagementPage api={api} />}
+        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
+      </Suspense>
     </div>
   );
 }
