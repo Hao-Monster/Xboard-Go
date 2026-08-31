@@ -471,6 +471,18 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/show", api.legacyTogglePayment)
 	legacyAdminPayment.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/payment/sort", api.legacyReorderPayments)
 	legacyAdmin.Handle("/api/v2/"+dependencies.LegacyAdminPath+"/payment/", api.auditLegacyAdminPaymentMutations(api.recoverPanic(legacyAdminPayment)))
+	legacyAdminPlugin := http.NewServeMux()
+	legacyAdminPluginPrefix := "/api/v2/" + dependencies.LegacyAdminPath + "/plugin"
+	legacyAdminPlugin.HandleFunc("GET "+legacyAdminPluginPrefix+"/types", api.legacyTrustedPluginTypes)
+	legacyAdminPlugin.HandleFunc("GET "+legacyAdminPluginPrefix+"/getPlugins", api.legacyListTrustedPlugins)
+	legacyAdminPlugin.HandleFunc("POST "+legacyAdminPluginPrefix+"/enable", api.legacyEnableTrustedPlugin)
+	legacyAdminPlugin.HandleFunc("POST "+legacyAdminPluginPrefix+"/disable", api.legacyDisableTrustedPlugin)
+	legacyAdminPlugin.HandleFunc("GET "+legacyAdminPluginPrefix+"/config", api.legacyGetTrustedPluginConfig)
+	legacyAdminPlugin.HandleFunc("POST "+legacyAdminPluginPrefix+"/config", api.legacyUpdateTrustedPluginConfig)
+	for _, action := range []string{"upload", "delete", "install", "uninstall", "upgrade"} {
+		legacyAdminPlugin.HandleFunc("POST "+legacyAdminPluginPrefix+"/"+action, api.rejectLegacyRuntimePluginMutation)
+	}
+	legacyAdmin.Handle(legacyAdminPluginPrefix+"/", api.auditLegacyAdminPluginMutations(api.requireTrustedOrigin(api.recoverPanic(legacyAdminPlugin))))
 	legacyAdminGiftCard := http.NewServeMux()
 	legacyAdminGiftCard.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)
 	legacyAdminGiftCard.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/gift-card/templates", api.legacyGiftCardTemplates)

@@ -84,6 +84,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 		"/api/v2/admin/stat/getStatUser",
 		"/api/v2/admin/coupon/fetch",
 		"/api/v2/admin/payment/fetch",
+		"/api/v2/admin/plugin/getPlugins",
 		"/api/v2/admin/gift-card/types",
 		"/api/v2/admin/config/fetch?key=invite",
 		"/api/v2/admin/knowledge/attachment/fetch",

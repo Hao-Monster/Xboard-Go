@@ -68,6 +68,12 @@ func TestSchemaV55SeedsOnlyTrustedCorePlugins(t *testing.T) {
 			t.Fatalf("unsafe trusted plugin statement succeeded: %s", statement)
 		}
 	}
+	if _, err := database.db.ExecContext(ctx, `DELETE FROM trusted_plugins WHERE code='telegram'`); err != nil {
+		t.Fatal(err)
+	}
+	if plugins, err := database.ListTrustedPlugins(ctx); err == nil || plugins != nil {
+		t.Fatalf("incomplete trusted inventory ListTrustedPlugins()=(%#v,%v), want fail closed", plugins, err)
+	}
 }
 
 func TestTrustedPluginsUseRevisionCASAndRejectUnknownCodes(t *testing.T) {
