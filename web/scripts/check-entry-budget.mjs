@@ -6,15 +6,9 @@ import { fileURLToPath } from "node:url";
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distRoot = join(webRoot, "dist");
 const html = readFileSync(join(distRoot, "index.html"), "utf8");
-const scriptTags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/giu)];
+const entrySource = extractEntrySource(html);
 
-if (scriptTags.length !== 1) {
-  throw new Error(`expected exactly one script in dist/index.html, found ${scriptTags.length}`);
-}
-const sourceMatch = scriptTags[0][1].match(/(?:^|\s)src\s*=\s*(["'])([^"']+)\1/iu);
-if (!sourceMatch || scriptTags[0][2].trim() !== "") throw new Error("initial script must have a quoted src and no inline body");
-
-const relativeScript = normalizeLocalSpecifier(sourceMatch[2]);
+const relativeScript = normalizeLocalSpecifier(entrySource);
 const scriptPath = resolve(distRoot, relativeScript);
 const rawLimit = 500_000;
 const gzipLimit = 150_000;
@@ -60,6 +54,32 @@ function normalizeLocalSpecifier(specifier) {
     throw new Error(`initial script dependency must use a relative or root path: ${specifier}`);
   }
   return normalize(specifier.replace(/^\/+/, "").replace(/[?#].*$/u, ""));
+}
+
+function extractEntrySource(document) {
+  const lowerDocument = document.toLowerCase();
+  const startMarker = "<script";
+  const closeMarker = "</script>";
+  const start = lowerDocument.indexOf(startMarker);
+  if (start === -1 || lowerDocument.indexOf(startMarker, start + startMarker.length) !== -1) {
+    throw new Error("dist/index.html must contain exactly one script element");
+  }
+  const tagEnd = lowerDocument.indexOf(">", start + startMarker.length);
+  const close = tagEnd === -1 ? -1 : lowerDocument.indexOf(closeMarker, tagEnd + 1);
+  if (tagEnd === -1 || close === -1 || lowerDocument.indexOf(closeMarker, close + closeMarker.length) !== -1) {
+    throw new Error("dist/index.html must contain one well-formed script element");
+  }
+  if (document.slice(tagEnd + 1, close).trim() !== "") throw new Error("initial script must not contain an inline body");
+
+  const openTag = document.slice(start, tagEnd + 1);
+  const sourceMarker = ' src="';
+  const sourceStart = openTag.indexOf(sourceMarker);
+  const valueStart = sourceStart + sourceMarker.length;
+  const valueEnd = sourceStart === -1 ? -1 : openTag.indexOf('"', valueStart);
+  if (sourceStart === -1 || valueEnd === -1 || openTag.indexOf(sourceMarker, valueEnd + 1) !== -1) {
+    throw new Error("initial script must contain exactly one double-quoted src");
+  }
+  return openTag.slice(valueStart, valueEnd);
 }
 
 function requireWithinDist(path) {
