@@ -377,6 +377,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
+	if schemaVersion >= 58 {
+		if err := validateNodeUserOnlineUserIndex(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -396,6 +401,30 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		if missing {
 			return fmt.Errorf("Xboard schema version %d contains a node without a protocol definition", schemaVersion)
 		}
+	}
+	return nil
+}
+
+func validateNodeUserOnlineUserIndex(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `PRAGMA index_info("idx_node_user_online_user_expiry")`)
+	if err != nil {
+		return fmt.Errorf("inspect online user index: %w", err)
+	}
+	defer rows.Close()
+	columns := make([]string, 0, 2)
+	for rows.Next() {
+		var sequence, columnID int
+		var name string
+		if err := rows.Scan(&sequence, &columnID, &name); err != nil {
+			return fmt.Errorf("inspect online user index: %w", err)
+		}
+		columns = append(columns, name)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect online user index: %w", err)
+	}
+	if len(columns) != 2 || columns[0] != "user_id" || columns[1] != "expires_at" {
+		return errors.New("online user index must cover user_id then expires_at")
 	}
 	return nil
 }

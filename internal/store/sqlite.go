@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 57
+const currentSchemaVersion = 58
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -417,6 +417,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v57: %w", err)
 		}
 		version = 57
+	}
+	if version < 58 {
+		if _, err := tx.ExecContext(ctx, schemaV58); err != nil {
+			return fmt.Errorf("apply schema v58: %w", err)
+		}
+		version = 58
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2591,6 +2597,11 @@ func applySchemaV57(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
+const schemaV58 = `
+CREATE INDEX IF NOT EXISTS idx_node_user_online_user_expiry
+    ON node_user_online(user_id, expires_at);
+`
 
 func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {
