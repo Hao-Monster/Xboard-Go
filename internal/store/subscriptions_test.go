@@ -277,6 +277,36 @@ func TestAdministratorSubscriptionSecurityResetUsesRevisionCAS(t *testing.T) {
 	}
 }
 
+func TestAdministratorSubscriptionSecurityResetRejectsInternalAccounts(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_200_000, 0)
+	created, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "internal-subscription-reset@example.test", PasswordHash: "opaque", TransferEnable: 1_000,
+	}, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.GetSubscriptionAccount(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET account_kind=? WHERE id=?`, AccountKindInternalSubscription, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := database.ResetSubscriptionSecurityAtRevision(ctx, created.ID, created.Revision, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("internal subscription reset error = %v, want ErrNotFound", err)
+	}
+	var uuid, token string
+	var revision int64
+	if err := database.db.QueryRowContext(ctx, `SELECT uuid,subscription_token,admin_revision FROM users WHERE id=?`, created.ID).Scan(&uuid, &token, &revision); err != nil {
+		t.Fatal(err)
+	}
+	if uuid != before.UUID || token != before.SubscriptionToken || revision != created.Revision {
+		t.Fatalf("internal subscription account mutated: uuid_changed=%t token_changed=%t revision=%d want=%d", uuid != before.UUID, token != before.SubscriptionToken, revision, created.Revision)
+	}
+}
+
 func TestListSubscriptionNodesUsesLegacyVisibilityGroupAndCapacityRules(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

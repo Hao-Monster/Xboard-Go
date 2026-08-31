@@ -120,10 +120,11 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldToken, err := database.GetAdminUserSubscriptionToken(ctx, account.ID)
+	beforeSubscription, err := database.GetSubscriptionAccount(ctx, account.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	oldToken := beforeSubscription.SubscriptionToken
 
 	resetPath := fmt.Sprintf("/api/v1/admin/users/%d/subscription-security/reset", account.ID)
 	reset := administrator.request(t, api, http.MethodPost, resetPath, fmt.Sprintf(`{"revision":%d}`, account.Revision))
@@ -134,9 +135,15 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	if err != nil || updated.Revision != account.Revision+1 {
 		t.Fatalf("administrator subscription reset user=(%#v,%v)", updated, err)
 	}
-	newToken, err := database.GetAdminUserSubscriptionToken(ctx, account.ID)
+	afterSubscription, err := database.GetSubscriptionAccount(ctx, account.ID)
+	newToken := afterSubscription.SubscriptionToken
 	if err != nil || newToken == oldToken {
 		t.Fatalf("administrator subscription reset token changed=%t err=%v", newToken != oldToken, err)
+	}
+	for _, secret := range []string{beforeSubscription.UUID, oldToken, afterSubscription.UUID, newToken} {
+		if secret != "" && strings.Contains(reset.Body.String(), secret) {
+			t.Fatalf("administrator subscription reset response exposed rotated credential: %s", reset.Body)
+		}
 	}
 	if old := requestSubscription(api, "/s/"+oldToken); old.Code != http.StatusForbidden {
 		t.Fatalf("old subscription after administrator reset status=%d body=%s", old.Code, old.Body)
@@ -159,10 +166,11 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyOldToken, err := database.GetAdminUserSubscriptionToken(ctx, legacyAccount.ID)
+	legacyBeforeSubscription, err := database.GetSubscriptionAccount(ctx, legacyAccount.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	legacyOldToken := legacyBeforeSubscription.SubscriptionToken
 	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
 	foreignOriginRequest := httptest.NewRequest(http.MethodPost, "/api/v2/admin/user/resetSecret", strings.NewReader(fmt.Sprintf(`{"id":%d}`, legacyAccount.ID)))
 	foreignOriginRequest.Header.Set("Authorization", authorization)
@@ -180,9 +188,15 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	if legacyReset.Code != http.StatusOK || !containsAll(legacyReset.Body.String(), `"status":"success"`, `"message":"操作成功"`, `"data":true`) {
 		t.Fatalf("legacy administrator subscription reset status=%d body=%s", legacyReset.Code, legacyReset.Body)
 	}
-	legacyNewToken, err := database.GetAdminUserSubscriptionToken(ctx, legacyAccount.ID)
+	legacyAfterSubscription, err := database.GetSubscriptionAccount(ctx, legacyAccount.ID)
+	legacyNewToken := legacyAfterSubscription.SubscriptionToken
 	if err != nil || legacyNewToken == legacyOldToken {
 		t.Fatalf("legacy administrator reset token changed=%t err=%v", legacyNewToken != legacyOldToken, err)
+	}
+	for _, secret := range []string{legacyBeforeSubscription.UUID, legacyOldToken, legacyAfterSubscription.UUID, legacyNewToken} {
+		if secret != "" && strings.Contains(legacyReset.Body.String(), secret) {
+			t.Fatalf("legacy administrator subscription reset response exposed rotated credential: %s", legacyReset.Body)
+		}
 	}
 	if old := requestSubscription(api, "/s/"+legacyOldToken); old.Code != http.StatusForbidden {
 		t.Fatalf("old legacy subscription after administrator reset status=%d body=%s", old.Code, old.Body)
