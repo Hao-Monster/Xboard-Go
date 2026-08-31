@@ -90,6 +90,15 @@ underscores, or hyphens. It is not an authorization factor: every route still
 requires an authenticated administrator, and mutation audit records normalize
 the configured segment instead of persisting it.
 
+The packaged image also includes the exact Apache-2.0 Ip2Region IPv4 data used
+by the captured Xboard runtime. The build downloads it from an immutable commit
+and verifies its pinned SHA-256 before copying it into the scratch image.
+Native runs can set `XBOARD_IP2REGION_XDB_FILE` to an absolute path containing
+that exact file; a configured file with the wrong type, size, checksum, or XDB
+structure fails startup. The resolver performs no online lookup and is used
+only for the Telegram ticket-notification location label. Raw client IPs are
+not written to the business database or logs.
+
 Keep the settings-encryption key for as long as the database contains an SMTP
 or CAPTCHA credential, an invitation code, or a pending password-recovery or
 registration-verification mail. The application intentionally refuses to start

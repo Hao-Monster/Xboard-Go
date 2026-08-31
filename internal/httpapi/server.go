@@ -66,6 +66,7 @@ type Dependencies struct {
 	BulkOperations             *bulkops.Service
 	TelegramBot                telegrambot.Client
 	LegacyAppClashRenderer     *subscription.LegacyAppClashRenderer
+	TicketRegionResolver       ticketRegionResolver
 }
 
 type paymentGateway interface {
@@ -133,6 +134,7 @@ type server struct {
 	telegramBot                telegrambot.Client
 	telegramProvisionRequests  *requestLimiter
 	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
+	ticketRegionResolver       ticketRegionResolver
 }
 
 type contextKey int
@@ -267,6 +269,7 @@ func New(dependencies Dependencies) http.Handler {
 		bulkOperations:             dependencies.BulkOperations,
 		telegramBot:                dependencies.TelegramBot,
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
+		ticketRegionResolver:       dependencies.TicketRegionResolver,
 	}
 	if dependencies.WebSocketEnabled {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator)

@@ -29,6 +29,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Fetch pinned legacy Ip2Region test fixture
+        run: |
+          fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
+            --output "$fixture" \
+            https://raw.githubusercontent.com/zoujingli/ip2region/a031c359620c22889fac7b998409fdcdef76a69c/ip2region.xdb
+          printf '%s  %s\n' \
+            '5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469' \
+            "$fixture" | sha256sum --check --strict
+          printf 'XBOARD_TEST_LEGACY_IP2REGION_XDB=%s\n' "$fixture" >> "$GITHUB_ENV"
       - name: Test with race detector and coverage
         run: go test -race -timeout=30m -coverprofile=coverage.out ./...
       - name: Inject Redis failure and verify recovery

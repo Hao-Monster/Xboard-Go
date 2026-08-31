@@ -38,6 +38,7 @@ func (s *server) createTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	ticket, err := s.store.CreateTicket(r.Context(), session.UserID, store.SaveTicketInput{
 		Subject: input.Subject, Level: input.Level, Message: input.Message,
+		NotificationLocation: s.ticketNotificationLocation(r),
 	}, s.now())
 	if err != nil {
 		handleTicketError(w, err)
@@ -73,7 +74,9 @@ func (s *server) replyUserTicket(w http.ResponseWriter, r *http.Request) {
 	if !s.allowTicketMutation(w, r, session.UserID) {
 		return
 	}
-	_, err := s.store.ReplyTicketAsUser(r.Context(), session.UserID, ticketID, message, s.now())
+	_, err := s.store.ReplyTicketAsUserWithNotificationLocation(
+		r.Context(), session.UserID, ticketID, message, s.ticketNotificationLocation(r), s.now(),
+	)
 	if err != nil {
 		handleTicketError(w, err)
 		return

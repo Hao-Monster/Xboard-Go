@@ -22,9 +22,11 @@ const (
 func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicketInput, now time.Time) (Ticket, error) {
 	input.Subject = strings.TrimSpace(input.Subject)
 	input.Message = strings.TrimSpace(input.Message)
-	if userID < 1 || !validTicketSubject(input.Subject) || !validTicketLevel(input.Level) || !validTicketMessage(input.Message) {
+	location, validLocation := normalizeTelegramNotificationLocation(input.NotificationLocation)
+	if userID < 1 || !validTicketSubject(input.Subject) || !validTicketLevel(input.Level) || !validTicketMessage(input.Message) || !validLocation {
 		return Ticket{}, fmt.Errorf("%w: invalid ticket", ErrInvalidInput)
 	}
+	input.NotificationLocation = location
 	defer s.lockWrite()()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -68,7 +70,7 @@ func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicket
 	if err != nil {
 		return Ticket{}, err
 	}
-	if err := enqueueTelegramTicketNotificationTx(ctx, tx, userID, ticketID, messageID, input.Subject, input.Message, now); err != nil {
+	if err := enqueueTelegramTicketNotificationTx(ctx, tx, userID, ticketID, messageID, input.Subject, input.Message, input.NotificationLocation, now); err != nil {
 		return Ticket{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -189,16 +191,21 @@ func (s *Store) GetAdminTicket(ctx context.Context, ticketID int64) (Ticket, err
 }
 
 func (s *Store) ReplyTicketAsUser(ctx context.Context, userID, ticketID int64, message string, now time.Time) (Ticket, error) {
-	return s.replyTicket(ctx, userID, ticketID, userID, true, message, now)
+	return s.ReplyTicketAsUserWithNotificationLocation(ctx, userID, ticketID, message, "", now)
+}
+
+func (s *Store) ReplyTicketAsUserWithNotificationLocation(ctx context.Context, userID, ticketID int64, message, notificationLocation string, now time.Time) (Ticket, error) {
+	return s.replyTicket(ctx, userID, ticketID, userID, true, message, notificationLocation, now)
 }
 
 func (s *Store) ReplyTicketAsAdmin(ctx context.Context, adminID, ticketID int64, message string, now time.Time) (Ticket, error) {
-	return s.replyTicket(ctx, 0, ticketID, adminID, false, message, now)
+	return s.replyTicket(ctx, 0, ticketID, adminID, false, message, "", now)
 }
 
-func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int64, requireOpen bool, message string, now time.Time) (Ticket, error) {
+func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int64, requireOpen bool, message, notificationLocation string, now time.Time) (Ticket, error) {
 	message = strings.TrimSpace(message)
-	if ticketID < 1 || authorID < 1 || (ownerID < 1 && requireOpen) || !validTicketMessage(message) {
+	location, validLocation := normalizeTelegramNotificationLocation(notificationLocation)
+	if ticketID < 1 || authorID < 1 || (ownerID < 1 && requireOpen) || !validTicketMessage(message) || !validLocation {
 		return Ticket{}, fmt.Errorf("%w: invalid ticket reply", ErrInvalidInput)
 	}
 	defer s.lockWrite()()
@@ -207,7 +214,7 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 		return Ticket{}, fmt.Errorf("begin ticket reply: %w", err)
 	}
 	defer tx.Rollback()
-	updated, err := replyTicketTx(ctx, tx, ownerID, ticketID, authorID, requireOpen, message, now)
+	updated, err := replyTicketTx(ctx, tx, ownerID, ticketID, authorID, requireOpen, message, location, now)
 	if err != nil {
 		return Ticket{}, err
 	}
@@ -217,7 +224,7 @@ func (s *Store) replyTicket(ctx context.Context, ownerID, ticketID, authorID int
 	return updated, nil
 }
 
-func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID int64, requireOpen bool, message string, now time.Time) (Ticket, error) {
+func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID int64, requireOpen bool, message, notificationLocation string, now time.Time) (Ticket, error) {
 	query := `SELECT id, user_id, '', subject, level, status, reply_status, last_reply_user_id, created_at, updated_at FROM tickets WHERE id = ?`
 	args := []any{ticketID}
 	if ownerID > 0 {
@@ -278,8 +285,11 @@ func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID 
 	if err != nil {
 		return Ticket{}, err
 	}
-	if authorID == ticket.UserID {
-		if err := enqueueTelegramTicketNotificationTx(ctx, tx, ticket.UserID, ticket.ID, messageID, ticket.Subject, message, now); err != nil {
+	// The operation kind, not coincidental user-ID equality, determines whether
+	// this is a user reply. An administrator can reply to their own ticket and
+	// the legacy plugin does not emit the user-reply notification for that path.
+	if requireOpen {
+		if err := enqueueTelegramTicketNotificationTx(ctx, tx, ticket.UserID, ticket.ID, messageID, ticket.Subject, message, notificationLocation, now); err != nil {
 			return Ticket{}, err
 		}
 	}

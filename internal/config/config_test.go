@@ -61,6 +61,8 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	t.Setenv("XBOARD_WEB_ROOT", filepath.Join(t.TempDir(), "web"))
 	legacyAppTemplate := filepath.Join(t.TempDir(), "legacy-app-clash.yaml")
 	t.Setenv("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE", legacyAppTemplate)
+	ip2RegionFile := filepath.Join(t.TempDir(), "ip2region.xdb")
+	t.Setenv("XBOARD_IP2REGION_XDB_FILE", ip2RegionFile)
 
 	settings, err := Load()
 	if err != nil {
@@ -68,11 +70,21 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	}
 	if settings.Address != "127.0.0.1:9090" || settings.DatabaseDSN != "file:test.db" || !settings.CookieSecure || settings.SchedulerInterval != 2*time.Second ||
 		settings.LegacyAdminPath != "53815c85" || !settings.WebSocketEnabled || settings.WebSocketURL != "wss://panel.example.test/ws" || settings.NodePushInterval != 15 || settings.NodePullInterval != 30 || settings.WebRoot == "" ||
-		settings.LegacyAppClashTemplateFile != legacyAppTemplate {
+		settings.LegacyAppClashTemplateFile != legacyAppTemplate || settings.IP2RegionXDBFile != ip2RegionFile {
 		t.Fatalf("unexpected settings: %#v", settings)
 	}
 	if len(settings.AllowedOrigins) != 2 || settings.AllowedOrigins[1] != "https://admin.example.test" {
 		t.Fatalf("allowed origins = %#v", settings.AllowedOrigins)
+	}
+}
+
+func TestLoadRejectsRelativeIP2RegionFile(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_IP2REGION_XDB_FILE", "data/ip2region.xdb")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative Ip2Region XDB file")
 	}
 }
 

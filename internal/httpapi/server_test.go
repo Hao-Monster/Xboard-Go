@@ -542,6 +542,14 @@ func newTestAPIWithTelegram(t *testing.T, telegramClient telegrambot.Client) (ht
 }
 
 func newTestAPIWithExtendedOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool, telegramClient telegrambot.Client) (http.Handler, *store.Store) {
+	return newTestAPIWithAllOptions(t, function, protectInvitations, captchaVerifier, gateway, enableAttachments, telegramClient, nil)
+}
+
+func newTestAPIWithTicketRegionResolver(t *testing.T, resolver ticketRegionResolver) (http.Handler, *store.Store) {
+	return newTestAPIWithAllOptions(t, nil, true, nil, nil, false, nil, resolver)
+}
+
+func newTestAPIWithAllOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool, telegramClient telegrambot.Client, regionResolver ticketRegionResolver) (http.Handler, *store.Store) {
 	t.Helper()
 	database := cloneHTTPAPITestDatabase(t)
 	hasher := newHTTPAPITestPasswordHasher()
@@ -612,6 +620,7 @@ func newTestAPIWithExtendedOptions(t *testing.T, function func(*http.Request) (*
 		Attachments:                attachmentService,
 		BulkOperations:             bulkService,
 		TelegramBot:                telegramClient,
+		TicketRegionResolver:       regionResolver,
 	})
 	return handler, database
 }

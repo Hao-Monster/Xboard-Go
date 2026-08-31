@@ -23,6 +23,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
+	"github.com/Hao-Monster/Xboard-Go/internal/geoip"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
 	"github.com/Hao-Monster/Xboard-Go/internal/legacymigration"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
@@ -57,6 +58,14 @@ func main() {
 	if err != nil {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
+	}
+	var ticketRegionResolver *geoip.Resolver
+	if settings.IP2RegionXDBFile != "" {
+		ticketRegionResolver, err = geoip.OpenLegacy(settings.IP2RegionXDBFile)
+		if err != nil {
+			logger.Error("initialize pinned Ip2Region data", "error", err)
+			os.Exit(1)
+		}
 	}
 	if err := prepareSQLiteDirectory(settings.DatabaseDSN); err != nil {
 		logger.Error("prepare database directory", "error", err)
@@ -239,6 +248,7 @@ func main() {
 		Attachments:                attachmentService,
 		BulkOperations:             bulkService,
 		LegacyAppClashRenderer:     legacyAppClashRenderer,
+		TicketRegionResolver:       ticketRegionResolver,
 	})
 	if settings.WebRoot != "" {
 		handler, err = webui.New(settings.WebRoot, handler, func(request *http.Request) (bool, error) {
