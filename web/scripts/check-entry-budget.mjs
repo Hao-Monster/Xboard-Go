@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distRoot = join(webRoot, "dist");
 const html = readFileSync(join(distRoot, "index.html"), "utf8");
-const scripts = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/gu)].map((match) => match[1]);
+const scriptTags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/giu)];
 
-if (scripts.length !== 1) {
-  throw new Error(`expected exactly one initial script in dist/index.html, found ${scripts.length}`);
+if (scriptTags.length !== 1) {
+  throw new Error(`expected exactly one script in dist/index.html, found ${scriptTags.length}`);
 }
+const sourceMatch = scriptTags[0][1].match(/(?:^|\s)src\s*=\s*(["'])([^"']+)\1/iu);
+if (!sourceMatch || scriptTags[0][2].trim() !== "") throw new Error("initial script must have a quoted src and no inline body");
 
-const relativeScript = normalizeLocalSpecifier(scripts[0]);
+const relativeScript = normalizeLocalSpecifier(sourceMatch[2]);
 const scriptPath = resolve(distRoot, relativeScript);
 const rawLimit = 500_000;
 const gzipLimit = 150_000;
