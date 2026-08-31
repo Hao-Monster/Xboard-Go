@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -206,5 +208,80 @@ func TestValidateNodeReportCanonicalizesIPv4MappedAddresses(t *testing.T) {
 	}
 	if len(report.Alive[1]) != 1 || report.Alive[1][0] != "192.0.2.9" {
 		t.Fatalf("canonical alive addresses = %#v", report.Alive[1])
+	}
+}
+
+func TestValidateNodeReportEnforcesEntryAndFieldLimits(t *testing.T) {
+	onlineAtLimit := make(map[string]int64, maxReportUsers+1)
+	for userID := 1; userID <= maxReportUsers; userID++ {
+		onlineAtLimit[strconv.Itoa(userID)] = 0
+	}
+	if _, err := validateNodeReport(nodeReportPayload{Online: onlineAtLimit}); err != nil {
+		t.Fatalf("online report at user limit error = %v", err)
+	}
+	onlineAtLimit[strconv.Itoa(maxReportUsers+1)] = 0
+	if _, err := validateNodeReport(nodeReportPayload{Online: onlineAtLimit}); err == nil || !strings.Contains(err.Error(), "用户数量") {
+		t.Fatalf("online report above user limit error = %v", err)
+	}
+
+	devicesAtLimit := make([]string, maxDevicesPerUser)
+	for index := range devicesAtLimit {
+		devicesAtLimit[index] = "192.0.2.20"
+	}
+	report, err := validateNodeReport(nodeReportPayload{Alive: map[string][]string{"1": devicesAtLimit}})
+	if err != nil || len(report.Alive[1]) != 1 {
+		t.Fatalf("alive report at per-user limit = %#v, err=%v", report.Alive, err)
+	}
+	devicesAboveLimit := append(devicesAtLimit, "192.0.2.21")
+	if _, err := validateNodeReport(nodeReportPayload{Alive: map[string][]string{"1": devicesAboveLimit}}); err == nil || !strings.Contains(err.Error(), "设备数量") {
+		t.Fatalf("alive report above per-user limit error = %v", err)
+	}
+	aliveAtLimit := make(map[string][]string, maxReportDevices/maxDevicesPerUser+1)
+	fullDeviceUsers := maxReportDevices / maxDevicesPerUser
+	for userID := 1; userID <= fullDeviceUsers; userID++ {
+		aliveAtLimit[strconv.Itoa(userID)] = devicesAtLimit
+	}
+	remainderDevices := make([]string, maxReportDevices%maxDevicesPerUser)
+	for index := range remainderDevices {
+		remainderDevices[index] = "192.0.2.22"
+	}
+	lastDeviceUserID := strconv.Itoa(fullDeviceUsers + 1)
+	aliveAtLimit[lastDeviceUserID] = remainderDevices
+	if _, err := validateNodeReport(nodeReportPayload{Alive: aliveAtLimit}); err != nil {
+		t.Fatalf("alive report at aggregate device limit error = %v", err)
+	}
+	aliveAtLimit[lastDeviceUserID] = append(remainderDevices, "192.0.2.23")
+	if _, err := validateNodeReport(nodeReportPayload{Alive: aliveAtLimit}); err == nil || !strings.Contains(err.Error(), "设备数量") {
+		t.Fatalf("alive report above aggregate device limit error = %v", err)
+	}
+
+	if _, err := validateNodeReport(nodeReportPayload{Online: map[string]int64{"1": 1_000_000}}); err != nil {
+		t.Fatalf("online count at limit error = %v", err)
+	}
+	if _, err := validateNodeReport(nodeReportPayload{Online: map[string]int64{"1": 1_000_001}}); err == nil || !strings.Contains(err.Error(), "连接数") {
+		t.Fatalf("online count above limit error = %v", err)
+	}
+
+	const reportID = "f0402358-4b0f-4f9b-92da-e6a9011001d4"
+	if _, err := validateNodeReport(nodeReportPayload{ReportID: reportID, Traffic: map[string][2]int64{"1": {maxTrafficEntry, maxTrafficEntry}}}); err != nil {
+		t.Fatalf("traffic at per-entry limit error = %v", err)
+	}
+	if _, err := validateNodeReport(nodeReportPayload{ReportID: reportID, Traffic: map[string][2]int64{"1": {maxTrafficEntry + 1, 0}}}); err == nil || !strings.Contains(err.Error(), "用户流量") {
+		t.Fatalf("traffic above per-entry limit error = %v", err)
+	}
+
+	coresAtLimit, err := json.Marshal(map[string]any{"cpu_per_core": make([]float64, maxCPUCoreMetrics)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateNodeReport(nodeReportPayload{Metrics: coresAtLimit}); err != nil {
+		t.Fatalf("CPU metrics at limit error = %v", err)
+	}
+	coresAboveLimit, err := json.Marshal(map[string]any{"cpu_per_core": make([]float64, maxCPUCoreMetrics+1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateNodeReport(nodeReportPayload{Metrics: coresAboveLimit}); err == nil || !strings.Contains(err.Error(), "cpu_per_core") {
+		t.Fatalf("CPU metrics above limit error = %v", err)
 	}
 }
