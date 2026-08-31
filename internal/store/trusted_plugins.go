@@ -45,6 +45,9 @@ func (s *Store) ListTrustedPlugins(ctx context.Context) ([]TrustedPlugin, error)
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate trusted plugins: %w", err)
 	}
+	if len(plugins) != 7 {
+		return nil, fmt.Errorf("trusted plugin inventory is incomplete: got %d entries", len(plugins))
+	}
 	return plugins, nil
 }
 
