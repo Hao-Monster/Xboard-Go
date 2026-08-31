@@ -390,6 +390,30 @@ different prior snapshot fail before commit. A canonical checksum verifies the
 atomic import and repeating the same source verifies the recorded rollback
 archive without rewriting credentials.
 
+Legacy invitation-code inventory can be imported after human accounts from the
+same snapshot. IDs, owners, page-view counts, active/consumed state, and
+timestamps are preserved. Because the old database stored plaintext codes, the
+command requires `XBOARD_SETTINGS_ENCRYPTION_KEY` and converts every code to the
+current purpose-isolated HMAC index and owner-bound AES-GCM ciphertext before
+the target backup or write:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-invitation-codes \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-invitation-codes.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The target invitation-code table must be empty. The reader accepts at most two
+million rows and 128 MiB of code data, rejects duplicate or non-eight-character
+alphanumeric codes, and never writes codes to command output or the migration
+ledger. Repeating the same source verifies immutable code identity, ciphertext,
+the imported ID range, and the rollback archive without rejecting legitimate
+later PV increments, code consumption, or newly generated codes.
+
 Ticket history can then be imported after the human-account slice from the
 same standalone snapshot. The target tickets, messages, reply-mail outbox, and
 reply throttle must all be empty. Ticket and message identifiers, ownership,
