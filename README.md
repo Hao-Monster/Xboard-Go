@@ -624,6 +624,19 @@ one transaction, verifies the resulting checksum, and verifies the rollback
 archive again on idempotent replay. A different source or later registry drift
 is rejected.
 
+The modern administrator API manages the same registry through
+`GET /api/v1/admin/plugins` and revision-safe
+`PATCH /api/v1/admin/plugins/{code}`. The verified legacy administrator UI can
+use its existing `/plugin/types`, `/plugin/getPlugins`, `/plugin/enable`,
+`/plugin/disable`, and Telegram-only `/plugin/config` routes under the dynamic
+secure administrator path. These compatibility responses retain the fixed old
+metadata and configuration-form schema while all writes still use the trusted
+registry, administrator authentication, origin checks, bounded strict JSON,
+optimistic revisions, and normalized audit routes. Runtime upload, deletion,
+installation, uninstallation, and upgrade requests return an explicit conflict
+without reading or executing the supplied package; trusted adapters continue
+to ship only through reviewed application releases.
+
 Legacy registration, login-limit, invitation, CAPTCHA, and ticket-reply policy
 settings use another independent offline slice. The importer reads only the 24
 fixed `v2_settings` keys, requires pristine target policy fields, and validates
