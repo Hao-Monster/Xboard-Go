@@ -9,7 +9,8 @@ const apiProxy = {
   "/client-link": apiProxyTarget,
   "/guide": apiProxyTarget,
   "/guide-attachments": apiProxyTarget,
-  "/knowledge-attachments": apiProxyTarget
+  "/knowledge-attachments": apiProxyTarget,
+  "/s": apiProxyTarget
 };
 
 export default defineConfig({

@@ -179,7 +179,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await expect(dialog.getByRole("status")).toContainText("订阅凭据已重置");
 	const expiredSubscription = await page.request.get(copiedSubscriptionURL);
 	expect(expiredSubscription.status()).toBe(403);
-	await dialog.getByRole("button", { name: "关闭" }).click();
+	await dialog.getByRole("button", { name: "关闭", exact: true }).click();
 
 	await page.getByRole("button", { name: `查看详情：${email}` }).click();
 	dialog = page.getByRole("dialog", { name: "用户详情" });
