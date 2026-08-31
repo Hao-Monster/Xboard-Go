@@ -445,6 +445,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.legacyListAdminUsers)
 	legacyAdmin.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/fetch", api.legacyListAdminUsers)
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/update", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyUpdateAdminUser)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/resetSecret", api.auditLegacyAdminUserMutations(api.requireTrustedOrigin(http.HandlerFunc(api.legacyResetAdminUserSubscriptionSecurity))))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/generate", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyGenerateAdminUsers)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/sendMail", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkMail)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/dumpCSV", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkCSV)))
@@ -681,6 +682,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/users/{userID}", api.updateAdminUser)
 	admin.HandleFunc("PUT /api/v1/admin/users/{userID}/password", api.resetAdminUserPassword)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}/subscription-url", api.getAdminUserSubscriptionURL)
+	admin.HandleFunc("POST /api/v1/admin/users/{userID}/subscription-security/reset", api.resetAdminUserSubscriptionSecurity)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}/orders", api.listAdminUserOrders)
 	admin.HandleFunc("POST /api/v1/admin/users/{userID}/orders", api.assignAdminUserOrder)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}/invitations", api.listAdminUserInvitations)
@@ -807,7 +809,7 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := ""
-		for _, candidate := range []string{"update", "generate", "sendMail", "dumpCSV", "ban"} {
+		for _, candidate := range []string{"update", "resetSecret", "generate", "sendMail", "dumpCSV", "ban"} {
 			if strings.HasSuffix(r.URL.Path, "/user/"+candidate) {
 				action = candidate
 				break

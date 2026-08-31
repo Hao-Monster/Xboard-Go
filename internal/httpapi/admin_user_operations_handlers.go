@@ -30,6 +30,58 @@ func (s *server) getAdminUserSubscriptionURL(w http.ResponseWriter, r *http.Requ
 	writeSuccess(w, http.StatusOK, map[string]string{"subscribe_url": subscribeURL})
 }
 
+func (s *server) resetAdminUserSubscriptionSecurity(w http.ResponseWriter, r *http.Request) {
+	userID, ok := pathID(w, r, "userID")
+	if !ok {
+		return
+	}
+	var input struct {
+		Revision int64 `json:"revision"`
+	}
+	if !decodeJSONLimit(w, r, &input, 1024) {
+		return
+	}
+	if input.Revision < 1 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "revision 必须是正整数", map[string]string{"revision": "格式无效"})
+		return
+	}
+	if err := s.rotateAdminUserSubscriptionSecurity(r, userID, input.Revision); err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, true)
+}
+
+func (s *server) legacyResetAdminUserSubscriptionSecurity(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ID int64 `json:"id"`
+	}
+	if !decodeJSONLimit(w, r, &input, 1024) {
+		return
+	}
+	account, err := s.store.GetAdminUser(r.Context(), input.ID)
+	if err != nil {
+		writeLegacyAdminUserOperationError(w, err)
+		return
+	}
+	if err := s.rotateAdminUserSubscriptionSecurity(r, input.ID, account.Revision); err != nil {
+		writeLegacyAdminUserOperationError(w, err)
+		return
+	}
+	writeLegacySuccess(w, http.StatusOK, true)
+}
+
+func (s *server) rotateAdminUserSubscriptionSecurity(r *http.Request, userID, revision int64) error {
+	_, mutation, err := s.store.ResetSubscriptionSecurityAtRevision(r.Context(), userID, revision, s.now())
+	if err != nil {
+		return err
+	}
+	if s.hub != nil {
+		s.hub.NotifyUserMutation(r.Context(), userID, mutation.PreviousUUID, mutation.GroupID, mutation.GroupID, true)
+	}
+	return nil
+}
+
 func (s *server) listAdminUserOrders(w http.ResponseWriter, r *http.Request) {
 	userID, page, pageSize, ok := adminUserOperationPage(w, r)
 	if !ok {
@@ -333,6 +385,8 @@ func writeLegacyAdminUserOperationError(w http.ResponseWriter, err error) {
 		writeLegacyOrderFail(w, http.StatusNotFound, "用户不存在")
 	case errors.Is(err, store.ErrTrafficResetUnavailable):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "该用户当前不能重置流量")
+	case errors.Is(err, store.ErrRevisionConflict):
+		writeLegacyOrderFail(w, http.StatusConflict, "用户状态已被其他管理员修改，请刷新后重试")
 	case errors.Is(err, store.ErrConflict):
 		writeLegacyOrderFail(w, http.StatusConflict, "重复请求与原请求不一致")
 	case errors.Is(err, store.ErrInvalidInput):

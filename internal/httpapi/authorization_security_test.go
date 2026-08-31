@@ -80,6 +80,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 	legacyFamilies := []string{
 		"/api/v2/admin/order/fetch",
 		"/api/v2/admin/user/fetch",
+		"/api/v2/admin/user/resetSecret",
 		"/api/v2/admin/traffic-reset/user/1/history",
 		"/api/v2/admin/stat/getStatUser",
 		"/api/v2/admin/coupon/fetch",

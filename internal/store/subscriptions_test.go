@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -167,6 +168,14 @@ func TestResetSubscriptionSecurityAtomicallyRotatesBothSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, node := createReportingNode(t, database, now.Add(-time.Hour))
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO node_device_ips (node_id,user_id,ip,expires_at) VALUES (?,?,'192.0.2.90',?);
+		INSERT INTO node_user_online (node_id,user_id,connections,expires_at) VALUES (?,?,2,?);
+		UPDATE users SET online_count=2 WHERE id=?
+	`, node.ID, created.ID, now.Add(time.Hour).Unix(), node.ID, created.ID, now.Add(time.Hour).Unix(), created.ID); err != nil {
+		t.Fatal(err)
+	}
 	rotated, mutation, err := database.ResetSubscriptionSecurity(ctx, created.ID, now)
 	if err != nil {
 		t.Fatalf("ResetSubscriptionSecurity() error = %v", err)
@@ -192,6 +201,79 @@ func TestResetSubscriptionSecurityAtomicallyRotatesBothSecrets(t *testing.T) {
 	}
 	if _, _, err := database.ResetSubscriptionSecurity(ctx, 0, now); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("invalid reset error = %v, want ErrInvalidInput", err)
+	}
+	var devices, onlineRows, onlineCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_device_ips WHERE user_id=?`, created.ID).Scan(&devices); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_user_online WHERE user_id=?`, created.ID).Scan(&onlineRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT online_count FROM users WHERE id=?`, created.ID).Scan(&onlineCount); err != nil {
+		t.Fatal(err)
+	}
+	if devices != 0 || onlineRows != 0 || onlineCount != 0 {
+		t.Fatalf("subscription reset retained runtime state: devices=%d online_rows=%d online_count=%d", devices, onlineRows, onlineCount)
+	}
+}
+
+func TestAdministratorSubscriptionSecurityResetUsesRevisionCAS(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_100_000, 0)
+	created, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "administrator-rotate-subscription@example.test", PasswordHash: "opaque", TransferEnable: 1_000,
+	}, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.GetSubscriptionAccount(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	errorsByRequest := make(chan error, 2)
+	var workers sync.WaitGroup
+	for index := 0; index < 2; index++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-start
+			_, _, resetErr := database.ResetSubscriptionSecurityAtRevision(ctx, created.ID, created.Revision, now)
+			errorsByRequest <- resetErr
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(errorsByRequest)
+	succeeded, conflicted := 0, 0
+	for resetErr := range errorsByRequest {
+		switch {
+		case resetErr == nil:
+			succeeded++
+		case errors.Is(resetErr, ErrRevisionConflict):
+			conflicted++
+		default:
+			t.Fatalf("concurrent reset error = %v", resetErr)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent resets succeeded=%d conflicted=%d, want 1/1", succeeded, conflicted)
+	}
+	after, err := database.GetSubscriptionAccount(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.UUID == before.UUID || after.SubscriptionToken == before.SubscriptionToken {
+		t.Fatalf("administrator reset did not rotate both credentials: before=%#v after=%#v", before, after)
+	}
+	updated, err := database.GetAdminUser(ctx, created.ID)
+	if err != nil || updated.Revision != created.Revision+1 {
+		t.Fatalf("administrator reset revision=(%#v,%v), want %d", updated, err, created.Revision+1)
+	}
+	if _, err := database.FindSubscriptionAccount(ctx, before.SubscriptionToken); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old token lookup error = %v, want ErrNotFound", err)
 	}
 }
 

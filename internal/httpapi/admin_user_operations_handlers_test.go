@@ -109,6 +109,105 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 	}
 }
 
+func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	administrator := loginAdmin(t, api)
+	account, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "admin-reset-subscription@example.test", PasswordHash: "hash", TransferEnable: 8 << 30,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldToken, err := database.GetAdminUserSubscriptionToken(ctx, account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resetPath := fmt.Sprintf("/api/v1/admin/users/%d/subscription-security/reset", account.ID)
+	reset := administrator.request(t, api, http.MethodPost, resetPath, fmt.Sprintf(`{"revision":%d}`, account.Revision))
+	if reset.Code != http.StatusOK || !containsAll(reset.Body.String(), `"status":"success"`, `"data":true`) || reset.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("administrator subscription reset status=%d headers=%v body=%s", reset.Code, reset.Header(), reset.Body)
+	}
+	updated, err := database.GetAdminUser(ctx, account.ID)
+	if err != nil || updated.Revision != account.Revision+1 {
+		t.Fatalf("administrator subscription reset user=(%#v,%v)", updated, err)
+	}
+	newToken, err := database.GetAdminUserSubscriptionToken(ctx, account.ID)
+	if err != nil || newToken == oldToken {
+		t.Fatalf("administrator subscription reset token changed=%t err=%v", newToken != oldToken, err)
+	}
+	if old := requestSubscription(api, "/s/"+oldToken); old.Code != http.StatusForbidden {
+		t.Fatalf("old subscription after administrator reset status=%d body=%s", old.Code, old.Body)
+	}
+	if current := requestSubscription(api, "/s/"+newToken); current.Code != http.StatusOK {
+		t.Fatalf("new subscription after administrator reset status=%d body=%s", current.Code, current.Body)
+	}
+	stale := administrator.request(t, api, http.MethodPost, resetPath, fmt.Sprintf(`{"revision":%d}`, account.Revision))
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale administrator subscription reset status=%d body=%s", stale.Code, stale.Body)
+	}
+	invalid := administrator.request(t, api, http.MethodPost, resetPath, fmt.Sprintf(`{"revision":%d,"unexpected":true}`, updated.Revision))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("administrator subscription reset accepted unknown field status=%d body=%s", invalid.Code, invalid.Body)
+	}
+
+	legacyAccount, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "legacy-admin-reset-subscription@example.test", PasswordHash: "hash", TransferEnable: 8 << 30,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyOldToken, err := database.GetAdminUserSubscriptionToken(ctx, legacyAccount.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	foreignOriginRequest := httptest.NewRequest(http.MethodPost, "/api/v2/admin/user/resetSecret", strings.NewReader(fmt.Sprintf(`{"id":%d}`, legacyAccount.ID)))
+	foreignOriginRequest.Header.Set("Authorization", authorization)
+	foreignOriginRequest.Header.Set("Content-Type", "application/json")
+	foreignOriginRequest.Header.Set("Origin", "https://untrusted.example.test")
+	foreignOriginResponse := httptest.NewRecorder()
+	api.ServeHTTP(foreignOriginResponse, foreignOriginRequest)
+	if foreignOriginResponse.Code != http.StatusForbidden {
+		t.Fatalf("legacy administrator reset accepted foreign origin status=%d body=%s", foreignOriginResponse.Code, foreignOriginResponse.Body)
+	}
+	if currentToken, tokenErr := database.GetAdminUserSubscriptionToken(ctx, legacyAccount.ID); tokenErr != nil || currentToken != legacyOldToken {
+		t.Fatalf("foreign-origin legacy reset mutated token changed=%t err=%v", currentToken != legacyOldToken, tokenErr)
+	}
+	legacyReset := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/resetSecret", authorization, fmt.Sprintf(`{"id":%d}`, legacyAccount.ID))
+	if legacyReset.Code != http.StatusOK || !containsAll(legacyReset.Body.String(), `"status":"success"`, `"message":"操作成功"`, `"data":true`) {
+		t.Fatalf("legacy administrator subscription reset status=%d body=%s", legacyReset.Code, legacyReset.Body)
+	}
+	legacyNewToken, err := database.GetAdminUserSubscriptionToken(ctx, legacyAccount.ID)
+	if err != nil || legacyNewToken == legacyOldToken {
+		t.Fatalf("legacy administrator reset token changed=%t err=%v", legacyNewToken != legacyOldToken, err)
+	}
+	if old := requestSubscription(api, "/s/"+legacyOldToken); old.Code != http.StatusForbidden {
+		t.Fatalf("old legacy subscription after administrator reset status=%d body=%s", old.Code, old.Body)
+	}
+
+	audits, err := database.ListAdminAuditLogs(ctx, store.AdminAuditFilter{Page: 1, PageSize: 20, Query: "subscription-security/reset"})
+	if err != nil || audits.Total != 3 {
+		t.Fatalf("modern administrator subscription reset audits=%#v err=%v", audits, err)
+	}
+	for _, audit := range audits.Items {
+		if audit.Route != "/api/v1/admin/users/{userID}/subscription-security/reset" || strings.Contains(audit.Route, fmt.Sprint(account.ID)) {
+			t.Fatalf("unsafe modern administrator subscription reset audit=%#v", audit)
+		}
+	}
+	legacyAudits, err := database.ListAdminAuditLogs(ctx, store.AdminAuditFilter{Page: 1, PageSize: 20, Query: "resetSecret"})
+	if err != nil || legacyAudits.Total != 2 {
+		t.Fatalf("legacy administrator subscription reset audits=%#v err=%v", legacyAudits, err)
+	}
+	for _, audit := range legacyAudits.Items {
+		if audit.Route != "/api/v2/{secure_admin}/user/resetSecret" || strings.Contains(audit.Route, "/api/v2/admin/") {
+			t.Fatalf("unsafe legacy administrator subscription reset audit=%#v", audit)
+		}
+	}
+}
+
 func TestLegacyAdminTrafficResetAndTrafficHistoryCompatibility(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
