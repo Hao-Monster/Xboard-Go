@@ -129,18 +129,20 @@ func assertQueryPlanContains(t *testing.T, database *Store, query, expected stri
 	}
 	defer rows.Close()
 	indexed := false
+	details := make([]string, 0, 4)
 	for rows.Next() {
 		var id, parent, unused int
 		var detail string
 		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
 			t.Fatal(err)
 		}
+		details = append(details, detail)
 		indexed = indexed || strings.Contains(detail, expected)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 	if !indexed {
-		t.Fatalf("query plan for %q did not contain %q", query, expected)
+		t.Fatalf("query plan for %q did not contain %q: %v", query, expected, details)
 	}
 }

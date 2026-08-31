@@ -53,14 +53,22 @@ func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicket
 	if err != nil {
 		return Ticket{}, fmt.Errorf("read ticket id: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	messageResult, err := tx.ExecContext(ctx, `
 		INSERT INTO ticket_messages (ticket_id, user_id, message, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, ticketID, userID, input.Message, now.Unix(), now.Unix()); err != nil {
+	`, ticketID, userID, input.Message, now.Unix(), now.Unix())
+	if err != nil {
 		return Ticket{}, fmt.Errorf("insert initial ticket message: %w", err)
+	}
+	messageID, err := messageResult.LastInsertId()
+	if err != nil {
+		return Ticket{}, fmt.Errorf("read initial ticket message id: %w", err)
 	}
 	ticket, err := getTicketTx(ctx, tx, ticketID, false)
 	if err != nil {
+		return Ticket{}, err
+	}
+	if err := enqueueTelegramTicketNotificationTx(ctx, tx, userID, ticketID, messageID, input.Subject, input.Message, now); err != nil {
 		return Ticket{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -269,6 +277,11 @@ func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID 
 	updated, err := getTicketTx(ctx, tx, ticketID, false)
 	if err != nil {
 		return Ticket{}, err
+	}
+	if authorID == ticket.UserID {
+		if err := enqueueTelegramTicketNotificationTx(ctx, tx, ticket.UserID, ticket.ID, messageID, ticket.Subject, message, now); err != nil {
+			return Ticket{}, err
+		}
 	}
 	return updated, nil
 }

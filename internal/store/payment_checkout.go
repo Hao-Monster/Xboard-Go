@@ -317,6 +317,9 @@ func (s *Store) CompletePaymentWebhook(ctx context.Context, input CompletePaymen
 	if err := completeOrderTx(ctx, tx, &order, input.ExternalID, now); err != nil {
 		return Order{}, err
 	}
+	if err := enqueueTelegramPaymentNotificationTx(ctx, tx, order, method, now); err != nil {
+		return Order{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete payment webhook: %w", err)
 	}

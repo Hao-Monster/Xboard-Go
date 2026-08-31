@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 56
+const currentSchemaVersion = 57
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -411,6 +411,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v56: %w", err)
 		}
 		version = 56
+	}
+	if version < 57 {
+		if err := applySchemaV57(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v57: %w", err)
+		}
+		version = 57
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2534,6 +2540,57 @@ CREATE INDEX idx_telegram_message_outbox_failed
     ON telegram_message_outbox(failed_at DESC, id DESC)
     WHERE failed_at IS NOT NULL;
 `
+
+const schemaV57 = `
+UPDATE telegram_message_outbox
+SET cancelled_at=COALESCE(cancelled_at,updated_at),claim_token=NULL,claimed_at=NULL,
+    last_error='cancelled during trusted notification recipient migration'
+WHERE source_kind IN ('ticket','payment')
+  AND sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL;
+
+CREATE TRIGGER IF NOT EXISTS telegram_message_outbox_recipient_insert
+BEFORE INSERT ON telegram_message_outbox
+WHEN (NEW.source_kind='command' AND NEW.recipient_user_id IS NOT NULL)
+  OR (NEW.source_kind IN ('ticket','payment') AND NEW.recipient_user_id IS NULL)
+BEGIN
+    SELECT RAISE(ABORT,'invalid Telegram outbox recipient');
+END;
+
+CREATE TRIGGER IF NOT EXISTS telegram_message_outbox_recipient_update
+BEFORE UPDATE OF source_kind,recipient_user_id ON telegram_message_outbox
+WHEN (NEW.source_kind='command' AND NEW.recipient_user_id IS NOT NULL)
+  OR (NEW.source_kind IN ('ticket','payment') AND NEW.recipient_user_id IS NULL)
+BEGIN
+    SELECT RAISE(ABORT,'invalid Telegram outbox recipient');
+END;
+
+CREATE INDEX IF NOT EXISTS idx_users_telegram_admin_notify
+    ON users(telegram_id)
+    WHERE telegram_id IS NOT NULL
+      AND account_kind='human'
+      AND (is_admin=1 OR is_staff=1);
+`
+
+func applySchemaV57(ctx context.Context, tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('telegram_message_outbox') WHERE name='recipient_user_id')
+	`).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect Telegram notification recipient column: %w", err)
+	}
+	if !exists {
+		if _, err := tx.ExecContext(ctx, `
+			ALTER TABLE telegram_message_outbox ADD COLUMN recipient_user_id INTEGER
+			CHECK (recipient_user_id IS NULL OR recipient_user_id > 0)
+		`); err != nil {
+			return fmt.Errorf("add Telegram notification recipient column: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, schemaV57); err != nil {
+		return err
+	}
+	return nil
+}
 
 func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {

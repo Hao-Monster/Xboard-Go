@@ -14,8 +14,8 @@ func TestAdminUserSchemaV37AddsProfileFieldsAndDirectoryIndexes(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 
-	if CurrentSchemaVersion() != 56 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 56", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 57 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 57", CurrentSchemaVersion())
 	}
 	for _, column := range []string{"telegram_id", "remind_expire", "remind_traffic", "remarks"} {
 		var found int
@@ -74,6 +74,7 @@ func TestSchemaV37PreservesV36UsersAndBackfillsReminderDefaults(t *testing.T) {
 		DROP INDEX idx_users_directory_created_at;
 		DROP INDEX idx_users_reminder_expire;
 		DROP INDEX idx_users_reminder_traffic;
+		DROP INDEX idx_users_telegram_admin_notify;
 		DROP INDEX idx_users_unique_telegram_id;
 		ALTER TABLE users DROP COLUMN telegram_id;
 		ALTER TABLE users DROP COLUMN remind_expire;
