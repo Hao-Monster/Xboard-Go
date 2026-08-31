@@ -570,6 +570,27 @@ export interface PaymentCheckout {
   total_amount: number;
 }
 
+export type TrustedPluginCode = "telegram" | "alipay_f2f" | "btcpay" | "coin_payments" | "coinbase" | "epay" | "mgate";
+export type TrustedPluginType = "feature" | "payment";
+export type TrustedPluginConfig = Record<string, string | boolean>;
+
+export interface TrustedPlugin {
+  code: TrustedPluginCode;
+  name: string;
+  type: TrustedPluginType;
+  version: string;
+  enabled: boolean;
+  config: TrustedPluginConfig;
+  revision: number;
+  updated_at: string;
+}
+
+export interface TrustedPluginInput {
+  revision: number;
+  enabled: boolean;
+  config: TrustedPluginConfig;
+}
+
 export type CouponType = 1 | 2;
 
 export interface Coupon {
@@ -1688,6 +1709,8 @@ export interface AdminAPI {
   setPlanState: (id: number, revision: number, show: boolean, sell: boolean, renew: boolean) => Promise<Plan>;
   reorderPlans: (ids: number[]) => Promise<Plan[]>;
   deletePlan: (id: number) => Promise<void>;
+  listTrustedPlugins: () => Promise<TrustedPlugin[]>;
+  updateTrustedPlugin: (code: TrustedPluginCode, input: TrustedPluginInput) => Promise<TrustedPlugin>;
   listPaymentProviders: () => Promise<PaymentProviderDefinition[]>;
   listAdminPayments: (page?: number, pageSize?: number, query?: string) => Promise<PaymentPage>;
   createPayment: (input: PaymentMethodInput) => Promise<PaymentMethod>;
@@ -2079,6 +2102,14 @@ export class APIClient implements AdminAPI {
 
   async deletePlan(id: number): Promise<void> {
     await this.request<void>(`/api/v1/admin/plans/${id}`, { method: "DELETE" });
+  }
+
+  async listTrustedPlugins(): Promise<TrustedPlugin[]> {
+    return this.request<TrustedPlugin[]>("/api/v1/admin/plugins");
+  }
+
+  async updateTrustedPlugin(code: TrustedPluginCode, input: TrustedPluginInput): Promise<TrustedPlugin> {
+    return this.request<TrustedPlugin>(`/api/v1/admin/plugins/${encodeURIComponent(code)}`, { method: "PATCH", body: input });
   }
 
   async listPaymentProviders(): Promise<PaymentProviderDefinition[]> {

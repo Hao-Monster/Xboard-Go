@@ -225,6 +225,22 @@ type SaveMailSettingsInput struct {
 	RemindMailEnabled   bool
 }
 
+type TrustedPlugin struct {
+	Code      string         `json:"code"`
+	Name      string         `json:"name"`
+	Type      string         `json:"type"`
+	Version   string         `json:"version"`
+	Enabled   bool           `json:"enabled"`
+	Config    map[string]any `json:"config"`
+	Revision  int64          `json:"revision"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+type SaveTrustedPluginInput struct {
+	Enabled bool
+	Config  map[string]any
+}
+
 type MailTemplate struct {
 	Name       mailtemplate.Name `json:"name"`
 	Label      string            `json:"label"`

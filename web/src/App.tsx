@@ -28,6 +28,7 @@ const TelegramSettingsPage = lazy(async () => import("./features/settings/Telegr
 const ClientAppSettingsPage = lazy(async () => import("./features/settings/ClientAppSettingsPage").then((module) => ({ default: module.ClientAppSettingsPage })));
 const ThemeManagementPage = lazy(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
+const PluginManagementPage = lazy(async () => import("./features/plugins/PluginManagementPage").then((module) => ({ default: module.PluginManagementPage })));
 const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const DistributorPortal = lazy(async () => import("./features/distributor/DistributorPortal").then((module) => ({ default: module.DistributorPortal })));
@@ -45,7 +46,7 @@ const defaultGuestConfig: GuestConfig = {
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0, theme: defaultThemeAppearance
 };
 type AuthMode = "login" | "register" | "recover";
-type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -234,6 +235,7 @@ export function App() {
           <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => navigateAdminPage("plans")}>套餐管理</button>
           <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => navigateAdminPage("orders")}>订单管理</button>
           <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => navigateAdminPage("distributors")}>分销管理</button>
+          <button className="nav-link" aria-current={page === "plugins" ? "page" : undefined} onClick={() => navigateAdminPage("plugins")}>插件管理</button>
           <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => navigateAdminPage("payments")}>支付配置</button>
           <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => navigateAdminPage("coupons")}>优惠券管理</button>
           <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => navigateAdminPage("gift-cards")}>礼品卡管理</button>
@@ -265,6 +267,7 @@ export function App() {
       {page === "plans" && <PlanManagementPage api={api} />}
       {page === "orders" && <OrderManagementPage api={api} />}
       {page === "distributors" && <Suspense fallback={<div className="app-loading">正在加载分销管理…</div>}><AdminDistributorPage api={api} /></Suspense>}
+      {page === "plugins" && <Suspense fallback={<div className="app-loading">正在加载插件管理…</div>}><PluginManagementPage api={api} onNavigate={navigateAdminPage} /></Suspense>}
       {page === "payments" && <PaymentManagementPage api={api} />}
       {page === "coupons" && <CouponManagementPage api={api} />}
       {page === "gift-cards" && <Suspense fallback={<div className="app-loading">正在加载礼品卡管理…</div>}><GiftCardManagementPage api={api} /></Suspense>}

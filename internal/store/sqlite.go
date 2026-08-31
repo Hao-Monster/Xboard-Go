@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 54
+const currentSchemaVersion = 55
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -399,6 +399,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v54: %w", err)
 		}
 		version = 54
+	}
+	if version < 55 {
+		if _, err := tx.ExecContext(ctx, schemaV55); err != nil {
+			return fmt.Errorf("apply schema v55: %w", err)
+		}
+		version = 55
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2369,6 +2375,116 @@ INSERT OR IGNORE INTO themes (
 );
 
 INSERT OR IGNORE INTO theme_settings(id, active_theme) VALUES (1, 'Xboard');
+`
+
+const schemaV55 = `
+-- No supported schema before v55 contains this table. Recreate any same-name
+-- object instead of inheriting an unversioned extension surface with unknown
+-- constraints, triggers, or executable identities.
+DROP TABLE IF EXISTS trusted_plugins;
+
+CREATE TABLE trusted_plugins (
+    code TEXT PRIMARY KEY CHECK (code IN ('telegram','alipay_f2f','btcpay','coin_payments','coinbase','epay','mgate')),
+    name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 100 AND instr(name, char(0)) = 0),
+    type TEXT NOT NULL CHECK (type IN ('feature','payment')),
+    version TEXT NOT NULL CHECK (length(version) BETWEEN 5 AND 32 AND version NOT GLOB '*[^0-9A-Za-z.+-]*'),
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    config_json TEXT NOT NULL DEFAULT '{}' CHECK (
+        length(CAST(config_json AS BLOB)) BETWEEN 2 AND 32768
+        AND json_valid(config_json) AND json_type(config_json) = 'object'
+    ),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+);
+
+CREATE TRIGGER trusted_plugins_validate_identity_insert
+BEFORE INSERT ON trusted_plugins
+WHEN NOT (
+    (NEW.code = 'telegram' AND NEW.name = 'Telegram Bot' AND NEW.type = 'feature' AND NEW.version = '1.0.1')
+    OR (NEW.code = 'alipay_f2f' AND NEW.name = 'AlipayF2F' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+    OR (NEW.code = 'btcpay' AND NEW.name = 'BTCPay' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+    OR (NEW.code = 'coin_payments' AND NEW.name = 'CoinPayments' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+    OR (NEW.code = 'coinbase' AND NEW.name = 'Coinbase' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+    OR (NEW.code = 'epay' AND NEW.name = 'EPay' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+    OR (NEW.code = 'mgate' AND NEW.name = 'MGate' AND NEW.type = 'payment' AND NEW.version = '1.0.0')
+)
+BEGIN
+    SELECT RAISE(ABORT, 'untrusted plugin identity');
+END;
+
+CREATE TRIGGER trusted_plugins_validate_identity_update
+BEFORE UPDATE OF code, name, type, version ON trusted_plugins
+WHEN NEW.code <> OLD.code OR NEW.name <> OLD.name OR NEW.type <> OLD.type OR NEW.version <> OLD.version
+BEGIN
+    SELECT RAISE(ABORT, 'trusted plugin identity is immutable');
+END;
+
+CREATE TRIGGER trusted_plugins_validate_payment_config_insert
+BEFORE INSERT ON trusted_plugins
+WHEN NEW.type = 'payment' AND NEW.config_json <> '{}'
+BEGIN
+    SELECT RAISE(ABORT, 'payment plugin registry config must be empty');
+END;
+
+CREATE TRIGGER trusted_plugins_validate_payment_config_update
+BEFORE UPDATE OF config_json ON trusted_plugins
+WHEN NEW.type = 'payment' AND NEW.config_json <> '{}'
+BEGIN
+    SELECT RAISE(ABORT, 'payment plugin registry config must be empty');
+END;
+
+CREATE TRIGGER trusted_plugins_validate_telegram_config_insert
+BEFORE INSERT ON trusted_plugins
+WHEN NEW.code = 'telegram' AND (
+    (SELECT COUNT(*) FROM json_each(NEW.config_json)) <> 9
+    OR EXISTS (SELECT 1 FROM json_each(NEW.config_json) WHERE key NOT IN (
+        'enable_ticket_notify','enable_payment_notify','start_welcome_title','start_bot_description',
+        'start_bind_guide','start_unbind_guide','start_bind_commands','start_footer','help_text'
+    ))
+    OR json_type(NEW.config_json, '$.enable_ticket_notify') NOT IN ('true','false')
+    OR json_type(NEW.config_json, '$.enable_payment_notify') NOT IN ('true','false')
+    OR EXISTS (
+        SELECT 1 FROM json_each(NEW.config_json)
+        WHERE key NOT IN ('enable_ticket_notify','enable_payment_notify')
+          AND (type <> 'text' OR length(CAST(value AS BLOB)) NOT BETWEEN 1 AND 4096 OR instr(value, char(0)) <> 0)
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'invalid Telegram plugin config');
+END;
+
+CREATE TRIGGER trusted_plugins_validate_telegram_config_update
+BEFORE UPDATE OF config_json ON trusted_plugins
+WHEN NEW.code = 'telegram' AND (
+    (SELECT COUNT(*) FROM json_each(NEW.config_json)) <> 9
+    OR EXISTS (SELECT 1 FROM json_each(NEW.config_json) WHERE key NOT IN (
+        'enable_ticket_notify','enable_payment_notify','start_welcome_title','start_bot_description',
+        'start_bind_guide','start_unbind_guide','start_bind_commands','start_footer','help_text'
+    ))
+    OR json_type(NEW.config_json, '$.enable_ticket_notify') NOT IN ('true','false')
+    OR json_type(NEW.config_json, '$.enable_payment_notify') NOT IN ('true','false')
+    OR EXISTS (
+        SELECT 1 FROM json_each(NEW.config_json)
+        WHERE key NOT IN ('enable_ticket_notify','enable_payment_notify')
+          AND (type <> 'text' OR length(CAST(value AS BLOB)) NOT BETWEEN 1 AND 4096 OR instr(value, char(0)) <> 0)
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'invalid Telegram plugin config');
+END;
+
+INSERT INTO trusted_plugins(code,name,type,version,enabled,config_json,revision,updated_at) VALUES
+('telegram','Telegram Bot','feature','1.0.1',1,
+ '{"enable_ticket_notify":true,"enable_payment_notify":true,"start_welcome_title":"🎉 欢迎使用 XBoard Telegram Bot！","start_bot_description":"🤖 我是您的专属助手，可以帮助您：\\n• 绑定您的 XBoard 账号\\n• 查看流量使用情况\\n• 获取最新订阅链接\\n• 管理账号绑定状态","start_bind_guide":"🔗 请先绑定您的 XBoard 账号：\\n1. 登录您的 XBoard 账户\\n2. 复制您的订阅链接\\n3. 发送 /bind + 订阅链接","start_unbind_guide":"📋 可用命令：\\n/traffic - 查看流量使用情况\\n/getlatesturl - 获取订阅链接\\n/unbind - 解绑账号","start_bind_commands":"📋 可用命令：\\n/bind [订阅链接] - 绑定账号","start_footer":"💡 提示：所有命令都需要在私聊中使用","help_text":"请使用以下命令：\\n/bind - 绑定账号\\n/traffic - 查看流量\\n/getlatesturl - 获取最新链接"}',1,0),
+('alipay_f2f','AlipayF2F','payment','1.0.0',1,'{}',1,0),
+('btcpay','BTCPay','payment','1.0.0',1,'{}',1,0),
+('coin_payments','CoinPayments','payment','1.0.0',1,'{}',1,0),
+('coinbase','Coinbase','payment','1.0.0',1,'{}',1,0),
+('epay','EPay','payment','1.0.0',1,'{}',1,0),
+('mgate','MGate','payment','1.0.0',1,'{}',1,0);
+
+CREATE INDEX idx_trusted_plugins_type_enabled ON trusted_plugins(type, enabled, code);
 `
 
 func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
