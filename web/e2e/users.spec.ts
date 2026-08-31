@@ -163,6 +163,8 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await expect(dialog.getByRole("status")).toContainText("订阅地址已复制");
 	const copiedSubscriptionURL = await page.evaluate(() => navigator.clipboard.readText());
   expect(copiedSubscriptionURL).toMatch(/\/s\/[0-9a-f]{32}$/);
+	const activeSubscriptionBeforeReset = await page.request.get(copiedSubscriptionURL);
+	expect(activeSubscriptionBeforeReset.status()).toBe(200);
 	await dialog.getByRole("button", { name: "关闭" }).last().click();
 
 	await page.getByRole("button", { name: `用户操作：${email}` }).click();
