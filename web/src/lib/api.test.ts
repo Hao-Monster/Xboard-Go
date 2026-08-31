@@ -261,6 +261,7 @@ describe("APIClient administrator user contracts", () => {
 		const api = new APIClient();
 
 		await api.getAdminUserSubscriptionURL(41);
+		await api.resetAdminUserSubscriptionSecurity(41, 7);
 		await api.listAdminUserOrders(41, 2, 20);
 		await api.assignAdminUserOrder(41, { plan_id: 3, period: "monthly", total_amount: 2500 });
 		await api.listAdminUserInvitations(41, 1, 20);
@@ -270,6 +271,7 @@ describe("APIClient administrator user contracts", () => {
 
 		expect(requests).toEqual([
 			{ path: "/api/v1/admin/users/41/subscription-url", method: "GET", body: undefined, idempotencyKey: null },
+			{ path: "/api/v1/admin/users/41/subscription-security/reset", method: "POST", body: { revision: 7 }, idempotencyKey: null },
 			{ path: "/api/v1/admin/users/41/orders?page=2&page_size=20", method: "GET", body: undefined, idempotencyKey: null },
 			{ path: "/api/v1/admin/users/41/orders", method: "POST", body: { plan_id: 3, period: "monthly", total_amount: 2500 }, idempotencyKey: null },
 			{ path: "/api/v1/admin/users/41/invitations?page=1&page_size=20", method: "GET", body: undefined, idempotencyKey: null },

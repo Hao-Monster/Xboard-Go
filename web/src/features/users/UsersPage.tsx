@@ -28,6 +28,7 @@ import { AssignOrderDialog } from "../orders/OrderManagementPage";
 
 type UsersAPI = Pick<AdminAPI,
   "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" |
+	"resetAdminUserSubscriptionSecurity" |
 	"getAdminUserSubscriptionURL" | "listAdminUserOrders" | "assignAdminUserOrder" | "listAdminUserInvitations" |
 	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans" |
   "createAdminUserBulkMail" | "createAdminUserBulkCSV" | "banAdminUsers" | "listAdminUserBulkJobs" |
@@ -65,6 +66,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const [viewing, setViewing] = useState<AdminUser | null>(null);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [resetting, setResetting] = useState<AdminUser | null>(null);
+	const [subscriptionResetting, setSubscriptionResetting] = useState<AdminUser | null>(null);
 	const [operating, setOperating] = useState<AdminUser | null>(null);
 	const [assigning, setAssigning] = useState<AdminUser | null>(null);
 	const [related, setRelated] = useState<{ account: AdminUser; tab: UserRelatedTab } | null>(null);
@@ -312,8 +314,11 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 		{operating !== null && <UserOperationsDialog account={operating} onClose={() => setOperating(null)}
 			onAssign={() => { setAssigning(operating); setOperating(null); }}
 			onPassword={() => { setResetting(operating); setOperating(null); }}
+			onSubscriptionReset={() => { setSubscriptionResetting(operating); setOperating(null); }}
 			onRelated={(tab) => { setRelated({ account: operating, tab }); setOperating(null); }}
 			onTrafficReset={() => { setTrafficResetting(operating); setOperating(null); }} />}
+		{subscriptionResetting !== null && <SubscriptionSecurityReset api={api} account={subscriptionResetting}
+			onClose={() => setSubscriptionResetting(null)} onReset={() => void runQuery(appliedQuery)} />}
 		{assigning !== null && <AssignOrderDialog api={null} plans={plans} initialEmail={assigning.email}
 			onAssign={(input) => api.assignAdminUserOrder(assigning.id, input)} onClose={() => setAssigning(null)}
 			onCreated={() => { setAssigning(null); void runQuery(appliedQuery); }} />}
@@ -523,11 +528,12 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
   </Modal>;
 }
 
-function UserOperationsDialog({ account, onClose, onAssign, onPassword, onRelated, onTrafficReset }: {
+function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscriptionReset, onRelated, onTrafficReset }: {
 	account: AdminUser;
 	onClose: () => void;
 	onAssign: () => void;
 	onPassword: () => void;
+	onSubscriptionReset: () => void;
 	onRelated: (tab: UserRelatedTab) => void;
 	onTrafficReset: () => void;
 }) {
@@ -540,9 +546,53 @@ function UserOperationsDialog({ account, onClose, onAssign, onPassword, onRelate
 			<button className="button secondary" type="button" onClick={() => onRelated("invitations")}>TA 的邀请</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("traffic")}>TA 的流量记录</button>
 			<button className="button secondary" type="button" onClick={onTrafficReset}>重置流量</button>
+			<button className="button secondary" type="button" onClick={onSubscriptionReset}>重置 UUID 与订阅地址</button>
 			<button className="button secondary" type="button" onClick={onPassword}>重置密码</button>
 		</div>
 		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button></div>
+	</Modal>;
+}
+
+function SubscriptionSecurityReset({ api, account, onClose, onReset }: {
+	api: UsersAPI;
+	account: AdminUser;
+	onClose: () => void;
+	onReset: () => void;
+}) {
+	const [busy, setBusy] = useState(false);
+	const [completed, setCompleted] = useState(false);
+	const [stale, setStale] = useState(false);
+	const [error, setError] = useState("");
+	const reset = async () => {
+		setBusy(true);
+		setError("");
+		try {
+			await api.resetAdminUserSubscriptionSecurity(account.id, account.revision);
+			setCompleted(true);
+			onReset();
+		} catch (cause) {
+			setError(errorMessage(cause));
+			if (cause instanceof APIError && cause.code === "revision_conflict") {
+				setStale(true);
+				onReset();
+			}
+		} finally {
+			setBusy(false);
+		}
+	};
+	const close = () => { if (!busy) onClose(); };
+	return <Modal title="重置订阅凭据" onClose={close}>
+		<div className="modal-header"><h2>重置订阅凭据</h2><button className="icon-button" aria-label="关闭重置订阅凭据" disabled={busy} onClick={close}>×</button></div>
+		<p>当前用户：<strong>{account.email}</strong></p>
+		<div className="alert warning">此操作会同时更换 UUID 和订阅令牌。旧订阅地址会立即失效，所有设备都需要重新导入。</div>
+		{error !== "" && <div className="alert error" role="alert">{error}</div>}
+		{completed && <div className="alert success" role="status">订阅凭据已重置。请通过“复制订阅 URL”重新获取地址。</div>}
+		<div className="form-actions">
+			{completed || stale ? <button className="button primary" type="button" onClick={close}>关闭</button> : <>
+				<button className="button ghost" type="button" disabled={busy} onClick={close}>取消</button>
+				<button className="button danger" type="button" disabled={busy} onClick={() => void reset()}>{busy ? "正在重置…" : "确认重置订阅凭据"}</button>
+			</>}
+		</div>
 	</Modal>;
 }
 

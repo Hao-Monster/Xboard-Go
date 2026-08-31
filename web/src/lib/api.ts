@@ -1752,6 +1752,7 @@ export interface AdminAPI {
   generateAdminUsers: (input: AdminUserGenerateInput) => Promise<AdminUserGenerationResult>;
   updateAdminUser: (id: number, input: AdminUserUpdateInput) => Promise<AdminUser>;
   resetAdminUserPassword: (id: number, revision: number, newPassword: string) => Promise<AdminUser>;
+  resetAdminUserSubscriptionSecurity: (id: number, revision: number) => Promise<boolean>;
 	getAdminUserSubscriptionURL: (id: number) => Promise<AdminUserSubscriptionURL>;
 	listAdminUserOrders: (id: number, page?: number, pageSize?: number) => Promise<AdminOrderPage>;
 	assignAdminUserOrder: (id: number, input: AssignAdminUserOrderInput) => Promise<Order>;
@@ -2469,6 +2470,12 @@ export class APIClient implements AdminAPI {
   async resetAdminUserPassword(id: number, revision: number, newPassword: string): Promise<AdminUser> {
     return this.request<AdminUser>(`/api/v1/admin/users/${id}/password`, {
       method: "PUT", body: { revision, new_password: newPassword }
+    });
+  }
+
+  async resetAdminUserSubscriptionSecurity(id: number, revision: number): Promise<boolean> {
+    return this.request<boolean>(`/api/v1/admin/users/${id}/subscription-security/reset`, {
+      method: "POST", body: { revision }
     });
   }
 

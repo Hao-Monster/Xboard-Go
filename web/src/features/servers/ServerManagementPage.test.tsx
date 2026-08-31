@@ -319,6 +319,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     generateAdminUsers: vi.fn(),
     updateAdminUser: vi.fn(),
     resetAdminUserPassword: vi.fn(),
+		resetAdminUserSubscriptionSecurity: vi.fn(),
 		getAdminUserSubscriptionURL: vi.fn(),
 		listAdminUserOrders: vi.fn(),
 		assignAdminUserOrder: vi.fn(),
