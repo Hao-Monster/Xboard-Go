@@ -163,11 +163,39 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await expect(dialog.getByRole("status")).toContainText("订阅地址已复制");
 	const copiedSubscriptionURL = await page.evaluate(() => navigator.clipboard.readText());
   expect(copiedSubscriptionURL).toMatch(/\/s\/[0-9a-f]{32}$/);
+	const activeSubscriptionBeforeReset = await page.request.get(copiedSubscriptionURL);
+	expect(activeSubscriptionBeforeReset.status()).toBe(200);
 	await dialog.getByRole("button", { name: "关闭" }).last().click();
 
 	await page.getByRole("button", { name: `用户操作：${email}` }).click();
 	dialog = page.getByRole("dialog", { name: "用户操作" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await dialog.getByRole("button", { name: "重置 UUID 与订阅地址" }).click();
+	dialog = page.getByRole("dialog", { name: "重置订阅凭据" });
+	await expect(page.getByRole("dialog")).toHaveCount(1);
+	await expect(dialog).toContainText("旧订阅地址会立即失效");
+	const securityResetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/subscription-security\/reset$/.test(new URL(request.url()).pathname));
+	await dialog.getByRole("button", { name: "确认重置订阅凭据" }).click();
+	const securityResetRequest = await securityResetRequestPromise;
+	expect(securityResetRequest.postDataJSON()).toEqual({ revision: expect.any(Number) });
+	await expect(dialog.getByRole("status")).toContainText("订阅凭据已重置");
+	const expiredSubscription = await page.request.get(copiedSubscriptionURL);
+	expect(expiredSubscription.status()).toBe(403);
+	await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+
+	await page.getByRole("button", { name: `查看详情：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户详情" });
+	await dialog.getByRole("button", { name: "复制订阅 URL" }).click();
+	await expect(dialog.getByRole("status")).toContainText("订阅地址已复制");
+	const rotatedSubscriptionURL = await page.evaluate(() => navigator.clipboard.readText());
+	expect(rotatedSubscriptionURL).toMatch(/\/s\/[0-9a-f]{32}$/);
+	expect(rotatedSubscriptionURL).not.toBe(copiedSubscriptionURL);
+	const activeSubscription = await page.request.get(rotatedSubscriptionURL);
+	expect(activeSubscription.status()).toBe(200);
+	await dialog.getByRole("button", { name: "关闭" }).last().click();
+
+	await page.getByRole("button", { name: `用户操作：${email}` }).click();
+	dialog = page.getByRole("dialog", { name: "用户操作" });
 	await dialog.getByRole("button", { name: "分配订单" }).click();
 	dialog = page.getByRole("dialog", { name: "分配订单" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);

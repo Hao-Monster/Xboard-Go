@@ -163,6 +163,7 @@ describe("UsersPage", () => {
 		api.listAdminUserInvitations.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
 		api.listAdminUserTraffic.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
 		api.listAdminUserTrafficResets.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
+		api.resetAdminUserSubscriptionSecurity.mockResolvedValue(true);
 		api.assignAdminUserOrder.mockResolvedValue({});
 		api.resetAdminUserTraffic.mockResolvedValue({
 			user_id: account.id, email: account.email, upload_before: 100, download_before: 200,
@@ -184,9 +185,20 @@ describe("UsersPage", () => {
 
 		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
 		let operations = screen.getByRole("dialog", { name: "用户操作" });
-		for (const action of ["分配订单", "TA 的订单", "TA 的邀请", "TA 的流量记录", "重置流量"]) {
+		for (const action of ["分配订单", "TA 的订单", "TA 的邀请", "TA 的流量记录", "重置流量", "重置 UUID 与订阅地址"]) {
 			expect(within(operations).getByRole("button", { name: action })).toBeVisible();
 		}
+		await user.click(within(operations).getByRole("button", { name: "重置 UUID 与订阅地址" }));
+		const securityReset = await screen.findByRole("dialog", { name: "重置订阅凭据" });
+		expect(screen.getAllByRole("dialog")).toHaveLength(1);
+		expect(within(securityReset).getByText(/旧订阅地址会立即失效/)).toBeVisible();
+		expect(api.resetAdminUserSubscriptionSecurity).not.toHaveBeenCalled();
+		await user.click(within(securityReset).getByRole("button", { name: "确认重置订阅凭据" }));
+		await waitFor(() => expect(api.resetAdminUserSubscriptionSecurity).toHaveBeenCalledWith(account.id, account.revision));
+		expect(within(securityReset).getByRole("status")).toHaveTextContent("订阅凭据已重置");
+		await user.click(within(securityReset).getByRole("button", { name: "关闭" }));
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		operations = screen.getByRole("dialog", { name: "用户操作" });
 		await user.click(within(operations).getByRole("button", { name: "TA 的订单" }));
 		const related = await screen.findByRole("dialog", { name: "用户关联记录" });
 		expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -233,6 +245,23 @@ describe("UsersPage", () => {
 		await waitFor(() => expect(api.resetAdminUserTraffic).toHaveBeenCalledTimes(2));
 		expect(api.resetAdminUserTraffic.mock.calls[1]?.[2]).toBe(firstKey);
 		expect(within(reset).getByRole("status")).toHaveTextContent("流量已重置");
+	});
+
+	it("closes the stale subscription reset attempt before allowing another credential rotation", async () => {
+		const api = baseAPI();
+		api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+		api.resetAdminUserSubscriptionSecurity.mockRejectedValue(new APIError(409, "revision_conflict", "资源已被其他管理员修改，请刷新后重试"));
+		const user = userEvent.setup();
+		render(<UsersPage api={api} currentUserID={1} />);
+		expect(await screen.findByText(account.email)).toBeVisible();
+		await user.click(screen.getByRole("button", { name: `用户操作：${account.email}` }));
+		await user.click(within(screen.getByRole("dialog", { name: "用户操作" })).getByRole("button", { name: "重置 UUID 与订阅地址" }));
+		const reset = screen.getByRole("dialog", { name: "重置订阅凭据" });
+		await user.click(within(reset).getByRole("button", { name: "确认重置订阅凭据" }));
+		expect(await within(reset).findByRole("alert")).toHaveTextContent("资源已被其他管理员修改");
+		expect(within(reset).queryByRole("button", { name: "确认重置订阅凭据" })).not.toBeInTheDocument();
+		expect(within(reset).getByRole("button", { name: "关闭" })).toBeVisible();
+		await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2));
 	});
 
 	it("submits the live traffic reset form value before controlled state synchronization", async () => {
@@ -543,7 +572,7 @@ describe("UsersPage", () => {
 function baseAPI() {
   return {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
-		getAdminUserSubscriptionURL: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
+		getAdminUserSubscriptionURL: vi.fn(), resetAdminUserSubscriptionSecurity: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
 		listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
     createAdminUserBulkMail: vi.fn(), createAdminUserBulkCSV: vi.fn(), banAdminUsers: vi.fn(),
     listAdminUserBulkJobs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), getAdminUserBulkJob: vi.fn(),

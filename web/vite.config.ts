@@ -9,7 +9,8 @@ const apiProxy = {
   "/client-link": apiProxyTarget,
   "/guide": apiProxyTarget,
   "/guide-attachments": apiProxyTarget,
-  "/knowledge-attachments": apiProxyTarget
+  "/knowledge-attachments": apiProxyTarget,
+  "^/s/[0-9a-f]{32}$": apiProxyTarget
 };
 
 export default defineConfig({

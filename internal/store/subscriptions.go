@@ -260,6 +260,17 @@ func scanSubscriptionAccount(row *sql.Row) (SubscriptionAccount, error) {
 }
 
 func (s *Store) ResetSubscriptionSecurity(ctx context.Context, userID int64, now time.Time) (SubscriptionAccount, SubscriptionSecurityMutation, error) {
+	return s.resetSubscriptionSecurity(ctx, userID, nil, now)
+}
+
+func (s *Store) ResetSubscriptionSecurityAtRevision(ctx context.Context, userID, revision int64, now time.Time) (SubscriptionAccount, SubscriptionSecurityMutation, error) {
+	if revision < 1 {
+		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, ErrInvalidInput
+	}
+	return s.resetSubscriptionSecurity(ctx, userID, &revision, now)
+}
+
+func (s *Store) resetSubscriptionSecurity(ctx context.Context, userID int64, expectedRevision *int64, now time.Time) (SubscriptionAccount, SubscriptionSecurityMutation, error) {
 	if userID < 1 || now.Unix() < 0 {
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, ErrInvalidInput
 	}
@@ -281,11 +292,15 @@ func (s *Store) ResetSubscriptionSecurity(ctx context.Context, userID int64, now
 	if err != nil {
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, err
 	}
+	var revision any
+	if expectedRevision != nil {
+		revision = *expectedRevision
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users
 		SET uuid = ?, subscription_token = ?, online_count = 0, admin_revision = admin_revision + 1, updated_at = ?
-		WHERE id = ? AND account_kind = 'human'
-	`, newUUID, newToken, now.Unix(), userID)
+		WHERE id = ? AND account_kind = 'human' AND (? IS NULL OR admin_revision = ?)
+	`, newUUID, newToken, now.Unix(), userID, revision, revision)
 	if err != nil {
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, fmt.Errorf("reset subscription security: %w", err)
 	}
@@ -294,6 +309,15 @@ func (s *Store) ResetSubscriptionSecurity(ctx context.Context, userID int64, now
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, fmt.Errorf("count subscription security reset: %w", err)
 	}
 	if changed != 1 {
+		if expectedRevision != nil {
+			var exists bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND account_kind='human')`, userID).Scan(&exists); err != nil {
+				return SubscriptionAccount{}, SubscriptionSecurityMutation{}, fmt.Errorf("inspect subscription security reset conflict: %w", err)
+			}
+			if exists {
+				return SubscriptionAccount{}, SubscriptionSecurityMutation{}, ErrRevisionConflict
+			}
+		}
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM node_device_ips WHERE user_id = ?`, userID); err != nil {
