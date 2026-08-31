@@ -628,6 +628,24 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
+Legacy invitation and commission behavior uses the independent
+`commission-policy-settings-v1` slice. It reads only the eight global
+commission policy keys and composes with the existing site-policy,
+configuration-compatibility, and commission-ledger migrations. The old
+administration UI treated missing distribution levels as `0/0/0`, while a
+pristine Xboard-Go database stores `100/0/0`; the migration recognizes the
+pristine Go state and then preserves the old effective source defaults:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-commission-policy-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-commission-policy-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 After plans have been imported, migrate the legacy registration-trial plan and
 duration while the target remains offline:
 
