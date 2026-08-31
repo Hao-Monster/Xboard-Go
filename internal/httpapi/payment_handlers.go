@@ -210,8 +210,13 @@ func writePaymentWebhookSuccess(w http.ResponseWriter, provider store.PaymentPro
 	_, _ = io.WriteString(w, result)
 }
 
-func (s *server) listPaymentProviders(w http.ResponseWriter, _ *http.Request) {
-	writeSuccess(w, http.StatusOK, payment.Definitions())
+func (s *server) listPaymentProviders(w http.ResponseWriter, r *http.Request) {
+	definitions, err := s.enabledPaymentDefinitions(r.Context())
+	if err != nil {
+		handlePaymentError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, definitions)
 }
 
 func (s *server) listAdminPayments(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +299,17 @@ func (s *server) setAdminPaymentEnabled(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	if input.Enabled {
+		item, err := s.store.GetPayment(r.Context(), paymentID)
+		if err != nil {
+			handlePaymentError(w, err)
+			return
+		}
+		if err := s.requirePaymentPluginEnabled(r.Context(), item.Provider); err != nil {
+			handlePaymentError(w, err)
+			return
+		}
+	}
 	updated, err := s.store.SetPaymentEnabled(r.Context(), paymentID, input.Enabled, s.now())
 	if err != nil {
 		handlePaymentError(w, err)
@@ -350,6 +366,9 @@ func (s *server) saveNewPayment(r *http.Request, input savePaymentRequest) (stor
 	if s.settingsCipher == nil {
 		return store.Payment{}, errPaymentEncryptionUnavailable
 	}
+	if err := s.requirePaymentPluginEnabled(r.Context(), input.Provider); err != nil {
+		return store.Payment{}, err
+	}
 	config, err := payment.MergeConfig(input.Provider, input.Config, nil, input.ClearConfigFields, true)
 	if err != nil {
 		return store.Payment{}, err
@@ -368,6 +387,9 @@ func (s *server) saveNewPayment(r *http.Request, input savePaymentRequest) (stor
 func (s *server) saveExistingPayment(r *http.Request, paymentID int64, input savePaymentRequest) (store.Payment, error) {
 	if s.settingsCipher == nil {
 		return store.Payment{}, errPaymentEncryptionUnavailable
+	}
+	if err := s.requirePaymentPluginEnabled(r.Context(), input.Provider); err != nil {
+		return store.Payment{}, err
 	}
 	existing, err := s.store.GetPayment(r.Context(), paymentID)
 	if err != nil {
@@ -447,9 +469,14 @@ func (s *server) legacyPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	writeLegacySuccess(w, http.StatusOK, responses)
 }
 
-func (s *server) legacyListPaymentProviders(w http.ResponseWriter, _ *http.Request) {
-	providers := make([]store.PaymentProvider, 0, len(payment.Definitions()))
-	for _, definition := range payment.Definitions() {
+func (s *server) legacyListPaymentProviders(w http.ResponseWriter, r *http.Request) {
+	definitions, err := s.enabledPaymentDefinitions(r.Context())
+	if err != nil {
+		writeLegacyAdminPaymentError(w, err)
+		return
+	}
+	providers := make([]store.PaymentProvider, 0, len(definitions))
+	for _, definition := range definitions {
 		providers = append(providers, definition.Provider)
 	}
 	writeLegacySuccess(w, http.StatusOK, providers)
@@ -464,7 +491,7 @@ func (s *server) legacyPaymentForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	definition, ok := payment.DefinitionFor(input.Provider)
-	if !ok {
+	if !ok || s.requirePaymentPluginEnabled(r.Context(), input.Provider) != nil {
 		writeLegacyOrderFail(w, http.StatusBadRequest, "支付方式不存在或未启用")
 		return
 	}
@@ -591,6 +618,11 @@ func (s *server) legacyTogglePayment(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := s.store.GetPayment(r.Context(), input.ID)
 	if err == nil {
+		if !item.Enabled {
+			err = s.requirePaymentPluginEnabled(r.Context(), item.Provider)
+		}
+	}
+	if err == nil {
 		_, err = s.store.SetPaymentEnabled(r.Context(), item.ID, !item.Enabled, s.now())
 	}
 	if err != nil {
@@ -667,6 +699,8 @@ func legacyPercentBasisPoints(value json.Number) (int64, error) {
 
 func handlePaymentError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errTrustedPluginDisabled):
+		writeAPIError(w, http.StatusConflict, "plugin_disabled", "对应的可信支付插件未启用", nil)
 	case errors.Is(err, payment.ErrInvalidConfig), errors.Is(err, store.ErrInvalidInput):
 		writeAPIError(w, http.StatusUnprocessableEntity, "payment_validation_failed", "支付配置参数无效", nil)
 	case errors.Is(err, store.ErrPaymentConfigInUse):
@@ -708,6 +742,8 @@ func writeLegacyPaymentCheckoutError(w http.ResponseWriter, err error) {
 
 func writeLegacyAdminPaymentError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errTrustedPluginDisabled):
+		writeLegacyOrderFail(w, http.StatusConflict, "对应的可信支付插件未启用")
 	case errors.Is(err, store.ErrNotFound):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "支付方式不存在")
 	case errors.Is(err, store.ErrPaymentConfigInUse):
@@ -744,6 +780,47 @@ func coalescePaymentError(primary, fallback error) error {
 
 var errPaymentEncryptionUnavailable = errors.New("payment encryption unavailable")
 var errPaymentProviderFailed = errors.New("payment provider failed")
+var errTrustedPluginDisabled = errors.New("trusted plugin disabled")
+
+func (s *server) enabledPaymentDefinitions(ctx context.Context) ([]payment.Definition, error) {
+	plugins, err := s.store.ListTrustedPlugins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	enabled := make(map[string]struct{}, len(plugins))
+	for _, plugin := range plugins {
+		if plugin.Type == "payment" && plugin.Enabled {
+			enabled[plugin.Code] = struct{}{}
+		}
+	}
+	definitions := payment.Definitions()
+	result := make([]payment.Definition, 0, len(definitions))
+	for _, definition := range definitions {
+		code, ok := store.TrustedPluginCodeForPaymentProvider(definition.Provider)
+		if !ok {
+			continue
+		}
+		if _, ok := enabled[code]; ok {
+			result = append(result, definition)
+		}
+	}
+	return result, nil
+}
+
+func (s *server) requirePaymentPluginEnabled(ctx context.Context, provider store.PaymentProvider) error {
+	code, ok := store.TrustedPluginCodeForPaymentProvider(provider)
+	if !ok {
+		return store.ErrInvalidInput
+	}
+	enabled, err := s.store.TrustedPluginEnabled(ctx, code)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return errTrustedPluginDisabled
+	}
+	return nil
+}
 
 type paymentPageResponse struct {
 	Items    []adminPaymentResponse `json:"items"`

@@ -84,6 +84,43 @@ func TestStartPaymentCheckoutCalculatesFeeBindsOrderAndReusesCreatedAttempt(t *t
 	}
 }
 
+func TestDisabledTrustedPaymentPluginIsHiddenAndCannotStartCheckout(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	plan, userID := createOrderFixture(t, database, now, PlanPrices{"monthly": 1_000}, nil)
+	method, err := database.CreatePayment(ctx, SavePaymentInput{
+		Provider: PaymentProviderEPay, Name: "EPay", ConfigCiphertext: []byte("ciphertext"), Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, CreateOrderInput{UserID: userID, PlanID: plan.ID, Period: "monthly"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	administrator, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "payment-plugin-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugin, err := database.GetTrustedPlugin(ctx, TrustedPluginEPay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateTrustedPlugin(ctx, administrator.ID, plugin.Code, plugin.Revision, SaveTrustedPluginInput{Enabled: false, Config: plugin.Config}, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	methods, err := database.ListEnabledPayments(ctx)
+	if err != nil || len(methods) != 0 {
+		t.Fatalf("ListEnabledPayments() = (%#v, %v), want empty", methods, err)
+	}
+	if _, err := database.StartPaymentCheckout(ctx, StartPaymentCheckoutInput{UserID: userID, TradeNo: order.TradeNo, PaymentID: method.ID}, now.Add(2*time.Second)); !errors.Is(err, ErrPaymentUnavailable) {
+		t.Fatalf("StartPaymentCheckout(disabled plugin) error = %v, want ErrPaymentUnavailable", err)
+	}
+}
+
 func TestPaymentProviderCannotChangeWhileCheckoutIsAwaitingCallback(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

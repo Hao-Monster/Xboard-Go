@@ -571,6 +571,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PUT /api/v1/admin/coupons/{couponID}", api.updateAdminCoupon)
 	admin.HandleFunc("PATCH /api/v1/admin/coupons/{couponID}/visibility", api.setAdminCouponVisibility)
 	admin.HandleFunc("DELETE /api/v1/admin/coupons/{couponID}", api.deleteAdminCoupon)
+	admin.HandleFunc("GET /api/v1/admin/plugins", api.listTrustedPlugins)
+	admin.HandleFunc("PATCH /api/v1/admin/plugins/{code}", api.updateTrustedPlugin)
 	admin.HandleFunc("GET /api/v1/admin/payment-providers", api.listPaymentProviders)
 	admin.HandleFunc("GET /api/v1/admin/payments", api.listAdminPayments)
 	admin.HandleFunc("POST /api/v1/admin/payments", api.createAdminPayment)

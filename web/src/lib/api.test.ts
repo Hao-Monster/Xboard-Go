@@ -344,6 +344,8 @@ describe("APIClient payment contracts", () => {
       config: { url: "https://epay.example.test", pid: "1001", key: "secret", type: "alipay" }
     };
 
+    await api.listTrustedPlugins();
+    await api.updateTrustedPlugin("epay", { revision: 1, enabled: false, config: {} });
     await api.listPaymentProviders();
     await api.listAdminPayments(2, 20, "易支付");
     await api.createPayment(input);
@@ -355,6 +357,8 @@ describe("APIClient payment contracts", () => {
     await api.checkoutOrder("trade/payment", 7);
 
     expect(requests).toEqual([
+      { path: "/api/v1/admin/plugins", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/plugins/epay", method: "PATCH", body: { revision: 1, enabled: false, config: {} }, csrf: "payment-csrf" },
       { path: "/api/v1/admin/payment-providers", method: "GET", body: undefined, csrf: null },
       { path: "/api/v1/admin/payments?page=2&page_size=20&query=%E6%98%93%E6%94%AF%E4%BB%98", method: "GET", body: undefined, csrf: null },
       { path: "/api/v1/admin/payments", method: "POST", body: input, csrf: "payment-csrf" },

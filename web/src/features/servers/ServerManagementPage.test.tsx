@@ -300,6 +300,8 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
 	setPlanState: vi.fn(),
 	reorderPlans: vi.fn(),
 	deletePlan: vi.fn(),
+	listTrustedPlugins: vi.fn().mockResolvedValue([]),
+	updateTrustedPlugin: vi.fn(),
 	listPaymentProviders: vi.fn(),
 	listAdminPayments: vi.fn(),
 	createPayment: vi.fn(),

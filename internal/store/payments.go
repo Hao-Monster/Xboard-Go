@@ -242,7 +242,17 @@ func (s *Store) ListPayments(ctx context.Context, filter PaymentFilter) (Payment
 }
 
 func (s *Store) ListEnabledPayments(ctx context.Context) ([]Payment, error) {
-	rows, err := s.db.QueryContext(ctx, paymentSelect+` WHERE enabled = 1 ORDER BY sort_position, id`)
+	rows, err := s.db.QueryContext(ctx, paymentSelect+` WHERE enabled = 1 AND EXISTS (
+		SELECT 1 FROM trusted_plugins AS trusted
+		WHERE trusted.enabled = 1 AND trusted.code = CASE provider
+			WHEN 'AlipayF2F' THEN 'alipay_f2f'
+			WHEN 'BTCPay' THEN 'btcpay'
+			WHEN 'CoinPayments' THEN 'coin_payments'
+			WHEN 'Coinbase' THEN 'coinbase'
+			WHEN 'EPay' THEN 'epay'
+			WHEN 'MGate' THEN 'mgate'
+		END
+	) ORDER BY sort_position, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled payments: %w", err)
 	}

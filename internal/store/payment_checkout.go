@@ -39,6 +39,20 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 	if err != nil {
 		return PaymentCheckoutStart{}, err
 	}
+	pluginCode, ok := TrustedPluginCodeForPaymentProvider(method.Provider)
+	if !ok {
+		return PaymentCheckoutStart{}, ErrPaymentUnavailable
+	}
+	var pluginEnabled bool
+	if err := tx.QueryRowContext(ctx, `SELECT enabled FROM trusted_plugins WHERE code = ?`, pluginCode).Scan(&pluginEnabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return PaymentCheckoutStart{}, ErrPaymentUnavailable
+		}
+		return PaymentCheckoutStart{}, fmt.Errorf("read payment plugin status: %w", err)
+	}
+	if !pluginEnabled {
+		return PaymentCheckoutStart{}, ErrPaymentUnavailable
+	}
 	fee, err := PaymentHandlingFee(order.TotalAmount, method.HandlingFeeFixed, method.HandlingFeeBasisPoints)
 	if err != nil || order.TotalAmount > maxOrderMoneyCents-fee {
 		return PaymentCheckoutStart{}, ErrInvalidInput

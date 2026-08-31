@@ -80,6 +80,7 @@ var requiredSchemaTables = []struct {
 	{"themes", 51},
 	{"theme_assets", 51},
 	{"theme_settings", 51},
+	{"trusted_plugins", 55},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -191,6 +192,10 @@ var requiredSchemaColumnsV53 = map[string][]string{
 var requiredSchemaColumnsV54 = map[string][]string{
 	"app_settings":   {"commission_withdraw_limit", "commission_withdraw_method"},
 	"theme_settings": {"sidebar_style", "header_style"},
+}
+
+var requiredSchemaColumnsV55 = map[string][]string{
+	"trusted_plugins": {"code", "name", "type", "version", "enabled", "config_json", "revision", "updated_by", "updated_at"},
 }
 
 type schemaQueryer interface {
@@ -336,6 +341,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 54 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV54); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 55 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV55); err != nil {
 			return err
 		}
 	}
