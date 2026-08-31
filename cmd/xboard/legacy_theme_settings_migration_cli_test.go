@@ -19,6 +19,7 @@ func TestRunCommandImportsLegacyThemeSettingsWithVerifiedBackup(t *testing.T) {
 	_, _ = source.Exec(`CREATE TABLE v2_settings(id INTEGER PRIMARY KEY,name TEXT,value TEXT);
 		INSERT INTO v2_settings(name,value) VALUES
 		('frontend_theme','Xboard'),('current_theme','Xboard'),
+		('frontend_theme_color','darkblue'),('frontend_background_url',''),
 		('theme_xboard','{"theme_color":"darkblue","background_url":"","custom_html":""}')`)
 	_ = source.Close()
 	targetPath := filepath.Join(directory, "target.db")

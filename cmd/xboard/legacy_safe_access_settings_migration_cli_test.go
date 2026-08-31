@@ -98,3 +98,43 @@ func TestRunCommandRequiresOfflineConfirmationAndBackupForNewSafeAccessSettingsI
 		t.Fatalf("backup gate handled=%t err=%v", handled, err)
 	}
 }
+
+func TestRunCommandImportsLegacyFrontendAdminPathFallbackWithoutOverride(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "legacy-frontend-admin-path.db")
+	source, _ := sql.Open("sqlite", "file:"+sourcePath)
+	if _, err := source.Exec(`CREATE TABLE v2_settings(id INTEGER PRIMARY KEY,name TEXT,value TEXT);
+		INSERT INTO v2_settings(name,value) VALUES
+		('safe_mode_enable','0'),('frontend_admin_path','legacy-admin_01')`); err != nil {
+		t.Fatal(err)
+	}
+	_ = source.Close()
+	targetPath := filepath.Join(directory, "target.db")
+	target, err := store.OpenSQLite("file:" + targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	_ = target.Close()
+	t.Setenv("XBOARD_DATABASE_DSN", "file:"+targetPath)
+	backupPath := filepath.Join(directory, "pre-frontend-admin-path.xbbackup")
+	var stdout, stderr bytes.Buffer
+	handled, err := runCommand(t.Context(), []string{
+		"migration", "import-legacy-safe-access-settings", "--source", sourcePath,
+		"--backup-output", backupPath, "--confirm-offline",
+	}, &stdout, &stderr, func() time.Time { return time.Date(2026, 8, 31, 4, 0, 0, 0, time.UTC) })
+	if !handled || err != nil || stderr.Len() != 0 {
+		t.Fatalf("command handled=%t err=%v stdout=%s stderr=%s", handled, err, stdout.String(), stderr.String())
+	}
+	inspection, err := store.OpenSQLite("file:" + targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := inspection.GetSiteSettings(t.Context())
+	_ = inspection.Close()
+	if err != nil || settings.SafeModeEnabled || settings.SecurePath != "legacy-admin_01" {
+		t.Fatalf("migrated fallback settings=%#v err=%v", settings, err)
+	}
+}

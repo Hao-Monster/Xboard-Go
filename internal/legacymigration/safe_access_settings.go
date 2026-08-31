@@ -31,19 +31,20 @@ func ReadSafeAccessSettingsSnapshot(ctx context.Context, sourcePath string, effe
 		}
 		if err := validateLegacyQueryBudget(ctx, database, `
 			SELECT COUNT(*), COALESCE(SUM(length(CAST(name AS BLOB)) + COALESCE(length(CAST(value AS BLOB)), 0)), 0)
-			FROM v2_settings WHERE name IN ('safe_mode_enable','secure_path')
-		`, 2, 1024, "legacy safe access settings"); err != nil {
+			FROM v2_settings WHERE name IN ('safe_mode_enable','secure_path','frontend_admin_path')
+		`, 3, 1536, "legacy safe access settings"); err != nil {
 			return err
 		}
 		rows, err := database.QueryContext(ctx, `
 			SELECT name,COALESCE(CAST(value AS TEXT),'') FROM v2_settings
-			WHERE name IN ('safe_mode_enable','secure_path') ORDER BY name
+			WHERE name IN ('safe_mode_enable','secure_path','frontend_admin_path') ORDER BY name
 		`)
 		if err != nil {
 			return fmt.Errorf("read legacy safe access settings: %w", err)
 		}
 		defer rows.Close()
-		seen := make(map[string]struct{}, 2)
+		seen := make(map[string]struct{}, 3)
+		var securePath, frontendAdminPath string
 		for rows.Next() {
 			var name, value string
 			if err := rows.Scan(&name, &value); err != nil {
@@ -54,25 +55,35 @@ func ReadSafeAccessSettingsSnapshot(ctx context.Context, sourcePath string, effe
 			}
 			seen[name] = struct{}{}
 			switch name {
+			case "frontend_admin_path":
+				frontendAdminPath = value
 			case "safe_mode_enable":
 				settings.SafeModeEnabled, err = parseLegacyPublicOriginBoolean(value)
 				if err != nil {
 					return fmt.Errorf("validate legacy safe_mode_enable: %w", err)
 				}
 			case "secure_path":
-				settings.SecurePath = value
+				securePath = value
 			}
 		}
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("iterate legacy safe access settings: %w", err)
 		}
-		if _, exists := seen["secure_path"]; !exists {
+		if _, exists := seen["secure_path"]; exists {
+			if effectiveSecurePath != "" {
+				return fmt.Errorf("legacy safe access settings already contain secure_path; an effective path override is not allowed")
+			}
+			settings.SecurePath = securePath
+		} else if _, exists := seen["frontend_admin_path"]; exists {
+			if effectiveSecurePath != "" {
+				return fmt.Errorf("legacy safe access settings already contain frontend_admin_path; an effective path override is not allowed")
+			}
+			settings.SecurePath = frontendAdminPath
+		} else {
 			if effectiveSecurePath == "" {
-				return fmt.Errorf("legacy safe access settings are missing secure_path; provide the old effective path explicitly")
+				return fmt.Errorf("legacy safe access settings are missing secure_path and frontend_admin_path; provide the old effective path explicitly")
 			}
 			settings.SecurePath = effectiveSecurePath
-		} else if effectiveSecurePath != "" {
-			return fmt.Errorf("legacy safe access settings already contain secure_path; an effective path override is not allowed")
 		}
 		settings, err = store.NormalizeLegacySafeAccessSettings(settings)
 		if err != nil {
