@@ -12,7 +12,7 @@ if (scripts.length !== 1) {
   throw new Error(`expected exactly one initial script in dist/index.html, found ${scripts.length}`);
 }
 
-const relativeScript = normalize(scripts[0].replace(/^\/+/, ""));
+const relativeScript = normalizeLocalSpecifier(scripts[0]);
 const scriptPath = resolve(distRoot, relativeScript);
 const rawLimit = 500_000;
 const gzipLimit = 150_000;
@@ -38,16 +38,26 @@ function collectStaticScripts(entryPath) {
     seen.add(path);
     const source = readFileSync(path, "utf8");
     const imports = [
-      ...source.matchAll(/\bimport(?!\s*\()[^;]*?\bfrom\s*["']([^"']+)["']/gu),
+      ...source.matchAll(/\b(?:import|export)(?!\s*\()[^;]*?\bfrom\s*["']([^"']+)["']/gu),
       ...source.matchAll(/\bimport\s*["']([^"']+)["']/gu)
     ];
     for (const match of imports) {
-      if (!match[1].startsWith(".")) continue;
-      visit(resolve(dirname(path), match[1]));
+      const specifier = normalizeLocalSpecifier(match[1]);
+      visit(match[1].startsWith("/") ? resolve(distRoot, specifier) : resolve(dirname(path), specifier));
     }
   };
   visit(entryPath);
   return [...seen].sort();
+}
+
+function normalizeLocalSpecifier(specifier) {
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(specifier)) {
+    throw new Error(`initial script dependency must be local: ${specifier}`);
+  }
+  if (!specifier.startsWith(".") && !specifier.startsWith("/")) {
+    throw new Error(`initial script dependency must use a relative or root path: ${specifier}`);
+  }
+  return normalize(specifier.replace(/^\/+/, "").replace(/[?#].*$/u, ""));
 }
 
 function requireWithinDist(path) {
