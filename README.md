@@ -602,6 +602,28 @@ legacy target contains duplicate non-null `users.telegram_id` values, migration
 stops transactionally and reports the conflicting ID so the duplicate can be
 resolved before retrying.
 
+The trusted plugin registry is imported separately from `v2_plugins`. This
+slice requires the exact seven built-in core identities and versions, carries
+only enablement plus the nine bounded Telegram fields, and rejects unknown,
+missing, duplicate, or renamed plugins. Legacy empty payment arrays normalize
+to the fixed empty Go adapter config; payment credentials remain exclusively in
+the payment migration. No PHP code, route, command, or package is loaded:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-trusted-plugins \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-trusted-plugins.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+The command requires a pristine seven-row trusted registry, writes all rows in
+one transaction, verifies the resulting checksum, and verifies the rollback
+archive again on idempotent replay. A different source or later registry drift
+is rejected.
+
 Legacy registration, login-limit, invitation, CAPTCHA, and ticket-reply policy
 settings use another independent offline slice. The importer reads only the 24
 fixed `v2_settings` keys, requires pristine target policy fields, and validates
