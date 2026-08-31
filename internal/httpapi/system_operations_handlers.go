@@ -18,6 +18,7 @@ type systemStatusResponse struct {
 	Scheduler     operations.ComponentStatus `json:"scheduler"`
 	MailWorker    operations.ComponentStatus `json:"mail_worker"`
 	MailQueue     store.SystemQueueStats     `json:"mail_queue"`
+	TelegramQueue store.SystemQueueStats     `json:"telegram_queue"`
 }
 
 func (s *server) getSystemStatus(w http.ResponseWriter, r *http.Request) {
@@ -31,10 +32,16 @@ func (s *server) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	telegramQueue, err := s.store.GetTelegramQueueStats(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	snapshot := s.runtimeTracker.Snapshot(s.now(), workerHealthyWindow)
 	writeSuccess(w, http.StatusOK, systemStatusResponse{
 		StartedAt: snapshot.StartedAt, UptimeSeconds: int64(snapshot.Uptime / time.Second),
-		SchemaVersion: schemaVersion, Scheduler: snapshot.Scheduler, MailWorker: snapshot.MailWorker, MailQueue: queue,
+		SchemaVersion: schemaVersion, Scheduler: snapshot.Scheduler, MailWorker: snapshot.MailWorker,
+		MailQueue: queue, TelegramQueue: telegramQueue,
 	})
 }
 

@@ -111,6 +111,11 @@ func (s *Store) UpdateTrustedPlugin(ctx context.Context, administratorID int64, 
 		}
 		return TrustedPlugin{}, ErrRevisionConflict
 	}
+	if code == TrustedPluginTelegram && !input.Enabled {
+		if err := cancelPendingTelegramMessagesTx(ctx, tx, "cancelled because Telegram plugin was disabled", now); err != nil {
+			return TrustedPlugin{}, err
+		}
+	}
 	updated, err := scanTrustedPlugin(tx.QueryRowContext(ctx, `
 		SELECT code,name,type,version,enabled,config_json,revision,updated_at
 		FROM trusted_plugins WHERE code=?

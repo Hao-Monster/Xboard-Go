@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
@@ -15,16 +16,36 @@ import (
 const httpTestTelegramToken = "123456789:abcdefghijklmnopqrstuvwxyzABCDE"
 
 type recordingTelegramBot struct {
-	failure           error
-	setWebhookFailure error
-	getMeCalls        int
-	setWebhookURL     string
-	webhookSecret     []byte
-	approvedUserID    int64
-	declinedUserID    int64
-	approveCalls      int
-	declineCalls      int
-	onSetWebhook      func()
+	failure            error
+	setWebhookFailure  error
+	getMeCalls         int
+	setMyCommandsCalls int
+	commands           []telegrambot.BotCommand
+	setWebhookURL      string
+	webhookSecret      []byte
+	approvedUserID     int64
+	declinedUserID     int64
+	approveCalls       int
+	declineCalls       int
+	sendMessageCalls   int
+	onSetWebhook       func()
+}
+
+func (bot *recordingTelegramBot) SetMyCommands(_ context.Context, token []byte, commands []telegrambot.BotCommand) error {
+	if string(token) != httpTestTelegramToken {
+		return telegrambot.ErrRejected
+	}
+	bot.setMyCommandsCalls++
+	bot.commands = append([]telegrambot.BotCommand(nil), commands...)
+	return bot.failure
+}
+
+func (bot *recordingTelegramBot) SendMessage(_ context.Context, token []byte, _ int64, _ string) error {
+	if string(token) != httpTestTelegramToken {
+		return telegrambot.ErrRejected
+	}
+	bot.sendMessageCalls++
+	return bot.failure
 }
 
 func (bot *recordingTelegramBot) GetMe(_ context.Context, token []byte) (telegrambot.BotIdentity, error) {
@@ -104,7 +125,7 @@ func TestAdminTelegramSettingsProvisionAndLegacyCompatibility(t *testing.T) {
 	}
 
 	provisioned := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":2}`)
-	if provisioned.Code != http.StatusOK || telegramClient.getMeCalls != 1 || telegramClient.setWebhookURL != "https://hooks.example.test/xboard/api/v1/guest/telegram/webhook" || len(telegramClient.webhookSecret) < 32 {
+	if provisioned.Code != http.StatusOK || telegramClient.getMeCalls != 1 || telegramClient.setMyCommandsCalls != 1 || len(telegramClient.commands) != 5 || telegramClient.setWebhookURL != "https://hooks.example.test/xboard/api/v1/guest/telegram/webhook" || len(telegramClient.webhookSecret) < 32 {
 		t.Fatalf("provision status=%d getMe=%d webhook=%q secretLength=%d body=%s", provisioned.Code, telegramClient.getMeCalls, telegramClient.setWebhookURL, len(telegramClient.webhookSecret), provisioned.Body)
 	}
 	if strings.Contains(provisioned.Body.String(), httpTestTelegramToken) || strings.Contains(provisioned.Body.String(), string(telegramClient.webhookSecret)) || strings.Contains(provisioned.Body.String(), "cipher") {
@@ -231,8 +252,22 @@ func TestTelegramWebhookAuthenticatesAndApprovesOnlyAvailableUsers(t *testing.T)
 		t.Fatalf("unauthorized webhook status=%d approved=%d body=%s", unauthorized.Code, telegramClient.approvedUserID, unauthorized.Body)
 	}
 	ordinary := telegramWebhookRequest(api, string(telegramClient.webhookSecret), `{"update_id":2,"message":{"message_id":10,"chat":{"id":556677,"type":"private"},"text":"/start"},"future_update_field":{"version":1}}`)
-	if ordinary.Code != http.StatusOK || telegramClient.approvedUserID != 0 || telegramClient.declinedUserID != 0 {
+	if ordinary.Code != http.StatusOK || telegramClient.approvedUserID != 0 || telegramClient.declinedUserID != 0 || telegramClient.sendMessageCalls != 0 {
 		t.Fatalf("ordinary webhook status=%d approved=%d declined=%d body=%s", ordinary.Code, telegramClient.approvedUserID, telegramClient.declinedUserID, ordinary.Body)
+	}
+	queued, claimed, err := database.ClaimTelegramMessage(t.Context(), "http-message-claim", fixedNow(), 30*time.Second)
+	if err != nil || !claimed || queued.ChatID != telegramID || !strings.Contains(queued.Text, active.Email) {
+		t.Fatalf("queued command response=(%#v,%t,%v)", queued, claimed, err)
+	}
+	if err := database.CompleteTelegramMessage(t.Context(), queued.ID, "http-message-claim", fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	duplicateOrdinary := telegramWebhookRequest(api, string(telegramClient.webhookSecret), `{"update_id":2,"message":{"message_id":10,"chat":{"id":556677,"type":"private"},"text":"/unbind"}}`)
+	if duplicateOrdinary.Code != http.StatusOK {
+		t.Fatalf("duplicate ordinary webhook status=%d body=%s", duplicateOrdinary.Code, duplicateOrdinary.Body)
+	}
+	if _, claimed, err := database.ClaimTelegramMessage(t.Context(), "http-message-duplicate", fixedNow(), 30*time.Second); err != nil || claimed {
+		t.Fatalf("duplicate ordinary response claim=(%t,%v)", claimed, err)
 	}
 	approved := telegramWebhookRequest(api, string(telegramClient.webhookSecret), `{"update_id":3,"chat_join_request":{"chat":{"id":-1001,"title":"Subscribers","type":"supergroup"},"from":{"id":556677,"is_bot":false,"first_name":"Member"},"date":1700000000,"user_chat_id":556677}}`)
 	if approved.Code != http.StatusOK || telegramClient.approvedUserID != 556677 {
@@ -303,7 +338,7 @@ func TestTelegramWebhookProvisionFailureKeepsActiveSecretAndRetriesPendingSecret
 		t.Fatalf("failed rotation changed active settings: %#v err=%v", current, err)
 	}
 	for label, secret := range map[string][]byte{"active": activeSecret, "pending": pendingSecret} {
-		response := telegramWebhookRequest(api, string(secret), `{"update_id":7001,"message":{"message_id":1}}`)
+		response := telegramWebhookRequest(api, string(secret), `{"update_id":7001,"message":{"message_id":1,"chat":{"id":7001,"type":"private"},"text":"/start"}}`)
 		if response.Code != http.StatusOK {
 			t.Fatalf("%s secret during pending rotation status=%d body=%s", label, response.Code, response.Body)
 		}
@@ -318,10 +353,10 @@ func TestTelegramWebhookProvisionFailureKeepsActiveSecretAndRetriesPendingSecret
 	if err != nil || current.Revision != 4 || current.BotUsername != "xboard_test_bot" || current.WebhookConfiguredAt == nil {
 		t.Fatalf("retried rotation did not complete: %#v err=%v", current, err)
 	}
-	if response := telegramWebhookRequest(api, string(activeSecret), `{"update_id":7002,"message":{"message_id":2}}`); response.Code != http.StatusUnauthorized {
+	if response := telegramWebhookRequest(api, string(activeSecret), `{"update_id":7002,"message":{"message_id":2,"chat":{"id":7002,"type":"private"},"text":"/start"}}`); response.Code != http.StatusUnauthorized {
 		t.Fatalf("retired active secret status=%d body=%s", response.Code, response.Body)
 	}
-	if response := telegramWebhookRequest(api, string(pendingSecret), `{"update_id":7003,"message":{"message_id":3}}`); response.Code != http.StatusOK {
+	if response := telegramWebhookRequest(api, string(pendingSecret), `{"update_id":7003,"message":{"message_id":3,"chat":{"id":7003,"type":"private"},"text":"/start"}}`); response.Code != http.StatusOK {
 		t.Fatalf("promoted pending secret status=%d body=%s", response.Code, response.Body)
 	}
 }

@@ -181,6 +181,9 @@ func (s *server) provisionTelegram(r *http.Request, administratorID, revision in
 	if err != nil {
 		return telegramProvisionResponse{}, err
 	}
+	if err := s.telegramBot.SetMyCommands(r.Context(), botToken, telegrambot.FixedCommands()); err != nil {
+		return telegramProvisionResponse{}, err
+	}
 	provisionBytes := make([]byte, 16)
 	secretBytes := make([]byte, 32)
 	if _, err := rand.Read(provisionBytes); err != nil {
@@ -259,7 +262,18 @@ func (s *server) telegramWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var update struct {
-		UpdateID        int64 `json:"update_id"`
+		UpdateID int64 `json:"update_id"`
+		Message  *struct {
+			MessageID int64 `json:"message_id"`
+			Chat      struct {
+				ID   int64  `json:"id"`
+				Type string `json:"type"`
+			} `json:"chat"`
+			Text           string `json:"text"`
+			ReplyToMessage *struct {
+				Text string `json:"text"`
+			} `json:"reply_to_message"`
+		} `json:"message"`
 		ChatJoinRequest *struct {
 			Chat struct {
 				ID int64 `json:"id"`
@@ -272,12 +286,25 @@ func (s *server) telegramWebhook(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONLimitAllowUnknown(w, r, &update, maxJSONBody) {
 		return
 	}
-	if update.ChatJoinRequest == nil {
+	if update.Message == nil && update.ChatJoinRequest == nil {
 		writeSuccess(w, http.StatusOK, true)
 		return
 	}
-	chatID, userID := update.ChatJoinRequest.Chat.ID, update.ChatJoinRequest.From.ID
-	if update.UpdateID < 1 || chatID == 0 || userID < 1 {
+	if update.Message != nil && update.ChatJoinRequest != nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "Telegram 更新格式无效", nil)
+		return
+	}
+	var chatID, userID int64
+	if update.Message != nil {
+		chatID = update.Message.Chat.ID
+		if update.UpdateID < 1 || update.Message.MessageID < 1 || chatID == 0 || !validTelegramChatType(update.Message.Chat.Type) {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "Telegram 更新格式无效", nil)
+			return
+		}
+	} else {
+		chatID, userID = update.ChatJoinRequest.Chat.ID, update.ChatJoinRequest.From.ID
+	}
+	if update.UpdateID < 1 || chatID == 0 || (update.ChatJoinRequest != nil && userID < 1) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "Telegram 更新格式无效", nil)
 		return
 	}
@@ -309,6 +336,22 @@ func (s *server) telegramWebhook(w http.ResponseWriter, r *http.Request) {
 			_ = s.store.ReleaseTelegramWebhookUpdate(cleanupContext, update.UpdateID, claimID)
 		}
 	}()
+	if update.Message != nil {
+		replyText := ""
+		if update.Message.ReplyToMessage != nil {
+			replyText = update.Message.ReplyToMessage.Text
+		}
+		if err := s.store.ProcessTelegramMessageUpdate(r.Context(), store.TelegramMessageUpdateInput{
+			UpdateID: update.UpdateID, ClaimID: claimID, ChatID: chatID, ChatType: update.Message.Chat.Type,
+			Text: update.Message.Text, ReplyText: replyText, PanelURL: s.panelURL,
+		}, s.now()); err != nil {
+			handleStoreError(w, err)
+			return
+		}
+		releaseClaim = false
+		writeSuccess(w, http.StatusOK, true)
+		return
+	}
 	available, err := s.store.TelegramUserAvailable(r.Context(), userID, s.now())
 	if err != nil {
 		handleStoreError(w, err)
@@ -338,6 +381,15 @@ func (s *server) telegramWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeSuccess(w, http.StatusOK, true)
+}
+
+func validTelegramChatType(value string) bool {
+	switch value {
+	case "private", "group", "supergroup", "channel":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *server) legacyTelegramBotInfo(w http.ResponseWriter, r *http.Request) {

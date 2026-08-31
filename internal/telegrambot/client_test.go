@@ -52,6 +52,55 @@ func TestClientGetMeAndSetWebhookKeepSecretsInExpectedBoundaries(t *testing.T) {
 	}
 }
 
+func TestClientRegistersFixedCommandsAndSendsBoundedPlainText(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		methods = append(methods, request.URL.Path)
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/setMyCommands"):
+			var body struct {
+				Commands []BotCommand `json:"commands"`
+				Scope    struct {
+					Type string `json:"type"`
+				} `json:"scope"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.Scope.Type != "default" || len(body.Commands) != 5 ||
+				body.Commands[0] != (BotCommand{Command: "start", Description: "开始使用"}) ||
+				body.Commands[4] != (BotCommand{Command: "unbind", Description: "解绑账号"}) {
+				t.Fatalf("setMyCommands body=%#v err=%v", body, err)
+			}
+		case strings.HasSuffix(request.URL.Path, "/sendMessage"):
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body["chat_id"] != float64(778899) || body["text"] != "plain _user_ text" {
+				t.Fatalf("sendMessage body=%#v err=%v", body, err)
+			}
+			if _, exists := body["parse_mode"]; exists {
+				t.Fatalf("sendMessage enabled markup parsing: %#v", body)
+			}
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer server.Close()
+	client, err := New(Options{HTTPClient: server.Client(), APIBaseURL: server.URL, AllowInsecure: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SetMyCommands(t.Context(), []byte(testBotToken), FixedCommands()); err != nil {
+		t.Fatalf("SetMyCommands() error=%v", err)
+	}
+	if err := client.SendMessage(t.Context(), []byte(testBotToken), 778899, "plain _user_ text"); err != nil {
+		t.Fatalf("SendMessage() error=%v", err)
+	}
+	if len(methods) != 2 {
+		t.Fatalf("methods=%#v", methods)
+	}
+	for _, invalid := range []string{"", "contains\x00nul", strings.Repeat("x", 4097)} {
+		if err := client.SendMessage(t.Context(), []byte(testBotToken), 778899, invalid); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("SendMessage(%q) error=%v", invalid, err)
+		}
+	}
+}
+
 func TestClientJoinRequestsAndRejectsMalformedInputs(t *testing.T) {
 	var called []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

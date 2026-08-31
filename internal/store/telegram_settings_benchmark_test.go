@@ -43,3 +43,37 @@ func BenchmarkTelegramUserAvailable100K(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkTelegramTrafficLookup100K(b *testing.B) {
+	database := openBenchmarkStore(b, "telegram-command-users.db")
+	ctx := b.Context()
+	now := time.Date(2026, 8, 31, 16, 0, 0, 0, time.UTC)
+	if _, err := database.db.ExecContext(ctx, `
+		WITH RECURSIVE sequence(value) AS (
+			SELECT 1 UNION ALL SELECT value + 1 FROM sequence WHERE value < 100000
+		)
+		INSERT INTO users (
+			email,password_hash,uuid,subscription_token,telegram_id,traffic_u,traffic_d,transfer_enable,created_at,updated_at
+		)
+		SELECT printf('telegram-command-%06d@example.test',value),'hash',
+		       printf('%08x-0000-4000-8000-%012x',value,value),printf('%032x',value),
+		       2000000 + value,1073741824,2147483648,10737418240,?,?
+		FROM sequence
+	`, now.Unix(), now.Unix()); err != nil {
+		b.Fatal(err)
+	}
+	tx, err := database.db.BeginTx(ctx, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = tx.Rollback() })
+	b.ReportMetric(100_000, "users")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		response, err := telegramTrafficResponse(ctx, tx, 2_100_000)
+		if err != nil || response == "" {
+			b.Fatalf("telegramTrafficResponse()=(%q,%v)", response, err)
+		}
+	}
+}

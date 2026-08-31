@@ -35,6 +35,7 @@ import (
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/Hao-Monster/Xboard-Go/internal/subscription"
+	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
 	"github.com/Hao-Monster/Xboard-Go/internal/webui"
 )
 
@@ -180,6 +181,13 @@ func main() {
 	smtpSender := mailer.NewSMTPSender(10*time.Second, settings.SMTPAllowInsecure)
 	mailWorker := mailer.NewWorker(database, settingsCipher, passwordResetProtector, registrationEmailProtector, loginLinkProtector, smtpSender, settings.MailPollInterval, logger, runtimeTracker)
 	go mailWorker.Run(ctx)
+	telegramClient, err := telegrambot.New(telegrambot.Options{})
+	if err != nil {
+		logger.Error("initialize Telegram client", "error", err)
+		os.Exit(1)
+	}
+	telegramWorker := telegrambot.NewWorker(database, settingsCipher, telegramClient, settings.MailPollInterval, logger)
+	go telegramWorker.Run(ctx)
 	bulkService, err := bulkops.New(database, bulkops.Options{
 		Cipher: settingsCipher, Sender: smtpSender, ExportRoot: settings.AdminExportRoot,
 		PanelURL: settings.PanelURL, PollInterval: settings.BulkPollInterval, Logger: logger,
@@ -225,6 +233,7 @@ func main() {
 		LoginLinkProtector:         loginLinkProtector,
 		SMTPAllowInsecure:          settings.SMTPAllowInsecure,
 		MailSender:                 smtpSender,
+		TelegramBot:                telegramClient,
 		RuntimeTracker:             runtimeTracker,
 		CaptchaVerifier:            captchaVerifier,
 		Attachments:                attachmentService,
