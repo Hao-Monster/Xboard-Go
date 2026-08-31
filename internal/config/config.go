@@ -56,6 +56,7 @@ type Config struct {
 	AttachmentMaxPerArticle    int
 	AdminExportRoot            string
 	LegacyAppClashTemplateFile string
+	IP2RegionXDBFile           string
 }
 
 func Load() (Config, error) {
@@ -188,6 +189,7 @@ func Load() (Config, error) {
 		AttachmentMaxPerArticle:    attachmentMaxPerArticle,
 		AdminExportRoot:            adminExportRoot,
 		LegacyAppClashTemplateFile: strings.TrimSpace(os.Getenv("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE")),
+		IP2RegionXDBFile:           strings.TrimSpace(os.Getenv("XBOARD_IP2REGION_XDB_FILE")),
 	}
 	if origins := strings.TrimSpace(os.Getenv("XBOARD_ALLOWED_ORIGINS")); origins != "" {
 		for _, origin := range strings.Split(origins, ",") {
@@ -210,6 +212,9 @@ func Load() (Config, error) {
 	}
 	if config.LegacyAppClashTemplateFile != "" && !filepath.IsAbs(config.LegacyAppClashTemplateFile) {
 		return Config{}, errors.New("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE must be an absolute path")
+	}
+	if config.IP2RegionXDBFile != "" && !filepath.IsAbs(config.IP2RegionXDBFile) {
+		return Config{}, errors.New("XBOARD_IP2REGION_XDB_FILE must be an absolute path")
 	}
 	if config.AttachmentRoot != "" {
 		if !filepath.IsAbs(config.AttachmentRoot) {

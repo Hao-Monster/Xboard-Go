@@ -149,9 +149,10 @@ type Ticket struct {
 }
 
 type SaveTicketInput struct {
-	Subject string
-	Level   TicketLevel
-	Message string
+	Subject              string
+	Level                TicketLevel
+	Message              string
+	NotificationLocation string
 }
 
 type TicketFilter struct {

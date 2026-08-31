@@ -7,14 +7,16 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 type telegramNotificationKind string
 
 const (
-	telegramNotificationTicket  telegramNotificationKind = "ticket"
-	telegramNotificationPayment telegramNotificationKind = "payment"
+	telegramNotificationTicket           telegramNotificationKind = "ticket"
+	telegramNotificationPayment          telegramNotificationKind = "payment"
+	maxTelegramNotificationLocationBytes                          = 512
 )
 
 var telegramLegacyLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -23,7 +25,7 @@ func enqueueTelegramTicketNotificationTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	userID, ticketID, messageID int64,
-	subject, message string,
+	subject, message, notificationLocation string,
 	now time.Time,
 ) error {
 	enabled, err := telegramNotificationEnabledTx(ctx, tx, telegramNotificationTicket)
@@ -53,7 +55,7 @@ func enqueueTelegramTicketNotificationTx(
 	fmt.Fprintf(&text, "📮 工单提醒 #%d\n", ticketID)
 	text.WriteString("━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Fprintf(&text, "📧 邮箱: %s\n", email)
-	text.WriteString("📍 位置: 未知\n")
+	fmt.Fprintf(&text, "📍 位置: %s\n", notificationLocation)
 	if planName.Valid {
 		fmt.Fprintf(&text, "📦 套餐: %s\n", planName.String)
 		fmt.Fprintf(&text, "📊 流量: %sG / %sG (剩余/总计)\n", formatTelegramGiB(remaining), formatTelegramGiB(transferEnable))
@@ -77,6 +79,22 @@ func enqueueTelegramTicketNotificationTx(
 		return err
 	}
 	return enqueueTelegramAdminNotificationTx(ctx, tx, telegramNotificationTicket, messageID, bounded, now)
+}
+
+func normalizeTelegramNotificationLocation(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "未知", true
+	}
+	if !utf8.ValidString(value) || len(value) > maxTelegramNotificationLocationBytes || strings.IndexByte(value, 0) >= 0 {
+		return "", false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return "", false
+		}
+	}
+	return value, true
 }
 
 func enqueueTelegramPaymentNotificationTx(ctx context.Context, tx *sql.Tx, order Order, payment Payment, now time.Time) error {

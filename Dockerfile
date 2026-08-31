@@ -11,6 +11,9 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod GOPROXY="${GO_MODULE_PROXY}" go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+ADD --checksum=sha256:5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469 \
+    https://raw.githubusercontent.com/zoujingli/ip2region/a031c359620c22889fac7b998409fdcdef76a69c/ip2region.xdb \
+    /out/ip2region.xdb
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${APP_REVISION}" -o /out/xboard ./cmd/xboard \
@@ -35,7 +38,9 @@ COPY --from=go-build /out/xboard /xboard
 COPY --chown=65532:65532 --from=go-build /out/data /var/lib/xboard
 COPY --chown=65532:65532 --from=go-build /out/backups /var/lib/xboard-backups
 COPY --chown=65532:65532 --from=go-build /out/tmp /tmp
+COPY --chown=65532:65532 --from=go-build /out/ip2region.xdb /usr/share/xboard/ip2region.xdb
 COPY --chown=65532:65532 --from=web-build /src/web/dist /srv/xboard/web
+COPY --chown=65532:65532 LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/xboard-go/
 USER 65532:65532
 EXPOSE 8080
 ENV XBOARD_ADDRESS=0.0.0.0:8080 \
@@ -45,6 +50,7 @@ ENV XBOARD_ADDRESS=0.0.0.0:8080 \
     XBOARD_COOKIE_SECURE=false \
     XBOARD_BACKUP_DIRECTORY=/var/lib/xboard-backups \
     XBOARD_ADMIN_EXPORT_ROOT=/var/lib/xboard/admin-exports \
+    XBOARD_IP2REGION_XDB_FILE=/usr/share/xboard/ip2region.xdb \
     XBOARD_WEB_ROOT=/srv/xboard/web
 VOLUME ["/var/lib/xboard"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 CMD ["/xboard", "healthcheck"]

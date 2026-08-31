@@ -202,7 +202,7 @@ func telegramTicketReplyTx(ctx context.Context, tx *sql.Tx, chatID int64, messag
 	if !validTicketMessage(message) {
 		return "回复内容无效", nil
 	}
-	if _, err := replyTicketTx(ctx, tx, 0, ticketID, administratorID, false, message, now); err != nil {
+	if _, err := replyTicketTx(ctx, tx, 0, ticketID, administratorID, false, message, "", now); err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):
 			return "工单不存在", nil
