@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,7 +44,7 @@ func TestTelegramTicketNotificationRejectsUnsafeLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, location := range []string{"unsafe\x00location", "spoofed\nfield", string(make([]byte, maxTelegramNotificationLocationBytes+1))} {
+	for _, location := range []string{"unsafe\x00location", "spoofed\nfield", strings.Repeat("x", maxTelegramNotificationLocationBytes+1)} {
 		if _, err := database.CreateTicket(t.Context(), owner.ID, SaveTicketInput{
 			Subject: "invalid", Level: TicketLevelLow, Message: "invalid", NotificationLocation: location,
 		}, time.Unix(1_800_000_001, 0)); err == nil {

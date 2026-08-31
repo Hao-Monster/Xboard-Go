@@ -60,6 +60,10 @@ func TestLegacyTicketNotificationClientIPTrustBoundary(t *testing.T) {
 	if got := legacyTicketNotificationClientIP(request); got != "10.0.0.4" {
 		t.Fatalf("oversized forwarded chain = %q", got)
 	}
+	request.Header.Set("X-Forwarded-For", strings.Repeat("8.8.8.8,", maxTicketForwardedHops)+"8.8.8.8")
+	if got := legacyTicketNotificationClientIP(request); got != "10.0.0.4" {
+		t.Fatalf("overlong forwarded hop chain = %q", got)
+	}
 }
 
 func TestTicketNotificationLocationPreservesIPv4AndIPv6Semantics(t *testing.T) {
