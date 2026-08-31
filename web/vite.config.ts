@@ -10,7 +10,7 @@ const apiProxy = {
   "/guide": apiProxyTarget,
   "/guide-attachments": apiProxyTarget,
   "/knowledge-attachments": apiProxyTarget,
-  "/s": apiProxyTarget
+  "^/s/[0-9a-f]{32}$": apiProxyTarget
 };
 
 export default defineConfig({
