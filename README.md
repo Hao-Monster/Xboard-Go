@@ -612,6 +612,22 @@ docker compose -f compose.local.yaml up -d --wait xboard-go
 an SMTP password. Password material is excluded from command output and the
 migration ledger.
 
+Legacy plan-change, surplus-credit, order-event, and new-user reminder defaults
+use the independent `subscription-policy-settings-v1` slice. It reads only the
+seven fixed policy keys and deliberately leaves `reset_traffic_method` to the
+existing subscription-config migration, so the two slices compose without
+overwriting each other. Unknown events and invalid booleans fail closed:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-subscription-policy-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-subscription-policy-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
 After plans have been imported, migrate the legacy registration-trial plan and
 duration while the target remains offline:
 
