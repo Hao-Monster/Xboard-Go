@@ -30,7 +30,7 @@ func runLegacySafeAccessSettingsMigrationCommand(ctx context.Context, arguments 
 	flags := flag.NewFlagSet("migration import-legacy-safe-access-settings", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	sourcePath := flags.String("source", "", "standalone legacy Xboard SQLite snapshot path")
-	sourceEffectiveSecurePath := flags.String("source-effective-secure-path", "", "old effective secure path when the snapshot has no secure_path row")
+	sourceEffectiveSecurePath := flags.String("source-effective-secure-path", "", "old effective secure path when the snapshot has no secure_path or frontend_admin_path row")
 	backupOutput := flags.String("backup-output", "", "new pre-import Xboard-Go rollback archive path")
 	confirmOffline := flags.Bool("confirm-offline", false, "confirm the target application is stopped")
 	if err := flags.Parse(arguments); err != nil {

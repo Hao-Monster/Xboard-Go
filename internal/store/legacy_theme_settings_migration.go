@@ -77,7 +77,18 @@ func (s *Store) LookupLegacyThemeSettingsImport(ctx context.Context, sourceSHA25
 	if !validLowerSHA256(sourceSHA256) {
 		return LegacyThemeSettingsImportReport{}, false, ErrInvalidInput
 	}
-	return lookupLegacyThemeSettingsImport(ctx, s.db, sourceSHA256)
+	report, found, err := lookupLegacyThemeSettingsImport(ctx, s.db, sourceSHA256)
+	if err != nil || !found {
+		return report, found, err
+	}
+	settings, err := readLegacyThemeSettingsTarget(ctx, s.db)
+	if err != nil {
+		return LegacyThemeSettingsImportReport{}, false, fmt.Errorf("verify imported legacy theme settings: %w", err)
+	}
+	if LegacyThemeSettingsChecksum(settings) != report.Settings.TargetChecksum {
+		return LegacyThemeSettingsImportReport{}, false, fmt.Errorf("%w: imported legacy theme settings no longer match their migration ledger", ErrConflict)
+	}
+	return report, true, nil
 }
 
 func lookupLegacyThemeSettingsImport(ctx context.Context, database interface {
@@ -122,6 +133,16 @@ func (s *Store) ImportLegacyThemeSettings(ctx context.Context, input LegacyTheme
 	if existing, found, err := lookupLegacyThemeSettingsImport(ctx, tx, input.SourceSHA256); err != nil {
 		return LegacyThemeSettingsImportReport{}, err
 	} else if found {
+		if existing.Settings.SourceChecksum != input.Checksum {
+			return LegacyThemeSettingsImportReport{}, fmt.Errorf("%w: legacy theme settings source options differ from their migration ledger", ErrConflict)
+		}
+		settings, err := readLegacyThemeSettingsTarget(ctx, tx)
+		if err != nil {
+			return LegacyThemeSettingsImportReport{}, fmt.Errorf("verify imported legacy theme settings: %w", err)
+		}
+		if LegacyThemeSettingsChecksum(settings) != existing.Settings.TargetChecksum {
+			return LegacyThemeSettingsImportReport{}, fmt.Errorf("%w: imported legacy theme settings no longer match their migration ledger", ErrConflict)
+		}
 		if err := tx.Commit(); err != nil {
 			return LegacyThemeSettingsImportReport{}, err
 		}
@@ -187,6 +208,32 @@ func (s *Store) ImportLegacyThemeSettings(ctx context.Context, input LegacyTheme
 		return LegacyThemeSettingsImportReport{}, err
 	}
 	return report, nil
+}
+
+func readLegacyThemeSettingsTarget(ctx context.Context, database interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (LegacyThemeSettings, error) {
+	var settings LegacyThemeSettings
+	var configJSON string
+	if err := database.QueryRowContext(ctx, `
+		SELECT configured.active_theme, installed.config_json
+		FROM theme_settings configured
+		JOIN themes installed ON installed.name = configured.active_theme COLLATE NOCASE
+		WHERE configured.id = 1
+	`).Scan(&settings.ActiveTheme, &configJSON); err != nil {
+		return LegacyThemeSettings{}, err
+	}
+	if err := json.Unmarshal([]byte(configJSON), &settings.Config); err != nil {
+		return LegacyThemeSettings{}, fmt.Errorf("decode imported legacy theme settings target: %w", err)
+	}
+	normalized, err := NormalizeLegacyThemeSettings(settings)
+	if err != nil || normalized != settings {
+		if err == nil {
+			err = ErrInvalidInput
+		}
+		return LegacyThemeSettings{}, fmt.Errorf("validate imported legacy theme settings target: %w", err)
+	}
+	return settings, nil
 }
 
 func validateLegacyThemeSettingsImport(input LegacyThemeSettingsImport) error {

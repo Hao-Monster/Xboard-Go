@@ -697,11 +697,14 @@ docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
 The legacy Xboard theme choice and safe built-in-theme configuration use a
-separate offline slice. It accepts the fixed `Xboard` theme and the verified
-`default`, `blue`, `black`, or `darkblue` palette values. It deliberately
-stops instead of silently importing an executable custom theme, non-empty
-`custom_html`, a remote background URL, conflicting active-theme keys, or
-unknown configuration fields:
+separate offline slice. In addition to `theme_xboard`, it reads the historical
+top-level `frontend_theme_color` and `frontend_background_url` compatibility
+values. Empty or missing top-level values do not replace `theme_xboard`;
+explicit values must agree. The slice accepts the fixed `Xboard` theme and the
+verified `default`, `blue`, `black`, or `darkblue` palette values. It
+deliberately stops instead of silently importing an executable custom theme,
+non-empty `custom_html`, a remote background URL, conflicting theme/color
+keys, or unknown configuration fields:
 
 ```bash
 docker compose -f compose.local.yaml run --rm --no-deps \
@@ -761,13 +764,16 @@ docker compose -f compose.local.yaml run --rm --no-deps \
 docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
-The legacy `safe_mode_enable` and `secure_path` values use another independent
-slice. The importer reads only those fixed keys, requires an explicit secure
-path of 8–64 ASCII letters, numbers, underscores, or hyphens, rejects reserved
+The legacy `safe_mode_enable`, `secure_path`, and compatibility fallback
+`frontend_admin_path` values use another independent slice. The importer reads
+only those fixed keys, follows the old `secure_path` then `frontend_admin_path`
+precedence, requires an explicit secure path of 8–64 ASCII letters, numbers,
+underscores, or hyphens, rejects reserved
 API namespaces, and only replaces a pristine empty or deployment-default
 target path. Enabling safe mode also requires the site URL to have been
 migrated first. If the old database has no `secure_path` row because Xboard was
-using the APP_KEY-derived default, pass that observed effective value with
+also missing `frontend_admin_path` and was using the APP_KEY-derived default,
+pass that observed effective value with
 `--source-effective-secure-path`; the importer never guesses it or reads the
 old APP_KEY:
 

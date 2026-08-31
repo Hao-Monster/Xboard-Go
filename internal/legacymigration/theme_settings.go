@@ -30,19 +30,25 @@ func ReadThemeSettingsSnapshot(ctx context.Context, sourcePath string) (ThemeSet
 		}
 		if err := validateLegacyQueryBudget(ctx, database, `
 			SELECT COUNT(*), COALESCE(SUM(length(CAST(name AS BLOB)) + COALESCE(length(CAST(value AS BLOB)), 0)), 0)
-			FROM v2_settings WHERE name IN ('frontend_theme','current_theme','theme_xboard')
-		`, 3, 8_192, "legacy theme settings"); err != nil {
+			FROM v2_settings WHERE name IN (
+				'frontend_theme','current_theme','theme_xboard',
+				'frontend_theme_color','frontend_background_url'
+			)
+		`, 5, 10_240, "legacy theme settings"); err != nil {
 			return err
 		}
 		rows, err := database.QueryContext(ctx, `
 			SELECT name, COALESCE(CAST(value AS TEXT), '') FROM v2_settings
-			WHERE name IN ('frontend_theme','current_theme','theme_xboard') ORDER BY name
+			WHERE name IN (
+				'frontend_theme','current_theme','theme_xboard',
+				'frontend_theme_color','frontend_background_url'
+			) ORDER BY name
 		`)
 		if err != nil {
 			return fmt.Errorf("read legacy theme settings: %w", err)
 		}
 		defer rows.Close()
-		values := make(map[string]string, 3)
+		values := make(map[string]string, 5)
 		for rows.Next() {
 			var name, value string
 			if err := rows.Scan(&name, &value); err != nil {
@@ -66,6 +72,7 @@ func ReadThemeSettingsSnapshot(ctx context.Context, sourcePath string) (ThemeSet
 		} else if current != "" {
 			settings.ActiveTheme = current
 		}
+		var themeConfigColor, themeConfigBackground string
 		if encoded, exists := values["theme_xboard"]; exists {
 			var legacy struct {
 				ThemeColor    string `json:"theme_color"`
@@ -83,8 +90,24 @@ func ReadThemeSettingsSnapshot(ctx context.Context, sourcePath string) (ThemeSet
 			if strings.TrimSpace(legacy.CustomHTML) != "" {
 				return errors.New("legacy theme_xboard contains custom HTML or scripts")
 			}
-			settings.Config.ThemeColor = legacy.ThemeColor
-			settings.Config.BackgroundURL = legacy.BackgroundURL
+			themeConfigColor = strings.TrimSpace(legacy.ThemeColor)
+			themeConfigBackground = strings.TrimSpace(legacy.BackgroundURL)
+			settings.Config.ThemeColor = themeConfigColor
+			settings.Config.BackgroundURL = themeConfigBackground
+		}
+		frontendColor := strings.TrimSpace(values["frontend_theme_color"])
+		if frontendColor != "" {
+			if themeConfigColor != "" && frontendColor != themeConfigColor {
+				return errors.New("legacy theme_xboard and frontend_theme_color disagree")
+			}
+			settings.Config.ThemeColor = frontendColor
+		}
+		frontendBackground := strings.TrimSpace(values["frontend_background_url"])
+		if frontendBackground != "" {
+			if themeConfigBackground != "" && frontendBackground != themeConfigBackground {
+				return errors.New("legacy theme_xboard and frontend_background_url disagree")
+			}
+			settings.Config.BackgroundURL = frontendBackground
 		}
 		settings, err = store.NormalizeLegacyThemeSettings(settings)
 		if err != nil {
