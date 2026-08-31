@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -37,15 +38,15 @@ type LegacyMailSettingsImport struct {
 }
 
 type LegacyMailSettingsImportReport struct {
-	Slice                string             `json:"slice"`
-	SourceSHA256         string             `json:"source_sha256"`
-	SourceSize           int64              `json:"source_size"`
-	RollbackBackupPath   string             `json:"rollback_backup_path"`
-	RollbackBackupSHA256 string             `json:"rollback_backup_sha256"`
-	Settings             LegacyDomainResult `json:"settings"`
-	PasswordCipherSHA256 string             `json:"password_cipher_sha256,omitempty"`
-	AppliedAt            time.Time          `json:"applied_at"`
-	AlreadyApplied       bool               `json:"already_applied"`
+	Slice                     string             `json:"slice"`
+	SourceSHA256              string             `json:"source_sha256"`
+	SourceSize                int64              `json:"source_size"`
+	RollbackBackupPath        string             `json:"rollback_backup_path"`
+	RollbackBackupSHA256      string             `json:"rollback_backup_sha256"`
+	Settings                  LegacyDomainResult `json:"settings"`
+	PasswordCipherFingerprint string             `json:"password_cipher_fingerprint,omitempty"`
+	AppliedAt                 time.Time          `json:"applied_at"`
+	AlreadyApplied            bool               `json:"already_applied"`
 }
 
 func DefaultLegacyMailSettings() LegacyMailSettings {
@@ -118,7 +119,7 @@ func (s *Store) LookupLegacyMailSettingsImport(ctx context.Context, sourceSHA256
 	if LegacyMailSettingsChecksum(target) != report.Settings.TargetChecksum {
 		return LegacyMailSettingsImportReport{}, false, fmt.Errorf("%w: imported legacy mail settings no longer match their migration ledger", ErrConflict)
 	}
-	if smtpPasswordCipherChecksum(target.SMTPPasswordCipher) != report.PasswordCipherSHA256 {
+	if smtpPasswordCipherFingerprint(sourceSHA256, target.SMTPPasswordCipher) != report.PasswordCipherFingerprint {
 		return LegacyMailSettingsImportReport{}, false, fmt.Errorf("%w: imported legacy SMTP credential no longer matches its migration ledger", ErrConflict)
 	}
 	return report, true, nil
@@ -170,7 +171,7 @@ func (s *Store) ImportLegacyMailSettings(ctx context.Context, input LegacyMailSe
 		if err != nil || LegacyMailSettingsChecksum(target) != existing.Settings.TargetChecksum {
 			return LegacyMailSettingsImportReport{}, fmt.Errorf("%w: imported legacy mail settings no longer match their migration ledger", ErrConflict)
 		}
-		if smtpPasswordCipherChecksum(target.SMTPPasswordCipher) != existing.PasswordCipherSHA256 {
+		if smtpPasswordCipherFingerprint(input.SourceSHA256, target.SMTPPasswordCipher) != existing.PasswordCipherFingerprint {
 			return LegacyMailSettingsImportReport{}, fmt.Errorf("%w: imported legacy SMTP credential no longer matches its migration ledger", ErrConflict)
 		}
 		if err := tx.Commit(); err != nil {
@@ -217,9 +218,9 @@ func (s *Store) ImportLegacyMailSettings(ctx context.Context, input LegacyMailSe
 	report := LegacyMailSettingsImportReport{
 		Slice: input.Slice, SourceSHA256: input.SourceSHA256, SourceSize: input.SourceSize,
 		RollbackBackupPath: input.RollbackBackupPath, RollbackBackupSHA256: input.RollbackBackupSHA256,
-		Settings:             LegacyDomainResult{SourceRows: 1, TargetRows: 1, SourceChecksum: input.Checksum, TargetChecksum: LegacyMailSettingsChecksum(target)},
-		PasswordCipherSHA256: smtpPasswordCipherChecksum(target.SMTPPasswordCipher),
-		AppliedAt:            now.UTC(),
+		Settings:                  LegacyDomainResult{SourceRows: 1, TargetRows: 1, SourceChecksum: input.Checksum, TargetChecksum: LegacyMailSettingsChecksum(target)},
+		PasswordCipherFingerprint: smtpPasswordCipherFingerprint(input.SourceSHA256, target.SMTPPasswordCipher),
+		AppliedAt:                 now.UTC(),
 	}
 	if report.Settings.SourceChecksum != report.Settings.TargetChecksum {
 		return LegacyMailSettingsImportReport{}, errors.New("legacy mail settings target checksum does not match source")
@@ -275,10 +276,13 @@ func sameLegacyMailSettings(left, right LegacyMailSettings) bool {
 		left.RemindMailEnabled == right.RemindMailEnabled && subtle.ConstantTimeCompare(left.SMTPPasswordCipher, right.SMTPPasswordCipher) == 1
 }
 
-func smtpPasswordCipherChecksum(ciphertext []byte) string {
-	if len(ciphertext) == 0 {
+func smtpPasswordCipherFingerprint(sourceSHA256 string, encryptedCredential []byte) string {
+	if len(encryptedCredential) == 0 {
 		return ""
 	}
-	digest := sha256.Sum256(ciphertext)
-	return fmt.Sprintf("%x", digest)
+	// This is a source-scoped drift fingerprint over AES-GCM ciphertext, not a
+	// password verifier. Authentication continues to rely on the AEAD tag.
+	mac := hmac.New(sha256.New, []byte("xboard-go/legacy-mail-settings/cipher-drift/v1/"+sourceSHA256))
+	_, _ = mac.Write(encryptedCredential)
+	return fmt.Sprintf("%x", mac.Sum(nil))
 }
