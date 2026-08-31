@@ -142,7 +142,7 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	}
 	for _, secret := range []string{beforeSubscription.UUID, oldToken, afterSubscription.UUID, newToken} {
 		if secret != "" && strings.Contains(reset.Body.String(), secret) {
-			t.Fatalf("administrator subscription reset response exposed rotated credential: %s", reset.Body)
+			t.Fatal("administrator subscription reset response exposed a rotated credential")
 		}
 	}
 	if old := requestSubscription(api, "/s/"+oldToken); old.Code != http.StatusForbidden {
@@ -195,7 +195,7 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	}
 	for _, secret := range []string{legacyBeforeSubscription.UUID, legacyOldToken, legacyAfterSubscription.UUID, legacyNewToken} {
 		if secret != "" && strings.Contains(legacyReset.Body.String(), secret) {
-			t.Fatalf("legacy administrator subscription reset response exposed rotated credential: %s", legacyReset.Body)
+			t.Fatal("legacy administrator subscription reset response exposed a rotated credential")
 		}
 	}
 	if old := requestSubscription(api, "/s/"+legacyOldToken); old.Code != http.StatusForbidden {
