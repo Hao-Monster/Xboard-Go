@@ -26,6 +26,27 @@ func (s *Store) ClaimTelegramMessage(ctx context.Context, claimToken string, now
 		return TelegramDeliveryJob{}, false, fmt.Errorf("begin claim Telegram message: %w", err)
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE telegram_message_outbox
+		SET cancelled_at=?,claim_token=NULL,claimed_at=NULL,
+		    last_error='cancelled because the Telegram notification recipient changed',updated_at=?
+		WHERE id IN (
+			SELECT o.id FROM telegram_message_outbox o INDEXED BY idx_telegram_message_outbox_due
+			WHERE o.source_kind IN ('ticket','payment')
+			  AND o.sent_at IS NULL AND o.failed_at IS NULL AND o.cancelled_at IS NULL
+			  AND o.available_at <= ?
+			  AND (
+				o.recipient_user_id IS NULL OR NOT EXISTS (
+					SELECT 1 FROM users u
+					WHERE u.id=o.recipient_user_id AND u.telegram_id=o.chat_id
+					  AND u.account_kind='human' AND (u.is_admin=1 OR u.is_staff=1)
+				)
+			  )
+			ORDER BY o.available_at,o.id LIMIT 100
+		)
+	`, now.Unix(), now.Unix(), now.Unix()); err != nil {
+		return TelegramDeliveryJob{}, false, fmt.Errorf("cancel invalid Telegram notification recipient: %w", err)
+	}
 
 	staleBefore := now.Add(-lease).Unix()
 	var id int64
@@ -37,11 +58,21 @@ func (s *Store) ClaimTelegramMessage(ctx context.Context, claimToken string, now
 		WHERE s.id=1 AND s.telegram_bot_enable=1 AND s.telegram_bot_token_cipher IS NOT NULL
 		  AND p.code='telegram' AND p.enabled=1
 		  AND o.sent_at IS NULL AND o.failed_at IS NULL AND o.cancelled_at IS NULL
+		  AND (
+			o.source_kind='command' OR EXISTS (
+				SELECT 1 FROM users u
+				WHERE u.id=o.recipient_user_id AND u.telegram_id=o.chat_id
+				  AND u.account_kind='human' AND (u.is_admin=1 OR u.is_staff=1)
+			)
+		  )
 		  AND o.attempt_count < ? AND o.available_at <= ?
 		  AND (o.claimed_at IS NULL OR o.claimed_at <= ?)
 		ORDER BY o.available_at,o.id LIMIT 1
 	`, maxTelegramDeliveryAttempts, now.Unix(), staleBefore).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		if err := tx.Commit(); err != nil {
+			return TelegramDeliveryJob{}, false, fmt.Errorf("commit invalid Telegram notification cancellations: %w", err)
+		}
 		return TelegramDeliveryJob{}, false, nil
 	}
 	if err != nil {

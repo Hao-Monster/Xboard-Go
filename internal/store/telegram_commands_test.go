@@ -11,10 +11,13 @@ import (
 
 func TestTelegramCommandSchemaMigratesAndRejectsInvalidQueueRows(t *testing.T) {
 	database := newTestStore(t)
-	if CurrentSchemaVersion() != 56 {
-		t.Fatalf("CurrentSchemaVersion()=%d, want 56", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 57 {
+		t.Fatalf("CurrentSchemaVersion()=%d, want 57", CurrentSchemaVersion())
 	}
-	for _, name := range []string{"telegram_message_outbox", "idx_telegram_message_outbox_due", "idx_telegram_message_outbox_failed"} {
+	for _, name := range []string{
+		"telegram_message_outbox", "idx_telegram_message_outbox_due", "idx_telegram_message_outbox_failed",
+		"idx_users_telegram_admin_notify", "telegram_message_outbox_recipient_insert", "telegram_message_outbox_recipient_update",
+	} {
 		var exists bool
 		if err := database.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?)`, name).Scan(&exists); err != nil || !exists {
 			t.Fatalf("schema object %s exists=%t err=%v", name, exists, err)
@@ -25,6 +28,18 @@ func TestTelegramCommandSchemaMigratesAndRejectsInvalidQueueRows(t *testing.T) {
 		VALUES('shell',1,1,'unsafe',1,1,1)
 	`); err == nil {
 		t.Fatal("telegram outbox accepted an unknown executable source kind")
+	}
+	if _, err := database.db.Exec(`
+		INSERT INTO telegram_message_outbox(source_kind,source_id,chat_id,text,available_at,created_at,updated_at)
+		VALUES('ticket',1,1,'missing recipient',1,1,1)
+	`); err == nil {
+		t.Fatal("Telegram notification outbox accepted a missing recipient identity")
+	}
+	if _, err := database.db.Exec(`
+		INSERT INTO telegram_message_outbox(source_kind,source_id,chat_id,text,available_at,created_at,updated_at,recipient_user_id)
+		VALUES('command',1,1,'unexpected recipient',1,1,1,1)
+	`); err == nil {
+		t.Fatal("Telegram command outbox accepted a notification recipient identity")
 	}
 }
 
@@ -49,7 +64,7 @@ func TestSchemaV56ReplacesUnversionedTelegramOutboxWithoutDeliveringForgedRows(t
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM telegram_message_outbox`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if version != 56 || rows != 0 {
+	if version != 57 || rows != 0 {
 		t.Fatalf("migration version=%d queue rows=%d", version, rows)
 	}
 }

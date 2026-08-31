@@ -523,6 +523,7 @@ func removeSchemaV33ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	removeSchemaV34ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP INDEX IF EXISTS idx_users_telegram_admin_notify;
 		DROP TRIGGER trg_distributor_subscriptions_insert_guard;
 		DROP TRIGGER trg_distributor_subscriptions_update_guard;
 		DROP TRIGGER trg_orders_distributor_insert_guard;

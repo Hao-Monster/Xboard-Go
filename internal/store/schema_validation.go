@@ -206,6 +206,10 @@ var requiredSchemaColumnsV56 = map[string][]string{
 	},
 }
 
+var requiredSchemaColumnsV57 = map[string][]string{
+	"telegram_message_outbox": {"recipient_user_id"},
+}
+
 type schemaQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -360,6 +364,17 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	if schemaVersion >= 56 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV56); err != nil {
 			return err
+		}
+	}
+	if schemaVersion >= 57 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV57); err != nil {
+			return err
+		}
+		if err := validateTelegramNotificationIndex(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+		if err := validateTelegramNotificationRecipientTriggers(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
 	if schemaVersion >= 42 {
@@ -564,6 +579,91 @@ func validateTelegramIDIndex(ctx context.Context, database schemaQueryer) error 
 		return errors.New("Telegram identity index must exclude only null identities")
 	}
 	return nil
+}
+
+func validateTelegramNotificationIndex(ctx context.Context, database schemaQueryer) error {
+	rows, err := database.QueryContext(ctx, `
+		SELECT sql FROM sqlite_schema
+		WHERE type='index' AND name='idx_users_telegram_admin_notify' AND tbl_name='users'
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect Telegram administrator notification index: %w", err)
+	}
+	var definition string
+	if rows.Next() {
+		if err := rows.Scan(&definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Telegram administrator notification index: %w", err)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Telegram administrator notification index: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Telegram administrator notification index: %w", err)
+	}
+	const expectedDefinition = "createindexidx_users_telegram_admin_notifyonusers(telegram_id)wheretelegram_idisnotnullandaccount_kind='human'and(is_admin=1oris_staff=1)"
+	if strings.Join(strings.Fields(strings.ToLower(definition)), "") != expectedDefinition {
+		return errors.New("Telegram administrator notification index must cover only bound human administrators and staff")
+	}
+	return nil
+}
+
+func validateTelegramNotificationRecipientTriggers(ctx context.Context, database schemaQueryer) error {
+	expected := map[string]string{
+		"telegram_message_outbox_recipient_insert": `
+			CREATE TRIGGER telegram_message_outbox_recipient_insert
+			BEFORE INSERT ON telegram_message_outbox
+			WHEN (NEW.source_kind='command' AND NEW.recipient_user_id IS NOT NULL)
+			  OR (NEW.source_kind IN ('ticket','payment') AND NEW.recipient_user_id IS NULL)
+			BEGIN
+				SELECT RAISE(ABORT,'invalid Telegram outbox recipient');
+			END
+		`,
+		"telegram_message_outbox_recipient_update": `
+			CREATE TRIGGER telegram_message_outbox_recipient_update
+			BEFORE UPDATE OF source_kind,recipient_user_id ON telegram_message_outbox
+			WHEN (NEW.source_kind='command' AND NEW.recipient_user_id IS NOT NULL)
+			  OR (NEW.source_kind IN ('ticket','payment') AND NEW.recipient_user_id IS NULL)
+			BEGIN
+				SELECT RAISE(ABORT,'invalid Telegram outbox recipient');
+			END
+		`,
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT name,sql FROM sqlite_schema
+		WHERE type='trigger' AND name IN (
+			'telegram_message_outbox_recipient_insert','telegram_message_outbox_recipient_update'
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect Telegram notification recipient triggers: %w", err)
+	}
+	found := make(map[string]string, len(expected))
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect Telegram notification recipient triggers: %w", err)
+		}
+		found[name] = definition
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect Telegram notification recipient triggers: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect Telegram notification recipient triggers: %w", err)
+	}
+	for name, definition := range expected {
+		if normalizeSchemaDefinition(found[name]) != normalizeSchemaDefinition(definition) {
+			return fmt.Errorf("Telegram notification recipient trigger %q is missing or invalid", name)
+		}
+	}
+	return nil
+}
+
+func normalizeSchemaDefinition(value string) string {
+	return strings.TrimSuffix(strings.Join(strings.Fields(strings.ToLower(value)), ""), ";")
 }
 
 func validateRequiredSchemaColumns(ctx context.Context, database schemaQueryer, schemaVersion int, requiredByTable map[string][]string) error {
