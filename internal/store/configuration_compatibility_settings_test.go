@@ -32,7 +32,7 @@ func TestSchemaV54AddsConfigurationCompatibilityDefaultsAndConstraints(t *testin
 	`).Scan(&version, &withdrawLimit, &withdrawMethods, &sidebarStyle, &headerStyle); err != nil {
 		t.Fatal(err)
 	}
-	if version != 57 || withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
+	if version != 58 || withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
 		t.Fatalf("schema v54 defaults = version=%d limit=%d methods=%q sidebar=%q header=%q", version, withdrawLimit, withdrawMethods, sidebarStyle, headerStyle)
 	}
 
@@ -200,7 +200,7 @@ func TestSchemaV54UpgradePreservesV53Rows(t *testing.T) {
 	`).Scan(&version, &appName, &appRevision, &withdrawLimit, &withdrawMethods, &themeRevision, &sidebarStyle, &headerStyle); err != nil {
 		t.Fatal(err)
 	}
-	if version != 57 || appName != "Preserved V53" || appRevision != 27 || themeRevision != 9 ||
+	if version != 58 || appName != "Preserved V53" || appRevision != 27 || themeRevision != 9 ||
 		withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
 		t.Fatalf("v54 upgrade = version=%d app=%q/%d theme=%d limit=%d methods=%q sidebar=%q header=%q",
 			version, appName, appRevision, themeRevision, withdrawLimit, withdrawMethods, sidebarStyle, headerStyle)
