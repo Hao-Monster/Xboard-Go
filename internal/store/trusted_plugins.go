@@ -165,7 +165,9 @@ func scanTrustedPlugin(scanner trustedPluginScanner) (TrustedPlugin, error) {
 		}
 		return TrustedPlugin{}, fmt.Errorf("scan trusted plugin: %w", err)
 	}
-	if err := json.Unmarshal([]byte(configJSON), &plugin.Config); err != nil {
+	if configJSON == "{}" {
+		plugin.Config = make(map[string]any)
+	} else if err := json.Unmarshal([]byte(configJSON), &plugin.Config); err != nil {
 		return TrustedPlugin{}, fmt.Errorf("decode trusted plugin config: %w", err)
 	}
 	plugin.UpdatedAt = time.Unix(updatedAt, 0).UTC()
