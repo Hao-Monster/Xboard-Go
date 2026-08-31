@@ -591,6 +591,27 @@ An enabled CAPTCHA provider must have both its site key and secret; incomplete
 or unsafe legacy policy values stop the import instead of being silently
 disabled or normalized to weaker security.
 
+Legacy SMTP and reminder settings use the independent `mail-settings-v1`
+slice. The importer reads only the seven fixed mail keys, derives enablement
+from the old `email_host` behavior, maps old `tls` to STARTTLS and `ssl` to
+implicit TLS, and encrypts the SMTP password with the existing SMTP-specific
+settings cipher. Incomplete credentials, orphaned fields, or cleartext SMTP
+stop the import instead of weakening or silently changing mail behavior:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-mail-settings \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-mail-settings.xbbackup \
+  --confirm-offline
+docker compose -f compose.local.yaml up -d --wait xboard-go
+```
+
+`XBOARD_SETTINGS_ENCRYPTION_KEY` is required when the legacy snapshot contains
+an SMTP password. Password material is excluded from command output and the
+migration ledger.
+
 After plans have been imported, migrate the legacy registration-trial plan and
 duration while the target remains offline:
 
