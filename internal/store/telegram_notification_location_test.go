@@ -52,3 +52,38 @@ func TestTelegramTicketNotificationRejectsUnsafeLocation(t *testing.T) {
 		}
 	}
 }
+
+func TestTelegramAdministratorReplyToOwnTicketDoesNotNotifyAdministrators(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 31, 21, 0, 0, 0, time.UTC)
+	enableTelegramNotificationDelivery(t, database)
+	administrator, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "location-self-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET telegram_id=9602 WHERE id=?`, administrator.ID); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := database.CreateTicket(ctx, administrator.ID, SaveTicketInput{
+		Subject: "管理员自己的工单", Level: TicketLevelLow, Message: "首次内容", NotificationLocation: "中国江苏省南京市",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ReplyTicketAsAdmin(ctx, administrator.ID, ticket.ID, "管理员回复", now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	messageID := ticketMessageID(t, database, ticket.ID, 1)
+	var notifications int
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM telegram_message_outbox WHERE source_kind='ticket' AND source_id=?
+	`, messageID).Scan(&notifications); err != nil {
+		t.Fatal(err)
+	}
+	if notifications != 0 {
+		t.Fatalf("administrator reply to own ticket queued %d administrator notifications", notifications)
+	}
+}

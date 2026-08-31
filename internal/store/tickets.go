@@ -285,7 +285,10 @@ func replyTicketTx(ctx context.Context, tx *sql.Tx, ownerID, ticketID, authorID 
 	if err != nil {
 		return Ticket{}, err
 	}
-	if authorID == ticket.UserID {
+	// The operation kind, not coincidental user-ID equality, determines whether
+	// this is a user reply. An administrator can reply to their own ticket and
+	// the legacy plugin does not emit the user-reply notification for that path.
+	if requireOpen {
 		if err := enqueueTelegramTicketNotificationTx(ctx, tx, ticket.UserID, ticket.ID, messageID, ticket.Subject, message, notificationLocation, now); err != nil {
 			return Ticket{}, err
 		}
