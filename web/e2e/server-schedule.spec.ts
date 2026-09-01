@@ -2,12 +2,19 @@ import { expect, test } from "@playwright/test";
 
 import { adminEmail, adminPassword } from "./support";
 
-test("first-open schedule trigger and nested modal remain fully interactive", async ({ page }) => {
+test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][FE-SCH-007][FE-SCH-008] nested schedule modal is complete", async ({ page }) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
+  let expectedFailureResponses = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
-    if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
+    if (response.status() < 500) return;
+    const path = new URL(response.url()).pathname;
+    if (response.status() === 503 && response.request().method() === "PUT" && /^\/api\/v1\/admin\/nodes\/\d+\/activation-schedule$/.test(path)) {
+      expectedFailureResponses += 1;
+      return;
+    }
+    serverErrors.push(`${response.status()} ${response.request().method()} ${path}`);
   });
 
   await page.goto("/");
@@ -79,15 +86,69 @@ test("first-open schedule trigger and nested modal remain fully interactive", as
 
   const scheduleDialog = page.getByRole("dialog", { name: "激活计划设置" });
   await expect(scheduleDialog).toBeVisible();
+  await expect(scheduleDialog.getByLabel("启用时间")).toBeEnabled();
   const layers = await page.evaluate(() => ({
     drawer: Number.parseInt(getComputedStyle(document.querySelector("[data-testid=\"drawer-layer\"]") as HTMLElement).zIndex, 10),
     modal: Number.parseInt(getComputedStyle(document.querySelector("[data-testid=\"modal-layer\"]") as HTMLElement).zIndex, 10)
   }));
   expect(layers.modal).toBeGreaterThan(layers.drawer);
+  expect(await drawer.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+  await expect(drawer).toHaveAttribute("aria-modal", "false");
+
+  const viewport = page.viewportSize();
+  const dialogBox = await scheduleDialog.boundingBox();
+  expect(viewport).not.toBeNull();
+  expect(dialogBox).not.toBeNull();
+  if (viewport !== null && dialogBox !== null) {
+    expect(dialogBox.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(viewport.width + 1);
+  }
+  expect(await scheduleDialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+
+  const closeSchedule = scheduleDialog.getByRole("button", { name: "关闭激活计划设置" });
+  const saveSchedule = scheduleDialog.locator('button[type="submit"]');
+  await expect(saveSchedule).toHaveText("保存计划");
+  await closeSchedule.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(saveSchedule).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeSchedule).toBeFocused();
 
   await scheduleDialog.getByLabel("启用时间").fill("20:30");
   await scheduleDialog.getByLabel("停用时间").fill("01:00");
-  await scheduleDialog.getByRole("button", { name: "保存计划" }).click();
+  const schedulePath = `/api/v1/admin/nodes/${nodeIdentity.id}/activation-schedule`;
+  let signalFailureRequest!: () => void;
+  let releaseFailureResponse!: () => void;
+  const failureRequest = new Promise<void>((resolve) => { signalFailureRequest = resolve; });
+  const failureResponseRelease = new Promise<void>((resolve) => { releaseFailureResponse = resolve; });
+  let saveRequests = 0;
+  await page.route(`**${schedulePath}`, async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    saveRequests += 1;
+    signalFailureRequest();
+    await failureResponseRelease;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "fail", error: { code: "test_failure", message: "模拟计划保存失败" } })
+    });
+  });
+  await saveSchedule.click();
+  await failureRequest;
+  await expect(saveSchedule).toBeDisabled();
+  await saveSchedule.evaluate((button: HTMLButtonElement) => button.click());
+  expect(saveRequests).toBe(1);
+  releaseFailureResponse();
+  await expect(scheduleDialog.getByRole("alert")).toHaveText("模拟计划保存失败");
+  await expect(scheduleDialog.getByLabel("启用时间")).toHaveValue("20:30");
+  await expect(scheduleDialog.getByLabel("停用时间")).toHaveValue("01:00");
+  await expect(scheduleDialog).toBeVisible();
+  await page.unroute(`**${schedulePath}`);
+
+  await saveSchedule.click();
   await expect(scheduleDialog).toBeHidden();
   await expect(drawer).toBeVisible();
 
@@ -99,6 +160,24 @@ test("first-open schedule trigger and nested modal remain fully interactive", as
   await expect(drawer).toBeVisible();
   await expect(restoredScheduleButton).toBeFocused();
 
+  await restoredScheduleButton.click();
+  await expect(scheduleDialog.getByRole("button", { name: "删除计划" })).toBeVisible();
+  const deleteResponse = page.waitForResponse((response) =>
+    response.request().method() === "DELETE" && new URL(response.url()).pathname === schedulePath
+  );
+  await scheduleDialog.getByRole("button", { name: "删除计划" }).click();
+  expect((await deleteResponse).status()).toBe(204);
+  await expect(scheduleDialog).toBeHidden();
+  await expect(drawer).toBeVisible();
+
+  await restoredScheduleButton.click();
+  await expect(scheduleDialog.getByLabel("启用时间")).toBeEnabled();
+  await scheduleDialog.getByRole("button", { name: "取消" }).click();
+  await expect(scheduleDialog).toBeHidden();
+  await expect(drawer).toBeVisible();
+  await expect(restoredScheduleButton).toBeFocused();
+
+  expect(expectedFailureResponses).toBe(1);
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
 });
