@@ -176,7 +176,7 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
     {!loading && catalog === null && <button className="button secondary" type="button" onClick={() => void load()}>重新加载主题</button>}
     {catalog !== null && <>
       <section className="site-settings-card" aria-labelledby="theme-layout-heading">
-        <div className="section-heading"><div><h2 id="theme-layout-heading">导航样式</h2><p className="muted">保持旧版前端的侧栏和顶栏明暗配置。</p></div></div>
+        <div className="section-heading"><div><h2 id="theme-layout-heading">导航样式</h2><p className="muted">侧栏明暗基于当前主题色计算，顶栏保持独立的明暗配置。</p></div></div>
         <div className="commission-settings-grid">
           <label>侧栏样式<select value={catalog.sidebar_style} disabled={busy !== ""} onChange={(event) => void updateLayout(event.target.value as "light" | "dark", catalog.header_style)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
           <label>顶栏样式<select value={catalog.header_style} disabled={busy !== ""} onChange={(event) => void updateLayout(catalog.sidebar_style, event.target.value as "light" | "dark")}><option value="light">浅色</option><option value="dark">深色</option></select></label>
