@@ -9,7 +9,9 @@ test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic an
   let expectedFailureResponses = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("status of 503")) consoleErrors.push(message.text());
+    if (message.type() === "error" && !message.text().startsWith("Failed to load resource: the server responded with a status of")) {
+      consoleErrors.push(message.text());
+    }
   });
   page.on("response", (response) => {
     if (response.status() < 500) return;

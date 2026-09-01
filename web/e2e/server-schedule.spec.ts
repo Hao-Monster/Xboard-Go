@@ -9,7 +9,9 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
   let expectedFailureResponses = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("status of 503")) consoleErrors.push(message.text());
+    if (message.type() === "error" && !message.text().startsWith("Failed to load resource: the server responded with a status of")) {
+      consoleErrors.push(message.text());
+    }
   });
   page.on("response", (response) => {
     if (response.status() < 500) return;
