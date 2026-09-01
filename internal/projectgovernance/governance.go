@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 const statusPath = "docs/project/STATUS.md"
@@ -50,10 +52,15 @@ type Requirement struct {
 }
 
 type Evidence struct {
-	Commit     string `json:"commit"`
-	ObservedAt string `json:"observed_at"`
-	Command    string `json:"command"`
-	Result     string `json:"result"`
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Environment string   `json:"environment"`
+	CaseIDs     []string `json:"case_ids"`
+	Artifact    string   `json:"artifact"`
+	Commit      string   `json:"commit"`
+	ObservedAt  string   `json:"observed_at"`
+	Command     string   `json:"command"`
+	Result      string   `json:"result"`
 }
 
 type DecisionRegistry struct {
@@ -198,6 +205,9 @@ func Check(root string) error {
 	if err := Validate(state); err != nil {
 		return err
 	}
+	if err := validateEvidenceTarget(root, state); err != nil {
+		return err
+	}
 	want, err := RenderStatus(state)
 	if err != nil {
 		return err
@@ -218,6 +228,9 @@ func Generate(root string) error {
 		return err
 	}
 	if err := Validate(state); err != nil {
+		return err
+	}
+	if err := validateEvidenceTarget(root, state); err != nil {
 		return err
 	}
 	content, err := RenderStatus(state)
@@ -247,6 +260,7 @@ func Validate(state State) error {
 	decisionIDs := make(map[string]bool)
 	decisionStatuses := make(map[string]string)
 	workItemIDs := make(map[string]bool)
+	workItemStatuses := make(map[string]string)
 
 	if len(state.Requirements.Requirements) != 80 {
 		problems = append(problems, fmt.Sprintf("requirements must contain exactly 80 entries, got %d", len(state.Requirements.Requirements)))
@@ -298,6 +312,7 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("duplicate work item id %s", workItem.ID))
 		}
 		workItemIDs[workItem.ID] = true
+		workItemStatuses[workItem.ID] = workItem.Status
 		if strings.TrimSpace(workItem.Title) == "" {
 			problems = append(problems, fmt.Sprintf("%s requires a title", workItem.ID))
 		}
@@ -313,6 +328,10 @@ func Validate(state State) error {
 	}
 
 	requirementPattern := regexp.MustCompile(`^[A-Z]+-\d{3}$`)
+	evidenceIDPattern := regexp.MustCompile(`^EV-[A-Z0-9][A-Z0-9-]{2,63}$`)
+	evidenceCasePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{1,159}$`)
+	githubArtifactPattern := regexp.MustCompile(`^https://github\.com/Hao-Monster/Xboard-Go/actions/runs/\d+(?:/job/\d+)?$`)
+	bingoArtifactPattern := regexp.MustCompile(`^bingo-dev:sha256:[0-9a-f]{64}$`)
 	expectedRequirements := expectedRequirementIDs()
 	for _, requirement := range state.Requirements.Requirements {
 		if !requirementPattern.MatchString(requirement.ID) {
@@ -368,13 +387,37 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("%s is current without evidence", requirement.ID))
 		}
 		for _, evidence := range requirement.Evidence {
-			if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || strings.TrimSpace(evidence.ObservedAt) == "" || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
+			_, observedAtErr := time.Parse(time.RFC3339, evidence.ObservedAt)
+			validArtifact := (evidence.Environment == "github-actions" && githubArtifactPattern.MatchString(evidence.Artifact)) ||
+				(evidence.Environment == "bingo-dev" && bingoArtifactPattern.MatchString(evidence.Artifact))
+			validCases := len(evidence.CaseIDs) > 0
+			seenCases := make(map[string]bool, len(evidence.CaseIDs))
+			for _, caseID := range evidence.CaseIDs {
+				if !evidenceCasePattern.MatchString(caseID) || seenCases[caseID] {
+					validCases = false
+				}
+				seenCases[caseID] = true
+			}
+			if !evidenceIDPattern.MatchString(evidence.ID) || !oneOf(evidence.Kind, "unit", "integration", "contract", "browser", "differential", "migration", "security", "performance", "manual") ||
+				!oneOf(evidence.Environment, "github-actions", "bingo-dev") || !validCases || !validArtifact ||
+				!regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
 				problems = append(problems, fmt.Sprintf("%s has incomplete or invalid evidence", requirement.ID))
+			}
+			if requirement.VerificationStatus == "current" && evidence.Commit != state.Requirements.BaselineCommit {
+				problems = append(problems, fmt.Sprintf("%s current evidence must target baseline_commit %s", requirement.ID, state.Requirements.BaselineCommit))
+			}
+			if requirement.VerificationStatus == "current" && evidence.Result != "pass" {
+				problems = append(problems, fmt.Sprintf("%s current evidence must pass", requirement.ID))
 			}
 		}
 		if requirement.AcceptanceStatus == "accepted" {
 			if requirement.ScopeStatus != "decided" || requirement.ImplementationStatus != "implemented" || requirement.VerificationStatus != "current" || !oneOf(requirement.MigrationStatus, "current", "not_applicable") || len(requirement.Evidence) == 0 {
 				problems = append(problems, fmt.Sprintf("%s is accepted without satisfying the acceptance invariant", requirement.ID))
+			}
+			for _, id := range requirement.WorkItemIDs {
+				if workItemStatuses[id] != "done" {
+					problems = append(problems, fmt.Sprintf("%s is accepted while work item %s is not done", requirement.ID, id))
+				}
 			}
 		}
 	}
@@ -502,11 +545,45 @@ func Validate(state State) error {
 	return nil
 }
 
+func validateEvidenceTarget(root string, state State) error {
+	commit := state.Requirements.BaselineCommit
+	object := exec.Command("git", "-C", root, "cat-file", "-e", commit+"^{commit}")
+	if output, err := object.CombinedOutput(); err != nil {
+		return fmt.Errorf("requirements baseline_commit %s is not available as a Git commit; fetch repository history: %w (%s)", commit, err, strings.TrimSpace(string(output)))
+	}
+	ancestor := exec.Command("git", "-C", root, "merge-base", "--is-ancestor", commit, "HEAD")
+	if output, err := ancestor.CombinedOutput(); err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			return fmt.Errorf("requirements baseline_commit %s is not an ancestor of HEAD", commit)
+		}
+		return fmt.Errorf("validate requirements baseline_commit ancestry: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	hasCurrentEvidence := false
+	for _, requirement := range state.Requirements.Requirements {
+		hasCurrentEvidence = hasCurrentEvidence || requirement.VerificationStatus == "current"
+	}
+	if !hasCurrentEvidence {
+		return nil
+	}
+	diff := exec.Command("git", "-C", root, "diff", "--name-only", "--diff-filter=ACMRT", commit+"..HEAD")
+	output, err := diff.Output()
+	if err != nil {
+		return fmt.Errorf("inspect changes after requirements baseline_commit: %w", err)
+	}
+	for _, path := range strings.Fields(string(output)) {
+		path = filepath.ToSlash(path)
+		if !strings.HasPrefix(path, "docs/project/") {
+			return fmt.Errorf("current evidence target %s is stale because %s changed afterwards", commit, path)
+		}
+	}
+	return nil
+}
+
 func RenderStatus(state State) (string, error) {
 	var out strings.Builder
 	fmt.Fprintf(&out, "# Project Status\n\n")
 	fmt.Fprintf(&out, "> Generated by `go run ./cmd/projectctl generate`. Do not edit manually.\n\n")
-	fmt.Fprintf(&out, "Baseline: `%s` · as of %s · source commit `%s`\n\n", state.Requirements.Baseline, state.Requirements.AsOf, state.Requirements.BaselineCommit)
+	fmt.Fprintf(&out, "Baseline: `%s` · as of %s · verification target `%s`\n\n", state.Requirements.Baseline, state.Requirements.AsOf, state.Requirements.BaselineCommit)
 	fmt.Fprintf(&out, "## Requirement summary\n\n")
 	fmt.Fprintf(&out, "| Dimension | Status | Count |\n| --- | --- | ---: |\n")
 	dimensions := []struct {

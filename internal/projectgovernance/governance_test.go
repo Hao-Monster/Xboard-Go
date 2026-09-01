@@ -1,8 +1,11 @@
 package projectgovernance
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -71,6 +74,221 @@ func TestReleaseGateMustBelongToItsMilestone(t *testing.T) {
 	if err := Validate(state); err == nil {
 		t.Fatal("expected a release gate under the wrong milestone to fail validation")
 	}
+}
+
+func TestCurrentEvidenceMustTargetCandidateCommit(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	evidence := validTestEvidence(state)
+	evidence.Commit = strings.Repeat("f", 40)
+	requirement.Evidence = []Evidence{evidence}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence from a different candidate commit to fail validation")
+	}
+}
+
+func TestCurrentEvidenceRequiresRFC3339ObservationTime(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	evidence := validTestEvidence(state)
+	evidence.ObservedAt = "sometime"
+	requirement.Evidence = []Evidence{evidence}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence without an RFC3339 observation time to fail validation")
+	}
+}
+
+func TestCurrentEvidenceMustHavePassed(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	evidence := validTestEvidence(state)
+	evidence.Result = "fail"
+	requirement.Evidence = []Evidence{evidence}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected failing evidence to be insufficient for current verification")
+	}
+}
+
+func TestCurrentEvidenceRequiresAuditableCaseMetadata(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{{
+		Commit: state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence without kind, environment, cases, and an artifact to fail validation")
+	}
+}
+
+func TestCurrentEvidenceWithAuditableMetadataIsValid(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.MigrationStatus = "not_applicable"
+	requirement.AcceptanceStatus = "accepted"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected an accepted requirement with an open work item to fail validation")
+	}
+}
+
+func TestAcceptedRequirementWithCompletedWorkItemsIsValid(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.MigrationStatus = "not_applicable"
+	requirement.AcceptanceStatus = "accepted"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	for index := range state.WorkItems.WorkItems {
+		if state.WorkItems.WorkItems[index].ID == requirement.WorkItemIDs[0] {
+			state.WorkItems.WorkItems[index].Status = "done"
+		}
+	}
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func validTestEvidence(state State) Evidence {
+	return Evidence{
+		ID: "EV-TEST-CURRENT", Kind: "integration", Environment: "github-actions",
+		CaseIDs:  []string{"TestCurrentRequirement"},
+		Artifact: "https://github.com/Hao-Monster/Xboard-Go/actions/runs/1",
+		Commit:   state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}
+}
+
+func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	state.Requirements.BaselineCommit = strings.Repeat("f", 40)
+	writeRequirementFixture(t, temporaryRoot, state)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "fixture")
+	if err := Check(temporaryRoot); err == nil {
+		t.Fatal("expected a syntactically valid but nonexistent evidence target commit to fail validation")
+	}
+}
+
+func TestCheckRejectsProductDriftAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	if err := os.WriteFile(filepath.Join(temporaryRoot, "runtime.go"), []byte("package runtime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "metadata and unverified product drift")
+	if err := Check(temporaryRoot); err == nil {
+		t.Fatal("expected product changes after the current evidence target to fail validation")
+	}
+}
+
+func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "evidence metadata")
+	if err := Check(temporaryRoot); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func copyProjectFixture(t *testing.T, root string) string {
+	t.Helper()
+	temporaryRoot := t.TempDir()
+	projectDir := filepath.Join(temporaryRoot, "docs", "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"requirements.json", "decisions.json", "risks.json", "compatibility-exceptions.json",
+		"work-items.json", "release-gates.json",
+	} {
+		data, err := os.ReadFile(filepath.Join(root, "docs", "project", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(projectDir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return temporaryRoot
+}
+
+func writeRequirementFixture(t *testing.T, root string, state State) {
+	t.Helper()
+	projectDir := filepath.Join(root, "docs", "project")
+	requirementsJSON, err := json.MarshalIndent(state.Requirements, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "requirements.json"), append(requirementsJSON, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, err := RenderStatus(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "STATUS.md"), []byte(status), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runGit(t *testing.T, root string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, arguments...)...)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(arguments, " "), err, output)
+	}
+}
+
+func runGitOutput(t *testing.T, root string, arguments ...string) string {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, arguments...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(arguments, " "), err, output)
+	}
+	return string(output)
 }
 
 func TestPRMetadata(t *testing.T) {
