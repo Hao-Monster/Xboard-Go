@@ -80,7 +80,14 @@ export function SafeKnowledgeMarkdown({ body }: { body: string }) {
   }
   if (cursor < body.length) parts.push({ markdown: body.slice(cursor) });
   return <>{parts.map((part, index) => part.video === undefined
-    ? <Markdown key={`markdown-${index}`} components={{ a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; }, img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; } }}>{part.markdown ?? ""}</Markdown>
+    ? <Markdown key={`markdown-${index}`} components={{
+      a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; },
+      img: ({ node, src, alt, ...props }) => {
+        void node;
+        if (!src) return <span className="muted">{alt || "图片"}</span>;
+        return <img {...props} src={src} alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" />;
+      }
+    }}>{part.markdown ?? ""}</Markdown>
     : <video key={`video-${index}`} src={part.video} controls preload="metadata" />)}</>;
 }
 

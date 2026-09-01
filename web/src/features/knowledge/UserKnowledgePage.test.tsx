@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeArticle } from "../../lib/api";
-import { UserKnowledgePage } from "./UserKnowledgePage";
+import { SafeKnowledgeMarkdown, UserKnowledgePage } from "./UserKnowledgePage";
 
 const summary: KnowledgeArticle = {
   id: 7, language: "zh-CN", category: "使用指南", title: "Windows 客户端", body: "摘要",
@@ -12,6 +12,18 @@ const summary: KnowledgeArticle = {
 };
 
 describe("UserKnowledgePage", () => {
+  it("renders valid image sources and degrades stripped sources to readable text", () => {
+    const attachment = "550e8400-e29b-41d4-a716-446655440000";
+    render(<SafeKnowledgeMarkdown body={`![已发布图片](/guide-attachments/${attachment})\n\n![待发布图片](knowledge-attachment://${attachment})`} />);
+
+    const image = screen.getByRole("img", { name: "已发布图片" });
+    expect(image).toHaveAttribute("src", `/guide-attachments/${attachment}`);
+    expect(image).toHaveAttribute("loading", "lazy");
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(screen.getByText("待发布图片")).toBeVisible();
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("filters by language/keyword, groups categories, and reads safe subscription-aware content", async () => {
     const videoURL = `/knowledge-attachments/550e8400-e29b-41d4-a716-446655440000?expires=1787796000&disposition=inline&signature=${"a".repeat(64)}`;
     const detail = {

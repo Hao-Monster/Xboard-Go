@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -61,6 +61,9 @@ describe("KnowledgeAttachmentEditor", () => {
     const accepted = fireEvent.paste(screen.getByLabelText("内容"), { clipboardData: { items: [{ kind: "file", type: image.type, getAsFile: () => image }] } });
     expect(accepted).toBe(false);
     await waitFor(() => expect(screen.getByTestId("knowledge-body")).toHaveTextContent(`![clipboard.png](${inline.placeholder})`));
+    const preview = screen.getByRole("region", { name: "知识正文预览" });
+    expect(within(preview).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(preview).getByText("clipboard.png")).toBeVisible();
     expect(api.initializeKnowledgeAttachment).toHaveBeenCalledWith(image, "b".repeat(64));
   });
 
