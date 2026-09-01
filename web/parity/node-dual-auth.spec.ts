@@ -94,7 +94,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
 
     const legacyGlobalWS = await probeWebSocket(legacyWebSocketURL, { node_id: legacyAssigned }, legacyToken);
     const goGlobalWS = await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, goToken);
-    expect(legacyGlobalWS.accepted).toBe(true);
+    expect(legacyGlobalWS.accepted, `legacy WebSocket result: ${legacyGlobalWS.payload}`).toBe(true);
     expect(goGlobalWS.accepted).toBe(legacyGlobalWS.accepted);
     expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyAssigned }, "wrong-global-credential")).accepted).toBe(false);
     expect((await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, "wrong-global-credential")).accepted).toBe(false);
@@ -103,7 +103,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
 
     const legacyMachineWS = await probeWebSocket(legacyWebSocketURL, { machine_id: legacyMachineA.id }, legacyCredentialA);
     const goMachineWS = await probeWebSocket(goWebSocketURL, { machine_id: goMachineA.id }, goCredentialA);
-    expect(legacyMachineWS.accepted).toBe(true);
+    expect(legacyMachineWS.accepted, `legacy machine WebSocket result: ${legacyMachineWS.payload}`).toBe(true);
     expect(goMachineWS.accepted).toBe(legacyMachineWS.accepted);
     expect(readAuthNodeIDs(legacyMachineWS.payload)).toEqual([legacyAssigned]);
     expect(readAuthNodeIDs(goMachineWS.payload)).toEqual([goAssigned.id]);
@@ -134,8 +134,8 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     for (const nodeID of legacyNodeIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/manage/drop", { id: nodeID });
     for (const machineID of legacyMachineIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/machine/drop", { id: machineID });
     if (legacyOriginal && legacyAuthorization) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/config/save", legacyOriginal);
-    for (const machineID of goMachineIDs) await bestEffortGoRequest(goPage, `/api/v1/admin/machines/${machineID}`, "DELETE");
     if (goNodes.length > 0) await bestEffortGoRequest(goPage, "/api/v1/admin/nodes/bulk-delete", "POST", { targets: goNodes });
+    for (const machineID of goMachineIDs) await bestEffortGoRequest(goPage, `/api/v1/admin/machines/${machineID}`, "DELETE");
     if (goOriginal) {
       const current = await getGoNodeSettings(goPage).catch(() => undefined);
       if (current) await bestEffortGoRequest(goPage, "/api/v1/admin/node-agent-settings", "PUT", {
