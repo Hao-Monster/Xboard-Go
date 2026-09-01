@@ -2639,6 +2639,18 @@ func applySchemaV59(ctx context.Context, tx *sql.Tx) error {
 	if err == nil {
 		return fmt.Errorf("user %d has combined traffic outside the int64 range", invalidUserID)
 	}
+	var invalidStatisticsUserID int64
+	err = tx.QueryRowContext(ctx, `
+		SELECT user_id FROM user_traffic_stats
+		WHERE upload > ? - download
+		LIMIT 1
+	`, int64(^uint64(0)>>1)).Scan(&invalidStatisticsUserID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect combined user traffic statistics: %w", err)
+	}
+	if err == nil {
+		return fmt.Errorf("user %d has combined traffic statistics outside the int64 range", invalidStatisticsUserID)
+	}
 	if _, err := tx.ExecContext(ctx, schemaV59); err != nil {
 		return fmt.Errorf("create combined user traffic guards: %w", err)
 	}
