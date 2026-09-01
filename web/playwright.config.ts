@@ -7,6 +7,7 @@ const baseURL = process.env.XBOARD_E2E_BASE_URL ?? "http://127.0.0.1:4173";
 const backendPort = process.env.XBOARD_E2E_BACKEND_PORT ?? "8080";
 const backendURL = `http://127.0.0.1:${backendPort}`;
 const attachmentRoot = join(tmpdir(), `xboard-go-e2e-attachments-${process.pid}`);
+const browserChannel = process.env.XBOARD_E2E_BROWSER_CHANNEL?.trim();
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,11 +24,11 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
+      use: { ...devices["Desktop Chrome"], ...(browserChannel ? { channel: browserChannel } : {}) }
     },
     {
       name: "mobile-chromium",
-      use: { ...devices["Pixel 7"] }
+      use: { ...devices["Pixel 7"], ...(browserChannel ? { channel: browserChannel } : {}) }
     }
   ],
   webServer: externalServer ? undefined : [
