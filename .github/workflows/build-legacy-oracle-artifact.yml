@@ -21,6 +21,15 @@ jobs:
           ref: 8065164da6cd55be6015bdc8c6bc8811a67404de
           path: legacy
           persist-credentials: false
+          submodules: recursive
+
+      - name: Verify and stamp fixed frontend assets
+        working-directory: legacy
+        shell: bash
+        run: |
+          php .github/scripts/verify-admin-assets.php
+          sed -i "s/'version' => '.*'/'version' => '8065164da6cd55be6015bdc8c6bc8811a67404de'/g" config/app.php
+          grep -Fq "'version' => '8065164da6cd55be6015bdc8c6bc8811a67404de'" config/app.php
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
