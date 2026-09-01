@@ -16,6 +16,7 @@ describe("KnowledgeManagementPage", () => {
   it("matches the observed Xboard management fields and performs the full article lifecycle", async () => {
     const created = { ...published, id: 13, title: "新手教程", revision: 1 };
     const detailed = { ...published, body: "旧正文" };
+    const articlesByID = new Map<number, KnowledgeArticle>([[published.id, published], [draft.id, draft], [created.id, created]]);
     const api = {
       listKnowledgeAdmin: vi.fn().mockResolvedValue([published, draft]),
       getKnowledgeAdmin: vi.fn().mockResolvedValue(detailed),
@@ -23,7 +24,11 @@ describe("KnowledgeManagementPage", () => {
       createKnowledge: vi.fn().mockResolvedValue(created),
       updateKnowledge: vi.fn().mockResolvedValue({ ...detailed, title: "连接指南 2", revision: 2 }),
       setKnowledgeVisibility: vi.fn().mockResolvedValue({ ...draft, show: true, revision: 2 }),
-      reorderKnowledge: vi.fn().mockImplementation((ids: number[]) => Promise.resolve(ids.map((id, index) => ({ ...(id === 11 ? published : draft), sort: index + 1 })))),
+      reorderKnowledge: vi.fn().mockImplementation((ids: number[]) => Promise.resolve(ids.map((id, index) => {
+        const article = articlesByID.get(id);
+        if (article === undefined) throw new Error(`unexpected knowledge article ${id}`);
+        return { ...article, sort: index + 1 };
+      }))),
       deleteKnowledge: vi.fn().mockResolvedValue(undefined)
     };
     const user = userEvent.setup();
