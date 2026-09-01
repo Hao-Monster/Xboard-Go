@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { adminEmail, adminPassword } from "./support";
 
+// This flow handles one-time enrollment and machine credentials. Failure artifacts
+// must not persist request bodies, DOM snapshots, screenshots, or video containing them.
+test.use({ trace: "off", screenshot: "off", video: "off" });
+
 test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic and recoverable", async ({ page }) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
