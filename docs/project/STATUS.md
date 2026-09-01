@@ -69,7 +69,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `b151f914fbf90fe5d341c
 | Milestone | Status | Passed | Blocked/failed | Not run |
 | --- | --- | ---: | ---: | ---: |
 | M0 — Project Governance Baseline | complete | 5 | 0 | 0 |
-| M1 — Functional Parity | blocked | 0 | 2 | 0 |
+| M1 — Functional Parity | blocked | 0 | 4 | 0 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
 | M4 — Production Ready | blocked | 0 | 2 | 1 |
