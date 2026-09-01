@@ -1010,14 +1010,18 @@ test("legacy and Go Telegram configuration preserve four business settings while
   const goPage = await goContext.newPage();
   const legacyErrors = watchErrors(legacyPage);
   const goErrors = watchErrors(goPage);
+  let legacyAuthorization = "";
+  let legacyOriginalToken: string | undefined;
+  let legacyTokenChanged = false;
   try {
     await loginLegacy(legacyPage);
     const configResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
     await legacyPage.locator('a[href="#/config/system"]').click();
     const authorization = (await configResponse).request().headers().authorization;
     expect(authorization).toBeTruthy();
+    legacyAuthorization = authorization ?? "";
     await legacyPage.getByRole("link", { name: "Telegram设置", exact: true }).filter({ visible: true }).click();
-    for (const field of ["启用Telegram绑定引导", "机器人令牌", "Webhook Base URL", "群组链接"]) {
+    for (const field of ["启用Telegram绑定引导", "机器人令牌", "群组链接"]) {
       await expect(legacyPage.getByText(field, { exact: true }).filter({ visible: true }).first(), `legacy Telegram setting ${field}`).toBeVisible();
     }
     if (!authorization) throw new Error("legacy administrator authorization is missing");
@@ -1026,6 +1030,26 @@ test("legacy and Go Telegram configuration preserve four business settings while
     const legacySettings = readObjectProperty(readProperty(await legacyResponse.json() as unknown, "data"), "telegram");
     for (const key of ["telegram_bot_enable", "telegram_bot_token", "telegram_webhook_url", "telegram_discuss_link"]) {
       expect(legacySettings, `legacy Telegram setting ${key}`).toHaveProperty(key);
+    }
+    legacyOriginalToken = readStringProperty(legacySettings, "telegram_bot_token") ?? "";
+    const legacyWebhookField = legacyPage.getByText("Webhook Base URL", { exact: true }).filter({ visible: true });
+    if (legacyOriginalToken === "") {
+      await expect(legacyWebhookField, "legacy hides Webhook Base URL until a bot token exists").toHaveCount(0);
+    } else {
+      await expect(legacyWebhookField.first(), "legacy shows Webhook Base URL after a bot token exists").toBeVisible();
+    }
+    const alternateLegacyToken = legacyOriginalToken === "" ? `${Date.now()}:${"x".repeat(35)}` : "";
+    const changedLegacyToken = await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+      headers: { authorization }, data: { telegram_bot_token: alternateLegacyToken }
+    });
+    expect(changedLegacyToken.status(), await changedLegacyToken.text()).toBe(200);
+    legacyTokenChanged = true;
+    await legacyPage.reload({ waitUntil: "domcontentloaded" });
+    await expect(legacyPage.getByRole("heading", { name: "Telegram设置", exact: true })).toBeVisible();
+    if (alternateLegacyToken === "") {
+      await expect(legacyWebhookField, "legacy hides Webhook Base URL after clearing the bot token").toHaveCount(0);
+    } else {
+      await expect(legacyWebhookField.first(), "legacy shows Webhook Base URL after configuring a bot token").toBeVisible();
     }
 
     await loginGo(goPage);
@@ -1048,6 +1072,12 @@ test("legacy and Go Telegram configuration preserve four business settings while
     expect(legacyErrors).toEqual([]);
     expect(goErrors).toEqual([]);
   } finally {
+    if (legacyTokenChanged && legacyAuthorization !== "" && legacyOriginalToken !== undefined) {
+      const restored = await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+        headers: { authorization: legacyAuthorization }, data: { telegram_bot_token: legacyOriginalToken }
+      });
+      expect(restored.status(), await restored.text()).toBe(200);
+    }
     await legacyContext.close();
     await goContext.close();
   }
@@ -1086,17 +1116,25 @@ test("legacy and Go node configuration preserve six settings while exposing only
       await expect(goPage.getByLabel(field, { exact: true }), `Go node setting ${field}`).toBeVisible();
     }
     await expect(goPage.getByLabel("设备限制模式", { exact: true })).toHaveCount(0);
-    await expect(goPage.getByRole("checkbox", { name: "启用节点 WebSocket" })).toBeVisible();
+    const goWebSocketToggle = goPage.getByRole("checkbox", { name: "启用节点 WebSocket" });
+    await expect(goWebSocketToggle).toBeVisible();
     const goResponse = await goAdminRequest(goPage, "/api/v1/admin/node-agent-settings", "GET");
     expect(goResponse.status, goResponse.body).toBe(200);
     expect(goResponse.body).not.toContain("server_token_hash");
     const goSettings = readObjectProperty(JSON.parse(goResponse.body) as unknown, "data");
     expect(goSettings).not.toHaveProperty("server_token");
+    expect(typeof readProperty(goSettings, "websocket_available")).toBe("boolean");
     expect(Boolean(readProperty(goSettings, "server_token_configured"))).toBe((readStringProperty(legacyServer, "server_token") ?? "") !== "");
     expect(Number(readProperty(goSettings, "server_pull_interval"))).toBe(Number(readProperty(legacyServer, "server_pull_interval")));
     expect(Number(readProperty(goSettings, "server_push_interval"))).toBe(Number(readProperty(legacyServer, "server_push_interval")));
     expect(Number(readProperty(goSettings, "device_limit_mode"))).toBe(Number(readProperty(legacyServer, "device_limit_mode")));
-    expect(Boolean(readProperty(goSettings, "server_ws_enable"))).toBe(Boolean(readProperty(legacyServer, "server_ws_enable")));
+    if (readProperty(goSettings, "websocket_available")) {
+      await expect(goWebSocketToggle).toBeEnabled();
+      expect(Boolean(readProperty(goSettings, "server_ws_enable"))).toBe(Boolean(readProperty(legacyServer, "server_ws_enable")));
+    } else {
+      await expect(goWebSocketToggle).toBeDisabled();
+      await expect(goPage.getByText("当前部署没有启用 WebSocket 服务能力，管理设置不能绕过部署约束。", { exact: true })).toBeVisible();
+    }
     expect(readStringProperty(goSettings, "server_ws_url") ?? "").toBe(readStringProperty(legacyServer, "server_ws_url") ?? "");
     expect(legacyErrors).toEqual([]);
     expect(goErrors).toEqual([]);
