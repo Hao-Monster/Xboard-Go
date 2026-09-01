@@ -503,33 +503,70 @@ func TestNodeReportBindsReportIDToTrafficAndIgnoresRetryUserState(t *testing.T) 
 	assertTrafficTotals(t, database, user.ID, node.ID, 15, 30, 10, 20)
 }
 
-func TestNodeReportExpiryReconcilesPersistedOnlineCount(t *testing.T) {
-	database := newTestStore(t)
-	ctx := context.Background()
-	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
-	machine, node := createReportingNode(t, database, now)
-	user := createRuntimeUser(t, database, now, "expiring-device", 7, 1_000_000, 0, 0, nil, false)
-	if _, err := database.ApplyNodeReport(ctx, NodeReportInput{
-		MachineID: machine.ID, NodeID: node.ID,
-		Alive: map[int64][]string{user.ID: {"192.0.2.50"}}, Now: now,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	var online int
-	if err := database.db.QueryRow(`SELECT online_count FROM users WHERE id = ?`, user.ID).Scan(&online); err != nil || online != 1 {
-		t.Fatalf("online_count after report = %d, err=%v", online, err)
-	}
-	result, err := database.ApplyNodeReport(ctx, NodeReportInput{
-		MachineID: machine.ID, NodeID: node.ID, Now: now.Add(deviceStateTTL),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.DeviceUserIDs) != 1 || result.DeviceUserIDs[0] != user.ID {
-		t.Fatalf("expired device users = %#v, want [%d]", result.DeviceUserIDs, user.ID)
-	}
-	if err := database.db.QueryRow(`SELECT online_count FROM users WHERE id = ?`, user.ID).Scan(&online); err != nil || online != 0 {
-		t.Fatalf("online_count after expiry = %d, err=%v; want 0", online, err)
+func TestTIMENODE006NodeReportExpiryHonorsThe300SecondBoundary(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		after      time.Duration
+		wantExpiry bool
+	}{
+		{name: "299-seconds-remains-online", after: 299 * time.Second},
+		{name: "300-seconds-expires", after: 300 * time.Second, wantExpiry: true},
+		{name: "301-seconds-stays-expired", after: 301 * time.Second, wantExpiry: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			database := newTestStore(t)
+			ctx := context.Background()
+			now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+			machine, node := createReportingNode(t, database, now)
+			user := createRuntimeUser(t, database, now, "expiring-device", 7, 1_000_000, 0, 0, nil, false)
+			if _, err := database.ApplyNodeReport(ctx, NodeReportInput{
+				MachineID: machine.ID, NodeID: node.ID,
+				Alive: map[int64][]string{user.ID: {"192.0.2.50"}}, Online: map[int64]int64{user.ID: 2}, Now: now,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := database.ApplyNodeReport(ctx, NodeReportInput{
+				MachineID: machine.ID, NodeID: node.ID, Now: now.Add(testCase.after),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if testCase.wantExpiry {
+				if len(result.DeviceUserIDs) != 1 || result.DeviceUserIDs[0] != user.ID {
+					t.Fatalf("expired device users = %#v, want [%d]", result.DeviceUserIDs, user.ID)
+				}
+			} else if len(result.DeviceUserIDs) != 0 {
+				t.Fatalf("expired device users before boundary = %#v, want none", result.DeviceUserIDs)
+			}
+
+			wantOnline := 1
+			wantRows := 1
+			if testCase.wantExpiry {
+				wantOnline = 0
+				wantRows = 0
+			}
+			var online, deviceRows, connectionRows int
+			if err := database.db.QueryRow(`SELECT online_count FROM users WHERE id = ?`, user.ID).Scan(&online); err != nil || online != wantOnline {
+				t.Fatalf("online_count at %s = %d, err=%v; want %d", testCase.after, online, err, wantOnline)
+			}
+			if err := database.db.QueryRow(`SELECT COUNT(*) FROM node_device_ips WHERE node_id = ? AND user_id = ?`, node.ID, user.ID).Scan(&deviceRows); err != nil || deviceRows != wantRows {
+				t.Fatalf("device rows at %s = %d, err=%v; want %d", testCase.after, deviceRows, err, wantRows)
+			}
+			if err := database.db.QueryRow(`SELECT COUNT(*) FROM node_user_online WHERE node_id = ? AND user_id = ?`, node.ID, user.ID).Scan(&connectionRows); err != nil || connectionRows != wantRows {
+				t.Fatalf("online rows at %s = %d, err=%v; want %d", testCase.after, connectionRows, err, wantRows)
+			}
+			devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now.Add(testCase.after))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if testCase.wantExpiry && len(devices[user.ID]) != 0 {
+				t.Fatalf("listed devices at %s = %#v, want none", testCase.after, devices[user.ID])
+			}
+			if !testCase.wantExpiry && !reflect.DeepEqual(devices[user.ID], []string{"192.0.2.50"}) {
+				t.Fatalf("listed devices at %s = %#v", testCase.after, devices[user.ID])
+			}
+		})
 	}
 }
 

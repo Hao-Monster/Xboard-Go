@@ -410,6 +410,123 @@ func TestLegacyOnceScheduleLateExecutionCannotReenableExpiredNode(t *testing.T) 
 	}
 }
 
+func TestTXSCH003SaveDailyScheduleFailureRollsBackScheduleAndNodeState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	location, _ := time.LoadLocation("Asia/Singapore")
+	now := time.Date(2026, 8, 20, 20, 0, 0, 0, location)
+	machine, _, err := store.CreateMachine(ctx, CreateMachineInput{Name: "save-rollback-edge", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := store.CreateNode(ctx, CreateNodeInput{
+		Name: "save-rollback-node", Type: "vless", Host: "save-rollback.example.test", Port: "443",
+		Show: true, Enabled: false, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := store.SaveDailySchedule(ctx, node.ID, "Asia/Singapore", "21:00", "22:00", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalNode, err := store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		CREATE TRIGGER fail_schedule_node_reconcile
+		BEFORE UPDATE OF enabled ON nodes
+		BEGIN SELECT RAISE(ABORT, 'injected schedule node failure'); END
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.SaveDailySchedule(ctx, node.ID, "Asia/Singapore", "19:00", "01:00", now.Add(time.Minute)); err == nil {
+		t.Fatal("SaveDailySchedule() unexpectedly succeeded through failure trigger")
+	}
+	preserved, err := store.GetActivationSchedule(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.Revision != original.Revision || preserved.EnableTime != original.EnableTime ||
+		preserved.DisableTime != original.DisableTime || !preserved.NextTransitionAt.Equal(original.NextTransitionAt) {
+		t.Fatalf("schedule changed after rollback: before=%#v after=%#v", original, preserved)
+	}
+	preservedNode, err := store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preservedNode.Enabled != originalNode.Enabled || preservedNode.Revision != originalNode.Revision {
+		t.Fatalf("node changed after rollback: before=%#v after=%#v", originalNode, preservedNode)
+	}
+}
+
+func TestTXSCH003ApplyDueScheduleFailureRetainsWakeupForRetry(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	location, _ := time.LoadLocation("Asia/Singapore")
+	now := time.Date(2026, 8, 20, 18, 0, 0, 0, location)
+	machine, _, err := store.CreateMachine(ctx, CreateMachineInput{Name: "due-rollback-edge", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := store.CreateNode(ctx, CreateNodeInput{
+		Name: "due-rollback-node", Type: "vless", Host: "due-rollback.example.test", Port: "443",
+		Show: true, Enabled: false, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.SaveDailySchedule(ctx, node.ID, "Asia/Singapore", "19:00", "01:00", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalNode, err := store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		CREATE TRIGGER fail_due_node_update
+		BEFORE UPDATE OF enabled ON nodes
+		BEGIN SELECT RAISE(ABORT, 'injected due node failure'); END
+	`); err != nil {
+		t.Fatal(err)
+	}
+	due := DueSchedule{NodeID: node.ID, Revision: saved.Revision, NextTransitionAt: saved.NextTransitionAt}
+	if applied, err := store.ApplyDueSchedule(ctx, due, saved.NextTransitionAt); err == nil || applied {
+		t.Fatalf("ApplyDueSchedule(failure) = (%v, %v), want (false, error)", applied, err)
+	}
+	preserved, err := store.GetActivationSchedule(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.Revision != saved.Revision || !preserved.NextTransitionAt.Equal(saved.NextTransitionAt) {
+		t.Fatalf("failed due transition lost its wakeup: before=%#v after=%#v", saved, preserved)
+	}
+	preservedNode, err := store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preservedNode.Enabled != originalNode.Enabled || preservedNode.Revision != originalNode.Revision {
+		t.Fatalf("node changed after failed due transition: before=%#v after=%#v", originalNode, preservedNode)
+	}
+	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER fail_due_node_update`); err != nil {
+		t.Fatal(err)
+	}
+	if applied, err := store.ApplyDueSchedule(ctx, due, saved.NextTransitionAt); err != nil || !applied {
+		t.Fatalf("ApplyDueSchedule(retry) = (%v, %v), want (true, nil)", applied, err)
+	}
+	updatedNode, err := store.GetNode(ctx, node.ID)
+	if err != nil || !updatedNode.Enabled {
+		t.Fatalf("retried due transition did not enable node: node=%#v err=%v", updatedNode, err)
+	}
+	advanced, err := store.GetActivationSchedule(ctx, node.ID)
+	if err != nil || !advanced.NextTransitionAt.After(saved.NextTransitionAt) {
+		t.Fatalf("retried due transition did not advance wakeup: schedule=%#v err=%v", advanced, err)
+	}
+}
+
 func TestDeletingSchedulePreservesCurrentManualNodeState(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
