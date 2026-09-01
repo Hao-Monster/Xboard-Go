@@ -211,19 +211,38 @@ func TestRedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *
 		t.Fatalf("write report for dynamically claimed node: %v", err)
 	}
 	foundSecondNode := false
-	for range 2 {
+	// Membership notifications and the one-second reconciliation loop may
+	// legitimately enqueue an identical full sync while the device report is
+	// being processed. Require the authoritative report contents instead of
+	// assuming those independent producers have a fixed cross-goroutine order.
+	for range 12 {
 		event := readWSEvent(t, second)
+		if event.Event != "sync.nodes" && event.Event != "sync.config" && event.Event != "sync.users" && event.Event != "sync.devices" {
+			t.Fatalf("dynamically claimed node report event = %q, want an authoritative sync event", event.Event)
+		}
 		if event.Event != "sync.devices" {
-			t.Fatalf("dynamically claimed node report event = %q, want sync.devices", event.Event)
+			continue
 		}
 		var data struct {
-			NodeID int64 `json:"node_id"`
+			NodeID int64              `json:"node_id"`
+			Users  map[int64][]string `json:"users"`
 		}
 		decodeWSData(t, event.Data, &data)
-		foundSecondNode = foundSecondNode || data.NodeID == secondNode.ID
+		if data.NodeID != secondNode.ID {
+			continue
+		}
+		for _, address := range data.Users[user.ID] {
+			if address == "192.0.2.45" {
+				foundSecondNode = true
+				break
+			}
+		}
+		if foundSecondNode {
+			break
+		}
 	}
 	if !foundSecondNode {
-		t.Fatal("dynamically claimed node did not receive an authoritative device event")
+		t.Fatal("dynamically claimed node did not receive the reported device in an authoritative event")
 	}
 	disabled := admin.request(t, firstAPI, http.MethodPatch, fmt.Sprintf("/api/v1/admin/machines/%d", machine.ID),
 		`{"name":"coordinated-machine","notes":"","is_active":false}`)
