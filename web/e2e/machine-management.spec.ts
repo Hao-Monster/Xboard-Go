@@ -4,9 +4,13 @@ import { adminEmail, adminPassword } from "./support";
 
 test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic and recoverable", async ({ page }) => {
   const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
   const unexpectedServerErrors: string[] = [];
   let expectedFailureResponses = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && !message.text().includes("status of 503")) consoleErrors.push(message.text());
+  });
   page.on("response", (response) => {
     if (response.status() < 500) return;
     const path = new URL(response.url()).pathname;
@@ -60,6 +64,19 @@ test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic an
     }
   });
   expect(statusResponse.status()).toBe(200);
+  const secondStatusResponse = await page.request.post("/api/v2/server/machine/status", {
+    headers: { Authorization: `Bearer ${machineCredential}` },
+    data: {
+      machine_id: machineID,
+      node_id: 0,
+      cpu: 86,
+      mem: { total: 1000, used: 930 },
+      swap: { total: 100, used: 10 },
+      disk: { total: 2000, used: 600 },
+      net: { in_speed: 3072, out_speed: 5120 }
+    }
+  });
+  expect(secondStatusResponse.status()).toBe(200);
   await page.reload();
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
 
@@ -79,6 +96,12 @@ test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic an
 
   await machineCard.getByRole("button", { name: "服务器详情" }).click();
   const drawer = page.getByRole("dialog", { name: "服务器详情" });
+  await expect(drawer.getByRole("heading", { name: "负载与网络" })).toBeVisible();
+  await expect(drawer.getByText("86.0%", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("93.0%", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("3.0 KiB/s / 5.0 KiB/s", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("img", { name: "CPU（蓝）和内存（绿）趋势" })).toBeVisible();
+  await expect(drawer.getByRole("img", { name: "网络入站（蓝）和出站（绿）趋势" })).toBeVisible();
   await expect(drawer.getByText("暂无关联节点。")).toBeVisible();
   await drawer.getByLabel("待关联节点").selectOption(String(node.id));
   const assignResponse = page.waitForResponse((response) =>
@@ -192,6 +215,7 @@ test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic an
 
   expect(expectedFailureResponses).toBe(2);
   expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
   expect(unexpectedServerErrors).toEqual([]);
 });
 
