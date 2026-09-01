@@ -256,7 +256,7 @@ export function App() {
             <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => navigateAdminPage("account")}>账号安全</button>
           </div>
         </nav>
-        <main className="admin-content">
+        <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
         {page === "system" && <SystemOperationsPage api={api} />}
         {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
@@ -285,7 +285,7 @@ export function App() {
         {page === "clients" && <ClientCatalogManagementPage api={api} />}
         {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
           </Suspense>
-        </main>
+        </div>
       </div>
     </div>
   );
