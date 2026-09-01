@@ -149,6 +149,44 @@ func validTestEvidence(state State) Evidence {
 
 func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
 	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	state.Requirements.BaselineCommit = strings.Repeat("f", 40)
+	writeRequirementFixture(t, temporaryRoot, state)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "fixture")
+	if err := Check(temporaryRoot); err == nil {
+		t.Fatal("expected a syntactically valid but nonexistent evidence target commit to fail validation")
+	}
+}
+
+func TestCheckRejectsProductDriftAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	if err := os.WriteFile(filepath.Join(temporaryRoot, "runtime.go"), []byte("package runtime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "metadata and unverified product drift")
+	if err := Check(temporaryRoot); err == nil {
+		t.Fatal("expected product changes after the current evidence target to fail validation")
+	}
+}
+
+func copyProjectFixture(t *testing.T, root string) string {
+	t.Helper()
 	temporaryRoot := t.TempDir()
 	projectDir := filepath.Join(temporaryRoot, "docs", "project")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
@@ -166,7 +204,12 @@ func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	state.Requirements.BaselineCommit = strings.Repeat("f", 40)
+	return temporaryRoot
+}
+
+func writeRequirementFixture(t *testing.T, root string, state State) {
+	t.Helper()
+	projectDir := filepath.Join(root, "docs", "project")
 	requirementsJSON, err := json.MarshalIndent(state.Requirements, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -181,14 +224,6 @@ func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, "STATUS.md"), []byte(status), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, temporaryRoot, "init")
-	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
-	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
-	runGit(t, temporaryRoot, "add", ".")
-	runGit(t, temporaryRoot, "commit", "-m", "fixture")
-	if err := Check(temporaryRoot); err == nil {
-		t.Fatal("expected a syntactically valid but nonexistent evidence target commit to fail validation")
-	}
 }
 
 func runGit(t *testing.T, root string, arguments ...string) {
@@ -197,6 +232,16 @@ func runGit(t *testing.T, root string, arguments ...string) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(arguments, " "), err, output)
 	}
+}
+
+func runGitOutput(t *testing.T, root string, arguments ...string) string {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, arguments...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(arguments, " "), err, output)
+	}
+	return string(output)
 }
 
 func TestPRMetadata(t *testing.T) {
