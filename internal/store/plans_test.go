@@ -193,6 +193,39 @@ func TestPlanReorderAndValidationAreAtomic(t *testing.T) {
 	}
 }
 
+func TestPlanSupportsAllLegacyBillingPeriods(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	want := PlanPrices{
+		"monthly":       101,
+		"quarterly":     202,
+		"half_yearly":   303,
+		"yearly":        404,
+		"two_yearly":    505,
+		"three_yearly":  606,
+		"onetime":       707,
+		"reset_traffic": 808,
+	}
+	created, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "Every legacy period", TransferEnableGiB: 100, Prices: want,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+	if !reflect.DeepEqual(created.Prices, want) {
+		t.Fatalf("CreatePlan() prices = %#v, want %#v", created.Prices, want)
+	}
+
+	plans, err := database.ListPlans(ctx, now)
+	if err != nil {
+		t.Fatalf("ListPlans() error = %v", err)
+	}
+	if len(plans) != 1 || !reflect.DeepEqual(plans[0].Prices, want) {
+		t.Fatalf("ListPlans() = %#v, want all legacy prices %#v", plans, want)
+	}
+}
+
 func TestCalculateNextTrafficResetMatchesLegacyCalendarRules(t *testing.T) {
 	shanghai, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {

@@ -16,7 +16,8 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 	admin := loginAdmin(t, api)
 	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/plans", `{
 		"name":"Pro","transfer_enable":100,"speed_limit":200,"device_limit":3,"capacity_limit":0,
-		"reset_traffic_method":1,"prices":{"monthly":123,"quarterly":345},"tags":["推荐"],
+		"reset_traffic_method":1,"prices":{"monthly":101,"quarterly":202,"half_yearly":303,"yearly":404,
+		"two_yearly":505,"three_yearly":606,"onetime":707,"reset_traffic":808},"tags":["推荐"],
 		"content":"{{transfer}}/{{speed}}/{{devices}}/{{reset_method}}"
 	}`)
 	if created.Code != http.StatusCreated {
@@ -29,8 +30,17 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 		Data store.Plan `json:"data"`
 	}
 	decodeResponse(t, created, &payload)
-	if payload.Data.Show || payload.Data.Sell || !payload.Data.Renew || payload.Data.Prices["monthly"] != 123 {
+	wantPrices := store.PlanPrices{
+		"monthly": 101, "quarterly": 202, "half_yearly": 303, "yearly": 404,
+		"two_yearly": 505, "three_yearly": 606, "onetime": 707, "reset_traffic": 808,
+	}
+	if payload.Data.Show || payload.Data.Sell || !payload.Data.Renew || len(payload.Data.Prices) != len(wantPrices) {
 		t.Fatalf("created plan = %#v", payload.Data)
+	}
+	for period, want := range wantPrices {
+		if payload.Data.Prices[period] != want {
+			t.Fatalf("created plan price %q = %d, want %d", period, payload.Data.Prices[period], want)
+		}
 	}
 
 	state := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/plans/%d/state", payload.Data.ID),
@@ -45,7 +55,9 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 
 	guest := plainRequest(api, http.MethodGet, "/api/v1/guest/plans", "")
 	if guest.Code != http.StatusOK || !containsAll(guest.Body.String(), `"capacity_remaining":null`, `"can_purchase":true`,
-		`"monthly":123`, `"content":"100/200/3/按月"`) {
+		`"monthly":101`, `"quarterly":202`, `"half_yearly":303`, `"yearly":404`,
+		`"two_yearly":505`, `"three_yearly":606`, `"onetime":707`, `"reset_traffic":808`,
+		`"content":"100/200/3/按月"`) {
 		t.Fatalf("guest plans status = %d; body=%s", guest.Code, guest.Body)
 	}
 	if strings.Contains(guest.Body.String(), "users_count") || strings.Contains(guest.Body.String(), "active_users_count") {
