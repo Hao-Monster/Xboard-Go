@@ -115,6 +115,19 @@ func TestCurrentEvidenceMustHavePassed(t *testing.T) {
 	}
 }
 
+func TestCurrentEvidenceRequiresAuditableCaseMetadata(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{{
+		Commit: state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence without kind, environment, cases, and an artifact to fail validation")
+	}
+}
+
 func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]
