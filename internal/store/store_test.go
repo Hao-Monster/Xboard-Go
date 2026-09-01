@@ -12,7 +12,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
 )
 
-func TestMachineEnrollmentIsOneTimeAndHashed(t *testing.T) {
+func TestAPIMACH002MachineEnrollmentIsOneTimeAndHashed(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
@@ -71,7 +71,7 @@ func TestMachineEnrollmentIsOneTimeAndHashed(t *testing.T) {
 	}
 }
 
-func TestRotatingMachineCredentialRevokesOnlyAfterExchange(t *testing.T) {
+func TestAPIMACH002RotatingMachineCredentialRevokesOnlyAfterExchange(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
@@ -105,7 +105,7 @@ func TestRotatingMachineCredentialRevokesOnlyAfterExchange(t *testing.T) {
 	}
 }
 
-func TestNewEnrollmentInvalidatesPriorUnusedEnrollment(t *testing.T) {
+func TestAPIMACH002NewEnrollmentInvalidatesPriorUnusedEnrollment(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)

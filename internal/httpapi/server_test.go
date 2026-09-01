@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -81,6 +82,103 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	}
 	if !strings.Contains(payload.Data.InstallCommand, "v1.14.3") || strings.Contains(payload.Data.InstallCommand, "latest") {
 		t.Fatalf("install command must pin the published node release: %q", payload.Data.InstallCommand)
+	}
+}
+
+func TestAPIMACH002MachineEnrollmentCredentialLifecycleIsOneTimeAndNoStore(t *testing.T) {
+	api, database := newTestAPI(t)
+	client := loginAdmin(t, api)
+
+	created := client.request(t, api, http.MethodPost, "/api/v1/admin/machines", `{"name":"credential-edge","is_active":true}`)
+	if created.Code != http.StatusCreated || created.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("create status=%d cache=%q body=%s", created.Code, created.Header().Get("Cache-Control"), created.Body)
+	}
+	var createdPayload struct {
+		Data struct {
+			ID    int64  `json:"id"`
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, created, &createdPayload)
+	if createdPayload.Data.ID == 0 || createdPayload.Data.Token == "" {
+		t.Fatalf("create omitted one-time enrollment data: %#v", createdPayload)
+	}
+	machineID := createdPayload.Data.ID
+	initialEnrollment := createdPayload.Data.Token
+
+	initialExchange := agentRequest(api, http.MethodPost, "/api/v2/server/machine/enroll", "", fmt.Sprintf(
+		`{"machine_id":%d,"enrollment_code":%q}`, machineID, initialEnrollment,
+	))
+	if initialExchange.Code != http.StatusOK || initialExchange.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("initial exchange status=%d cache=%q body=%s", initialExchange.Code, initialExchange.Header().Get("Cache-Control"), initialExchange.Body)
+	}
+	var initialCredentialPayload struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, initialExchange, &initialCredentialPayload)
+	oldCredential := initialCredentialPayload.Data.Token
+	if oldCredential == "" || oldCredential == initialEnrollment {
+		t.Fatalf("initial exchange returned invalid credential data: %#v", initialCredentialPayload)
+	}
+
+	rotation := client.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/machines/%d/enrollments", machineID), `{"revoke_existing":true}`)
+	if rotation.Code != http.StatusCreated || rotation.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("rotation status=%d cache=%q body=%s", rotation.Code, rotation.Header().Get("Cache-Control"), rotation.Body)
+	}
+	var rotationPayload struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, rotation, &rotationPayload)
+	rotationEnrollment := rotationPayload.Data.Token
+	if rotationEnrollment == "" || rotationEnrollment == initialEnrollment || rotationEnrollment == oldCredential {
+		t.Fatalf("rotation returned invalid one-time enrollment data: %#v", rotationPayload)
+	}
+	if _, err := database.AuthenticateMachine(context.Background(), machineID, oldCredential, fixedNow()); err != nil {
+		t.Fatalf("old credential was revoked before the replacement enrollment was exchanged: %v", err)
+	}
+
+	rotatedExchange := agentRequest(api, http.MethodPost, "/api/v2/server/machine/enroll", "", fmt.Sprintf(
+		`{"machine_id":%d,"enrollment_code":%q}`, machineID, rotationEnrollment,
+	))
+	if rotatedExchange.Code != http.StatusOK || rotatedExchange.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("rotated exchange status=%d cache=%q body=%s", rotatedExchange.Code, rotatedExchange.Header().Get("Cache-Control"), rotatedExchange.Body)
+	}
+	var rotatedCredentialPayload struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	decodeResponse(t, rotatedExchange, &rotatedCredentialPayload)
+	newCredential := rotatedCredentialPayload.Data.Token
+	if newCredential == "" || newCredential == oldCredential || newCredential == rotationEnrollment {
+		t.Fatalf("rotated exchange returned invalid credential data: %#v", rotatedCredentialPayload)
+	}
+
+	replayed := agentRequest(api, http.MethodPost, "/api/v2/server/machine/enroll", "", fmt.Sprintf(
+		`{"machine_id":%d,"enrollment_code":%q}`, machineID, rotationEnrollment,
+	))
+	if replayed.Code != http.StatusUnauthorized || replayed.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("replayed enrollment status=%d cache=%q body=%s", replayed.Code, replayed.Header().Get("Cache-Control"), replayed.Body)
+	}
+	if _, err := database.AuthenticateMachine(context.Background(), machineID, oldCredential, fixedNow()); !errors.Is(err, store.ErrInvalidCredential) {
+		t.Fatalf("old credential error after exchange = %v, want ErrInvalidCredential", err)
+	}
+	if _, err := database.AuthenticateMachine(context.Background(), machineID, newCredential, fixedNow()); err != nil {
+		t.Fatalf("new credential rejected after exchange: %v", err)
+	}
+
+	for _, response := range []*httptest.ResponseRecorder{
+		client.request(t, api, http.MethodGet, "/api/v1/admin/machines", ""),
+		client.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/machines/%d", machineID), ""),
+	} {
+		body := response.Body.String()
+		if response.Code != http.StatusOK || strings.Contains(body, initialEnrollment) || strings.Contains(body, rotationEnrollment) || strings.Contains(body, oldCredential) || strings.Contains(body, newCredential) {
+			t.Fatalf("ordinary machine response exposed one-time secret: status=%d body=%s", response.Code, body)
+		}
 	}
 }
 
