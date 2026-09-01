@@ -504,6 +504,10 @@ func TestTXSCH003ApplyDueScheduleFailureRetainsWakeupForRetry(t *testing.T) {
 	if preserved.Revision != saved.Revision || !preserved.NextTransitionAt.Equal(saved.NextTransitionAt) {
 		t.Fatalf("failed due transition lost its wakeup: before=%#v after=%#v", saved, preserved)
 	}
+	dueAfterFailure, err := store.ListDueSchedules(ctx, saved.NextTransitionAt, 10)
+	if err != nil || len(dueAfterFailure) != 1 || dueAfterFailure[0] != due {
+		t.Fatalf("due wakeup after failure = %#v, err=%v; want %#v", dueAfterFailure, err, due)
+	}
 	preservedNode, err := store.GetNode(ctx, node.ID)
 	if err != nil {
 		t.Fatal(err)
