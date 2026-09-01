@@ -57,6 +57,22 @@ func TestCompleteMilestoneRequiresEveryGateToPass(t *testing.T) {
 	}
 }
 
+func TestRequirementRegistryRejectsReplacingAnAuditedID(t *testing.T) {
+	_, state := repositoryState(t)
+	state.Requirements.Requirements[0].ID = "AUTH-999"
+	if err := Validate(state); err == nil {
+		t.Fatal("expected replacing an audited requirement ID to fail validation")
+	}
+}
+
+func TestReleaseGateMustBelongToItsMilestone(t *testing.T) {
+	_, state := repositoryState(t)
+	state.ReleaseGates.Milestones[0].Gates[0].ID = "M1-G99"
+	if err := Validate(state); err == nil {
+		t.Fatal("expected a release gate under the wrong milestone to fail validation")
+	}
+}
+
 func TestPRMetadata(t *testing.T) {
 	_, state := repositoryState(t)
 	body := `Requirement IDs: N/A: governance-only change

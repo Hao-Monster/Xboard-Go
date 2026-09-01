@@ -313,9 +313,13 @@ func Validate(state State) error {
 	}
 
 	requirementPattern := regexp.MustCompile(`^[A-Z]+-\d{3}$`)
+	expectedRequirements := expectedRequirementIDs()
 	for _, requirement := range state.Requirements.Requirements {
 		if !requirementPattern.MatchString(requirement.ID) {
 			problems = append(problems, fmt.Sprintf("invalid requirement id %q", requirement.ID))
+		}
+		if !expectedRequirements[requirement.ID] {
+			problems = append(problems, fmt.Sprintf("unexpected requirement id %s", requirement.ID))
 		}
 		if requirementIDs[requirement.ID] {
 			problems = append(problems, fmt.Sprintf("duplicate requirement id %s", requirement.ID))
@@ -372,6 +376,11 @@ func Validate(state State) error {
 			if requirement.ScopeStatus != "decided" || requirement.ImplementationStatus != "implemented" || requirement.VerificationStatus != "current" || !oneOf(requirement.MigrationStatus, "current", "not_applicable") || len(requirement.Evidence) == 0 {
 				problems = append(problems, fmt.Sprintf("%s is accepted without satisfying the acceptance invariant", requirement.ID))
 			}
+		}
+	}
+	for id := range expectedRequirements {
+		if !requirementIDs[id] {
+			problems = append(problems, fmt.Sprintf("missing audited requirement %s", id))
 		}
 	}
 
@@ -463,6 +472,9 @@ func Validate(state State) error {
 		for _, gate := range milestone.Gates {
 			if gateIDs[gate.ID] || !regexp.MustCompile(`^M[0-4]-G\d{2}$`).MatchString(gate.ID) {
 				problems = append(problems, fmt.Sprintf("invalid or duplicate gate id %q", gate.ID))
+			}
+			if !strings.HasPrefix(gate.ID, milestone.ID+"-G") {
+				problems = append(problems, fmt.Sprintf("%s does not belong to milestone %s", gate.ID, milestone.ID))
 			}
 			gateIDs[gate.ID] = true
 			if strings.TrimSpace(gate.Title) == "" {
@@ -624,6 +636,23 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
+}
+
+func expectedRequirementIDs() map[string]bool {
+	groups := map[string]int{
+		"AUTH": 9, "USER": 3, "PLAN": 3, "SUB": 5,
+		"ORD": 4, "PAY": 2, "COUP": 1, "GIFT": 2, "INV": 1, "FIN": 1,
+		"DIST": 14, "MACH": 4, "NODE": 7, "SCH": 4,
+		"CONT": 3, "ATT": 5, "CLIENT": 2, "TICKET": 1, "NOTICE": 1,
+		"CFG": 2, "PLUG": 2, "THEME": 1, "OPS": 3,
+	}
+	result := make(map[string]bool, 80)
+	for prefix, count := range groups {
+		for index := 1; index <= count; index++ {
+			result[fmt.Sprintf("%s-%03d", prefix, index)] = true
+		}
+	}
+	return result
 }
 
 func normalizeNewlines(value string) string {
