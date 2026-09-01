@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-02",
+  "milestones": [
+    {"id":"M0","name":"Project Governance Baseline","status":"in_progress","gates":[
+      {"id":"M0-G01","title":"版本化事实源与 80 项需求完整性校验","status":"pass"},
+      {"id":"M0-G02","title":"决策、风险、例外、工作项和发布门禁交叉引用校验","status":"pass"},
+      {"id":"M0-G03","title":"GitHub 里程碑、标签与 Issue 建立","status":"pass"},
+      {"id":"M0-G04","title":"M0 PR 治理检查与全部 main 必需检查通过","status":"not_run"},
+      {"id":"M0-G05","title":"合并提交创建 v0.1.0-alpha.0 Tag 和 Pre-release","status":"blocked"}
+    ]},
+    {"id":"M1","name":"Functional Parity","status":"blocked","gates":[
+      {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"blocked"},
+      {"id":"M1-G02","title":"FIN-001、USER-001、USER-003 当前证据与验收完成","status":"blocked"}
+    ]},
+    {"id":"M2","name":"Migration & Operations","status":"blocked","gates":[
+      {"id":"M2-G01","title":"D-006、D-009、D-013 及相关迁移边界已解决","status":"blocked"},
+      {"id":"M2-G02","title":"代表性迁移、对账、备份恢复和回滚演练通过","status":"not_run"}
+    ]},
+    {"id":"M3","name":"Release Candidate","status":"blocked","gates":[
+      {"id":"M3-G01","title":"80/80 需求在同一候选提交 accepted","status":"blocked"},
+      {"id":"M3-G02","title":"浏览器、协议、安全、供应链和性能门禁通过","status":"not_run"},
+      {"id":"M3-G03","title":"无已知 Critical/High 问题","status":"blocked"}
+    ]},
+    {"id":"M4","name":"Production Ready","status":"blocked","gates":[
+      {"id":"M4-G01","title":"SLO、容量、监控、告警和责任人确认","status":"blocked"},
+      {"id":"M4-G02","title":"切换、回滚、恢复和事故响应演练通过","status":"not_run"},
+      {"id":"M4-G03","title":"取得独立生产部署授权","status":"blocked"}
+    ]}
+  ]
+}

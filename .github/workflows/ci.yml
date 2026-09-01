@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate project governance baseline
+        run: go run ./cmd/projectctl check
+      - name: Validate pull request metadata
+        run: go run ./cmd/projectctl pr-check --event "$GITHUB_EVENT_PATH"
+
   go:
     runs-on: ubuntu-latest
     env:

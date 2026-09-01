@@ -1,0 +1,1380 @@
+{
+  "schema_version": 1,
+  "baseline": "M0",
+  "as_of": "2026-09-02",
+  "baseline_commit": "b151f914fbf90fe5d341c5fd7caea7983799a66f",
+  "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
+  "requirements": [
+    {
+      "id": "AUTH-001",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "支持邮箱注册、密码登录、邮件验证码、忘记密码、邮件链接登录、快速登录链接和 token 登录兼容。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-002",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "邮箱写入前去首尾空格并转小写；注册邮箱唯一；可配置邮箱后缀白名单。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-003",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "登录错误采用不泄漏账号存在性的统一错误；可配置错误次数和锁定时长；封禁用户不能登录。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-004",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "内部订阅用户不能登录、重置密码、出现在普通用户查询/导出/群发中。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-005",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "登录令牌支持永久或显式过期；修改密码/邮箱等安全事件撤销全部令牌；退出只撤销当前令牌；用户可列出和移除活动会话。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-006",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "管理员、员工、分销商标志可并存；管理员不得撤销当前账号自己的管理员身份。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-007",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "所有权限必须在服务端实施；分销商能力采用允许清单；管理员接口验证管理员角色。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-008",
+      "level": "V",
+      "domain": "身份、账号与权限",
+      "title": "固定旧版没有 staff 专属路由或前端入口；staff-only 与普通用户权限一致，只有同时具备管理员或分销商标志时取得对应能力。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AUTH-009",
+      "level": "C",
+      "domain": "身份、账号与权限",
+      "title": "Go 重构不得降低认证、授权、密码、令牌和审计安全等级。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "USER-001",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "管理员可查询、筛选、创建、批量生成、更新、封禁、重置密钥、设置邀请人、发送邮件、导出和删除用户。",
+      "scope_status": "blocked",
+      "implementation_status": "partial",
+      "verification_status": "partial",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M1",
+      "decision_ids": [
+        "D-012"
+      ],
+      "work_item_ids": [
+        "FUNC-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "USER-002",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "用户资料包含订阅套餐、权限组、流量总额/用量、到期、速度、设备数、余额、佣金、提醒、Telegram 等业务属性。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "USER-003",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "删除用户会影响订单、邀请码、统计和工单；新系统必须在删除前展示影响并使用事务/软删除或经确认的保留策略。",
+      "scope_status": "blocked",
+      "implementation_status": "blocked",
+      "verification_status": "none",
+      "migration_status": "not_assessed",
+      "acceptance_status": "pending",
+      "milestone": "M1",
+      "decision_ids": [
+        "D-012"
+      ],
+      "work_item_ids": [
+        "FUNC-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PLAN-001",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "套餐支持名称、描述、权限组、流量、速度、设备数、库存、排序、显隐、周期价格和是否允许续费/升级等规则。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PLAN-002",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "计费周期至少覆盖月、季、半年、年、两年、三年、一次性和流量重置包。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PLAN-003",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "流量重置策略支持跟随系统、每月首日、按自然月、永不、每年首日、按年。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SUB-001",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "旧订阅 HTTP 入口只要求未封禁、额度非零且未过期或永久；不要求 plan_id，且即使 `u+d >= transfer_enable` 仍返回配置。节点用户下发另行要求剩余流量大于 0，因此超额配置不可实际连通。新实现须保持这两个边界，不把节点授权规则错误前移到订阅响应。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SUB-002",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "订阅入口按用户 token 返回客户端协议配置、用户信息响应头和当前可用节点；节点按权限组/显隐/状态过滤。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SUB-003",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "支持 Clash/Meta、Sing-box、Surge、Stash、Surfboard、Shadowrocket、Quantumult X、Loon、Shadowsocks、General 等现有输出类；首期商业必需清单待确认。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SUB-004",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "订阅模板可由管理员配置；站点订阅路径和域名可配置。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SUB-005",
+      "level": "V",
+      "domain": "用户、套餐与订阅",
+      "title": "UUID/token 同时轮换，旧 token 提交后立即失效；响应禁止缓存，客户端在明确确认后使用新地址，不提供双 token 宽限。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORD-001",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "订单类型支持新购、续费、升级、流量重置；状态支持待支付、开通中、取消、完成、折抵。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORD-002",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "普通用户可创建订单、查询、结账、获取支付方式、取消和导出；管理员可查询、分配、更新、标记支付、取消、查看详情和备注。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORD-003",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "服务端根据套餐、周期、优惠和手续费计算金额；忽略客户端伪造价格、完成状态和权益字段。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORD-004",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "订单完成必须幂等，权益开通与状态更新保持原子或可补偿；重复支付通知不得重复开通。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PAY-001",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "支付方式插件返回表单并接收 GET/POST 异步通知；渠道验签成功后才能完成订单。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PAY-002",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "支付方式可配置名称、图标、通知域、固定/比例手续费、显隐和排序。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "COUP-001",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "优惠券支持固定/比例等现有类型、有效期、总次数、单用户次数、适用套餐和周期、显隐和删除。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "GIFT-001",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "礼品卡支持通用、套餐、盲盒模板，兑换码生成/导出/启停/删除，使用记录和统计。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "GIFT-002",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "礼品卡奖励可包含余额、流量、有效期、设备数、重置、套餐等，受新用户/付费用户/邀请、次数、冷却和时间条件约束。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "INV-001",
+      "level": "V",
+      "domain": "订单、支付与营销",
+      "title": "用户可生成邀请码、查看邀请和佣金、将可用佣金划转余额；管理员可配置佣金规则。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "FIN-001",
+      "level": "D",
+      "domain": "订单、支付与营销",
+      "title": "币种、金额单位、舍入、税费、退款、冲正和对账保留期限需用运营流程确认。",
+      "scope_status": "blocked",
+      "implementation_status": "blocked",
+      "verification_status": "none",
+      "migration_status": "not_applicable",
+      "acceptance_status": "pending",
+      "milestone": "M1",
+      "decision_ids": [
+        "D-011"
+      ],
+      "work_item_ids": [
+        "FUNC-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-001",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "管理员启用分销商时必须设置分销商名称；停用后名称清空；角色可与管理员/员工并存。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-002",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "分销商购买可见、可售且有库存的套餐；当前前端直接下单，不要求客户名称，兼容 API 的可选名称去首尾空格且最多 64 字符；订单按原价自动完成，不在线支付、不扣余额、不用券、不产生邀请佣金。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-003",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "每个新客户订阅创建独立、不可登录的内部订阅用户和分销订阅主记录；凭据和权益互不共享。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-004",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "分销端可查看购买、订单、邀请、知识库、客户端下载以及必要账号功能；无权访问普通订阅链接、节点列表和非允许清单接口。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-005",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "分销商接口不得返回内部用户 ID/邮箱、token、UUID 或明文长期订阅地址；二维码图像可以承载长期地址，管理员详情按权限显示地址。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-006",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "订单列表支持客户名/订单号搜索、结算筛选、XLSX 导出、订单层级和独立下单时间；导出防公式注入。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-007",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "续费同一分销订阅时创建独立财务订单；token、UUID、二维码、HWID、客户名和备注不变。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-008",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "提前续费从原到期日顺延；过期续费从当前时间起算并重置流量；自然月计算不溢出；永久/关闭/跨分销商/禁续费等情形拒绝。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-009",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "续费使用分销商范围内幂等 UUID；同参数重试返回原结果，参数冲突返回冲突错误，不重复延长。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-010",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "分销权益展示套餐、总/已用/剩余流量、到期、速度和设备数；管理员只能修改总流量、到期、速度和设备数，分销商只读。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-011",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "HWID 可按订单启停，限制 1–100 台；设备注册并发不能突破上限；管理员可查看和删除设备。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-012",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "分销订单未结算前不计收入；管理员按分销商预览并在事务内重新锁定/汇总/结算；重复结算为 0。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-013",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "二维码弹窗关闭只关闭 UI，不调用关闭交付接口、不自动恢复；支持同套餐同周期“再次购买”并直接创建一份新的独立订阅。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DIST-014",
+      "level": "V",
+      "domain": "分销业务",
+      "title": "保留旧一次性 claim 地址与 `delivery_status` 的兼容读取/消费及旧数据迁移；当前新购主流程的二维码直接承载长期订阅地址，不展示明文地址，也不依赖 claim 完成交付。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MACH-001",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "管理员可创建/编辑/禁用/删除服务器机器；服务器有名称、备注、状态、节点数、负载和最后心跳。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MACH-002",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "创建机器后生成凭据；管理员可查看受控令牌、轮换令牌和生成含一次性注册能力的安装命令；旧令牌轮换后立即失效。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MACH-003",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "服务器详情可查看信息、关联节点、负载/网络历史，关联未绑定节点、解除关联和跳转节点管理。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MACH-004",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "删除服务器先解绑节点但不删除节点；节点变更通知关联机器重新同步。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-001",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "节点支持当前 11 种类型，协议字段、父子节点、权限组、路由、连接/服务端口、监听地址、倍率、动态倍率、流量上限和标签。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-002",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "节点可独立部署或绑定服务器，具有显隐、启用、在线状态、排序、复制、批量显隐/启停/删除/重置流量。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-003",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "节点配置变更通过观察器和同步服务通知正确连接；多实例连接使用租约/所有权和 fencing 防止旧连接写入。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-004",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "HTTP/WS 支持旧全局 server token 与机器级凭据；机器只能访问归属且已启用节点。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-005",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "握手、配置、用户、状态、设备、流量上报有请求体大小、请求频率、字段/条目上限、类型校验和批次去重。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-006",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "设备在线按 300 秒窗口、IP 归一化和去重计算；写数据库有节流与延迟刷新；节点断开清理其设备状态。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NODE-007",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "流量更新按用户批量原子累加，并以报告 ID/分片回执防止重复消费；随后进入超额检查。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SCH-001",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "每个节点最多一项激活计划；支持每日和遗留一次性结构，日计划固定 Asia/Singapore。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SCH-002",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "每日开始/结束必须是不同 HH:MM，支持跨午夜；保存立即将节点校准为当前应有状态。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SCH-003",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "每个版本使用 revision；重复/延迟/旧队列任务不能覆盖新计划；队列投递失败时回滚计划和状态。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SCH-004",
+      "level": "V",
+      "domain": "服务器、节点和实时系统",
+      "title": "管理端每次打开服务器详情时都显示“定时设置”；嵌套计划弹窗可点击，支持 Esc、Tab 焦点循环和关闭后焦点恢复。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CONT-001",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "管理员可创建、编辑、显隐、排序和删除公告与知识；知识有分类和订阅条件。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CONT-002",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "用户按订阅条件访问知识库；正文中的站点名和订阅地址占位符按当前用户替换。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CONT-003",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "知识可生成公开分享页；公开页不泄漏用户订阅变量；公开附件有独立受限读取入口。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ATT-001",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "附件使用私有存储，支持初始化、分片、状态、完成、取消、列表、删除、克隆和 QR；不直接暴露存储路径。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ATT-002",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "校验文件名、大小、分片编号/数量、哈希、MIME、路径和配额；完成操作并发幂等，失败清理临时资源。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ATT-003",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "附件状态包含隔离、就绪、拒绝；上传状态包含初始化、上传、合并、完成、失败、过期；草稿和软删除有清理窗口。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ATT-004",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "图片/安全视频可内联，其他文件强制下载；签名短时有效，Range、nosniff、安全 Content-Disposition 正确。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ATT-005",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "管理编辑器数据库保存 Markdown；粘贴 HTML 使用白名单；跨文章复制产生新附件 UUID 和物理副本，同文复制不克隆。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CLIENT-001",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "客户端目录按 Android/iOS/Windows/macOS/Linux 筛选，提供直接、二维码、网盘和教程入口。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CLIENT-002",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "下载/跳转地址服务端白名单校验；未知客户端、平台或危险重定向被拒绝；外链使用安全打开属性。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "TICKET-001",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "用户可创建、查看、回复和关闭自己的工单，同一时间至多一个未关闭工单；用户关闭后不可再回复。管理员可搜索、筛选、查看、回复和关闭全部工单；管理员可回复已关闭工单且不会重开。管理员最后回复超过 24 小时的未关闭工单自动关闭。佣金 `withdraw` 是提现自动建单，不是撤回工单。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "NOTICE-001",
+      "level": "V",
+      "domain": "内容、附件、客户端和支持",
+      "title": "用户读取可见公告；管理员管理显隐和排序。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CFG-001",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "管理员可配置站点、订阅、安全、注册、邀请、节点、邮件、Telegram、主题和模板。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CFG-002",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "敏感配置不得通过普通读取接口返回明文；配置变更需要审计、缓存失效和常驻进程一致性策略。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PLUG-001",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "当前插件可上传、安装、卸载、启停、升级和配置，并能挂钩注册、订单、支付、订阅、调度等流程。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PLUG-002",
+      "level": "C",
+      "domain": "配置、扩展与运维",
+      "title": "Go 首版只允许受信清单中的编译内置 Go adapter 或签名、版本固定、最小权限的进程外扩展；禁止主进程直接执行任意 PHP/上传脚本。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "THEME-001",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "管理员可上传 ZIP 主题、预览、激活、配置和删除非当前主题；文件路径/类型和压缩包内容必须安全校验。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "OPS-001",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "管理员可查看系统状态、队列统计/负载、失败任务和审计日志。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "OPS-002",
+      "level": "V",
+      "domain": "配置、扩展与运维",
+      "title": "系统具备安装、升级、回滚、备份、迁移、运行时健康和数据清理命令。",
+      "scope_status": "blocked",
+      "implementation_status": "partial",
+      "verification_status": "partial",
+      "migration_status": "partial",
+      "acceptance_status": "pending",
+      "milestone": "M2",
+      "decision_ids": [
+        "D-012",
+        "D-013"
+      ],
+      "work_item_ids": [
+        "OPS-001",
+        "OPS-002",
+        "MIG-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "OPS-003",
+      "level": "C",
+      "domain": "配置、扩展与运维",
+      "title": "当前阶段所有运行、迁移和测试只针对本地或隔离测试环境。",
+      "scope_status": "decided",
+      "implementation_status": "implemented",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
+      "milestone": "M3",
+      "decision_ids": [],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "evidence": []
+    }
+  ]
+}
