@@ -21,7 +21,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestRedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *testing.T) {
+func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *testing.T) {
 	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
 	if redisURL == "" {
 		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
@@ -255,7 +255,7 @@ func TestRedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *
 	}
 }
 
-func TestRedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances(t *testing.T) {
+func TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances(t *testing.T) {
 	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
 	if redisURL == "" {
 		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
@@ -340,7 +340,7 @@ func runtimeUsersContain(users []store.RuntimeUser, userID int64) bool {
 	return false
 }
 
-func TestRedisCoordinationFailureClosesBeforeWriteAndRecovers(t *testing.T) {
+func TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers(t *testing.T) {
 	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
 	if redisURL == "" || os.Getenv("XBOARD_TEST_REDIS_FAILURES") != "true" {
 		t.Skip("destructive Redis failure injection is not enabled")
