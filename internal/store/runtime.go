@@ -699,13 +699,15 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			SELECT 1 FROM node_report_traffic_stage s
 			JOIN users u ON u.id = s.user_id
 			WHERE s.report_key = ?
-			  AND (u.traffic_u > ? - s.weighted_upload OR u.traffic_d > ? - s.weighted_download)
+			  AND u.traffic_u > ((? - s.weighted_upload) - u.traffic_d) - s.weighted_download
 		)
-	`, reportKey, int64(math.MaxInt64), int64(math.MaxInt64)).Scan(&userOverflow); err != nil {
-		return fmt.Errorf("check user traffic overflow: %w", err)
+	`, reportKey, int64(math.MaxInt64)).Scan(&userOverflow); err != nil {
+		return fmt.Errorf("check combined user traffic overflow: %w", err)
 	}
 	if userOverflow {
-		return fmt.Errorf("%w: user traffic total overflows", ErrInvalidInput)
+		// Subtraction keeps the normal path inside int64 and avoids asking
+		// SQLite to evaluate the potentially overflowing four-value sum.
+		return fmt.Errorf("%w: combined user traffic overflows", ErrInvalidInput)
 	}
 
 	if _, err := tx.ExecContext(ctx, `

@@ -382,6 +382,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
+	if schemaVersion >= 59 {
+		if err := validateUserTrafficTotalTriggers(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -425,6 +430,57 @@ func validateNodeUserOnlineUserIndex(ctx context.Context, database schemaQueryer
 	}
 	if len(columns) != 2 || columns[0] != "user_id" || columns[1] != "expires_at" {
 		return errors.New("online user index must cover user_id then expires_at")
+	}
+	return nil
+}
+
+func validateUserTrafficTotalTriggers(ctx context.Context, database schemaQueryer) error {
+	expected := map[string]string{
+		"users_validate_traffic_total_insert": `
+			CREATE TRIGGER users_validate_traffic_total_insert
+			BEFORE INSERT ON users
+			WHEN NEW.traffic_u > 9223372036854775807 - NEW.traffic_d
+			BEGIN
+				SELECT RAISE(ABORT, 'user traffic total overflow');
+			END
+		`,
+		"users_validate_traffic_total_update": `
+			CREATE TRIGGER users_validate_traffic_total_update
+			BEFORE UPDATE OF traffic_u, traffic_d ON users
+			WHEN NEW.traffic_u > 9223372036854775807 - NEW.traffic_d
+			BEGIN
+				SELECT RAISE(ABORT, 'user traffic total overflow');
+			END
+		`,
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT name,sql FROM sqlite_schema
+		WHERE type='trigger' AND name IN (
+			'users_validate_traffic_total_insert','users_validate_traffic_total_update'
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect user traffic total triggers: %w", err)
+	}
+	found := make(map[string]string, len(expected))
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect user traffic total triggers: %w", err)
+		}
+		found[name] = definition
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect user traffic total triggers: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect user traffic total triggers: %w", err)
+	}
+	for name, definition := range expected {
+		if normalizeSchemaDefinition(found[name]) != normalizeSchemaDefinition(definition) {
+			return fmt.Errorf("user traffic total trigger %q is missing or invalid", name)
+		}
 	}
 	return nil
 }

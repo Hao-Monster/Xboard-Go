@@ -208,6 +208,67 @@ func TestNodeReportTrafficIsAtomicAndIdempotentAcrossConcurrency(t *testing.T) {
 	}
 }
 
+func TestNodeReportCombinedUserTrafficInt64BoundaryIsAtomic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "combined-overflow", 7, 1_000_000, 0, 0, nil, false)
+	maximum := int64(^uint64(0) >> 1)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE users SET transfer_enable = ?, traffic_u = ?, traffic_d = 0 WHERE id = ?
+	`, maximum, maximum-1, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "2c986c88-c082-48a6-806c-7ad61da85dc5",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now,
+	})
+	if err != nil || first.DuplicateTraffic {
+		t.Fatalf("ApplyNodeReport(boundary) = (%#v, %v)", first, err)
+	}
+
+	_, err = database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "c108a66b-9c49-4a36-8c3a-e56c1d8be991",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now.Add(time.Second),
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ApplyNodeReport() error = %v, want ErrInvalidInput", err)
+	}
+
+	var upload, download int64
+	if err := database.db.QueryRowContext(ctx, `SELECT traffic_u, traffic_d FROM users WHERE id = ?`, user.ID).Scan(&upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if upload != maximum-1 || download != 1 {
+		t.Fatalf("user traffic after rejected report = %d/%d", upload, download)
+	}
+	detail, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil || detail.TrafficUsed != maximum {
+		t.Fatalf("GetAdminUser() traffic used = %d, error = %v", detail.TrafficUsed, err)
+	}
+	var receipts, userStats, nodeStats int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_report_receipts WHERE node_id = ?`, node.ID).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_traffic_stats WHERE user_id = ?`, user.ID).Scan(&userStats); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_traffic_stats WHERE node_id = ?`, node.ID).Scan(&nodeStats); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 1 || userStats != 1 || nodeStats != 1 {
+		t.Fatalf("rejected report left receipt/user/node stats = %d/%d/%d", receipts, userStats, nodeStats)
+	}
+}
+
 func TestNodeReportRecordsFirstDistributorConnectionAfterConfigIssued(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
