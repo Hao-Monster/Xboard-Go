@@ -1,0 +1,33 @@
+name: Business or release decision
+description: Resolve a high-impact product, data, security, compatibility, or operational choice.
+title: "[DECISION] "
+labels: ["type:decision", "status:blocked"]
+body:
+  - type: input
+    id: decision
+    attributes:
+      label: Decision ID
+      placeholder: D-011
+    validations:
+      required: true
+  - type: textarea
+    id: facts
+    attributes:
+      label: Verified facts
+      description: Separate repository/external evidence from assumptions. Do not include sensitive data.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and tradeoffs
+      description: Include the recommended option and the failure mode of each alternative.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Blocked requirements and deadline
+      placeholder: FIN-001; required before M1 exit
+    validations:
+      required: true

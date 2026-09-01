@@ -1,0 +1,39 @@
+name: Work item
+description: Track an implementation, verification, migration, security, performance, or release slice.
+title: "[WORK] "
+labels: ["type:work-item"]
+body:
+  - type: input
+    id: work_item
+    attributes:
+      label: Work item ID
+      description: Use an ID from docs/project/work-items.json or add it in the same governance change.
+      placeholder: VER-001
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options: [M0, M1, M2, M3, M4]
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome and scope
+      description: State the observable result, included requirements, and explicit non-goals.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: List commands, scenarios, exact-commit evidence, and release gates required to close this item.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Decisions, risks, and dependencies
+      description: Reference D-xxx, R-xxx, CE-xxx, prerequisite issues, and shared integration surfaces.

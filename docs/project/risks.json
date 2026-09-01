@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-02",
+  "risks": [
+    {"id":"R-001","severity":"high","status":"open","milestone":"M3","title":"旧前端源码缺失导致漏页面、漏状态或误判行为","mitigation":"多证据取证、网络清单、黄金主和逐需求验收。"},
+    {"id":"R-002","severity":"high","status":"controlled","milestone":"M0","title":"完全一致被解释为复制缺陷或顺手重做业务","mitigation":"D-001 与兼容性例外登记；所有差异有批准记录。"},
+    {"id":"R-003","severity":"high","status":"open","milestone":"M0","title":"过时文档看似权威并污染当前需求","mitigation":"版本化事实源、证据等级、冲突记录和生成校验。"},
+    {"id":"R-004","severity":"high","status":"open","milestone":"M2","title":"缺少真实 schema、脱敏数据和容量导致迁移失真","mitigation":"高风险迁移前取得只读 schema、脱敏副本和指标。"},
+    {"id":"R-005","severity":"critical","status":"open","milestone":"M1","title":"支付、结算、余额、佣金或续费发生重复或丢失","mitigation":"数据库约束、事务、幂等、差分、并发和资金守恒测试。"},
+    {"id":"R-006","severity":"high","status":"open","milestone":"M3","title":"分销内部订阅凭据经 API、日志、导出或 trace 泄漏","mitigation":"显式 DTO、递归脱敏、敏感字段扫描和授权测试。"},
+    {"id":"R-007","severity":"high","status":"open","milestone":"M3","title":"节点重复或乱序上报造成流量与状态错误","mitigation":"report receipt、所有权 fencing、批量原子更新和故障测试。"},
+    {"id":"R-008","severity":"high","status":"controlled","milestone":"M3","title":"任意插件或主题上传形成 RCE 和供应链风险","mitigation":"D-003、签名/来源/压缩安全、隔离与最小权限。"},
+    {"id":"R-009","severity":"high","status":"controlled","milestone":"M0","title":"大爆炸重构长期无可用反馈并最终集成失败","mitigation":"垂直切片、里程碑、独立工作项和分领域门禁。"},
+    {"id":"R-010","severity":"high","status":"open","milestone":"M4","title":"双系统并行期间数据漂移或双写不一致","mitigation":"单写主、事件/outbox、可重放增量与对账。"},
+    {"id":"R-011","severity":"high","status":"open","milestone":"M3","title":"附件数据库与文件存储部分失败产生丢失或孤儿","mitigation":"状态机、临时对象、哈希、补偿、清理和恢复演练。"},
+    {"id":"R-012","severity":"medium","status":"controlled","milestone":"M3","title":"过早性能复杂化引入竞态和安全缺陷","mitigation":"先 benchmark/pprof；复杂优化必须有收益和回归证据。"},
+    {"id":"R-013","severity":"high","status":"open","milestone":"M3","title":"API 与订阅入口滥用造成资源耗尽","mitigation":"分层限流、请求响应上限、成本配额、监控和压测。"},
+    {"id":"R-014","severity":"medium","status":"open","milestone":"M3","title":"WebSocket 单进程容量与单点风险","mitigation":"多实例所有权、容量测试、优雅重启和重连抖动。"},
+    {"id":"R-015","severity":"high","status":"open","milestone":"M3","title":"历史协议和真实客户端兼容存在未知","mitigation":"真实客户端矩阵、兼容层、遥测和退役窗口。"},
+    {"id":"R-016","severity":"medium","status":"open","milestone":"M3","title":"许可证、字体、图标、主题或编译资产权利不清","mitigation":"许可证清单、重写而非复制和自动化审查。"},
+    {"id":"R-017","severity":"high","status":"open","milestone":"M0","title":"需求与决策只存在于被忽略的 docs-dev，缺少版本历史","mitigation":"重新打开风险；以 docs/project 为版本化事实源并由 CI 防漂移。"},
+    {"id":"R-018","severity":"medium","status":"open","milestone":"M3","title":"仅本地通过与隔离环境或真实客户端存在差异","mitigation":"可重复容器、当前提交证据和 NOT RUN 披露。"},
+    {"id":"R-019","severity":"high","status":"open","milestone":"M3","title":"历史测试被误标为当前验收造成虚假完成度","mitigation":"五维状态、精确提交证据和 acceptance 不变量。"},
+    {"id":"R-020","severity":"high","status":"open","milestone":"M3","title":"GitHub Actions 使用可变主版本标签且未强制 SHA 固定","mitigation":"固定 action SHA、最小权限、依赖审查、SBOM 和制品来源证明。"},
+    {"id":"R-021","severity":"medium","status":"open","milestone":"M0","title":"并发任务修改共享文件导致覆盖、重复和状态漂移","mitigation":"单一集成责任人、共享面清单、独立 PR 与重放验证。"},
+    {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"}
+  ]
+}

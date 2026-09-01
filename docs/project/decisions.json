@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-02",
+  "decisions": [
+    {"id":"D-001","title":"兼容正确业务意图，不复制已确认缺陷","status":"resolved","milestone":"M0","resolution":"保留正确业务意图；批准的修复登记为兼容性例外。","blocks":[]},
+    {"id":"D-002","title":"staff-only 权限与普通用户一致","status":"resolved","milestone":"M0","resolution":"staff 标志本身不授予额外入口或权限；admin/reseller 分别授权。","blocks":[]},
+    {"id":"D-003","title":"受信 Go 扩展策略","status":"resolved","milestone":"M0","resolution":"仅允许内置受信 adapter 或签名、固定版本、最小权限的进程外扩展。","blocks":["PLUG-002"]},
+    {"id":"D-004","title":"首个开发里程碑采用服务器管理垂直切片","status":"resolved","milestone":"M0","resolution":"服务器管理垂直切片已完成并合并；未部署生产。","blocks":[]},
+    {"id":"D-005","title":"GitHub 仓库归属和公开许可","status":"resolved","milestone":"M0","resolution":"Hao-Monster/Xboard-Go 公开仓库，Apache-2.0，main 受规则集保护。","blocks":[]},
+    {"id":"D-006","title":"目标生产数据库与 SQLite 兼容范围","status":"pending","milestone":"M2","recommended":"用生产事实决定；测试必须覆盖生产同型数据库。","blocks":[]},
+    {"id":"D-007","title":"浏览器支持范围与可访问性等级","status":"pending","milestone":"M3","recommended":"现代 evergreen 浏览器与 WCAG 2.2 AA。","blocks":[]},
+    {"id":"D-008","title":"订阅协议和客户端兼容范围","status":"resolved","milestone":"M0","resolution":"保持固定旧版完整 11 类输出器、已发现 User-Agent 与版本过滤规则。","blocks":[]},
+    {"id":"D-009","title":"V1 节点全局 token 退役窗口","status":"pending","milestone":"M2","recommended":"先遥测 V1/V2 使用率，再双栈迁移到机器凭据。","blocks":[]},
+    {"id":"D-010","title":"一次性 claim 与交付状态兼容","status":"resolved","milestone":"M0","resolution":"保留旧 claim 读取/消费和迁移；新购二维码直接承载长期订阅地址且不返回明文。","blocks":["DIST-014"]},
+    {"id":"D-011","title":"财务与佣金提现语义","status":"pending","milestone":"M1","recommended":"原子冻结账本；pending→approved→paid 或 rejected 退回冻结金额。","blocks":["FIN-001"]},
+    {"id":"D-012","title":"用户删除与数据保留策略","status":"pending","milestone":"M1","recommended":"停用、30 天恢复窗口、不可逆匿名化墓碑；保留业务事实。","blocks":["USER-001","USER-003","OPS-002"]},
+    {"id":"D-013","title":"统计与日志迁移窗口","status":"pending","milestone":"M2","recommended":"迁移最近 90 天脱敏安全元数据，从事实表重建聚合；不执行旧 PHP 失败任务。","blocks":["OPS-002"]},
+    {"id":"D-014","title":"支付、邮件、Telegram 与存储沙箱","status":"pending","milestone":"M3","recommended":"所有外部服务使用隔离账号和端点，不调用生产。","blocks":[]},
+    {"id":"D-015","title":"目标 SLO、容量增长与硬件预算","status":"pending","milestone":"M4","recommended":"取得至少 30 天代表性基线后量化。","blocks":[]},
+    {"id":"D-016","title":"新旧系统并行与切换策略","status":"pending","milestone":"M4","recommended":"读影子验证与分领域切换，避免无协议双写。","blocks":[]},
+    {"id":"D-017","title":"视觉兼容程度","status":"pending","milestone":"M3","recommended":"保持品牌与核心流程，允许新设计系统；关键页面逐图验收。","blocks":[]},
+    {"id":"D-018","title":"管理员和员工 MFA 策略","status":"pending","milestone":"M4","recommended":"管理后台强制 MFA，并结合运维恢复流程。","blocks":[]}
+  ]
+}

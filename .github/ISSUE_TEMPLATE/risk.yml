@@ -1,0 +1,31 @@
+name: Risk
+description: Register a security, data, compatibility, reliability, delivery, or release risk.
+title: "[RISK] "
+labels: ["type:risk"]
+body:
+  - type: input
+    id: risk
+    attributes:
+      label: Risk ID
+      placeholder: R-020
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: [critical, high, medium, low]
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Failure scenario and impact
+    validations:
+      required: true
+  - type: textarea
+    id: control
+    attributes:
+      label: Mitigation, owner, evidence, and deadline
+    validations:
+      required: true

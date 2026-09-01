@@ -12,6 +12,8 @@ The administration interface uses accessible React portals with explicit overlay
 
 The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
 
+Project scope, current evidence, pending decisions, risks, milestones, and release gates are tracked in the versioned [project status](docs/project/STATUS.md) and [roadmap](ROADMAP.md). Historical implementation claims are not treated as current acceptance until they are reproduced against an exact candidate commit.
+
 Licensed under the [Apache License 2.0](LICENSE).
 
 ## Local container
