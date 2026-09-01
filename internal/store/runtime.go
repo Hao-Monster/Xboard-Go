@@ -699,13 +699,15 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			SELECT 1 FROM node_report_traffic_stage s
 			JOIN users u ON u.id = s.user_id
 			WHERE s.report_key = ?
-			  AND (u.traffic_u > ? - s.weighted_upload OR u.traffic_d > ? - s.weighted_download)
+			  AND u.traffic_u > ((? - s.weighted_upload) - u.traffic_d) - s.weighted_download
 		)
-	`, reportKey, int64(math.MaxInt64), int64(math.MaxInt64)).Scan(&userOverflow); err != nil {
-		return fmt.Errorf("check user traffic overflow: %w", err)
+	`, reportKey, int64(math.MaxInt64)).Scan(&userOverflow); err != nil {
+		return fmt.Errorf("check combined user traffic overflow: %w", err)
 	}
 	if userOverflow {
-		return fmt.Errorf("%w: user traffic total overflows", ErrInvalidInput)
+		// Subtraction keeps the normal path inside int64 and avoids asking
+		// SQLite to evaluate the potentially overflowing four-value sum.
+		return fmt.Errorf("%w: combined user traffic overflows", ErrInvalidInput)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -727,13 +729,13 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			JOIN user_traffic_stats us
 			  ON us.user_id = s.user_id AND us.rate_micros = ? AND us.record_at = ? AND us.record_type = 'd'
 			WHERE s.report_key = ?
-			  AND (us.upload > ? - s.weighted_upload OR us.download > ? - s.weighted_download)
+			  AND us.upload > ((? - s.weighted_upload) - us.download) - s.weighted_download
 		)
-	`, rateMicros, recordAt, reportKey, int64(math.MaxInt64), int64(math.MaxInt64)).Scan(&userStatsOverflow); err != nil {
-		return fmt.Errorf("check user traffic stats overflow: %w", err)
+	`, rateMicros, recordAt, reportKey, int64(math.MaxInt64)).Scan(&userStatsOverflow); err != nil {
+		return fmt.Errorf("check combined user traffic stats overflow: %w", err)
 	}
 	if userStatsOverflow {
-		return fmt.Errorf("%w: user traffic statistics overflow", ErrInvalidInput)
+		return fmt.Errorf("%w: combined user traffic statistics overflow", ErrInvalidInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO user_traffic_stats (user_id, rate_micros, record_at, record_type, upload, download, created_at, updated_at)
@@ -801,6 +803,9 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 func weightedTraffic(value, rateMicros int64) (int64, error) {
 	if value < 0 || rateMicros < 0 {
 		return 0, fmt.Errorf("%w: invalid weighted traffic", ErrInvalidInput)
+	}
+	if rateMicros == 0 {
+		return 0, nil
 	}
 	whole := value / trafficRateScale
 	remainder := value % trafficRateScale

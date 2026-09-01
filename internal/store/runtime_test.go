@@ -208,6 +208,156 @@ func TestNodeReportTrafficIsAtomicAndIdempotentAcrossConcurrency(t *testing.T) {
 	}
 }
 
+func TestNodeReportCombinedUserTrafficInt64BoundaryIsAtomic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "combined-overflow", 7, 1_000_000, 0, 0, nil, false)
+	maximum := int64(^uint64(0) >> 1)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE users SET transfer_enable = ?, traffic_u = ?, traffic_d = 0 WHERE id = ?
+	`, maximum, maximum-1, user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "2c986c88-c082-48a6-806c-7ad61da85dc5",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now,
+	})
+	if err != nil || first.DuplicateTraffic {
+		t.Fatalf("ApplyNodeReport(boundary) = (%#v, %v)", first, err)
+	}
+
+	_, err = database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "c108a66b-9c49-4a36-8c3a-e56c1d8be991",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now.Add(time.Second),
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ApplyNodeReport() error = %v, want ErrInvalidInput", err)
+	}
+
+	var upload, download int64
+	if err := database.db.QueryRowContext(ctx, `SELECT traffic_u, traffic_d FROM users WHERE id = ?`, user.ID).Scan(&upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if upload != maximum-1 || download != 1 {
+		t.Fatalf("user traffic after rejected report = %d/%d", upload, download)
+	}
+	detail, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil || detail.TrafficUsed != maximum {
+		t.Fatalf("GetAdminUser() traffic used = %d, error = %v", detail.TrafficUsed, err)
+	}
+	var receipts, userStats, nodeStats int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_report_receipts WHERE node_id = ?`, node.ID).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_traffic_stats WHERE user_id = ?`, user.ID).Scan(&userStats); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_traffic_stats WHERE node_id = ?`, node.ID).Scan(&nodeStats); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 1 || userStats != 1 || nodeStats != 1 {
+		t.Fatalf("rejected report left receipt/user/node stats = %d/%d/%d", receipts, userStats, nodeStats)
+	}
+}
+
+func TestNodeReportCombinedUserTrafficStatisticsInt64BoundaryIsAtomic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "combined-statistics-overflow", 7, 1_000_000, 0, 0, nil, false)
+	maximum := int64(^uint64(0) >> 1)
+	recordAt := time.Date(2026, 9, 1, 0, 0, 0, 0, nodeRateLocation).Unix()
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO user_traffic_stats (
+			user_id, rate_micros, record_at, record_type, upload, download, created_at, updated_at
+		) VALUES (?, 1500000, ?, 'd', ?, 1, ?, ?)
+	`, user.ID, recordAt, maximum-1, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "a456c400-9d8b-4ac6-94e4-60cd92fb1249",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ApplyNodeReport() error = %v, want ErrInvalidInput", err)
+	}
+	assertTrafficTotals(t, database, user.ID, node.ID, 0, 0, 0, 0)
+
+	var upload, download int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT upload, download FROM user_traffic_stats
+		WHERE user_id = ? AND rate_micros = 1500000 AND record_at = ? AND record_type = 'd'
+	`, user.ID, recordAt).Scan(&upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if upload != maximum-1 || download != 1 {
+		t.Fatalf("user statistics after rejected report = %d/%d", upload, download)
+	}
+	var receipts, nodeStats int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_report_receipts WHERE node_id = ?`, node.ID).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_traffic_stats WHERE node_id = ?`, node.ID).Scan(&nodeStats); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 0 || nodeStats != 0 {
+		t.Fatalf("rejected report left receipt/node stats = %d/%d", receipts, nodeStats)
+	}
+}
+
+func TestNodeReportZeroScheduledRateIsAppliedWithoutPanic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "zero-scheduled-rate", 7, 1_000_000, 0, 0, nil, false)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE node_protocol_definitions
+		SET rate_time_enabled = 1,
+			rate_time_ranges_json = '[{"start":"00:00","end":"23:59","rate":0}]'
+		WHERE node_id = ?
+	`, node.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "02585387-7f8a-4f0d-b946-c64150671df6",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Upload: 10, Download: 20}},
+		Now:       now,
+	})
+	if err != nil || result.DuplicateTraffic {
+		t.Fatalf("ApplyNodeReport() = (%#v, %v)", result, err)
+	}
+	assertTrafficTotals(t, database, user.ID, node.ID, 0, 0, 10, 20)
+
+	var rateMicros, upload, download int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT rate_micros, upload, download FROM user_traffic_stats
+		WHERE user_id = ?
+	`, user.ID).Scan(&rateMicros, &upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if rateMicros != 0 || upload != 0 || download != 0 {
+		t.Fatalf("zero-rate user statistics = %d/%d/%d", rateMicros, upload, download)
+	}
+}
+
 func TestNodeReportRecordsFirstDistributorConnectionAfterConfigIssued(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 58
+const currentSchemaVersion = 59
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -423,6 +423,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v58: %w", err)
 		}
 		version = 58
+	}
+	if version < 59 {
+		if err := applySchemaV59(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v59: %w", err)
+		}
+		version = 59
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2602,6 +2608,54 @@ const schemaV58 = `
 CREATE INDEX IF NOT EXISTS idx_node_user_online_user_expiry
     ON node_user_online(user_id, expires_at);
 `
+
+const schemaV59 = `
+CREATE TRIGGER IF NOT EXISTS users_validate_traffic_total_insert
+BEFORE INSERT ON users
+WHEN NEW.traffic_u > 9223372036854775807 - NEW.traffic_d
+BEGIN
+    SELECT RAISE(ABORT, 'user traffic total overflow');
+END;
+
+CREATE TRIGGER IF NOT EXISTS users_validate_traffic_total_update
+BEFORE UPDATE OF traffic_u, traffic_d ON users
+WHEN NEW.traffic_u > 9223372036854775807 - NEW.traffic_d
+BEGIN
+    SELECT RAISE(ABORT, 'user traffic total overflow');
+END;
+`
+
+func applySchemaV59(ctx context.Context, tx *sql.Tx) error {
+	var invalidUserID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT id FROM users
+		WHERE traffic_u > ? - traffic_d
+		ORDER BY id
+		LIMIT 1
+	`, int64(^uint64(0)>>1)).Scan(&invalidUserID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect combined user traffic: %w", err)
+	}
+	if err == nil {
+		return fmt.Errorf("user %d has combined traffic outside the int64 range", invalidUserID)
+	}
+	var invalidStatisticsUserID int64
+	err = tx.QueryRowContext(ctx, `
+		SELECT user_id FROM user_traffic_stats
+		WHERE upload > ? - download
+		LIMIT 1
+	`, int64(^uint64(0)>>1)).Scan(&invalidStatisticsUserID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect combined user traffic statistics: %w", err)
+	}
+	if err == nil {
+		return fmt.Errorf("user %d has combined traffic statistics outside the int64 range", invalidStatisticsUserID)
+	}
+	if _, err := tx.ExecContext(ctx, schemaV59); err != nil {
+		return fmt.Errorf("create combined user traffic guards: %w", err)
+	}
+	return nil
+}
 
 func applySchemaV52(ctx context.Context, tx *sql.Tx) error {
 	columns := []struct {

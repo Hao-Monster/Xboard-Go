@@ -238,6 +238,15 @@ func TestImportLegacyHumanUsersRequiresGroupsAndExplicitReplacement(t *testing.T
 	}
 }
 
+func TestValidateLegacyHumanUsersRejectsCombinedTrafficOverflow(t *testing.T) {
+	input := validLegacyHumanUsersImport(t)
+	input.Users[1].TrafficUpload = int64(^uint64(0) >> 1)
+	input.Users[1].TrafficDownload = 1
+	if err := ValidateLegacyHumanUsersData(input.Users); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ValidateLegacyHumanUsersData() error = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestConcurrentLegacyHumanUserImportsAreSerializedAndIdempotent(t *testing.T) {
 	database := newLegacyHumanUserTarget(t)
 	ctx := context.Background()

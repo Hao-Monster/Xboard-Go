@@ -292,7 +292,8 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 			user.Balance < 0 || user.Balance > maxOrderMoneyCents || user.CommissionBalance < 0 || user.CommissionBalance > maxOrderMoneyCents ||
 			user.Discount != nil && (*user.Discount < 0 || *user.Discount > 100) ||
 			user.CommissionType < 0 || user.CommissionType > 2 || user.CommissionRate != nil && (*user.CommissionRate < 0 || *user.CommissionRate > 100) ||
-			user.TrafficUpload < 0 || user.TrafficDownload < 0 || user.SpeedLimit < 0 || user.DeviceLimit < 0 ||
+			user.TrafficUpload < 0 || user.TrafficDownload < 0 ||
+			user.TrafficUpload > int64(^uint64(0)>>1)-user.TrafficDownload || user.SpeedLimit < 0 || user.DeviceLimit < 0 ||
 			user.DeviceLimit > 1_000 || !validLegacyUnixTimestamp(user.CreatedAt) || !validLegacyUnixTimestamp(user.UpdatedAt) ||
 			user.UpdatedAt < user.CreatedAt || distributorNameErr != nil || !equalOptionalStrings(distributorName, user.DistributorName) {
 			return fmt.Errorf("%w: invalid legacy human user id %d", ErrInvalidInput, user.ID)
