@@ -20,6 +20,18 @@ test("administrator navigation stays in a vertical left sidebar on desktop", asy
   await expect(navigation).toHaveCSS("overflow-x", "visible");
   await expect(page.locator(".topbar .admin-nav")).toHaveCount(0);
 
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    root.dataset.themeSidebarStyle = "light";
+    root.style.setProperty("--theme-background", "#10141c");
+    root.style.setProperty("--theme-surface", "#1b2230");
+    root.style.setProperty("--theme-muted", "#12ab34");
+  });
+  const themedBackground = await sidebar.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.evaluate(() => document.documentElement.style.setProperty("--theme-surface", "#263044"));
+  await expect.poll(() => sidebar.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(themedBackground);
+  await expect(navigation.getByRole("button", { name: "系统状态" })).toHaveCSS("color", "rgb(18, 171, 52)");
+
   const sidebarBox = await sidebar.boundingBox();
   const contentBox = await content.boundingBox();
   expect(sidebarBox).not.toBeNull();
@@ -35,7 +47,7 @@ test("administrator navigation stays in a vertical left sidebar on desktop", asy
   expect(firstButtonBox!.y).toBeLessThan(secondButtonBox!.y);
 });
 
-test("administrator navigation remains horizontally scrollable on mobile", async ({ page }, testInfo) => {
+test("administrator navigation stays in a vertical left sidebar on mobile", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-chromium", "Mobile shell layout regression");
 
   await page.goto("/");
@@ -45,17 +57,24 @@ test("administrator navigation remains horizontally scrollable on mobile", async
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
 
   const sidebar = page.getByRole("navigation", { name: "管理端导航" });
+  const content = page.locator(".admin-content");
   const navigation = sidebar.locator(".admin-nav");
   await expect(sidebar).toBeVisible();
-  await expect(navigation).toHaveCSS("flex-direction", "row");
-  await expect(navigation).toHaveCSS("overflow-x", "auto");
+  await expect(navigation).toHaveCSS("flex-direction", "column");
+  await expect(navigation).toHaveCSS("overflow-x", "visible");
 
+  const sidebarBox = await sidebar.boundingBox();
+  const contentBox = await content.boundingBox();
   const firstButtonBox = await navigation.getByRole("button", { name: "系统状态" }).boundingBox();
   const secondButtonBox = await navigation.getByRole("button", { name: "系统设置" }).boundingBox();
+  expect(sidebarBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
   expect(firstButtonBox).not.toBeNull();
   expect(secondButtonBox).not.toBeNull();
-  expect(firstButtonBox!.x).toBeLessThan(secondButtonBox!.x);
-  expect(firstButtonBox!.y).toBe(secondButtonBox!.y);
+  expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
+  expect(sidebarBox!.width).toBeLessThanOrEqual(160);
+  expect(firstButtonBox!.x).toBe(secondButtonBox!.x);
+  expect(firstButtonBox!.y).toBeLessThan(secondButtonBox!.y);
 
   const accountSecurity = navigation.getByRole("button", { name: "账号安全" });
   await accountSecurity.scrollIntoViewIfNeeded();
@@ -75,12 +94,13 @@ test("administrator sidebar leaves the management surface usable at tablet width
 
   const sidebar = page.getByRole("navigation", { name: "管理端导航" });
   const content = page.locator(".admin-content");
-  await expect(sidebar.locator(".admin-nav")).toHaveCSS("flex-direction", "row");
+  await expect(sidebar.locator(".admin-nav")).toHaveCSS("flex-direction", "column");
   const sidebarBox = await sidebar.boundingBox();
   const contentBox = await content.boundingBox();
   expect(sidebarBox).not.toBeNull();
   expect(contentBox).not.toBeNull();
-  expect(sidebarBox!.y).toBeLessThan(contentBox!.y);
+  expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
+  expect(sidebarBox!.width).toBeLessThan(contentBox!.width);
 
   const users = sidebar.getByRole("button", { name: "用户管理" });
   await users.scrollIntoViewIfNeeded();
