@@ -3,6 +3,7 @@ package projectgovernance
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -70,6 +71,47 @@ func TestReleaseGateMustBelongToItsMilestone(t *testing.T) {
 	state.ReleaseGates.Milestones[0].Gates[0].ID = "M1-G99"
 	if err := Validate(state); err == nil {
 		t.Fatal("expected a release gate under the wrong milestone to fail validation")
+	}
+}
+
+func TestCurrentEvidenceMustTargetCandidateCommit(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{{
+		Commit: strings.Repeat("f", 40), ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence from a different candidate commit to fail validation")
+	}
+}
+
+func TestCurrentEvidenceRequiresRFC3339ObservationTime(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{{
+		Commit: state.Requirements.BaselineCommit, ObservedAt: "sometime",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence without an RFC3339 observation time to fail validation")
+	}
+}
+
+func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.MigrationStatus = "not_applicable"
+	requirement.AcceptanceStatus = "accepted"
+	requirement.Evidence = []Evidence{{
+		Commit: state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected an accepted requirement with an open work item to fail validation")
 	}
 }
 
