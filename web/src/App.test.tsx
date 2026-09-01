@@ -52,7 +52,11 @@ describe("App public identity bootstrap", () => {
 		}));
 
 		render(<App />);
-		expect(await screen.findByRole("navigation", { name: "管理端导航" })).toBeVisible();
+		const navigation = await screen.findByRole("navigation", { name: "管理端导航" });
+		expect(navigation).toBeVisible();
+		expect(navigation).toHaveClass("admin-sidebar");
+		expect(navigation.parentElement).toHaveClass("admin-layout");
+		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
 		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
