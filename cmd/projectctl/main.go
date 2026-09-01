@@ -25,13 +25,20 @@ func main() {
 	case "pr-check":
 		flags := flag.NewFlagSet("pr-check", flag.ContinueOnError)
 		eventPath := flags.String("event", os.Getenv("GITHUB_EVENT_PATH"), "path to the GitHub event JSON")
+		milestone := flags.String("milestone", "", "current GitHub pull request milestone title")
 		if parseErr := flags.Parse(os.Args[2:]); parseErr != nil {
 			fail(parseErr.Error())
 		}
 		if *eventPath == "" {
 			fail("pr-check requires --event or GITHUB_EVENT_PATH")
 		}
-		err = projectgovernance.CheckPREvent(root, *eventPath)
+		var milestoneOverride *string
+		flags.Visit(func(current *flag.Flag) {
+			if current.Name == "milestone" {
+				milestoneOverride = milestone
+			}
+		})
+		err = projectgovernance.CheckPREvent(root, *eventPath, milestoneOverride)
 	default:
 		fail("unknown command: " + os.Args[1])
 	}
