@@ -205,7 +205,7 @@ func Check(root string) error {
 	if err := Validate(state); err != nil {
 		return err
 	}
-	if err := validateEvidenceTarget(root, state.Requirements.BaselineCommit); err != nil {
+	if err := validateEvidenceTarget(root, state); err != nil {
 		return err
 	}
 	want, err := RenderStatus(state)
@@ -230,7 +230,7 @@ func Generate(root string) error {
 	if err := Validate(state); err != nil {
 		return err
 	}
-	if err := validateEvidenceTarget(root, state.Requirements.BaselineCommit); err != nil {
+	if err := validateEvidenceTarget(root, state); err != nil {
 		return err
 	}
 	content, err := RenderStatus(state)
@@ -545,7 +545,8 @@ func Validate(state State) error {
 	return nil
 }
 
-func validateEvidenceTarget(root, commit string) error {
+func validateEvidenceTarget(root string, state State) error {
+	commit := state.Requirements.BaselineCommit
 	object := exec.Command("git", "-C", root, "cat-file", "-e", commit+"^{commit}")
 	if output, err := object.CombinedOutput(); err != nil {
 		return fmt.Errorf("requirements baseline_commit %s is not available as a Git commit; fetch repository history: %w (%s)", commit, err, strings.TrimSpace(string(output)))
@@ -556,6 +557,24 @@ func validateEvidenceTarget(root, commit string) error {
 			return fmt.Errorf("requirements baseline_commit %s is not an ancestor of HEAD", commit)
 		}
 		return fmt.Errorf("validate requirements baseline_commit ancestry: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	hasCurrentEvidence := false
+	for _, requirement := range state.Requirements.Requirements {
+		hasCurrentEvidence = hasCurrentEvidence || requirement.VerificationStatus == "current"
+	}
+	if !hasCurrentEvidence {
+		return nil
+	}
+	diff := exec.Command("git", "-C", root, "diff", "--name-only", "--diff-filter=ACMRT", commit+"..HEAD")
+	output, err := diff.Output()
+	if err != nil {
+		return fmt.Errorf("inspect changes after requirements baseline_commit: %w", err)
+	}
+	for _, path := range strings.Fields(string(output)) {
+		path = filepath.ToSlash(path)
+		if !strings.HasPrefix(path, "docs/project/") {
+			return fmt.Errorf("current evidence target %s is stale because %s changed afterwards", commit, path)
+		}
 	}
 	return nil
 }
