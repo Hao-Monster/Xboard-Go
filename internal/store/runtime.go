@@ -804,6 +804,9 @@ func weightedTraffic(value, rateMicros int64) (int64, error) {
 	if value < 0 || rateMicros < 0 {
 		return 0, fmt.Errorf("%w: invalid weighted traffic", ErrInvalidInput)
 	}
+	if rateMicros == 0 {
+		return 0, nil
+	}
 	whole := value / trafficRateScale
 	remainder := value % trafficRateScale
 	if whole > math.MaxInt64/rateMicros {

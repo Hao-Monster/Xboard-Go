@@ -269,6 +269,45 @@ func TestNodeReportCombinedUserTrafficInt64BoundaryIsAtomic(t *testing.T) {
 	}
 }
 
+func TestNodeReportZeroScheduledRateIsAppliedWithoutPanic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "zero-scheduled-rate", 7, 1_000_000, 0, 0, nil, false)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE node_protocol_definitions
+		SET rate_time_enabled = 1,
+			rate_time_ranges_json = '[{"start":"00:00","end":"23:59","rate":0}]'
+		WHERE node_id = ?
+	`, node.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "02585387-7f8a-4f0d-b946-c64150671df6",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Upload: 10, Download: 20}},
+		Now:       now,
+	})
+	if err != nil || result.DuplicateTraffic {
+		t.Fatalf("ApplyNodeReport() = (%#v, %v)", result, err)
+	}
+	assertTrafficTotals(t, database, user.ID, node.ID, 0, 0, 10, 20)
+
+	var rateMicros, upload, download int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT rate_micros, upload, download FROM user_traffic_stats
+		WHERE user_id = ?
+	`, user.ID).Scan(&rateMicros, &upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if rateMicros != 0 || upload != 0 || download != 0 {
+		t.Fatalf("zero-rate user statistics = %d/%d/%d", rateMicros, upload, download)
+	}
+}
+
 func TestNodeReportRecordsFirstDistributorConnectionAfterConfigIssued(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
