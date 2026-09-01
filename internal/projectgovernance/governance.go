@@ -52,10 +52,15 @@ type Requirement struct {
 }
 
 type Evidence struct {
-	Commit     string `json:"commit"`
-	ObservedAt string `json:"observed_at"`
-	Command    string `json:"command"`
-	Result     string `json:"result"`
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Environment string   `json:"environment"`
+	CaseIDs     []string `json:"case_ids"`
+	Artifact    string   `json:"artifact"`
+	Commit      string   `json:"commit"`
+	ObservedAt  string   `json:"observed_at"`
+	Command     string   `json:"command"`
+	Result      string   `json:"result"`
 }
 
 type DecisionRegistry struct {
@@ -323,6 +328,10 @@ func Validate(state State) error {
 	}
 
 	requirementPattern := regexp.MustCompile(`^[A-Z]+-\d{3}$`)
+	evidenceIDPattern := regexp.MustCompile(`^EV-[A-Z0-9][A-Z0-9-]{2,63}$`)
+	evidenceCasePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{1,159}$`)
+	githubArtifactPattern := regexp.MustCompile(`^https://github\.com/Hao-Monster/Xboard-Go/actions/runs/\d+(?:/job/\d+)?$`)
+	bingoArtifactPattern := regexp.MustCompile(`^bingo-dev:sha256:[0-9a-f]{64}$`)
 	expectedRequirements := expectedRequirementIDs()
 	for _, requirement := range state.Requirements.Requirements {
 		if !requirementPattern.MatchString(requirement.ID) {
@@ -379,7 +388,19 @@ func Validate(state State) error {
 		}
 		for _, evidence := range requirement.Evidence {
 			_, observedAtErr := time.Parse(time.RFC3339, evidence.ObservedAt)
-			if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
+			validArtifact := (evidence.Environment == "github-actions" && githubArtifactPattern.MatchString(evidence.Artifact)) ||
+				(evidence.Environment == "bingo-dev" && bingoArtifactPattern.MatchString(evidence.Artifact))
+			validCases := len(evidence.CaseIDs) > 0
+			seenCases := make(map[string]bool, len(evidence.CaseIDs))
+			for _, caseID := range evidence.CaseIDs {
+				if !evidenceCasePattern.MatchString(caseID) || seenCases[caseID] {
+					validCases = false
+				}
+				seenCases[caseID] = true
+			}
+			if !evidenceIDPattern.MatchString(evidence.ID) || !oneOf(evidence.Kind, "unit", "integration", "contract", "browser", "differential", "migration", "security", "performance", "manual") ||
+				!oneOf(evidence.Environment, "github-actions", "bingo-dev") || !validCases || !validArtifact ||
+				!regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
 				problems = append(problems, fmt.Sprintf("%s has incomplete or invalid evidence", requirement.ID))
 			}
 			if requirement.VerificationStatus == "current" && evidence.Commit != state.Requirements.BaselineCommit {

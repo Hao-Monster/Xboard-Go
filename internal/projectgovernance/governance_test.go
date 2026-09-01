@@ -80,10 +80,9 @@ func TestCurrentEvidenceMustTargetCandidateCommit(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
-	requirement.Evidence = []Evidence{{
-		Commit: strings.Repeat("f", 40), ObservedAt: "2026-09-02T00:00:00Z",
-		Command: "go test ./internal/httpapi", Result: "pass",
-	}}
+	evidence := validTestEvidence(state)
+	evidence.Commit = strings.Repeat("f", 40)
+	requirement.Evidence = []Evidence{evidence}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected current evidence from a different candidate commit to fail validation")
 	}
@@ -93,10 +92,9 @@ func TestCurrentEvidenceRequiresRFC3339ObservationTime(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
-	requirement.Evidence = []Evidence{{
-		Commit: state.Requirements.BaselineCommit, ObservedAt: "sometime",
-		Command: "go test ./internal/httpapi", Result: "pass",
-	}}
+	evidence := validTestEvidence(state)
+	evidence.ObservedAt = "sometime"
+	requirement.Evidence = []Evidence{evidence}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected current evidence without an RFC3339 observation time to fail validation")
 	}
@@ -106,10 +104,9 @@ func TestCurrentEvidenceMustHavePassed(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
-	requirement.Evidence = []Evidence{{
-		Commit: state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
-		Command: "go test ./internal/httpapi", Result: "fail",
-	}}
+	evidence := validTestEvidence(state)
+	evidence.Result = "fail"
+	requirement.Evidence = []Evidence{evidence}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected failing evidence to be insufficient for current verification")
 	}
@@ -134,12 +131,19 @@ func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	requirement.VerificationStatus = "current"
 	requirement.MigrationStatus = "not_applicable"
 	requirement.AcceptanceStatus = "accepted"
-	requirement.Evidence = []Evidence{{
-		Commit: state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
-		Command: "go test ./internal/httpapi", Result: "pass",
-	}}
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected an accepted requirement with an open work item to fail validation")
+	}
+}
+
+func validTestEvidence(state State) Evidence {
+	return Evidence{
+		ID: "EV-TEST-CURRENT", Kind: "integration", Environment: "github-actions",
+		CaseIDs:  []string{"TestCurrentRequirement"},
+		Artifact: "https://github.com/Hao-Monster/Xboard-Go/actions/runs/1",
+		Commit:   state.Requirements.BaselineCommit, ObservedAt: "2026-09-02T00:00:00Z",
+		Command: "go test ./internal/httpapi", Result: "pass",
 	}
 }
 
