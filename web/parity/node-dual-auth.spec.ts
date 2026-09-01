@@ -99,6 +99,8 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     const goGlobalWS = await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, goToken);
     expect(legacyGlobalWS.accepted, `legacy WebSocket result: ${legacyGlobalWS.payload}`).toBe(true);
     expect(goGlobalWS.accepted).toBe(legacyGlobalWS.accepted);
+    expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyUnassigned }, legacyToken)).accepted).toBe(true);
+    expect((await probeWebSocket(goWebSocketURL, { node_id: goUnassigned.id }, goToken)).accepted).toBe(true);
     expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyAssigned }, "wrong-global-credential")).accepted).toBe(false);
     expect((await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, "wrong-global-credential")).accepted).toBe(false);
     expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyDisabled }, legacyToken)).accepted).toBe(true);
@@ -112,6 +114,8 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     expect(readAuthNodeIDs(goMachineWS.payload)).toEqual([goAssigned.id]);
     expect((await probeWebSocket(legacyWebSocketURL, { machine_id: legacyMachineA.id }, "wrong-machine-credential")).accepted).toBe(false);
     expect((await probeWebSocket(goWebSocketURL, { machine_id: goMachineA.id }, "wrong-machine-credential")).accepted).toBe(false);
+    expect((await probeWebSocket(legacyWebSocketURL, { machine_id: legacyMachineB.id }, legacyCredentialA)).accepted).toBe(false);
+    expect((await probeWebSocket(goWebSocketURL, { machine_id: goMachineB.id }, goCredentialA)).accepted).toBe(false);
 
     await setLegacyServerSettings(legacyPage, legacyAuthorization, { server_token: rotatedLegacyToken });
     restartLegacyWebSocketWorker();
@@ -123,6 +127,8 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     expect(await nodeConfigAllowed(goPage, goURL, goAssigned.id, rotatedGoToken, null)).toBe(true);
     expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyAssigned }, legacyToken)).accepted).toBe(false);
     expect((await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, goToken)).accepted).toBe(false);
+    expect((await probeWebSocket(legacyWebSocketURL, { node_id: legacyAssigned }, rotatedLegacyToken)).accepted).toBe(true);
+    expect((await probeWebSocket(goWebSocketURL, { node_id: goAssigned.id }, rotatedGoToken)).accepted).toBe(true);
 
     const rotatedLegacyEnrollment = await rotateLegacyMachine(legacyPage, legacyAuthorization, legacyMachineA.id);
     const rotatedGoEnrollment = await rotateGoMachine(goPage, goMachineA.id);
@@ -134,6 +140,12 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     expect(await nodeConfigAllowed(goPage, goURL, goAssigned.id, rotatedGoCredential, goMachineA.id)).toBe(true);
     expect((await probeWebSocket(legacyWebSocketURL, { machine_id: legacyMachineA.id }, legacyCredentialA)).accepted).toBe(false);
     expect((await probeWebSocket(goWebSocketURL, { machine_id: goMachineA.id }, goCredentialA)).accepted).toBe(false);
+    const rotatedLegacyMachineWS = await probeWebSocket(legacyWebSocketURL, { machine_id: legacyMachineA.id }, rotatedLegacyCredential);
+    const rotatedGoMachineWS = await probeWebSocket(goWebSocketURL, { machine_id: goMachineA.id }, rotatedGoCredential);
+    expect(rotatedLegacyMachineWS.accepted).toBe(true);
+    expect(rotatedGoMachineWS.accepted).toBe(true);
+    expect(readAuthNodeIDs(rotatedLegacyMachineWS.payload)).toEqual([legacyAssigned]);
+    expect(readAuthNodeIDs(rotatedGoMachineWS.payload)).toEqual([goAssigned.id]);
   } finally {
     for (const nodeID of legacyNodeIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/manage/drop", { id: nodeID });
     for (const machineID of legacyMachineIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/machine/drop", { id: machineID });
