@@ -316,7 +316,7 @@ function probeWebSocket(baseURL: string, query: Record<string, number>, credenti
       resolve(result);
     };
     const timer = setTimeout(() => finish({ accepted: false, payload: "timeout" }), 5_000);
-    socket.once("error", (error) => {
+    socket.once("error", (error: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
