@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import * as net from "node:net";
 import * as tls from "node:tls";
 
@@ -10,6 +11,7 @@ const legacyPassword = requiredEnv("LEGACY_ADMIN_PASSWORD");
 const goURL = requiredEnv("XBOARD_GO_URL");
 const goEmail = requiredEnv("XBOARD_GO_ADMIN_EMAIL");
 const goPassword = requiredEnv("XBOARD_GO_ADMIN_PASSWORD");
+const legacyDockerContainer = requiredEnv("LEGACY_DOCKER_CONTAINER");
 const legacyWebSocketURL = process.env.LEGACY_NODE_WS_URL?.trim() || webSocketURL(legacyURL);
 const goWebSocketURL = process.env.XBOARD_GO_WS_URL?.trim() || webSocketURL(goURL);
 
@@ -42,6 +44,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
       server_ws_enable: 1,
       server_ws_url: readString(legacyOriginal, "server_ws_url")
     });
+    restartLegacyWebSocketWorker();
 
     await loginGoAdministrator(goPage);
     goOriginal = await getGoNodeSettings(goPage);
@@ -111,6 +114,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     expect((await probeWebSocket(goWebSocketURL, { machine_id: goMachineA.id }, "wrong-machine-credential")).accepted).toBe(false);
 
     await setLegacyServerSettings(legacyPage, legacyAuthorization, { server_token: rotatedLegacyToken });
+    restartLegacyWebSocketWorker();
     const currentGoSettings = await getGoNodeSettings(goPage);
     await setGoNodeSettings(goPage, currentGoSettings, rotatedGoToken);
     expect(await nodeConfigAllowed(legacyPage, legacyURL, legacyAssigned, legacyToken, null)).toBe(false);
@@ -133,7 +137,10 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
   } finally {
     for (const nodeID of legacyNodeIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/manage/drop", { id: nodeID });
     for (const machineID of legacyMachineIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/machine/drop", { id: machineID });
-    if (legacyOriginal && legacyAuthorization) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/config/save", legacyOriginal);
+    if (legacyOriginal && legacyAuthorization) {
+      await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/config/save", legacyOriginal);
+      bestEffortRestartLegacyWebSocketWorker();
+    }
     if (goNodes.length > 0) await bestEffortGoRequest(goPage, "/api/v1/admin/nodes/bulk-delete", "POST", { targets: goNodes });
     for (const machineID of goMachineIDs) await bestEffortGoRequest(goPage, `/api/v1/admin/machines/${machineID}`, "DELETE");
     if (goOriginal) {
@@ -296,6 +303,23 @@ async function bestEffortGoRequest(page: Page, path: string, method: string, bod
   await goAdminRequest(page, path, method, body).catch(() => undefined);
 }
 
+function restartLegacyWebSocketWorker(): void {
+  // The fixed oracle keeps its scoped Setting instance for the lifetime of the
+  // Workerman process, so a worker restart is required to observe config saves.
+  execFileSync("docker", ["exec", legacyDockerContainer, "supervisorctl", "restart", "ws-server:ws-server_00"], {
+    stdio: "pipe",
+    timeout: 15_000
+  });
+}
+
+function bestEffortRestartLegacyWebSocketWorker(): void {
+  try {
+    restartLegacyWebSocketWorker();
+  } catch {
+    // Preserve the primary assertion or cleanup failure.
+  }
+}
+
 function probeWebSocket(baseURL: string, query: Record<string, number>, credential: string): Promise<{ accepted: boolean; payload: string }> {
   return new Promise((resolve, reject) => {
     const target = new URL(baseURL);
@@ -316,6 +340,8 @@ function probeWebSocket(baseURL: string, query: Record<string, number>, credenti
       resolve(result);
     };
     const timer = setTimeout(() => finish({ accepted: false, payload: "timeout" }), 5_000);
+    socket.once("end", () => finish({ accepted: false, payload: "connection closed before authentication" }));
+    socket.once("close", () => finish({ accepted: false, payload: "connection closed before authentication" }));
     socket.once("error", (error: Error) => {
       if (settled) return;
       settled = true;
