@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -13,8 +14,9 @@ import (
 )
 
 const (
-	maxAdminNodePageSize = 500
-	maxAdminNodeBatch    = 500
+	maxAdminNodePageSize      = 500
+	maxAdminNodeBatch         = 500
+	maxAdminNodeParentOptions = 50
 )
 
 func (s *Store) ListAdminNodes(ctx context.Context, filter AdminNodeFilter, now time.Time) (AdminNodePage, error) {
@@ -78,6 +80,84 @@ func (s *Store) ListAdminNodes(ctx context.Context, filter AdminNodeFilter, now 
 		return AdminNodePage{}, err
 	}
 	return AdminNodePage{Items: items, Total: total, Page: filter.Page, PageSize: filter.PageSize}, nil
+}
+
+func (s *Store) ListAdminNodeParentOptions(ctx context.Context, filter AdminNodeParentFilter) (AdminNodeParentOptions, error) {
+	filter.Type = strings.ToLower(strings.TrimSpace(filter.Type))
+	filter.Query = strings.TrimSpace(filter.Query)
+	if !isSupportedNodeType(filter.Type) || filter.Limit < 1 || filter.Limit > maxAdminNodeParentOptions ||
+		len(filter.Query) > 255 || !utf8.ValidString(filter.Query) || strings.IndexFunc(filter.Query, unicode.IsControl) >= 0 ||
+		(filter.IncludeID != nil && *filter.IncludeID < 1) || (filter.ExcludeID != nil && *filter.ExcludeID < 1) {
+		return AdminNodeParentOptions{}, fmt.Errorf("%w: invalid administrator node parent filter", ErrInvalidInput)
+	}
+
+	items := make([]AdminNodeParentOption, 0, filter.Limit)
+	if filter.IncludeID != nil && (filter.ExcludeID == nil || *filter.IncludeID != *filter.ExcludeID) {
+		var selected AdminNodeParentOption
+		err := s.db.QueryRowContext(ctx, `
+			SELECT id, name FROM nodes WHERE type = ? AND id = ?
+		`, filter.Type, *filter.IncludeID).Scan(&selected.ID, &selected.Name)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return AdminNodeParentOptions{}, fmt.Errorf("get selected administrator node parent option: %w", err)
+		}
+		if err == nil {
+			items = append(items, selected)
+		}
+	}
+
+	conditions := []string{"n.type = ?"}
+	arguments := []any{filter.Type}
+	if filter.ExcludeID != nil {
+		conditions = append(conditions, "n.id <> ?")
+		arguments = append(arguments, *filter.ExcludeID)
+	}
+	if filter.IncludeID != nil {
+		conditions = append(conditions, "n.id <> ?")
+		arguments = append(arguments, *filter.IncludeID)
+	}
+	if filter.Query != "" {
+		queryID, parseErr := strconv.ParseInt(strings.TrimPrefix(filter.Query, "#"), 10, 64)
+		if strings.HasPrefix(filter.Query, "#") && parseErr == nil && queryID > 0 {
+			conditions = append(conditions, "n.id = ?")
+			arguments = append(arguments, queryID)
+		} else {
+			pattern := "%" + escapeSQLiteLike(strings.ToLower(filter.Query)) + "%"
+			conditions = append(conditions, `LOWER(n.name) LIKE ? ESCAPE '\'`)
+			arguments = append(arguments, pattern)
+		}
+	}
+	remaining := filter.Limit - len(items)
+	arguments = append(arguments, remaining+1)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT n.id, n.name FROM nodes n
+		WHERE `+strings.Join(conditions, " AND ")+`
+		ORDER BY n.sort, n.id
+		LIMIT ?
+	`, arguments...)
+	if err != nil {
+		return AdminNodeParentOptions{}, fmt.Errorf("list administrator node parent options: %w", err)
+	}
+	defer rows.Close()
+	matches := make([]AdminNodeParentOption, 0, remaining+1)
+	for rows.Next() {
+		var item AdminNodeParentOption
+		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+			return AdminNodeParentOptions{}, fmt.Errorf("scan administrator node parent option: %w", err)
+		}
+		matches = append(matches, item)
+	}
+	if err := rows.Err(); err != nil {
+		return AdminNodeParentOptions{}, fmt.Errorf("list administrator node parent options: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return AdminNodeParentOptions{}, fmt.Errorf("close administrator node parent options: %w", err)
+	}
+	hasMore := len(matches) > remaining
+	if hasMore {
+		matches = matches[:remaining]
+	}
+	items = append(items, matches...)
+	return AdminNodeParentOptions{Items: items, HasMore: hasMore}, nil
 }
 
 func adminNodeWhere(filter AdminNodeFilter) (string, []any) {

@@ -144,6 +144,7 @@ describe("APIClient administrator node contracts", () => {
 		};
 
     await api.listAdminNodes({ page: 2, page_size: 500, q: " SG edge ", type: "vless", show: false, enabled: true, machine_id: 7 });
+		await api.listAdminNodeParentOptions({ type: "vless", q: " #501 ", include_id: 501, exclude_id: 41 });
 		await api.getAdminNodeDefinition(41);
 		await api.createAdminNodeDefinition(definition);
 		await api.replaceAdminNodeDefinition(41, { ...definition, revision: 3 });
@@ -156,6 +157,7 @@ describe("APIClient administrator node contracts", () => {
 
     expect(requests).toEqual([
       { path: "/api/v1/admin/nodes?page=2&page_size=500&q=SG+edge&type=vless&show=false&enabled=true&machine_id=7", method: "GET", body: undefined, csrf: null },
+			{ path: "/api/v1/admin/nodes/parent-options?type=vless&q=%23501&include_id=501&exclude_id=41", method: "GET", body: undefined, csrf: null },
 			{ path: "/api/v1/admin/nodes/41", method: "GET", body: undefined, csrf: null },
 			{ path: "/api/v1/admin/nodes", method: "POST", body: definition, csrf: "node-csrf" },
 			{ path: "/api/v1/admin/nodes/41", method: "PUT", body: { ...definition, revision: 3 }, csrf: "node-csrf" },

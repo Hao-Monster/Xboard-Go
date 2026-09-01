@@ -263,6 +263,58 @@ test("administrator node management preserves the observed Xboard workflow on ev
   }
 });
 
+test("administrator can search, select, and reopen a remote parent node", async ({ page }, testInfo) => {
+  const pageErrors: string[] = [];
+  const serverErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
+  });
+
+  await loginAdministrator(page);
+  await page.getByRole("button", { name: "节点管理", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "节点管理" })).toBeVisible();
+  const prefix = `Parent search ${testInfo.project.name} ${Date.now()}`;
+  const parentName = `${prefix} remote parent`;
+  const childName = `${prefix} child`;
+  await deleteFixtureNodes(page, prefix);
+
+  try {
+    await createNode(page, { name: parentName, type: "vless", host: "parent.example.test", port: "443", sort: 10 });
+    const parentDetail = await loadNodeDefinition(page, parentName);
+    const parentID = parentDetail.id;
+    expect(Number.isSafeInteger(parentID)).toBe(true);
+
+    await page.getByRole("button", { name: "添加节点" }).click();
+    const createDialog = page.getByRole("dialog", { name: "新建节点" });
+    await createDialog.getByLabel("协议类型").selectOption("vless");
+    const parentSearch = createDialog.getByLabel("搜索父节点");
+    const parentSelect = createDialog.getByLabel("父节点", { exact: true });
+    await parentSearch.fill(parentName);
+    await expect(parentSelect.getByRole("option", { name: `${parentName} (#${String(parentID)})` })).toHaveCount(1);
+    await parentSearch.press("Tab");
+    await expect(parentSelect).toBeFocused();
+    await parentSelect.selectOption(String(parentID));
+    await createDialog.getByLabel("节点名称").fill(childName);
+    await createDialog.getByLabel("节点地址").fill("child.example.test");
+    await createDialog.getByRole("button", { name: "提交" }).click();
+    await expect(createDialog).toBeHidden();
+
+    const childDetail = await loadNodeDefinition(page, childName);
+    expect(childDetail.parent_id).toBe(parentID);
+    await page.getByRole("button", { name: `编辑节点：${childName}` }).click();
+    const editDialog = page.getByRole("dialog", { name: "编辑节点" });
+    await expect(editDialog.getByLabel("父节点", { exact: true })).toHaveValue(String(parentID));
+    await expect(editDialog.getByLabel("父节点", { exact: true }).getByRole("option", { name: `${parentName} (#${String(parentID)})` })).toHaveCount(1);
+    await editDialog.getByRole("button", { name: "取消" }).click();
+
+    expect(pageErrors).toEqual([]);
+    expect(serverErrors).toEqual([]);
+  } finally {
+    await deleteFixtureNodes(page, prefix);
+  }
+});
+
 test("all Xboard node protocols can be created, persisted, and reopened through the administrator UI", async ({ page }, testInfo) => {
   test.setTimeout(300_000);
   page.setDefaultTimeout(10_000);

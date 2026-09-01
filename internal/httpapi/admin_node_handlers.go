@@ -286,6 +286,35 @@ func (s *server) listAdminNodes(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, page)
 }
 
+func (s *server) listAdminNodeParentOptions(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	filter := store.AdminNodeParentFilter{Type: query.Get("type"), Query: query.Get("q"), Limit: 50}
+	for _, optionalID := range []struct {
+		name   string
+		target **int64
+	}{
+		{name: "include_id", target: &filter.IncludeID},
+		{name: "exclude_id", target: &filter.ExcludeID},
+	} {
+		value := query.Get(optionalID.name)
+		if value == "" {
+			continue
+		}
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed < 1 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", optionalID.name+" 必须是正整数", nil)
+			return
+		}
+		*optionalID.target = &parsed
+	}
+	options, err := s.store.ListAdminNodeParentOptions(r.Context(), filter)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, options)
+}
+
 func decodeAdminNodeFilter(w http.ResponseWriter, r *http.Request) (store.AdminNodeFilter, bool) {
 	query := r.URL.Query()
 	filter := store.AdminNodeFilter{Page: 1, PageSize: 500, Query: query.Get("q"), Type: query.Get("type")}

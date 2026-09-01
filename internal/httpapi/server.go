@@ -543,6 +543,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/machines/{machineID}/nodes/{nodeID}/enabled", api.setNodeEnabled)
 	admin.HandleFunc("GET /api/v1/admin/machines/{machineID}/history", api.listHistory)
 	admin.HandleFunc("GET /api/v1/admin/nodes/unassigned", api.listUnassignedNodes)
+	admin.HandleFunc("GET /api/v1/admin/nodes/parent-options", api.listAdminNodeParentOptions)
 	admin.HandleFunc("GET /api/v1/admin/nodes", api.listAdminNodes)
 	admin.HandleFunc("POST /api/v1/admin/nodes", api.createNode)
 	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}", api.getAdminNodeDefinition)

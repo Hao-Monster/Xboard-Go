@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -112,6 +113,88 @@ func TestListAdminNodesFiltersAndAggregatesWithoutChangingStableOrder(t *testing
 	}
 	if _, err := database.ListAdminNodes(ctx, AdminNodeFilter{Page: int(^uint(0) >> 1), PageSize: 500}, now); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("overflowing page error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestListAdminNodeParentOptionsFindsAndKeepsSelectionsBeyondFirstFiveHundred(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+	var beyondID int64
+	for index := 1; index <= 501; index++ {
+		name := fmt.Sprintf("VLESS parent %03d", index)
+		if index == 501 {
+			name = "VLESS beyond five hundred"
+		}
+		node, err := database.CreateNode(ctx, CreateNodeInput{
+			Name: name, Type: "vless", Host: fmt.Sprintf("parent-%03d.example.test", index), Port: "443",
+			Show: true, Enabled: true, Sort: index,
+		}, now)
+		if err != nil {
+			t.Fatalf("CreateNode(%d) error = %v", index, err)
+		}
+		beyondID = node.ID
+	}
+	if _, err := database.CreateNode(ctx, CreateNodeInput{
+		Name: "VLESS beyond five hundred", Type: "trojan", Host: "wrong-type.example.test", Port: "443",
+		Show: true, Enabled: true, Sort: 1,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	searched, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", Query: " BEYOND FIVE HUNDRED ", Limit: 50,
+	})
+	if err != nil {
+		t.Fatalf("ListAdminNodeParentOptions(search) error = %v", err)
+	}
+	if searched.HasMore || len(searched.Items) != 1 || searched.Items[0].ID != beyondID {
+		t.Fatalf("searched parent options = %#v", searched)
+	}
+	byID, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", Query: "#" + fmt.Sprint(beyondID), Limit: 50,
+	})
+	if err != nil || byID.HasMore || len(byID.Items) != 1 || byID.Items[0].ID != beyondID {
+		t.Fatalf("parent options by ID = %#v, error=%v", byID, err)
+	}
+
+	included, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", IncludeID: &beyondID, Limit: 50,
+	})
+	if err != nil {
+		t.Fatalf("ListAdminNodeParentOptions(include) error = %v", err)
+	}
+	if !included.HasMore || len(included.Items) != 50 || included.Items[0].ID != beyondID {
+		t.Fatalf("included parent options = %#v", included)
+	}
+	includedSearch, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", Query: "parent 500", IncludeID: &beyondID, Limit: 50,
+	})
+	if err != nil || includedSearch.HasMore || len(includedSearch.Items) != 2 ||
+		includedSearch.Items[0].ID != beyondID || includedSearch.Items[1].Name != "VLESS parent 500" {
+		t.Fatalf("included searched parent options = %#v, error=%v", includedSearch, err)
+	}
+	selfExcluded, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", Query: "#" + fmt.Sprint(beyondID), IncludeID: &beyondID, ExcludeID: &beyondID, Limit: 50,
+	})
+	if err != nil || selfExcluded.HasMore || len(selfExcluded.Items) != 0 {
+		t.Fatalf("self-excluded parent options = %#v, error=%v", selfExcluded, err)
+	}
+	escapedWildcard, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{
+		Type: "vless", Query: "%", Limit: 50,
+	})
+	if err != nil || escapedWildcard.HasMore || len(escapedWildcard.Items) != 0 {
+		t.Fatalf("escaped wildcard parent options = %#v, error=%v", escapedWildcard, err)
+	}
+
+	if _, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{Type: "unknown", Limit: 50}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unsupported parent type error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{Type: "vless", Query: "bad\nquery", Limit: 50}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("control parent query error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := database.ListAdminNodeParentOptions(ctx, AdminNodeParentFilter{Type: "vless", Limit: 51}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("oversized parent limit error = %v, want ErrInvalidInput", err)
 	}
 }
 

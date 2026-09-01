@@ -278,6 +278,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     unassignNode: vi.fn().mockResolvedValue(undefined),
     setNodeEnabled: vi.fn().mockResolvedValue(undefined),
     listAdminNodes: vi.fn(),
+		listAdminNodeParentOptions: vi.fn(),
     getAdminNodeDefinition: vi.fn(),
     createAdminNodeDefinition: vi.fn(),
     replaceAdminNodeDefinition: vi.fn(),

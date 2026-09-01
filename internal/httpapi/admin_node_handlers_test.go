@@ -113,6 +113,63 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 	}
 }
 
+func TestAdminNodeParentOptionsAreBoundedSearchableAndAdministratorOnly(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	first, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "First VLESS", Type: "vless", Host: "first-parent.example.test", Port: "443", Show: true, Enabled: true, Sort: 1,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "Searchable VLESS", Type: "vless", Host: "searchable-parent.example.test", Port: "443", Show: true, Enabled: true, Sort: 2,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := loginAdmin(t, api)
+	path := fmt.Sprintf("/api/v1/admin/nodes/parent-options?type=vless&q=searchable&include_id=%d&exclude_id=%d", first.ID, second.ID)
+	response := admin.request(t, api, http.MethodGet, path, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("parent options status=%d body=%s", response.Code, response.Body)
+	}
+	var payload struct {
+		Data store.AdminNodeParentOptions `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || payload.Data.HasMore || len(payload.Data.Items) != 1 || payload.Data.Items[0].ID != first.ID {
+		t.Fatalf("parent options response=%s error=%v", response.Body, err)
+	}
+
+	for _, invalidPath := range []string{
+		"/api/v1/admin/nodes/parent-options",
+		"/api/v1/admin/nodes/parent-options?type=unknown",
+		"/api/v1/admin/nodes/parent-options?type=vless&include_id=0",
+	} {
+		invalid := admin.request(t, api, http.MethodGet, invalidPath, "")
+		if invalid.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid parent path=%s status=%d body=%s", invalidPath, invalid.Code, invalid.Body)
+		}
+	}
+
+	hasher := newHTTPAPITestPasswordHasher()
+	passwordHash, err := hasher.Hash("ordinary-parent-password-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "parent-ordinary@example.test", PasswordHash: passwordHash,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	ordinary := loginAs(t, api, "parent-ordinary@example.test", "ordinary-parent-password-123")
+	forbidden := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/nodes/parent-options?type=vless", "")
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("ordinary parent options status=%d body=%s", forbidden.Code, forbidden.Body)
+	}
+}
+
 func TestAdminNodeManagementAPIRequiresAdministrator(t *testing.T) {
 	api, database := newTestAPI(t)
 	hasher := newHTTPAPITestPasswordHasher()
