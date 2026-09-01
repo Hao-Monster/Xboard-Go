@@ -1,0 +1,60 @@
+name: Build fixed legacy oracle artifact
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build-legacy-oracle-artifact.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-legacy-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out fixed legacy source
+        uses: actions/checkout@v5
+        with:
+          repository: Hao-Monster/Xboardme
+          ref: 8065164da6cd55be6015bdc8c6bc8811a67404de
+          path: legacy
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build immutable amd64 oracle image
+        uses: docker/build-push-action@v6
+        with:
+          context: legacy
+          file: legacy/Dockerfile
+          platforms: linux/amd64
+          tags: xboard-legacy-parity:8065164
+          labels: |
+            org.opencontainers.image.source=https://github.com/Hao-Monster/Xboardme
+            org.opencontainers.image.revision=8065164da6cd55be6015bdc8c6bc8811a67404de
+          build-args: |
+            APP_REVISION=8065164da6cd55be6015bdc8c6bc8811a67404de
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+          outputs: type=docker,dest=${{ runner.temp }}/xboard-legacy-parity-8065164.tar
+          cache-from: type=gha,scope=legacy-oracle-8065164
+          cache-to: type=gha,mode=max,scope=legacy-oracle-8065164
+          provenance: false
+
+      - name: Record artifact checksum
+        shell: bash
+        run: sha256sum "${RUNNER_TEMP}/xboard-legacy-parity-8065164.tar" > "${RUNNER_TEMP}/xboard-legacy-parity-8065164.tar.sha256"
+
+      - name: Upload image and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: xboard-legacy-parity-8065164
+          path: |
+            ${{ runner.temp }}/xboard-legacy-parity-8065164.tar
+            ${{ runner.temp }}/xboard-legacy-parity-8065164.tar.sha256
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
