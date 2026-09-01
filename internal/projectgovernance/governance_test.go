@@ -39,6 +39,15 @@ func TestAcceptedRequirementNeedsCurrentEvidence(t *testing.T) {
 	}
 }
 
+func TestBlockedRequirementNeedsPendingDecision(t *testing.T) {
+	_, state := repositoryState(t)
+	state.Requirements.Requirements[0].ScopeStatus = "blocked"
+	state.Requirements.Requirements[0].DecisionIDs = []string{"D-001"}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected a resolved decision to be insufficient for a blocked requirement")
+	}
+}
+
 func TestPRMetadata(t *testing.T) {
 	_, state := repositoryState(t)
 	body := `Requirement IDs: N/A: governance-only change

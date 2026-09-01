@@ -47,7 +47,7 @@ Baseline: `M0` · as of 2026-09-02 · source commit `b151f914fbf90fe5d341c5fd7ca
 
 | ID | Milestone | Status | Issue | Title |
 | --- | --- | --- | ---: | --- |
-| `GOV-001` | M0 | in_progress | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
+| `GOV-001` | M0 | done | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
 | `FUNC-001` | M1 | blocked | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
 | `FUNC-002` | M1 | blocked | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
 | `OPS-001` | M2 | blocked | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
@@ -68,7 +68,7 @@ Baseline: `M0` · as of 2026-09-02 · source commit `b151f914fbf90fe5d341c5fd7ca
 
 | Milestone | Status | Passed | Blocked/failed | Not run |
 | --- | --- | ---: | ---: | ---: |
-| M0 — Project Governance Baseline | in_progress | 3 | 1 | 1 |
+| M0 — Project Governance Baseline | complete | 5 | 0 | 0 |
 | M1 — Functional Parity | blocked | 0 | 2 | 0 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |

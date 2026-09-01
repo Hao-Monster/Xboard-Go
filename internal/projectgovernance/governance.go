@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -178,6 +179,13 @@ func Load(root string) (State, error) {
 		if err := decoder.Decode(file.dest); err != nil {
 			return State{}, fmt.Errorf("decode %s: %w", file.name, err)
 		}
+		var trailing any
+		if err := decoder.Decode(&trailing); err != io.EOF {
+			if err == nil {
+				return State{}, fmt.Errorf("decode %s: multiple JSON values", file.name)
+			}
+			return State{}, fmt.Errorf("decode %s trailing data: %w", file.name, err)
+		}
 	}
 	return state, nil
 }
@@ -237,6 +245,7 @@ func Validate(state State) error {
 	milestones := map[string]bool{"M0": true, "M1": true, "M2": true, "M3": true, "M4": true}
 	requirementIDs := make(map[string]bool)
 	decisionIDs := make(map[string]bool)
+	decisionStatuses := make(map[string]string)
 	workItemIDs := make(map[string]bool)
 
 	if len(state.Requirements.Requirements) != 80 {
@@ -254,6 +263,10 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("duplicate decision id %s", decision.ID))
 		}
 		decisionIDs[decision.ID] = true
+		decisionStatuses[decision.ID] = decision.Status
+		if strings.TrimSpace(decision.Title) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a title", decision.ID))
+		}
 		if !oneOf(decision.Status, "resolved", "pending") {
 			problems = append(problems, fmt.Sprintf("%s has invalid status %q", decision.ID, decision.Status))
 		}
@@ -285,6 +298,9 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("duplicate work item id %s", workItem.ID))
 		}
 		workItemIDs[workItem.ID] = true
+		if strings.TrimSpace(workItem.Title) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a title", workItem.ID))
+		}
 		if !oneOf(workItem.Status, "open", "in_progress", "blocked", "done") {
 			problems = append(problems, fmt.Sprintf("%s has invalid status %q", workItem.ID, workItem.Status))
 		}
@@ -334,6 +350,15 @@ func Validate(state State) error {
 		}
 		if requirement.ScopeStatus == "blocked" && len(requirement.DecisionIDs) == 0 {
 			problems = append(problems, fmt.Sprintf("%s is blocked without a decision reference", requirement.ID))
+		}
+		if requirement.ScopeStatus == "blocked" {
+			pending := false
+			for _, id := range requirement.DecisionIDs {
+				pending = pending || decisionStatuses[id] == "pending"
+			}
+			if !pending {
+				problems = append(problems, fmt.Sprintf("%s is blocked without a pending decision", requirement.ID))
+			}
 		}
 		if requirement.VerificationStatus == "current" && len(requirement.Evidence) == 0 {
 			problems = append(problems, fmt.Sprintf("%s is current without evidence", requirement.ID))
@@ -388,6 +413,9 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("invalid or duplicate risk id %q", risk.ID))
 		}
 		riskIDs[risk.ID] = true
+		if strings.TrimSpace(risk.Title) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a title", risk.ID))
+		}
 		if !oneOf(risk.Severity, "critical", "high", "medium", "low") || !oneOf(risk.Status, "open", "controlled", "accepted", "closed") || !milestones[risk.Milestone] {
 			problems = append(problems, fmt.Sprintf("%s has invalid severity, status, or milestone", risk.ID))
 		}
@@ -402,6 +430,9 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("invalid or duplicate compatibility exception id %q", exception.ID))
 		}
 		exceptionIDs[exception.ID] = true
+		if strings.TrimSpace(exception.Title) == "" || strings.TrimSpace(exception.Rationale) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a title and rationale", exception.ID))
+		}
 		if !oneOf(exception.Status, "accepted", "proposed", "retired") || !decisionIDs[exception.DecisionID] {
 			problems = append(problems, fmt.Sprintf("%s has invalid status or decision reference", exception.ID))
 		}
@@ -419,6 +450,9 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("invalid or duplicate release milestone %q", milestone.ID))
 		}
 		seenMilestones[milestone.ID] = true
+		if strings.TrimSpace(milestone.Name) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a release milestone name", milestone.ID))
+		}
 		if !oneOf(milestone.Status, "in_progress", "blocked", "complete") {
 			problems = append(problems, fmt.Sprintf("%s has invalid release status %q", milestone.ID, milestone.Status))
 		}
@@ -430,6 +464,9 @@ func Validate(state State) error {
 				problems = append(problems, fmt.Sprintf("invalid or duplicate gate id %q", gate.ID))
 			}
 			gateIDs[gate.ID] = true
+			if strings.TrimSpace(gate.Title) == "" {
+				problems = append(problems, fmt.Sprintf("%s requires a title", gate.ID))
+			}
 			if !oneOf(gate.Status, "pass", "fail", "blocked", "not_run") {
 				problems = append(problems, fmt.Sprintf("%s has invalid status %q", gate.ID, gate.Status))
 			}
