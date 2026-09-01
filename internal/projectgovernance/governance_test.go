@@ -125,6 +125,16 @@ func TestCurrentEvidenceRequiresAuditableCaseMetadata(t *testing.T) {
 	}
 }
 
+func TestCurrentEvidenceWithAuditableMetadataIsValid(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]
@@ -134,6 +144,23 @@ func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected an accepted requirement with an open work item to fail validation")
+	}
+}
+
+func TestAcceptedRequirementWithCompletedWorkItemsIsValid(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.MigrationStatus = "not_applicable"
+	requirement.AcceptanceStatus = "accepted"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	for index := range state.WorkItems.WorkItems {
+		if state.WorkItems.WorkItems[index].ID == requirement.WorkItemIDs[0] {
+			state.WorkItems.WorkItems[index].Status = "done"
+		}
+	}
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -182,6 +209,26 @@ func TestCheckRejectsProductDriftAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "commit", "-m", "metadata and unverified product drift")
 	if err := Check(temporaryRoot); err == nil {
 		t.Fatal("expected product changes after the current evidence target to fail validation")
+	}
+}
+
+func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "evidence metadata")
+	if err := Check(temporaryRoot); err != nil {
+		t.Fatal(err)
 	}
 }
 
