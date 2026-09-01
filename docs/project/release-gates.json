@@ -2,12 +2,12 @@
   "schema_version": 1,
   "as_of": "2026-09-02",
   "milestones": [
-    {"id":"M0","name":"Project Governance Baseline","status":"in_progress","gates":[
+    {"id":"M0","name":"Project Governance Baseline","status":"complete","gates":[
       {"id":"M0-G01","title":"版本化事实源与 80 项需求完整性校验","status":"pass"},
       {"id":"M0-G02","title":"决策、风险、例外、工作项和发布门禁交叉引用校验","status":"pass"},
       {"id":"M0-G03","title":"GitHub 里程碑、标签与 Issue 建立","status":"pass"},
-      {"id":"M0-G04","title":"M0 PR 治理检查与全部 main 必需检查通过","status":"not_run"},
-      {"id":"M0-G05","title":"合并后创建 v0.1.0-alpha.0 Tag 和 Pre-release 的条件满足","status":"blocked"}
+      {"id":"M0-G04","title":"M0 PR 合并后精确 main 的治理检查与全部必需检查通过","status":"pass"},
+      {"id":"M0-G05","title":"v0.1.0-alpha.0 annotated Tag 和 GitHub Pre-release 已创建","status":"pass"}
     ]},
     {"id":"M1","name":"Functional Parity","status":"blocked","gates":[
       {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"blocked"},

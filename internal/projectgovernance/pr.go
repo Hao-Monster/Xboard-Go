@@ -23,7 +23,7 @@ type pullRequestEvent struct {
 	} `json:"sender"`
 }
 
-func CheckPREvent(root, eventPath string) error {
+func CheckPREvent(root, eventPath string, milestoneOverride *string) error {
 	data, err := os.ReadFile(eventPath)
 	if err != nil {
 		return fmt.Errorf("read GitHub event: %w", err)
@@ -46,7 +46,11 @@ func CheckPREvent(root, eventPath string) error {
 	if err != nil {
 		return err
 	}
-	return ValidatePRMetadata(event.PullRequest.Body, milestoneTitle(event), state)
+	actualMilestone := milestoneTitle(event)
+	if milestoneOverride != nil {
+		actualMilestone = strings.TrimSpace(*milestoneOverride)
+	}
+	return ValidatePRMetadata(event.PullRequest.Body, actualMilestone, state)
 }
 
 func ValidatePRMetadata(body, actualMilestone string, state State) error {

@@ -11,6 +11,9 @@ permissions:
 jobs:
   governance:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -22,7 +25,12 @@ jobs:
       - name: Validate project governance baseline
         run: go run ./cmd/projectctl check
       - name: Validate pull request metadata
-        run: go run ./cmd/projectctl pr-check --event "$GITHUB_EVENT_PATH"
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          milestone="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" --jq '.milestone.title // ""')"
+          go run ./cmd/projectctl pr-check --event "$GITHUB_EVENT_PATH" --milestone "$milestone"
 
   go:
     runs-on: ubuntu-latest

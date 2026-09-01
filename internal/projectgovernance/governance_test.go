@@ -313,6 +313,46 @@ Closes: #123`
 	}
 }
 
+func TestPREventUsesCurrentMilestoneOverride(t *testing.T) {
+	root, _ := repositoryState(t)
+	event := `{
+  "pull_request": {
+    "body": "Requirement IDs: N/A: governance-only change\nWork item IDs: GOV-001\nMilestone: M0\nCloses: #113",
+    "milestone": null,
+    "user": {"login": "maintainer"}
+  },
+  "sender": {"login": "maintainer"}
+}`
+	path := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(path, []byte(event), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	milestone := "M0 Project Governance Baseline"
+	if err := CheckPREvent(root, path, &milestone); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPREventRejectsExplicitlyRemovedMilestone(t *testing.T) {
+	root, _ := repositoryState(t)
+	event := `{
+  "pull_request": {
+    "body": "Requirement IDs: N/A: governance-only change\nWork item IDs: GOV-001\nMilestone: M0\nCloses: #113",
+    "milestone": {"title": "M0 Project Governance Baseline"},
+    "user": {"login": "maintainer"}
+  },
+  "sender": {"login": "maintainer"}
+}`
+	path := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(path, []byte(event), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removedMilestone := ""
+	if err := CheckPREvent(root, path, &removedMilestone); err == nil || !strings.Contains(err.Error(), "assigned to a GitHub milestone") {
+		t.Fatalf("expected removed current milestone to be rejected, got %v", err)
+	}
+}
+
 func TestPRMetadataRejectsUnfilledTemplate(t *testing.T) {
 	root, state := repositoryState(t)
 	body, err := os.ReadFile(filepath.Join(root, ".github", "PULL_REQUEST_TEMPLATE.md"))
