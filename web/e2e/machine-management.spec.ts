@@ -2,7 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { adminEmail, adminPassword } from "./support";
 
-test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic and recoverable", async ({ page }) => {
+// This flow handles one-time enrollment and machine credentials. Failure artifacts
+// must not persist request bodies, DOM snapshots, screenshots, or video containing them.
+test.use({ trace: "off", screenshot: "off", video: "off" });
+
+test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic and recoverable", async ({ page }) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const unexpectedServerErrors: string[] = [];
@@ -105,6 +109,43 @@ test("[FE-MACH-001][FE-MACH-003][SYS-MACH-004] machine lifecycle stays atomic an
   await expect(drawer.getByRole("img", { name: "CPU（蓝）和内存（绿）趋势" })).toBeVisible();
   await expect(drawer.getByRole("img", { name: "网络入站（蓝）和出站（绿）趋势" })).toBeVisible();
   await expect(drawer.getByText("暂无关联节点。")).toBeVisible();
+
+  const rotateButton = drawer.getByRole("button", { name: "生成新的接入命令" });
+  const rotationResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}/enrollments`
+  );
+  await rotateButton.click();
+  const rotationResponse = await rotationResponsePromise;
+  const rotationBody = await rotationResponse.text();
+  expect(rotationResponse.status()).toBe(201);
+  expect(rotationResponse.headers()["cache-control"]).toBe("no-store");
+  const rotationEnrollment = stringProperty(readData(rotationBody), "token");
+  await expect(enrollmentDialog).toBeVisible();
+  await expect(enrollmentDialog).toContainText("此接入码只展示一次");
+  expect(await drawer.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+  await expect(drawer).toHaveAttribute("aria-modal", "false");
+
+  const oldCredentialBeforeExchange = await postMachineStatus(page, machineID, machineCredential, 87);
+  expect(oldCredentialBeforeExchange.status()).toBe(200);
+  const rotatedEnrollmentResponse = await page.request.post("/api/v2/server/machine/enroll", {
+    data: { machine_id: machineID, enrollment_code: rotationEnrollment }
+  });
+  expect(rotatedEnrollmentResponse.status()).toBe(200);
+  expect(rotatedEnrollmentResponse.headers()["cache-control"]).toBe("no-store");
+  const newMachineCredential = stringProperty(readData(await rotatedEnrollmentResponse.text()), "token");
+  expect((await postMachineStatus(page, machineID, machineCredential, 88)).status()).toBe(401);
+  expect((await postMachineStatus(page, machineID, newMachineCredential, 89)).status()).toBe(200);
+  const replayedEnrollment = await page.request.post("/api/v2/server/machine/enroll", {
+    data: { machine_id: machineID, enrollment_code: rotationEnrollment }
+  });
+  expect(replayedEnrollment.status()).toBe(401);
+  expect(replayedEnrollment.headers()["cache-control"]).toBe("no-store");
+  await enrollmentDialog.getByRole("button", { name: "关闭服务器接入命令" }).click();
+  await expect(enrollmentDialog).toBeHidden();
+  expect(await drawer.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
+  await expect(rotateButton).toBeFocused();
+
   await drawer.getByLabel("待关联节点").selectOption(String(node.id));
   const assignResponse = page.waitForResponse((response) =>
     response.request().method() === "PUT" &&
@@ -227,6 +268,21 @@ async function login(page: Page) {
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
+}
+
+async function postMachineStatus(page: Page, machineID: number, credential: string, cpu: number) {
+  return page.request.post("/api/v2/server/machine/status", {
+    headers: { Authorization: `Bearer ${credential}` },
+    data: {
+      machine_id: machineID,
+      node_id: 0,
+      cpu,
+      mem: { total: 1000, used: 900 },
+      swap: { total: 100, used: 10 },
+      disk: { total: 2000, used: 500 },
+      net: { in_speed: 1024, out_speed: 2048 }
+    }
+  });
 }
 
 async function createNode(page: Page, name: string): Promise<{ id: number; revision: number }> {
