@@ -48,6 +48,15 @@ func TestBlockedRequirementNeedsPendingDecision(t *testing.T) {
 	}
 }
 
+func TestCompleteMilestoneRequiresEveryGateToPass(t *testing.T) {
+	_, state := repositoryState(t)
+	state.ReleaseGates.Milestones[0].Status = "complete"
+	state.ReleaseGates.Milestones[0].Gates[0].Status = "not_run"
+	if err := Validate(state); err == nil {
+		t.Fatal("expected a complete milestone with an unverified gate to fail validation")
+	}
+}
+
 func TestPRMetadata(t *testing.T) {
 	_, state := repositoryState(t)
 	body := `Requirement IDs: N/A: governance-only change

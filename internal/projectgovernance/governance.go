@@ -459,6 +459,7 @@ func Validate(state State) error {
 		if len(milestone.Gates) == 0 {
 			problems = append(problems, fmt.Sprintf("%s must contain release gates", milestone.ID))
 		}
+		allGatesPass := len(milestone.Gates) > 0
 		for _, gate := range milestone.Gates {
 			if gateIDs[gate.ID] || !regexp.MustCompile(`^M[0-4]-G\d{2}$`).MatchString(gate.ID) {
 				problems = append(problems, fmt.Sprintf("invalid or duplicate gate id %q", gate.ID))
@@ -470,6 +471,10 @@ func Validate(state State) error {
 			if !oneOf(gate.Status, "pass", "fail", "blocked", "not_run") {
 				problems = append(problems, fmt.Sprintf("%s has invalid status %q", gate.ID, gate.Status))
 			}
+			allGatesPass = allGatesPass && gate.Status == "pass"
+		}
+		if milestone.Status == "complete" && !allGatesPass {
+			problems = append(problems, fmt.Sprintf("%s is complete without every release gate passing", milestone.ID))
 		}
 	}
 	for id := range milestones {
