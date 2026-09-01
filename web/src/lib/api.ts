@@ -151,6 +151,23 @@ export interface AdminNodePage {
   page_size: number;
 }
 
+export interface AdminNodeParentOption {
+  id: number;
+  name: string;
+}
+
+export interface AdminNodeParentOptions {
+  items: AdminNodeParentOption[];
+  has_more: boolean;
+}
+
+export interface AdminNodeParentQuery {
+  type: string;
+  q?: string;
+  include_id?: number;
+  exclude_id?: number;
+}
+
 export interface AdminNodeQuery {
   page?: number;
   page_size?: number;
@@ -1688,6 +1705,7 @@ export interface AdminAPI {
   unassignNode: (machineID: number, nodeID: number, revision: number) => Promise<void>;
   setNodeEnabled: (machineID: number, nodeID: number, revision: number, enabled: boolean) => Promise<void>;
   listAdminNodes: (query?: AdminNodeQuery) => Promise<AdminNodePage>;
+  listAdminNodeParentOptions: (query: AdminNodeParentQuery) => Promise<AdminNodeParentOptions>;
   getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
   replaceAdminNodeDefinition: (nodeID: number, input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
@@ -2016,6 +2034,14 @@ export class APIClient implements AdminAPI {
     if (query.machine_id !== undefined) parameters.set("machine_id", String(query.machine_id));
     if (query.unassigned !== undefined) parameters.set("unassigned", String(query.unassigned));
     return this.request<AdminNodePage>(`/api/v1/admin/nodes${parameters.size === 0 ? "" : `?${parameters.toString()}`}`);
+  }
+
+  async listAdminNodeParentOptions(query: AdminNodeParentQuery): Promise<AdminNodeParentOptions> {
+    const parameters = new URLSearchParams({ type: query.type });
+    if (query.q !== undefined && query.q.trim() !== "") parameters.set("q", query.q.trim());
+    if (query.include_id !== undefined) parameters.set("include_id", String(query.include_id));
+    if (query.exclude_id !== undefined) parameters.set("exclude_id", String(query.exclude_id));
+    return this.request<AdminNodeParentOptions>(`/api/v1/admin/nodes/parent-options?${parameters.toString()}`);
   }
 
   async getAdminNodeDefinition(nodeID: number): Promise<AdminNodeDefinition> {

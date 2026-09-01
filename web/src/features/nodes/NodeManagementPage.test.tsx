@@ -187,7 +187,72 @@ describe("NodeManagementPage", () => {
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
     await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
-    expect(within(within(dialog).getByLabelText("父节点")).getByRole("option", { name: "SG VLESS" })).toHaveValue("41");
+    await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({ type: "vless" }));
+    expect(within(within(dialog).getByLabelText("父节点")).getByRole("option", { name: "SG VLESS (#41)" })).toHaveValue("41");
+  });
+
+  it("searches bounded parent options beyond the first five hundred nodes", async () => {
+    const remoteParent = { id: 501, name: "VLESS beyond five hundred" };
+    const api = nodeAPI([]);
+    api.listAdminNodeParentOptions.mockImplementation((query: { type: string; q?: string }) => Promise.resolve({
+      items: query.type === "vless" && query.q === "beyond" ? [remoteParent] : [],
+      has_more: query.type === "vless" && query.q === undefined
+    }));
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByRole("table", { name: "节点列表" });
+
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    const dialog = screen.getByRole("dialog", { name: "新建节点" });
+    await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
+    const parentSearch = within(dialog).getByLabelText("搜索父节点");
+    await user.type(parentSearch, "beyond");
+    await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({ type: "vless", q: "beyond" }));
+    const parent = within(dialog).getByLabelText("父节点");
+    expect(await within(parent).findByRole("option", { name: "VLESS beyond five hundred (#501)" })).toHaveValue("501");
+    await user.click(parentSearch);
+    await user.tab();
+    expect(parent).toHaveFocus();
+    await user.selectOptions(parent, "501");
+    expect(parent).toHaveValue("501");
+  });
+
+  it("keeps an existing remote parent selected while editing", async () => {
+    const remoteParent = { id: 501, name: "Existing remote parent" };
+    const api = nodeAPI([node]);
+    api.getAdminNodeDefinition.mockResolvedValue({ ...definition, parent_id: 501 });
+    api.listAdminNodeParentOptions.mockResolvedValue({ items: [remoteParent], has_more: true });
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByText("SG VLESS", { exact: true });
+
+    await user.click(screen.getByRole("button", { name: "编辑节点：SG VLESS" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑节点" });
+    await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({
+      type: "vless", include_id: 501, exclude_id: 41
+    }));
+    const parent = within(dialog).getByLabelText("父节点");
+    expect(parent).toHaveValue("501");
+    expect(within(parent).getByRole("option", { name: "Existing remote parent (#501)" })).toBeVisible();
+  });
+
+  it("drops stale cross-protocol options and reports a parent search failure", async () => {
+    const api = nodeAPI([]);
+    api.listAdminNodeParentOptions.mockImplementation((query: { type: string }) => query.type === "shadowsocks"
+      ? Promise.resolve({ items: [{ id: 42, name: "Shadowsocks parent" }], has_more: false })
+      : Promise.reject(new Error("父节点查询暂时不可用")));
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByRole("table", { name: "节点列表" });
+
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    const dialog = screen.getByRole("dialog", { name: "新建节点" });
+    const parent = within(dialog).getByLabelText("父节点");
+    expect(await within(parent).findByRole("option", { name: "Shadowsocks parent (#42)" })).toBeVisible();
+    await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
+    expect(within(parent).queryByRole("option", { name: "Shadowsocks parent (#42)" })).not.toBeInTheDocument();
+    expect(await within(dialog).findByText("父节点加载失败：父节点查询暂时不可用")).toBeVisible();
+    expect(within(parent).getAllByRole("option")).toHaveLength(1);
   });
 
   it("exposes the legacy nested transport, uTLS, ECH, Reality, and multiplex controls", async () => {
@@ -282,6 +347,7 @@ describe("NodeManagementPage", () => {
 function nodeAPI(items = [node]) {
   return {
     listAdminNodes: vi.fn().mockResolvedValue({ items, total: items.length, page: 1, page_size: 500 }),
+    listAdminNodeParentOptions: vi.fn().mockResolvedValue({ items: items.map(({ id, name }) => ({ id, name })), has_more: false }),
     listMachines: vi.fn().mockResolvedValue([machine]),
     listServerGroups: vi.fn().mockResolvedValue([group]),
     listRoutingRules: vi.fn().mockResolvedValue([route]),

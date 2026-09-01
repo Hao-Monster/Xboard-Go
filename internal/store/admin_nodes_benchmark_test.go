@@ -43,4 +43,28 @@ func BenchmarkListAdminNodes100K(b *testing.B) {
 			}
 		})
 	}
+
+	tailID := int64(100000)
+	for _, benchmark := range []struct {
+		name      string
+		filter    AdminNodeParentFilter
+		wantFirst int64
+		wantCount int
+		wantMore  bool
+	}{
+		{name: "parent-options-default", filter: AdminNodeParentFilter{Type: "vless", Limit: 50}, wantFirst: 4, wantCount: 50, wantMore: true},
+		{name: "parent-options-include-tail", filter: AdminNodeParentFilter{Type: "vless", IncludeID: &tailID, Limit: 50}, wantFirst: tailID, wantCount: 50, wantMore: true},
+		{name: "parent-options-tail-id", filter: AdminNodeParentFilter{Type: "vless", Query: "#100000", Limit: 50}, wantFirst: tailID, wantCount: 1},
+		{name: "parent-options-tail-name", filter: AdminNodeParentFilter{Type: "vless", Query: "benchmark-node-100000", Limit: 50}, wantFirst: tailID, wantCount: 1},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				options, err := database.ListAdminNodeParentOptions(ctx, benchmark.filter)
+				if err != nil || options.HasMore != benchmark.wantMore || len(options.Items) != benchmark.wantCount || options.Items[0].ID != benchmark.wantFirst {
+					b.Fatalf("ListAdminNodeParentOptions() options=%#v error=%v", options, err)
+				}
+			}
+		})
+	}
 }

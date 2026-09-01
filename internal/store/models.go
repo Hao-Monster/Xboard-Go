@@ -2219,6 +2219,24 @@ type AdminNodePage struct {
 	PageSize int         `json:"page_size"`
 }
 
+type AdminNodeParentOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type AdminNodeParentOptions struct {
+	Items   []AdminNodeParentOption `json:"items"`
+	HasMore bool                    `json:"has_more"`
+}
+
+type AdminNodeParentFilter struct {
+	Type      string
+	Query     string
+	IncludeID *int64
+	ExcludeID *int64
+	Limit     int
+}
+
 type AdminNodeFilter struct {
 	Page       int
 	PageSize   int

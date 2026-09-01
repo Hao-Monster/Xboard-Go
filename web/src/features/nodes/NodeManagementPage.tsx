@@ -7,7 +7,7 @@ import type {
 import { NodeDefinitionModal } from "./NodeDefinitionModal";
 
 type NodeManagementAPI = Pick<AdminAPI,
-  "listAdminNodes" | "listMachines" | "listServerGroups" | "listRoutingRules" | "getAdminNodeDefinition" |
+  "listAdminNodes" | "listAdminNodeParentOptions" | "listMachines" | "listServerGroups" | "listRoutingRules" | "getAdminNodeDefinition" |
   "createAdminNodeDefinition" | "replaceAdminNodeDefinition" | "copyAdminNode" | "reorderAdminNodes" |
   "updateAdminNodeStates" | "resetAdminNodeTraffic" | "deleteAdminNodes"
 >;
@@ -25,7 +25,6 @@ const protocols = [
 
 export function NodeManagementPage({ api }: Props) {
   const [nodes, setNodes] = useState<AdminNode[]>([]);
-  const [nodeOptions, setNodeOptions] = useState<AdminNode[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
   const [routes, setRoutes] = useState<RoutingRule[]>([]);
@@ -49,13 +48,12 @@ export function NodeManagementPage({ api }: Props) {
   useEffect(() => {
     let live = true;
     void Promise.all([
-      api.listMachines(), api.listServerGroups(), api.listRoutingRules(), api.listAdminNodes({ page: 1, page_size: 500 })
-    ]).then(([nextMachines, nextGroups, nextRoutes, nextNodeOptions]) => {
+      api.listMachines(), api.listServerGroups(), api.listRoutingRules()
+    ]).then(([nextMachines, nextGroups, nextRoutes]) => {
       if (!live) return;
       setMachines(nextMachines);
       setGroups(nextGroups);
       setRoutes(nextRoutes);
-      setNodeOptions(nextNodeOptions.items);
     }).catch((cause: unknown) => {
       if (live) setError(errorMessage(cause));
     });
@@ -188,7 +186,7 @@ export function NodeManagementPage({ api }: Props) {
       </table>
       <footer className="pagination-footer"><button className="button compact ghost" disabled={page <= 1 || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current - 1); }}>上一页</button><span>第 {page} / {pageCount} 页 · 共 {total} 个节点</span><button className="button compact ghost" disabled={page >= pageCount || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current + 1); }}>下一页</button></footer>
     </section>}
-    {editing !== null && <NodeDefinitionModal api={api} node={editing === "create" ? null : editing} nodes={nodeOptions} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+    {editing !== null && <NodeDefinitionModal api={api} node={editing === "create" ? null : editing} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     {confirming !== null && <ConfirmNodeMutation api={api} kind={confirming.kind} targets={confirming.targets} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); refresh(); }} />}
   </main>;
 }

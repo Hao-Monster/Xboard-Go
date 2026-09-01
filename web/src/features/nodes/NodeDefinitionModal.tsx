@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type {
-  AdminNode, AdminNodeDefinition, AdminNodeDefinitionInput, Machine, RoutingRule, ServerGroup
+  AdminNode, AdminNodeDefinition, AdminNodeDefinitionInput, AdminNodeParentOption, Machine, RoutingRule, ServerGroup
 } from "../../lib/api";
 
 export interface NodeDefinitionAPI {
+  listAdminNodeParentOptions: (query: { type: string; q?: string; include_id?: number; exclude_id?: number }) => Promise<{ items: AdminNodeParentOption[]; has_more: boolean }>;
   getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
   replaceAdminNodeDefinition: (nodeID: number, input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
@@ -14,7 +15,6 @@ export interface NodeDefinitionAPI {
 interface Props {
   api: NodeDefinitionAPI;
   node: AdminNode | null;
-  nodes: AdminNode[];
   machines: Machine[];
   groups: ServerGroup[];
   routes: RoutingRule[];
@@ -52,7 +52,7 @@ const networkTemplates: Record<string, Array<{ label: string; value: Record<stri
   } }]
 };
 
-export function NodeDefinitionModal({ api, node, nodes, machines, groups, routes, onClose, onSaved }: Props) {
+export function NodeDefinitionModal({ api, node, machines, groups, routes, onClose, onSaved }: Props) {
   const [input, setInput] = useState<AdminNodeDefinitionInput>(() => newNodeInput());
   const [loading, setLoading] = useState(node !== null);
   const [saving, setSaving] = useState(false);
@@ -63,6 +63,11 @@ export function NodeDefinitionModal({ api, node, nodes, machines, groups, routes
   const [customOutboundsText, setCustomOutboundsText] = useState("[]");
   const [customRoutesText, setCustomRoutesText] = useState("[]");
   const [certificateText, setCertificateText] = useState('{"cert_mode":"none"}');
+  const [parentQuery, setParentQuery] = useState("");
+  const [parentOptions, setParentOptions] = useState<AdminNodeParentOption[]>([]);
+  const [parentOptionsLoading, setParentOptionsLoading] = useState(false);
+  const [parentOptionsError, setParentOptionsError] = useState("");
+  const [parentOptionsHaveMore, setParentOptionsHaveMore] = useState(false);
   const title = node === null ? "新建节点" : "编辑节点";
 
   useEffect(() => {
@@ -86,13 +91,41 @@ export function NodeDefinitionModal({ api, node, nodes, machines, groups, routes
     return () => { live = false; };
   }, [api, node]);
 
-  const parentOptions = useMemo(
-    () => nodes.filter((candidate) => candidate.type === input.type && candidate.id !== node?.id),
-    [input.type, node?.id, nodes]
-  );
+  useEffect(() => {
+    if (loading) return;
+    let live = true;
+    const timeout = window.setTimeout(() => {
+      if (!live) return;
+      setParentOptionsLoading(true);
+      setParentOptionsError("");
+      const query: { type: string; q?: string; include_id?: number; exclude_id?: number } = { type: input.type };
+      const trimmed = parentQuery.trim();
+      if (trimmed !== "") query.q = trimmed;
+      if (input.parent_id !== null) query.include_id = input.parent_id;
+      if (node !== null) query.exclude_id = node.id;
+      void api.listAdminNodeParentOptions(query).then((result) => {
+        if (!live) return;
+        setParentOptions(result.items);
+        setParentOptionsHaveMore(result.has_more);
+      }).catch((cause: unknown) => {
+        if (!live) return;
+        setParentOptionsError(errorMessage(cause));
+      }).finally(() => {
+        if (live) setParentOptionsLoading(false);
+      });
+    }, 250);
+    return () => {
+      live = false;
+      window.clearTimeout(timeout);
+    };
+  }, [api, input.parent_id, input.type, loading, node, parentQuery]);
 
   const changeProtocol = (type: string) => {
     setInput((current) => ({ ...current, type, parent_id: null, protocol_settings: defaultProtocolSettings(type) }));
+    setParentQuery("");
+    setParentOptions([]);
+    setParentOptionsHaveMore(false);
+    setParentOptionsError("");
     setNetworkSettingsText("{}");
   };
   const changeMultiple = (field: "group_ids" | "route_ids", event: ChangeEvent<HTMLSelectElement>) => {
@@ -149,7 +182,10 @@ export function NodeDefinitionModal({ api, node, nodes, machines, groups, routes
         <label>连接端口<input required inputMode="numeric" pattern="[0-9]{1,5}(-[0-9]{1,5})?" value={input.port} onChange={(event) => setInput({ ...input, port: event.target.value })} /></label>
         <label>服务端口<input required type="number" min="1" max="65535" value={input.server_port} onChange={(event) => setInput({ ...input, server_port: Number(event.target.value) })} /></label>
         <label>监听地址<input required maxLength={45} placeholder="0.0.0.0 或 ::" value={input.listen_address} onChange={(event) => setInput({ ...input, listen_address: event.target.value })} /></label>
-        <label>父节点<select value={input.parent_id ?? ""} onChange={(event) => setInput({ ...input, parent_id: event.target.value === "" ? null : Number(event.target.value) })}><option value="">无父节点</option>{parentOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select></label>
+        <label>搜索父节点<input maxLength={255} value={parentQuery} onChange={(event) => setParentQuery(event.target.value)} placeholder="名称或 #节点ID" /></label>
+        <label>父节点<select aria-label="父节点" value={input.parent_id ?? ""} onChange={(event) => setInput({ ...input, parent_id: event.target.value === "" ? null : Number(event.target.value) })}><option value="">无父节点</option>{parentOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} (#{candidate.id})</option>)}</select>
+          <small className="muted" aria-live="polite">{parentOptionsLoading ? "正在搜索父节点…" : parentOptionsError !== "" ? `父节点加载失败：${parentOptionsError}` : parentOptionsHaveMore ? "仅显示前 50 项，请输入名称或 ID 缩小范围。" : parentOptions.length === 0 ? "没有匹配的同协议父节点。" : `找到 ${parentOptions.length} 项。`}</small>
+        </label>
         <label>绑定服务器<select value={input.machine_id ?? ""} onChange={(event) => setInput({ ...input, machine_id: event.target.value === "" ? null : Number(event.target.value) })}><option value="">独立部署</option>{machines.map((machine) => <option key={machine.id} value={machine.id}>{machine.name}</option>)}</select></label>
         <label>排序<input required type="number" min="0" max="1000000000" value={input.sort} onChange={(event) => setInput({ ...input, sort: Number(event.target.value) })} /></label>
         <label>权限组<select multiple aria-label="权限组" value={input.group_ids.map(String)} onChange={(event) => changeMultiple("group_ids", event)}>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
