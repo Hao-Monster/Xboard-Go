@@ -10,7 +10,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
-func TestLegacyNodeBearerContractMatchesXboardUniProxyAndV2Aliases(t *testing.T) {
+func TestDIFFNODE004LegacyHTTPBearerAndAliases(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
 	now := fixedNow()
