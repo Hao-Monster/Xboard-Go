@@ -243,7 +243,7 @@ async function createLegacyNode(page: Page, authorization: string, name: string,
   expect(response.status()).toBe(200);
   const listed = await page.request.get(legacyAdminAPI("/server/manage/getNodes"), { headers: { authorization } });
   expect(listed.status()).toBe(200);
-  const items = readArray(readObject(readJSON(await listed.text()), "data"));
+  const items = readArray(readJSON(await listed.text())["data"]);
   const node = items.find((item) => isRecord(item) && readString(item, "name") === name);
   if (!isRecord(node)) throw new Error("legacy fixture node was not returned by getNodes");
   return readNumber(node, "id");
