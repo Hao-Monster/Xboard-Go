@@ -269,6 +269,56 @@ func TestNodeReportCombinedUserTrafficInt64BoundaryIsAtomic(t *testing.T) {
 	}
 }
 
+func TestNodeReportCombinedUserTrafficStatisticsInt64BoundaryIsAtomic(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "combined-statistics-overflow", 7, 1_000_000, 0, 0, nil, false)
+	maximum := int64(^uint64(0) >> 1)
+	recordAt := time.Date(2026, 9, 1, 0, 0, 0, 0, nodeRateLocation).Unix()
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO user_traffic_stats (
+			user_id, rate_micros, record_at, record_type, upload, download, created_at, updated_at
+		) VALUES (?, 1500000, ?, 'd', ?, 1, ?, ?)
+	`, user.ID, recordAt, maximum-1, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := database.ApplyNodeReport(ctx, NodeReportInput{
+		MachineID: machine.ID,
+		NodeID:    node.ID,
+		ReportID:  "a456c400-9d8b-4ac6-94e4-60cd92fb1249",
+		Traffic:   map[int64]TrafficUsage{user.ID: {Download: 1}},
+		Now:       now,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ApplyNodeReport() error = %v, want ErrInvalidInput", err)
+	}
+	assertTrafficTotals(t, database, user.ID, node.ID, 0, 0, 0, 0)
+
+	var upload, download int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT upload, download FROM user_traffic_stats
+		WHERE user_id = ? AND rate_micros = 1500000 AND record_at = ? AND record_type = 'd'
+	`, user.ID, recordAt).Scan(&upload, &download); err != nil {
+		t.Fatal(err)
+	}
+	if upload != maximum-1 || download != 1 {
+		t.Fatalf("user statistics after rejected report = %d/%d", upload, download)
+	}
+	var receipts, nodeStats int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_report_receipts WHERE node_id = ?`, node.ID).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_traffic_stats WHERE node_id = ?`, node.ID).Scan(&nodeStats); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 0 || nodeStats != 0 {
+		t.Fatalf("rejected report left receipt/node stats = %d/%d", receipts, nodeStats)
+	}
+}
+
 func TestNodeReportZeroScheduledRateIsAppliedWithoutPanic(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

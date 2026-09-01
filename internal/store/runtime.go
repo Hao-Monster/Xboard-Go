@@ -729,13 +729,13 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			JOIN user_traffic_stats us
 			  ON us.user_id = s.user_id AND us.rate_micros = ? AND us.record_at = ? AND us.record_type = 'd'
 			WHERE s.report_key = ?
-			  AND (us.upload > ? - s.weighted_upload OR us.download > ? - s.weighted_download)
+			  AND us.upload > ((? - s.weighted_upload) - us.download) - s.weighted_download
 		)
-	`, rateMicros, recordAt, reportKey, int64(math.MaxInt64), int64(math.MaxInt64)).Scan(&userStatsOverflow); err != nil {
-		return fmt.Errorf("check user traffic stats overflow: %w", err)
+	`, rateMicros, recordAt, reportKey, int64(math.MaxInt64)).Scan(&userStatsOverflow); err != nil {
+		return fmt.Errorf("check combined user traffic stats overflow: %w", err)
 	}
 	if userStatsOverflow {
-		return fmt.Errorf("%w: user traffic statistics overflow", ErrInvalidInput)
+		return fmt.Errorf("%w: combined user traffic statistics overflow", ErrInvalidInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO user_traffic_stats (user_id, rate_micros, record_at, record_type, upload, download, created_at, updated_at)
