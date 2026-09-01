@@ -42,12 +42,23 @@ describe("PlanManagementPage", () => {
     await user.clear(traffic);
     await user.type(traffic, "50");
     await user.selectOptions(within(dialog).getByLabelText("服务器分组"), "7");
-    await user.type(within(dialog).getByLabelText("月付"), "1.99");
+    const prices = {
+      "月付": "1.01", "季付": "2.02", "半年付": "3.03", "年付": "4.04",
+      "两年付": "5.05", "三年付": "6.06", "流量包": "7.07", "重置包": "8.08"
+    } as const;
+    for (const [label, value] of Object.entries(prices)) {
+      await user.type(within(dialog).getByLabelText(label), value);
+    }
     await user.type(within(dialog).getByLabelText("标签"), "入门, 稳定");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Starter", transfer_enable: 50, group_id: 7, prices: { monthly: 199 }, tags: ["入门", "稳定"]
+      name: "Starter", transfer_enable: 50, group_id: 7,
+      prices: {
+        monthly: 101, quarterly: 202, half_yearly: 303, yearly: 404,
+        two_yearly: 505, three_yearly: 606, onetime: 707, reset_traffic: 808
+      },
+      tags: ["入门", "稳定"]
     })));
     expect(await screen.findByText("Starter")).toBeVisible();
   });
