@@ -1001,7 +1001,7 @@
       "id": "SCH-003",
       "level": "V",
       "domain": "服务器、节点和实时系统",
-      "title": "每个版本使用 revision；重复/延迟/旧队列任务不能覆盖新计划；队列投递失败时回滚计划和状态。",
+      "title": "每个版本使用 revision；重复、延迟或陈旧 worker 不能覆盖新计划；计划持久化、节点状态和下一次唤醒在同库事务中原子提交，失败时全部回滚且不会丢失待执行唤醒。",
       "scope_status": "decided",
       "implementation_status": "implemented",
       "verification_status": "historical",
