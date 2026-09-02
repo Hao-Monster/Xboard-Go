@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,9 +85,17 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 }
 
 func TestSECNODE005LoadRejectsInvalidTrustedProxyCIDRs(t *testing.T) {
-	t.Setenv("XBOARD_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,not-a-cidr")
-	if _, err := Load(); err == nil {
-		t.Fatal("Load() accepted an invalid trusted proxy CIDR")
+	for _, value := range []string{
+		"10.0.0.0/8,not-a-cidr",
+		"10.0.0.0/8,",
+		"::ffff:192.0.2.0/120",
+		strings.Repeat("1", 4<<10+1),
+		strings.Repeat("10.0.0.0/8,", 128) + "192.0.2.0/24",
+	} {
+		t.Setenv("XBOARD_TRUSTED_PROXY_CIDRS", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted invalid trusted proxy CIDRs with length %d", len(value))
+		}
 	}
 }
 

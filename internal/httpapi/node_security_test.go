@@ -210,6 +210,7 @@ func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
 		{name: "first untrusted intermediary is the client boundary", remoteAddr: "10.0.0.2:8080", forwarded: []string{"198.51.100.20, 192.0.2.30"}, wantClient: "192.0.2.30", wantPeer: "10.0.0.2"},
 		{name: "duplicate headers fail closed", remoteAddr: "10.0.0.2:8080", forwarded: []string{"198.51.100.20", "203.0.113.40"}, wantClient: "10.0.0.2", wantPeer: "10.0.0.2"},
 		{name: "invalid chain fails closed", remoteAddr: "10.0.0.2:8080", forwarded: []string{"invalid"}, wantClient: "10.0.0.2", wantPeer: "10.0.0.2"},
+		{name: "IPv4-mapped peer is canonicalized", remoteAddr: "[::ffff:192.0.2.10]:443", wantClient: "192.0.2.10", wantPeer: "192.0.2.10"},
 		{name: "trusted IPv6 proxy", remoteAddr: "[2001:db8:ffff::2]:8080", forwarded: []string{"2001:db8::20"}, wantClient: "2001:db8::20", wantPeer: "2001:db8:ffff::2"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -230,6 +231,12 @@ func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
 	oversized.Header.Set("X-Forwarded-For", strings.Repeat("1", 4<<10+1))
 	if client, peer := nodeRequestAddresses(oversized, trusted); client != "10.0.0.2" || peer != "10.0.0.2" {
 		t.Fatalf("oversized forwarded chain=(%q,%q), want trusted peer fallback", client, peer)
+	}
+	overlong := httptest.NewRequest(http.MethodGet, "/api/v2/server/config", nil)
+	overlong.RemoteAddr = "10.0.0.2:8080"
+	overlong.Header.Set("X-Forwarded-For", strings.Repeat("198.51.100.1,", 32)+"198.51.100.2")
+	if client, peer := nodeRequestAddresses(overlong, trusted); client != "10.0.0.2" || peer != "10.0.0.2" {
+		t.Fatalf("overlong forwarded hops=(%q,%q), want trusted peer fallback", client, peer)
 	}
 }
 
