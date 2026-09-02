@@ -219,7 +219,6 @@ func (l *attemptLimiter) reset(key string) {
 	if _, exists := l.entries[key]; !exists && len(l.entries) >= 4096 {
 		delete(l.entries, "__overflow__")
 	}
-	l.nextGC = time.Time{}
 	l.mu.Unlock()
 }
 

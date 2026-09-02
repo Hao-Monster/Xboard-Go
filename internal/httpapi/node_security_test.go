@@ -442,6 +442,14 @@ func TestSECNODE005RequestLimiterWindowOverflowAndConcurrency(t *testing.T) {
 	if !attempts.allowed("later", now.Add(90*time.Second)) || len(attempts.entries) != 0 {
 		t.Fatalf("attempt limiter did not collect the next staggered expiry: %#v", attempts.entries)
 	}
+
+	resetAttempts := newAttemptLimiter(1, time.Minute)
+	resetAttempts.failed("early", now)
+	resetAttempts.failed("later", now.Add(30*time.Second))
+	resetAttempts.reset("early")
+	if resetAttempts.allowed("later", now.Add(90*time.Second-time.Nanosecond)) || !resetAttempts.allowed("later", now.Add(90*time.Second)) {
+		t.Fatal("resetting the earliest key changed a later key's exact expiry boundary")
+	}
 }
 
 func TestSECNODE005RuntimeHTTPBodyBoundaries(t *testing.T) {
