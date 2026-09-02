@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-02",
-  "baseline_commit": "b151f914fbf90fe5d341c5fd7caea7983799a66f",
+  "baseline_commit": "ea55ce3c071770b838f280a8db99aefe53f84d9f",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -783,15 +783,18 @@
       "title": "管理员可创建/编辑/禁用/删除服务器机器；服务器有名称、备注、状态、节点数、负载和最后心跳。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-MACH-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "MACH-002",
@@ -800,15 +803,18 @@
       "title": "创建机器后仅向管理员展示一次性接入码和安装命令；机器兑换接入码时仅返回一次长期凭据；接入码和凭据只存摘要，管理员不能回读长期凭据；生成替换接入码不提前中断当前凭据，兑换成功后旧凭据立即失效。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-MACH-002-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["API-MACH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(APIMACH002|MachineAgentEnrollmentNodesAndStatus|MachineNodesAndDailyScheduleAPI) -count=1","result":"pass"},
+        {"id":"EV-MACH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "MACH-003",
@@ -817,15 +823,18 @@
       "title": "服务器详情可查看信息、关联节点、负载/网络历史，关联未绑定节点、解除关联和跳转节点管理。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-MACH-003-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-003"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "MACH-004",
@@ -834,15 +843,19 @@
       "title": "删除服务器先解绑节点但不删除节点；节点变更通知关联机器重新同步。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-MACH-004-SYSTEM","kind":"integration","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(DeletingMachineUnlinksNodesWithoutDeletingThem|MachineNodesAndDailyScheduleAPI|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"},
+        {"id":"EV-MACH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "NODE-001",
@@ -851,15 +864,19 @@
       "title": "节点支持当前 11 种类型，协议字段、父子节点、权限组、路由、连接/服务端口、监听地址、倍率、动态倍率、流量上限和标签。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-001-CONTRACT","kind":"contract","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:905cf1377bcd39063a8936683b81c7360886b690b2d852daba6903899d5e38a4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:06Z","command":"go test -race ./internal/store ./internal/httpapi -run Test(AdminNode|BasicAdminNode|SchemaV4[02].*Node|CurrentSchemaIncludesLosslessNodeProtocol|HydrateLegacyNodeDefinition|ValidateSchemaV42|NodePortPreservesDynamicRanges|ListSubscriptionNodesUsesLegacyVisibilityGroupAndCapacityRules|XboardNodeRuntimeConfigContract|XboardNodeRuntimeEndpoints) -count=1","result":"pass"},
+        {"id":"EV-NODE-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-NODE-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|SchemaV24ThroughV26) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "NODE-002",
@@ -868,15 +885,19 @@
       "title": "节点可独立部署或绑定服务器，具有显隐、启用、在线状态、排序、复制、批量显隐/启停/删除/重置流量。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-002-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:b3b1a72ea0b0caae71b9fd45f2a8d4ab8324ea78e2eea98f2447935fa5cdc737","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:18:01Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
+        {"id":"EV-NODE-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-NODE-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "NODE-003",
@@ -885,15 +906,18 @@
       "title": "节点配置变更通过观察器和同步服务通知正确连接；多实例连接使用租约/所有权和 fencing 防止旧连接写入。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-003-REDIS","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(INTNODE003|TIMENODE006|NODE007|INTNODE007|DIFFNODE004|NodeReport|XboardNodeRuntime|ValidateNodeReport|MachineWebSocket|LegacyNode) -count=1","result":"pass"},
+        {"id":"EV-NODE-003-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/nodecoord ./internal/devicestate -run ^$ -bench Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines) -benchmem -count=3","result":"pass"}
+      ]
     },
     {
       "id": "NODE-004",
@@ -902,9 +926,9 @@
       "title": "HTTP/WS 支持旧全局 server token 与机器级凭据；机器只能访问归属且已启用节点。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [
         "D-001"
@@ -912,7 +936,11 @@
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-004-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-004"],"artifact":"bingo-dev:sha256:abbcb661bb751894d4121b7501dc09a0fadc73dcf29907c2e5a27c066bca96ba","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:56:14Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts node-dual-auth.spec.ts","result":"pass"},
+        {"id":"EV-NODE-004-REAL-CLIENT","kind":"integration","environment":"bingo-dev","case_ids":["REAL-NODE-CLIENT-SMOKE"],"artifact":"bingo-dev:sha256:46f8f300120b569afed8d58f5c124975dd66647596c4ff5886b090172150daa4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:07:23Z","command":"bash /home/bingo/apps/xboard-go-test-results/run-ver003-real-node-smoke-bingo.sh","result":"pass"},
+        {"id":"EV-NODE-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodeAgentSettingsSnapshot|ImportLegacyNodeAgentSettings|LegacyNodeAgentSettings) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "NODE-005",
@@ -921,15 +949,18 @@
       "title": "握手、配置、用户、状态、设备、流量上报有请求体大小、请求频率、字段/条目上限、类型校验和批次去重。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-005-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-NODE-005"],"artifact":"bingo-dev:sha256:294f182818f3a922e76b30e0e757ac3f0e3df0bdfe4a1ba182fd08aa89e73059","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:45:44Z","command":"go test -race ./internal/config ./internal/httpapi -run TestSECNODE005 -count=5","result":"pass"},
+        {"id":"EV-NODE-005-CI","kind":"security","environment":"github-actions","case_ids":["SEC-NODE-005"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949180","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:10:35Z","command":"go test -race -timeout=30m -coverprofile=coverage.out ./...; Redis failure tests; go vet ./...; govulncheck ./...","result":"pass"}
+      ]
     },
     {
       "id": "NODE-006",
@@ -938,15 +969,18 @@
       "title": "设备在线按 300 秒窗口、IP 归一化和去重计算；写数据库有节流与延迟刷新；节点断开清理其设备状态。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-006-TIME","kind":"integration","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(TIMENODE006|MachineWebSocket|NodeReport) -count=1","result":"pass"},
+        {"id":"EV-NODE-006-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/devicestate -run ^$ -bench BenchmarkTIMENODE006 -benchmem -count=3","result":"pass"}
+      ]
     },
     {
       "id": "NODE-007",
@@ -955,15 +989,19 @@
       "title": "流量更新按用户批量原子累加，并以报告 ID/分片回执防止重复消费；随后进入超额检查。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-NODE-007-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(NODE007|INTNODE007|NodeReport|ValidateNodeReport) -count=1","result":"pass"},
+        {"id":"EV-NODE-007-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:514060e37420e6d81cc268f007892073bd60b9e941e1c7cf55630628dcc3be6f","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:48:58Z","command":"GOMAXPROCS=4 go test ./internal/store -run ^$ -bench BenchmarkApplyNodeReport -benchmem -count=3","result":"pass"},
+        {"id":"EV-NODE-007-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-007"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "SCH-001",
@@ -972,15 +1010,18 @@
       "title": "每个节点最多一项激活计划；支持每日和遗留一次性结构，日计划固定 Asia/Singapore。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-SCH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|LegacyOnceSchedule) -count=1","result":"pass"},
+        {"id":"EV-SCH-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule ./internal/scheduler -run Test(DailySchedule|DailyWindow|LegacyOnceSchedule|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "SCH-002",
@@ -989,15 +1030,19 @@
       "title": "每日开始/结束必须是不同 HH:MM，支持跨午夜；保存立即将节点校准为当前应有状态。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-SCH-002-TIME","kind":"unit","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule -run Test(DailySchedule|DailyWindow|ScheduleRequires) -count=1","result":"pass"},
+        {"id":"EV-SCH-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-SCH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "SCH-003",
@@ -1006,15 +1051,18 @@
       "title": "每个版本使用 revision；重复、延迟或陈旧 worker 不能覆盖新计划；计划持久化、节点状态和下一次唤醒在同库事务中原子提交，失败时全部回滚且不会丢失待执行唤醒。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-SCH-003-TRANSACTION","kind":"integration","environment":"bingo-dev","case_ids":["TX-SCH-003"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/scheduler -run Test(TXSCH003|DueSchedule|WorkerAppliesPersistedDueSchedule|DeletingSchedule) -count=1","result":"pass"},
+        {"id":"EV-SCH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+      ]
     },
     {
       "id": "SCH-004",
@@ -1023,15 +1071,18 @@
       "title": "管理端每次打开服务器详情时都显示“定时设置”；嵌套计划弹窗可点击，支持 Esc、Tab 焦点循环和关闭后焦点恢复。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {"id":"EV-SCH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-SCH-004-CI","kind":"browser","environment":"github-actions","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949331","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:46:28Z","command":"pnpm test:e2e","result":"pass"}
+      ]
     },
     {
       "id": "CONT-001",
