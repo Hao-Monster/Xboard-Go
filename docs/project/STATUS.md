@@ -14,8 +14,8 @@ Baseline: `M0` · as of 2026-09-02 · verification target `ea55ce3c071770b838f28
 | Implementation | `partial` | 2 |
 | Implementation | `blocked` | 2 |
 | Implementation | `not_started` | 0 |
-| Verification | `current` | 15 |
-| Verification | `historical` | 61 |
+| Verification | `current` | 0 |
+| Verification | `historical` | 76 |
 | Verification | `partial` | 2 |
 | Verification | `none` | 2 |
 | Migration | `current` | 11 |
@@ -23,8 +23,8 @@ Baseline: `M0` · as of 2026-09-02 · verification target `ea55ce3c071770b838f28
 | Migration | `partial` | 1 |
 | Migration | `not_assessed` | 1 |
 | Migration | `not_applicable` | 5 |
-| Acceptance | `accepted` | 15 |
-| Acceptance | `pending` | 65 |
+| Acceptance | `accepted` | 0 |
+| Acceptance | `pending` | 80 |
 | Acceptance | `rejected` | 0 |
 
 ## Control summary
@@ -32,7 +32,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `ea55ce3c071770b838f28
 - Decisions: 7 resolved, 11 pending (18 total).
 - Risks: 1 open Critical, 12 open High, 22 total.
 - Compatibility exceptions: 5 accepted, 1 proposed.
-- Current-head verification: 15/80; accepted: 15/80. Historical evidence is not current acceptance.
+- Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
 
 ## Blocked or partial requirements
 
@@ -55,7 +55,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `ea55ce3c071770b838f28
 | `MIG-001` | M2 | open | [#118](https://github.com/Hao-Monster/Xboard-Go/issues/118) | 完成代表性旧数据迁移、对账和回滚证据 |
 | `VER-001` | M3 | open | [#119](https://github.com/Hao-Monster/Xboard-Go/issues/119) | 验收身份、用户、套餐与订阅需求 |
 | `VER-002` | M3 | open | [#120](https://github.com/Hao-Monster/Xboard-Go/issues/120) | 验收订单、支付、营销与分销需求 |
-| `VER-003` | M3 | done | [#121](https://github.com/Hao-Monster/Xboard-Go/issues/121) | 验收机器、节点、实时上报与计划需求 |
+| `VER-003` | M3 | open | [#121](https://github.com/Hao-Monster/Xboard-Go/issues/121) | 验收机器、节点、实时上报与计划需求 |
 | `VER-004` | M3 | open | [#122](https://github.com/Hao-Monster/Xboard-Go/issues/122) | 验收内容、附件、客户端与支持需求 |
 | `VER-005` | M3 | open | [#123](https://github.com/Hao-Monster/Xboard-Go/issues/123) | 验收配置、扩展、主题与运维需求 |
 | `CI-001` | M3 | open | [#127](https://github.com/Hao-Monster/Xboard-Go/issues/127) | 将差分验证纳入 CI 并缩短长链路反馈时间 |
