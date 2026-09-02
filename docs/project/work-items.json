@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-02",
+  "as_of": "2026-09-03",
   "work_items": [
     {"id":"GOV-001","title":"建立 M0 项目治理基线","status":"done","milestone":"M0","issue_number":113,"requirement_ids":[],"decision_ids":[]},
     {"id":"FUNC-001","title":"确定并实现原子佣金提现账本","status":"blocked","milestone":"M1","issue_number":114,"requirement_ids":["FIN-001"],"decision_ids":["D-011"]},
@@ -14,7 +14,7 @@
     {"id":"VER-004","title":"验收内容、附件、客户端与支持需求","status":"done","milestone":"M3","issue_number":122,"requirement_ids":["CONT-001","CONT-002","CONT-003","ATT-001","ATT-002","ATT-003","ATT-004","ATT-005","CLIENT-001","CLIENT-002","TICKET-001","NOTICE-001"],"decision_ids":[]},
     {"id":"VER-005","title":"验收配置、扩展、主题与运维需求","status":"done","milestone":"M3","issue_number":123,"requirement_ids":["CFG-001","CFG-002","PLUG-001","PLUG-002","THEME-001","OPS-001","OPS-003"],"decision_ids":[]},
     {"id":"CI-001","title":"将差分验证纳入 CI 并缩短长链路反馈时间","status":"open","milestone":"M3","issue_number":127,"requirement_ids":[],"decision_ids":[]},
-    {"id":"SEC-001","title":"建立 Actions 固定、SBOM、许可证和供应链门禁","status":"open","milestone":"M3","issue_number":128,"requirement_ids":[],"decision_ids":[]},
+    {"id":"SEC-001","title":"建立 Actions 固定、SBOM、许可证和供应链门禁","status":"done","milestone":"M3","issue_number":128,"requirement_ids":[],"decision_ids":[]},
     {"id":"DEP-001","title":"分类并处理现有 Dependabot 更新积压","status":"done","milestone":"M0","issue_number":129,"requirement_ids":[],"decision_ids":[]},
     {"id":"PERF-001","title":"建立代表性容量基线并确认 SLO","status":"blocked","milestone":"M4","issue_number":130,"requirement_ids":[],"decision_ids":["D-015"]},
     {"id":"REL-001","title":"完成生产切换、回滚和事故响应运行手册","status":"blocked","milestone":"M4","issue_number":131,"requirement_ids":[],"decision_ids":["D-016","D-018"]}

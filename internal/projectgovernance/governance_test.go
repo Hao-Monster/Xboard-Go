@@ -258,6 +258,25 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	}
 }
 
+func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
+	for _, path := range []string{
+		"docs/project/requirements.json",
+		".github/workflows/ci.yml",
+		".github/scripts/check-production-licenses.mjs",
+		"cmd/projectctl/main.go",
+		"internal/projectgovernance/governance.go",
+	} {
+		if !isEvidenceMetadataPath(path) {
+			t.Errorf("expected %s to be governance metadata", path)
+		}
+	}
+	for _, path := range []string{"cmd/xboard/main.go", "internal/store/sqlite.go", "web/src/App.tsx", "web/scripts/check-entry-budget.mjs"} {
+		if isEvidenceMetadataPath(path) {
+			t.Errorf("expected %s to invalidate product evidence", path)
+		}
+	}
+}
+
 // retargetCurrentEvidence keeps these tests independent from whichever
 // requirements happen to be current in the repository fixture. A baseline
 // change is valid only when every current evidence record follows it.
@@ -290,6 +309,26 @@ func copyProjectFixture(t *testing.T, root string) string {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(projectDir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	workflowDirectory := filepath.Join(temporaryRoot, ".github", "workflows")
+	if err := os.MkdirAll(workflowDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workflows, err := os.ReadDir(filepath.Join(root, ".github", "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, workflow := range workflows {
+		if workflow.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", workflow.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workflowDirectory, workflow.Name()), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -403,6 +442,54 @@ func TestPRMetadataRejectsUnfilledTemplate(t *testing.T) {
 	}
 	if err := ValidatePRMetadata(string(body), "M0 Project Governance Baseline", state); err == nil {
 		t.Fatal("expected unfilled pull request template to fail validation")
+	}
+}
+
+func TestWorkflowActionPinsRequireImmutableCommits(t *testing.T) {
+	root := t.TempDir()
+	workflowDirectory := filepath.Join(root, ".github", "workflows")
+	if err := os.MkdirAll(workflowDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workflow := `name: pins
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker://alpine:3.23
+      - uses: ./local-action
+`
+	if err := os.WriteFile(filepath.Join(workflowDirectory, "pins.yml"), []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflowActionPins(root); err == nil || !strings.Contains(err.Error(), "actions/checkout@v7") || !strings.Contains(err.Error(), "docker://alpine:3.23") {
+		t.Fatalf("expected mutable action reference to fail, got %v", err)
+	}
+}
+
+func TestWorkflowActionPinsAcceptCommitAndLocalAction(t *testing.T) {
+	root := t.TempDir()
+	workflowDirectory := filepath.Join(root, ".github", "workflows")
+	if err := os.MkdirAll(workflowDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workflow := `name: pins
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: docker://alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - uses: ./local-action
+`
+	if err := os.WriteFile(filepath.Join(workflowDirectory, "pins.yaml"), []byte(workflow), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflowActionPins(root); err != nil {
+		t.Fatal(err)
 	}
 }
 

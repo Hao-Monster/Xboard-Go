@@ -30,7 +30,7 @@ Baseline: `M0` · as of 2026-09-03 · verification target `5b3d7b00db1cc727881de
 ## Control summary
 
 - Decisions: 7 resolved, 11 pending (18 total).
-- Risks: 1 open Critical, 12 open High, 22 total.
+- Risks: 1 open Critical, 11 open High, 22 total.
 - Compatibility exceptions: 5 accepted, 1 proposed.
 - Current-head verification: 76/80; accepted: 76/80. Historical evidence is not current acceptance.
 
@@ -59,7 +59,7 @@ Baseline: `M0` · as of 2026-09-03 · verification target `5b3d7b00db1cc727881de
 | `VER-004` | M3 | done | [#122](https://github.com/Hao-Monster/Xboard-Go/issues/122) | 验收内容、附件、客户端与支持需求 |
 | `VER-005` | M3 | done | [#123](https://github.com/Hao-Monster/Xboard-Go/issues/123) | 验收配置、扩展、主题与运维需求 |
 | `CI-001` | M3 | open | [#127](https://github.com/Hao-Monster/Xboard-Go/issues/127) | 将差分验证纳入 CI 并缩短长链路反馈时间 |
-| `SEC-001` | M3 | open | [#128](https://github.com/Hao-Monster/Xboard-Go/issues/128) | 建立 Actions 固定、SBOM、许可证和供应链门禁 |
+| `SEC-001` | M3 | done | [#128](https://github.com/Hao-Monster/Xboard-Go/issues/128) | 建立 Actions 固定、SBOM、许可证和供应链门禁 |
 | `DEP-001` | M0 | done | [#129](https://github.com/Hao-Monster/Xboard-Go/issues/129) | 分类并处理现有 Dependabot 更新积压 |
 | `PERF-001` | M4 | blocked | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
 | `REL-001` | M4 | blocked | [#131](https://github.com/Hao-Monster/Xboard-Go/issues/131) | 完成生产切换、回滚和事故响应运行手册 |
