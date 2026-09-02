@@ -472,8 +472,13 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 		}
 	}
 
-	if len(input.Traffic) > 0 && !result.DuplicateTraffic {
-		if err := applyTraffic(ctx, tx, input, rateMicros); err != nil {
+	if len(input.Traffic) > 0 {
+		if result.DuplicateTraffic {
+			result.ExceededUsers, err = listExceededTrafficUsers(ctx, tx, input.Traffic)
+		} else {
+			result.ExceededUsers, err = applyTraffic(ctx, tx, input, rateMicros)
+		}
+		if err != nil {
 			return NodeReportResult{}, err
 		}
 	}
@@ -666,43 +671,43 @@ func reportTrafficHash(traffic map[int64]TrafficUsage) []byte {
 	return hash.Sum(nil)
 }
 
-func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMicros int64) error {
+func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMicros int64) ([]TrafficExceededUser, error) {
 	reportKey, err := randomReportKey()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO node_report_traffic_stage (report_key, user_id, upload, download, weighted_upload, weighted_download)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
-		return fmt.Errorf("prepare traffic stage: %w", err)
+		return nil, fmt.Errorf("prepare traffic stage: %w", err)
 	}
 	var totalUpload, totalDownload int64
 	for userID, traffic := range input.Traffic {
 		weightedUpload, err := weightedTraffic(traffic.Upload, rateMicros)
 		if err != nil {
 			statement.Close()
-			return err
+			return nil, err
 		}
 		weightedDownload, err := weightedTraffic(traffic.Download, rateMicros)
 		if err != nil {
 			statement.Close()
-			return err
+			return nil, err
 		}
 		if totalUpload > math.MaxInt64-traffic.Upload || totalDownload > math.MaxInt64-traffic.Download {
 			statement.Close()
-			return fmt.Errorf("%w: node traffic total overflows", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: node traffic total overflows", ErrInvalidInput)
 		}
 		totalUpload += traffic.Upload
 		totalDownload += traffic.Download
 		if _, err := statement.ExecContext(ctx, reportKey, userID, traffic.Upload, traffic.Download, weightedUpload, weightedDownload); err != nil {
 			statement.Close()
-			return fmt.Errorf("stage node traffic: %w", err)
+			return nil, fmt.Errorf("stage node traffic: %w", err)
 		}
 	}
 	if err := statement.Close(); err != nil {
-		return fmt.Errorf("close traffic stage: %w", err)
+		return nil, fmt.Errorf("close traffic stage: %w", err)
 	}
 	var userOverflow bool
 	if err := tx.QueryRowContext(ctx, `
@@ -713,12 +718,12 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			  AND u.traffic_u > ((? - s.weighted_upload) - u.traffic_d) - s.weighted_download
 		)
 	`, reportKey, int64(math.MaxInt64)).Scan(&userOverflow); err != nil {
-		return fmt.Errorf("check combined user traffic overflow: %w", err)
+		return nil, fmt.Errorf("check combined user traffic overflow: %w", err)
 	}
 	if userOverflow {
 		// Subtraction keeps the normal path inside int64 and avoids asking
 		// SQLite to evaluate the potentially overflowing four-value sum.
-		return fmt.Errorf("%w: combined user traffic overflows", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: combined user traffic overflows", ErrInvalidInput)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -728,7 +733,7 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			updated_at = ?
 		WHERE id IN (SELECT user_id FROM node_report_traffic_stage WHERE report_key = ?)
 	`, reportKey, reportKey, input.Now.Unix(), reportKey); err != nil {
-		return fmt.Errorf("increment user traffic: %w", err)
+		return nil, fmt.Errorf("increment user traffic: %w", err)
 	}
 
 	localReportTime := input.Now.In(nodeRateLocation)
@@ -743,10 +748,10 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			  AND us.upload > ((? - s.weighted_upload) - us.download) - s.weighted_download
 		)
 	`, rateMicros, recordAt, reportKey, int64(math.MaxInt64)).Scan(&userStatsOverflow); err != nil {
-		return fmt.Errorf("check combined user traffic stats overflow: %w", err)
+		return nil, fmt.Errorf("check combined user traffic stats overflow: %w", err)
 	}
 	if userStatsOverflow {
-		return fmt.Errorf("%w: combined user traffic statistics overflow", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: combined user traffic statistics overflow", ErrInvalidInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO user_traffic_stats (user_id, rate_micros, record_at, record_type, upload, download, created_at, updated_at)
@@ -758,18 +763,18 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			download = download + excluded.download,
 			updated_at = excluded.updated_at
 	`, rateMicros, recordAt, input.Now.Unix(), input.Now.Unix(), reportKey); err != nil {
-		return fmt.Errorf("update user traffic stats: %w", err)
+		return nil, fmt.Errorf("update user traffic stats: %w", err)
 	}
 
 	var nodeUpload, nodeDownload int64
 	if err := tx.QueryRowContext(ctx, `SELECT traffic_u, traffic_d FROM nodes WHERE id = ?`, input.NodeID).Scan(&nodeUpload, &nodeDownload); err != nil {
-		return fmt.Errorf("read node traffic: %w", err)
+		return nil, fmt.Errorf("read node traffic: %w", err)
 	}
 	if nodeUpload > math.MaxInt64-totalUpload || nodeDownload > math.MaxInt64-totalDownload {
-		return fmt.Errorf("%w: node traffic total overflows", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: node traffic total overflows", ErrInvalidInput)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET traffic_u = traffic_u + ?, traffic_d = traffic_d + ? WHERE id = ?`, totalUpload, totalDownload, input.NodeID); err != nil {
-		return fmt.Errorf("increment node traffic: %w", err)
+		return nil, fmt.Errorf("increment node traffic: %w", err)
 	}
 	var statsUpload, statsDownload int64
 	err = tx.QueryRowContext(ctx, `
@@ -777,10 +782,10 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 		WHERE node_id = ? AND record_at = ? AND record_type = 'd'
 	`, input.NodeID, recordAt).Scan(&statsUpload, &statsDownload)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("read node traffic stats: %w", err)
+		return nil, fmt.Errorf("read node traffic stats: %w", err)
 	}
 	if err == nil && (statsUpload > math.MaxInt64-totalUpload || statsDownload > math.MaxInt64-totalDownload) {
-		return fmt.Errorf("%w: node traffic statistics overflow", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: node traffic statistics overflow", ErrInvalidInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO node_traffic_stats (node_id, record_at, record_type, upload, download, created_at, updated_at)
@@ -790,7 +795,7 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			download = download + excluded.download,
 			updated_at = excluded.updated_at
 	`, input.NodeID, recordAt, totalUpload, totalDownload, input.Now.Unix(), input.Now.Unix()); err != nil {
-		return fmt.Errorf("update node traffic stats: %w", err)
+		return nil, fmt.Errorf("update node traffic stats: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE distributor_subscriptions
@@ -803,12 +808,85 @@ func applyTraffic(ctx context.Context, tx *sql.Tx, input NodeReportInput, rateMi
 			WHERE report_key = ? AND (upload > 0 OR download > 0)
 		  )
 	`, input.Now.Unix(), input.NodeID, input.NodeID, input.Now.Unix(), reportKey); err != nil {
-		return fmt.Errorf("record first distributor connection: %w", err)
+		return nil, fmt.Errorf("record first distributor connection: %w", err)
+	}
+	exceeded, err := listStagedExceededTrafficUsers(ctx, tx, reportKey)
+	if err != nil {
+		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM node_report_traffic_stage WHERE report_key = ?`, reportKey); err != nil {
-		return fmt.Errorf("clear traffic stage: %w", err)
+		return nil, fmt.Errorf("clear traffic stage: %w", err)
 	}
-	return nil
+	return exceeded, nil
+}
+
+func listStagedExceededTrafficUsers(ctx context.Context, tx *sql.Tx, reportKey string) ([]TrafficExceededUser, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT u.id, u.group_id
+		FROM node_report_traffic_stage s JOIN users u ON u.id = s.user_id
+		WHERE s.report_key = ? AND u.group_id IS NOT NULL AND u.transfer_enable > 0 AND u.banned = 0
+		  AND u.traffic_u >= u.transfer_enable - u.traffic_d
+		ORDER BY u.id
+	`, reportKey)
+	if err != nil {
+		return nil, fmt.Errorf("list exceeded traffic users: %w", err)
+	}
+	defer rows.Close()
+	exceeded := make([]TrafficExceededUser, 0)
+	for rows.Next() {
+		var user TrafficExceededUser
+		if err := rows.Scan(&user.UserID, &user.GroupID); err != nil {
+			return nil, fmt.Errorf("scan exceeded traffic user: %w", err)
+		}
+		exceeded = append(exceeded, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exceeded traffic users: %w", err)
+	}
+	return exceeded, nil
+}
+
+func listExceededTrafficUsers(ctx context.Context, tx *sql.Tx, traffic map[int64]TrafficUsage) ([]TrafficExceededUser, error) {
+	userIDs := make([]int64, 0, len(traffic))
+	for userID := range traffic {
+		userIDs = append(userIDs, userID)
+	}
+	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
+	exceeded := make([]TrafficExceededUser, 0)
+	for start := 0; start < len(userIDs); start += 500 {
+		end := min(start+500, len(userIDs))
+		batch := userIDs[start:end]
+		arguments := make([]any, len(batch))
+		for index, userID := range batch {
+			arguments[index] = userID
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id, group_id FROM users
+			WHERE id IN (`+placeholders+`) AND group_id IS NOT NULL AND transfer_enable > 0 AND banned = 0
+			  AND traffic_u >= transfer_enable - traffic_d
+			ORDER BY id
+		`, arguments...)
+		if err != nil {
+			return nil, fmt.Errorf("list duplicate report exceeded users: %w", err)
+		}
+		for rows.Next() {
+			var user TrafficExceededUser
+			if err := rows.Scan(&user.UserID, &user.GroupID); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan duplicate report exceeded user: %w", err)
+			}
+			exceeded = append(exceeded, user)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate duplicate report exceeded users: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close duplicate report exceeded users: %w", err)
+		}
+	}
+	return exceeded, nil
 }
 
 func weightedTraffic(value, rateMicros int64) (int64, error) {

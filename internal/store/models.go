@@ -2141,6 +2141,12 @@ type NodeReportInput struct {
 type NodeReportResult struct {
 	DuplicateTraffic bool
 	DeviceUserIDs    []int64
+	ExceededUsers    []TrafficExceededUser
+}
+
+type TrafficExceededUser struct {
+	UserID  int64
+	GroupID int64
 }
 
 type UserDeviceSummary struct {
