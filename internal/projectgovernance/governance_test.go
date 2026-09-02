@@ -233,6 +233,7 @@ func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
 	root, state := repositoryState(t)
 	temporaryRoot := copyProjectFixture(t, root)
 	state.Requirements.BaselineCommit = strings.Repeat("f", 40)
+	retargetProgressEvidence(&state)
 	writeRequirementFixture(t, temporaryRoot, state)
 	runGit(t, temporaryRoot, "init")
 	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
@@ -253,6 +254,7 @@ func TestCheckRejectsProductDriftAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "add", ".")
 	runGit(t, temporaryRoot, "commit", "-m", "verification target")
 	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	retargetProgressEvidence(&state)
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
@@ -276,6 +278,7 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "add", ".")
 	runGit(t, temporaryRoot, "commit", "-m", "verification target")
 	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	retargetProgressEvidence(&state)
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
@@ -284,6 +287,14 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "commit", "-m", "evidence metadata")
 	if err := Check(temporaryRoot); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func retargetProgressEvidence(state *State) {
+	for requirementIndex := range state.Requirements.Requirements {
+		for evidenceIndex := range state.Requirements.Requirements[requirementIndex].ProgressEvidence {
+			state.Requirements.Requirements[requirementIndex].ProgressEvidence[evidenceIndex].Commit = state.Requirements.BaselineCommit
+		}
 	}
 }
 
