@@ -3,8 +3,10 @@ package config
 import (
 	"bytes"
 	"encoding/base64"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,6 +51,7 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	t.Setenv("XBOARD_PANEL_URL", "https://panel.example.test")
 	t.Setenv("XBOARD_LEGACY_ADMIN_PATH", "53815c85")
 	t.Setenv("XBOARD_ALLOWED_ORIGINS", "https://panel.example.test, https://admin.example.test/")
+	t.Setenv("XBOARD_TRUSTED_PROXY_CIDRS", "10.0.0.7/8, 2001:db8::/32,10.0.0.0/8")
 	t.Setenv("XBOARD_COOKIE_SECURE", "true")
 	t.Setenv("XBOARD_SCHEDULER_INTERVAL", "2s")
 	t.Setenv("XBOARD_WEBSOCKET_ENABLED", "true")
@@ -75,6 +78,24 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	}
 	if len(settings.AllowedOrigins) != 2 || settings.AllowedOrigins[1] != "https://admin.example.test" {
 		t.Fatalf("allowed origins = %#v", settings.AllowedOrigins)
+	}
+	if len(settings.TrustedProxyPrefixes) != 2 || settings.TrustedProxyPrefixes[0] != netip.MustParsePrefix("10.0.0.0/8") || settings.TrustedProxyPrefixes[1] != netip.MustParsePrefix("2001:db8::/32") {
+		t.Fatalf("trusted proxy prefixes = %#v", settings.TrustedProxyPrefixes)
+	}
+}
+
+func TestSECNODE005LoadRejectsInvalidTrustedProxyCIDRs(t *testing.T) {
+	for _, value := range []string{
+		"10.0.0.0/8,not-a-cidr",
+		"10.0.0.0/8,",
+		"::ffff:192.0.2.0/120",
+		strings.Repeat("1", 4<<10+1),
+		strings.Repeat("10.0.0.0/8,", 128) + "192.0.2.0/24",
+	} {
+		t.Setenv("XBOARD_TRUSTED_PROXY_CIDRS", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted invalid trusted proxy CIDRs with length %d", len(value))
+		}
 	}
 }
 

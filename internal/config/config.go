@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ type Config struct {
 	PanelURL                   string
 	LegacyAdminPath            string
 	AllowedOrigins             []string
+	TrustedProxyPrefixes       []netip.Prefix
 	CookieSecure               bool
 	NodeRelease                string
 	BootstrapAdminEmail        string
@@ -152,12 +154,17 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	trustedProxyPrefixes, err := parseTrustedProxyPrefixes(os.Getenv("XBOARD_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	config := Config{
 		Address:                    envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:                DatabaseDSN(),
 		PanelURL:                   panelURL,
 		LegacyAdminPath:            envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
+		TrustedProxyPrefixes:       trustedProxyPrefixes,
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
 		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
@@ -311,6 +318,35 @@ func Load() (Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func parseTrustedProxyPrefixes(value string) ([]netip.Prefix, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	if len(value) > 4<<10 {
+		return nil, errors.New("XBOARD_TRUSTED_PROXY_CIDRS must not exceed 4096 bytes")
+	}
+	rawPrefixes := strings.Split(value, ",")
+	if len(rawPrefixes) > 128 {
+		return nil, errors.New("XBOARD_TRUSTED_PROXY_CIDRS must contain at most 128 prefixes")
+	}
+	prefixes := make([]netip.Prefix, 0, len(rawPrefixes))
+	seen := make(map[netip.Prefix]struct{}, len(rawPrefixes))
+	for _, raw := range rawPrefixes {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
+		if err != nil || !prefix.IsValid() || prefix.Addr().Is4In6() {
+			return nil, fmt.Errorf("XBOARD_TRUSTED_PROXY_CIDRS contains invalid prefix %q", strings.TrimSpace(raw))
+		}
+		prefix = prefix.Masked()
+		if _, exists := seen[prefix]; exists {
+			continue
+		}
+		seen[prefix] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
 }
 
 func pathsOverlap(left, right string) bool {

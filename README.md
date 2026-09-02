@@ -66,6 +66,15 @@ Machine credentials remain the recommended least-privilege mode. Rotating or
 clearing the global token revokes legacy HTTP authentication immediately and
 fences legacy WebSocket connections without revoking machine credentials.
 
+Node HTTP and WebSocket handshake rate limits always retain independent
+client, direct-peer, and credential buckets. A deployment behind a shared
+reverse proxy must set `XBOARD_TRUSTED_PROXY_CIDRS` to the proxy network CIDRs
+that sanitize `X-Forwarded-For`; the application walks that chain from the
+trusted peer toward the client and fails back to the direct peer for malformed,
+duplicated, oversized, or untrusted headers. The empty default trusts no proxy,
+and invalid CIDRs fail startup. Never add a public client network or a proxy
+that merely appends to attacker-controlled forwarding headers.
+
 The optional `coordination` Compose profile provides a pinned, private-network
 development Redis with a file-backed password, no published port, and no persistent data. Generate
 a temporary password, start Redis, and provide the matching URL only to the

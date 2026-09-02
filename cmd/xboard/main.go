@@ -228,6 +228,7 @@ func main() {
 		NodeRelease:                settings.NodeRelease,
 		CookieSecure:               settings.CookieSecure,
 		AllowedOrigins:             settings.AllowedOrigins,
+		TrustedProxyPrefixes:       settings.TrustedProxyPrefixes,
 		Logger:                     logger,
 		Context:                    ctx,
 		WebSocketEnabled:           settings.WebSocketEnabled,

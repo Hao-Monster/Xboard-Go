@@ -11,6 +11,8 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
+const maxNodeHandshakeBody = 64 << 10
+
 type resourceUsage struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
@@ -136,7 +138,7 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 		if input.NodeID, ok = optionalPositiveQueryID(w, r, "node_id"); !ok {
 			return
 		}
-	} else if !decodeJSON(w, r, &input) {
+	} else if !decodeJSONLimit(w, r, &input, maxNodeHandshakeBody) {
 		return
 	}
 	if input.MachineID < 0 {
@@ -200,15 +202,18 @@ func (s *server) requestWebSocketURL(_ *http.Request, configuredURL string) stri
 }
 
 func (s *server) authenticateLegacyNode(w http.ResponseWriter, r *http.Request, nodeID int64) bool {
-	attemptKey := requestIP(r) + ":legacy"
-	if !s.legacyNodeAuthFailures.allowed(attemptKey, s.now()) {
+	client, peer := nodeRequestAddresses(r, s.trustedProxyPrefixes)
+	clientAllowed := s.legacyNodeAuthFailures.allowed(client, s.now())
+	peerAllowed := s.legacyNodeAuthPeerFailures.allowed(peer, s.now())
+	if !clientAllowed || !peerAllowed {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "node_auth_rate_limited", "节点认证失败次数过多，请稍后重试", nil)
 		return false
 	}
 	parts := strings.Fields(r.Header.Get("Authorization"))
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || len(parts[1]) > 256 {
-		s.legacyNodeAuthFailures.failed(attemptKey, s.now())
+		s.legacyNodeAuthFailures.failed(client, s.now())
+		s.legacyNodeAuthPeerFailures.failed(peer, s.now())
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeAPIError(w, http.StatusUnauthorized, "invalid_node_credential", "节点凭据无效或未配置", nil)
 		return false
@@ -219,7 +224,8 @@ func (s *server) authenticateLegacyNode(w http.ResponseWriter, r *http.Request, 
 		return false
 	}
 	if !valid {
-		s.legacyNodeAuthFailures.failed(attemptKey, s.now())
+		s.legacyNodeAuthFailures.failed(client, s.now())
+		s.legacyNodeAuthPeerFailures.failed(peer, s.now())
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeAPIError(w, http.StatusUnauthorized, "invalid_node_credential", "节点凭据无效或未配置", nil)
 		return false
@@ -319,21 +325,25 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 }
 
 func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, machineID int64) bool {
-	attemptKey := requestIP(r) + ":" + strconv.FormatInt(machineID, 10)
-	if !s.machineAuthFailures.allowed(attemptKey, s.now()) {
+	client, peer := nodeRequestAddresses(r, s.trustedProxyPrefixes)
+	clientAllowed := s.machineAuthFailures.allowed(client, s.now())
+	peerAllowed := s.machineAuthPeerFailures.allowed(peer, s.now())
+	if !clientAllowed || !peerAllowed {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "machine_auth_rate_limited", "机器认证失败次数过多，请稍后重试", nil)
 		return false
 	}
 	parts := strings.Fields(r.Header.Get("Authorization"))
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || len(parts[1]) > 256 {
-		s.machineAuthFailures.failed(attemptKey, s.now())
+		s.machineAuthFailures.failed(client, s.now())
+		s.machineAuthPeerFailures.failed(peer, s.now())
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeAPIError(w, http.StatusUnauthorized, "invalid_machine_credential", "机器凭据无效或机器已停用", nil)
 		return false
 	}
 	if _, err := s.store.AuthenticateMachine(r.Context(), machineID, parts[1], s.now()); errors.Is(err, store.ErrInvalidCredential) {
-		s.machineAuthFailures.failed(attemptKey, s.now())
+		s.machineAuthFailures.failed(client, s.now())
+		s.machineAuthPeerFailures.failed(peer, s.now())
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeAPIError(w, http.StatusUnauthorized, "invalid_machine_credential", "机器凭据无效或机器已停用", nil)
 		return false
