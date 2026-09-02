@@ -19,6 +19,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
+	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
@@ -53,6 +54,7 @@ type Dependencies struct {
 	NodePushInterval           int
 	NodePullInterval           int
 	NodeCoordinator            nodecoord.Coordinator
+	DeviceState                devicestate.Service
 	CatalogHTTPClient          clientcatalog.HTTPDoer
 	SettingsCipher             *appsettings.Cipher
 	PasswordResetProtector     *security.PasswordResetProtector
@@ -140,6 +142,7 @@ type server struct {
 	telegramProvisionRequests  *requestLimiter
 	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 	ticketRegionResolver       ticketRegionResolver
+	deviceState                devicestate.Service
 }
 
 type contextKey int
@@ -285,9 +288,12 @@ func New(dependencies Dependencies) http.Handler {
 		telegramBot:                dependencies.TelegramBot,
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
+		deviceState:                dependencies.DeviceState,
+	}
+	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
+		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)
 	}
 	if dependencies.WebSocketEnabled {
-		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator)
 		if dependencies.NodeCoordinator != nil {
 			if err := dependencies.NodeCoordinator.Start(dependencies.Context, api.hub.handleCoordinationEvent); err != nil {
 				panic(fmt.Sprintf("httpapi: start node coordinator: %v", err))

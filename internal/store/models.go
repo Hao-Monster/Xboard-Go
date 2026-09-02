@@ -2124,22 +2124,29 @@ type TrafficUsage struct {
 }
 
 type NodeReportInput struct {
-	MachineID         int64
-	LegacyAuth        bool
-	NodeID            int64
-	ReportID          string
-	Traffic           map[int64]TrafficUsage
-	Alive             map[int64][]string
-	ReplaceAllDevices bool
-	Online            map[int64]int64
-	Status            json.RawMessage
-	Metrics           json.RawMessage
-	Now               time.Time
+	MachineID           int64
+	LegacyAuth          bool
+	NodeID              int64
+	ReportID            string
+	Traffic             map[int64]TrafficUsage
+	Alive               map[int64][]string
+	ReplaceAllDevices   bool
+	ExternalDeviceState bool
+	Online              map[int64]int64
+	Status              json.RawMessage
+	Metrics             json.RawMessage
+	Now                 time.Time
 }
 
 type NodeReportResult struct {
 	DuplicateTraffic bool
 	DeviceUserIDs    []int64
+}
+
+type UserDeviceSummary struct {
+	UserID      int64
+	OnlineCount int
+	ObservedAt  time.Time
 }
 
 type NodeRuntimeState struct {

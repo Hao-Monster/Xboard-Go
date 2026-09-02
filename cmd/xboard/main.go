@@ -23,6 +23,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/bulkops"
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/config"
+	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
 	"github.com/Hao-Monster/Xboard-Go/internal/geoip"
 	"github.com/Hao-Monster/Xboard-Go/internal/httpapi"
 	"github.com/Hao-Monster/Xboard-Go/internal/legacymigration"
@@ -104,6 +105,32 @@ func main() {
 	if err := database.Migrate(ctx); err != nil {
 		logger.Error("migrate database", "error", err)
 		os.Exit(1)
+	}
+	var deviceState devicestate.Service
+	if settings.NodeCoordinationMode == "redis" {
+		redisDeviceState, err := devicestate.NewRedis(ctx, devicestate.Options{
+			URL: settings.RedisURL, Prefix: settings.RedisKeyPrefix, Logger: logger,
+			WriteSummaries: func(ctx context.Context, summaries []devicestate.Summary) error {
+				values := make([]store.UserDeviceSummary, len(summaries))
+				for index, summary := range summaries {
+					values[index] = store.UserDeviceSummary{
+						UserID: summary.UserID, OnlineCount: summary.OnlineCount, ObservedAt: summary.ObservedAt,
+					}
+				}
+				return database.UpdateUserDeviceSummaries(ctx, values)
+			},
+		})
+		if err != nil {
+			logger.Error("initialize Redis device state", "error", err)
+			os.Exit(1)
+		}
+		deviceState = redisDeviceState
+		defer func() {
+			if err := redisDeviceState.Close(); err != nil {
+				logger.Warn("close Redis device state", "error", err)
+			}
+		}()
+		go redisDeviceState.Run(ctx)
 	}
 	settingsCipher, err := initializeSettingsCipher(ctx, database, settings.SettingsEncryptionKey)
 	if err != nil {
@@ -236,6 +263,7 @@ func main() {
 		NodePushInterval:           settings.NodePushInterval,
 		NodePullInterval:           settings.NodePullInterval,
 		NodeCoordinator:            nodeCoordinator,
+		DeviceState:                deviceState,
 		SettingsCipher:             settingsCipher,
 		PasswordResetProtector:     passwordResetProtector,
 		RegistrationEmailProtector: registrationEmailProtector,
