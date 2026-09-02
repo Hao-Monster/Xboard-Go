@@ -110,7 +110,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 | `CLIENT-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
 | `TICKET-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
 | `NOTICE-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
-| `CFG-001` | M3 | decided | partial | historical | historical | pending | 站点安全配置已具备基础存储和旧版 V2 动态路由，但 Go 重构尚未把 secure_path 绑定到管理前端和 V1 管理 API；FUNC-003 完成并取得当前提交的路由、权限、迁移和浏览器证据后解除该缺口。 | — | — | `FUNC-003`, `VER-005` |
+| `CFG-001` | M3 | decided | partial | historical | historical | pending | FUNC-003 的 secure_path 管理前端、V1/V2 API、新安装、迁移、轮换和脱敏实现已进入 ddb10b3，并取得本地 Go、Web、桌面、移动端和打包前端结果；在 M1 baseline_commit 更新并取得隔离 CI 前，这些结果不能提升为版本化 current evidence，工作项和门禁保持进行中。 | — | — | `FUNC-003`, `VER-005` |
 | `CFG-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
 | `PLUG-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
 | `PLUG-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
