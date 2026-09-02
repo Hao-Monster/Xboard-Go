@@ -23,6 +23,9 @@ interface InvitationSummary {
   commission_distribution_enabled: boolean;
   commission_distribution_rates: number[];
   available_commission: number;
+  withdraw_enabled: boolean;
+  withdraw_limit: number;
+  withdraw_methods: string[];
 }
 
 test("administrator commission rules drive the invited order, history, and positive transfer flow", async ({ page }, testInfo) => {
@@ -50,7 +53,7 @@ test("administrator commission rules drive the invited order, history, and posit
     await page.getByRole("checkbox", { name: "自动确认到期佣金" }).check();
     const withdrawLimit = page.locator("label").filter({ hasText: "最低提现金额" }).locator("input");
     const withdrawMethods = page.locator("label").filter({ hasText: "允许的提现方式（每行一个）" }).locator("textarea");
-    await withdrawLimit.fill("125.25");
+    await withdrawLimit.fill("5.25");
     await withdrawMethods.fill("支付宝\nUSDT\n银行转账");
     await page.getByRole("checkbox", { name: "佣金直接计入账户余额" }).uncheck();
     await page.getByRole("checkbox", { name: "启用三级分佣" }).check();
@@ -63,7 +66,7 @@ test("administrator commission rules drive the invited order, history, and posit
     await page.reload();
     await page.getByRole("button", { name: "佣金设置", exact: true }).click();
     await expect(page.getByLabel("全局邀请佣金比例（%）")).toHaveValue("20");
-    await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toHaveValue("125.25");
+    await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toHaveValue("5.25");
     await expect(page.locator("label").filter({ hasText: "允许的提现方式（每行一个）" }).locator("textarea")).toHaveValue("支付宝\nUSDT\n银行转账");
     await expect(page.getByRole("checkbox", { name: "启用三级分佣" })).toBeChecked();
     await expect(page.getByText("当前用户侧有效比例：10% / 6% / 4%", { exact: true })).toBeVisible();
@@ -105,6 +108,20 @@ test("administrator commission rules drive the invited order, history, and posit
     await expect(page.getByText(tradeNo, { exact: true })).toBeVisible();
     await expect(page.getByText("¥100.00", { exact: true })).toBeVisible();
     await expect(page.getByText("¥10.00", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("可用佣金: ¥10.00 · 佣金提现: ≥ ¥5.25", { exact: true })).toBeVisible();
+    await page.getByLabel("提现方式", { exact: true }).selectOption("USDT");
+    await page.getByLabel("提现账号", { exact: true }).fill(`wallet-${unique}`);
+    await page.getByRole("button", { name: "佣金提现", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("提现工单已创建");
+    await page.getByRole("button", { name: "我的工单", exact: true }).click();
+    const withdrawalSubject = "[提现申请] 本工单由系统发出";
+    await expect(page.getByText(withdrawalSubject, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `查看工单：${withdrawalSubject}`, exact: true }).click();
+    const withdrawalDialog = page.getByRole("dialog", { name: "工单详情" });
+    await expect(withdrawalDialog).toContainText("提现方式：USDT");
+    await expect(withdrawalDialog).toContainText(`提现账号：wallet-${unique}`);
+    await withdrawalDialog.getByRole("button", { name: "关闭工单详情" }).click();
+    await page.getByRole("button", { name: "我的邀请", exact: true }).click();
     await page.getByLabel("划转金额（CNY）").fill("10.00");
     await page.getByRole("button", { name: "佣金划转余额", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("操作成功");

@@ -27,6 +27,9 @@ type invitationSummaryResponse struct {
 	CommissionDistributionEnabled bool                     `json:"commission_distribution_enabled"`
 	CommissionDistributionRates   []int                    `json:"commission_distribution_rates"`
 	AvailableCommission           int64                    `json:"available_commission"`
+	CommissionWithdrawalEnabled   bool                     `json:"withdraw_enabled"`
+	CommissionWithdrawalLimit     store.CurrencyAmount     `json:"withdraw_limit"`
+	CommissionWithdrawalMethods   []string                 `json:"withdraw_methods"`
 }
 
 func (s *server) getInvitations(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +71,9 @@ func (s *server) readInvitationSummary(ctx context.Context, userID int64) (invit
 		CommissionDistributionEnabled: summary.CommissionDistributionEnabled,
 		CommissionDistributionRates:   distributionRates,
 		AvailableCommission:           summary.AvailableCommission,
+		CommissionWithdrawalEnabled:   summary.CommissionWithdrawalEnabled,
+		CommissionWithdrawalLimit:     summary.CommissionWithdrawalLimit,
+		CommissionWithdrawalMethods:   append([]string(nil), summary.CommissionWithdrawalMethods...),
 	}, nil
 }
 

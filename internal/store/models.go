@@ -44,6 +44,9 @@ var (
 	ErrTicketClosed                           = fmt.Errorf("%w: ticket is closed", ErrConflict)
 	ErrTicketReplyPending                     = fmt.Errorf("%w: ticket reply is pending administrator response", ErrConflict)
 	ErrTicketMessageLimit                     = fmt.Errorf("%w: ticket message limit reached", ErrConflict)
+	ErrCommissionWithdrawalDisabled           = fmt.Errorf("%w: commission withdrawal is disabled", ErrConflict)
+	ErrCommissionWithdrawalMethodUnsupported  = errors.New("commission withdrawal method is unsupported")
+	ErrCommissionWithdrawalBelowLimit         = fmt.Errorf("%w: commission balance is below the withdrawal limit", ErrConflict)
 	ErrInvalidInput                           = errors.New("invalid input")
 	ErrInvalidEnrollment                      = errors.New("invalid or expired enrollment")
 	ErrInvalidCredential                      = errors.New("invalid machine credential")
@@ -153,6 +156,24 @@ type SaveTicketInput struct {
 	Level                TicketLevel
 	Message              string
 	NotificationLocation string
+}
+
+type CommissionWithdrawalInput struct {
+	Method               string
+	Account              string
+	NotificationLocation string
+}
+
+type CommissionWithdrawalLimitError struct {
+	Limit CurrencyAmount
+}
+
+func (e CommissionWithdrawalLimitError) Error() string {
+	return fmt.Sprintf("commission balance is below the withdrawal limit of %s", e.Limit.String())
+}
+
+func (e CommissionWithdrawalLimitError) Unwrap() error {
+	return ErrCommissionWithdrawalBelowLimit
 }
 
 type TicketFilter struct {
@@ -532,6 +553,9 @@ type InvitationSummary struct {
 	CommissionDistributionEnabled bool
 	CommissionDistributionRates   []int
 	AvailableCommission           int64
+	CommissionWithdrawalEnabled   bool
+	CommissionWithdrawalLimit     CurrencyAmount
+	CommissionWithdrawalMethods   []string
 }
 
 type CommissionSettings struct {

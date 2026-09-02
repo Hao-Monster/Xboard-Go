@@ -27,6 +27,28 @@ describe("APIClient CAPTCHA contracts", () => {
   });
 });
 
+describe("APIClient commission withdrawal contract", () => {
+  it("sends the allowlisted method and account with CSRF", async () => {
+    let request: { path: string; method: string; body: unknown; csrf: string | null } | undefined;
+    document.cookie = "xboard_csrf=withdraw-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      request = {
+        path: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
+        method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: new Headers(init?.headers).get("X-CSRF-Token")
+      };
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    }));
+
+    await new APIClient().requestCommissionWithdrawal("USDT", "wallet-42");
+
+    expect(request).toEqual({
+      path: "/api/v1/tickets/withdraw", method: "POST",
+      body: { withdraw_method: "USDT", withdraw_account: "wallet-42" }, csrf: "withdraw-csrf"
+    });
+  });
+});
+
 describe("APIClient Telegram settings contracts", () => {
   it("keeps reads non-mutating and sends revisioned settings and provisioning with CSRF", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];

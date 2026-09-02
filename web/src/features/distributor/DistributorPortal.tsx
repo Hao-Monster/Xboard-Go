@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { BrandMark } from "../../components/BrandMark";
-import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, PlanOffer, PlanPeriod, UserSession } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, PlanOffer, PlanPeriod, Ticket, UserSession } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
@@ -20,6 +20,7 @@ interface DistributorPortalAPI {
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
   transferCommission: (amount: number) => Promise<CommissionTransferResult>;
+  requestCommissionWithdrawal: (withdrawMethod: string, withdrawAccount: string) => Promise<Ticket>;
   listKnowledge: (language: KnowledgeLanguage, keyword?: string) => Promise<KnowledgeArticle[]>;
   getKnowledge: (id: number) => Promise<KnowledgeArticle>;
   listClientCatalog: () => Promise<ClientCatalogEntry[]>;
@@ -75,7 +76,7 @@ export function DistributorPortal({ api, session, siteName, siteLogo, initialPag
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
     {page === "plans" && <DistributorPlansPage api={api} locale={locale} />}
     {page === "orders" && <DistributorOrdersPage api={api} locale={locale} />}
-    {page === "invitations" && <InvitationPage api={api} locale={locale} />}
+    {page === "invitations" && <InvitationPage api={api} locale={locale} allowWithdrawal={false} />}
     {page === "knowledge" && <UserKnowledgePage key={locale} api={api} locale={locale} fixedLocale />}
     {page === "clients" && <ClientCatalogPage api={api} locale={locale} />}
   </div>;

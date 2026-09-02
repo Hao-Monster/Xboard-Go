@@ -1509,6 +1509,9 @@ export interface InvitationSummary {
   commission_distribution_enabled: boolean;
   commission_distribution_rates: number[];
   available_commission: number;
+  withdraw_enabled: boolean;
+  withdraw_limit: number;
+  withdraw_methods: string[];
 }
 
 export interface CommissionLog {
@@ -1959,6 +1962,12 @@ export class APIClient implements AdminAPI {
 
   async transferCommission(amount: number): Promise<CommissionTransferResult> {
     return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", { method: "POST", body: { amount } });
+  }
+
+  async requestCommissionWithdrawal(withdrawMethod: string, withdrawAccount: string): Promise<Ticket> {
+    return this.request<Ticket>("/api/v1/tickets/withdraw", {
+      method: "POST", body: { withdraw_method: withdrawMethod, withdraw_account: withdrawAccount }
+    });
   }
 
   async recordInvitationView(invitationCode: string): Promise<void> {

@@ -152,6 +152,7 @@ func TestDistributorAccessIsAnExplicitServerSideAllowlist(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/payments"},
 		{method: http.MethodGet, path: "/api/v1/subscription"},
 		{method: http.MethodGet, path: "/api/v1/tickets"},
+		{method: http.MethodPost, path: "/api/v1/tickets/withdraw", body: `{"withdraw_method":"USDT","withdraw_account":"wallet"}`},
 		{method: http.MethodGet, path: "/api/v1/user/gift-card/history"},
 		{method: http.MethodPost, path: "/api/v1/user/coupons/check", body: `{}`},
 		{method: http.MethodPost, path: "/api/v1/user/gift-card/check", body: `{}`},
@@ -168,6 +169,7 @@ func TestDistributorAccessIsAnExplicitServerSideAllowlist(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/api/v1/user/getSubscribe"},
 		{method: http.MethodPost, path: "/api/v1/user/coupon/check", body: `{}`},
+		{method: http.MethodPost, path: "/api/v1/user/ticket/withdraw", body: `{"withdraw_method":"USDT","withdraw_account":"wallet"}`},
 	} {
 		response := bearerRequest(api, request.method, request.path, bearer, request.body)
 		if response.Code != http.StatusForbidden || response.Body.String() == "" {

@@ -90,6 +90,94 @@ func TestTicketHTTPWorkflowEnforcesOwnershipAndLegacyClosedReplyRules(t *testing
 	}
 }
 
+func TestCommissionWithdrawalCreatesHighPriorityTicketWithoutDebitingBalance(t *testing.T) {
+	api, database := newTestAPI(t)
+	createHTTPTestUser(t, database, "withdraw-user@example.test", "withdraw-user-password-123")
+	userRecord, err := database.FindUserByEmail(t.Context(), "withdraw-user@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.GetAdminUser(t.Context(), userRecord.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balance := int64(25_050)
+	if _, _, err := database.UpdateAdminUser(t.Context(), user.ID, store.UpdateAdminUserInput{
+		Revision: user.Revision, Email: user.Email, TransferEnable: user.TransferEnable,
+		SpeedLimit: user.SpeedLimit, DeviceLimit: user.DeviceLimit, Banned: user.Banned,
+		CommissionBalance: &balance,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	administrator, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetCommissionSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit := store.CurrencyAmount(25_050)
+	methods := []string{"USDT", "银行转账"}
+	if _, err := database.UpdateCommissionSettings(t.Context(), administrator.ID, settings.Revision, store.SaveCommissionSettingsInput{
+		InviteCommission: settings.InviteCommission, FirstTimeEnabled: settings.FirstTimeEnabled,
+		AutoCheckEnabled: settings.AutoCheckEnabled, WithdrawLimit: &limit, WithdrawMethods: &methods,
+		WithdrawClosed: false, DistributionEnabled: settings.DistributionEnabled,
+		DistributionL1: settings.DistributionL1, DistributionL2: settings.DistributionL2,
+		DistributionL3: settings.DistributionL3,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+
+	userClient := loginAs(t, api, "withdraw-user@example.test", "withdraw-user-password-123")
+	withoutCSRF := userClient
+	withoutCSRF.csrf = ""
+	missingCSRF := withoutCSRF.request(t, api, http.MethodPost, "/api/v1/tickets/withdraw", `{"withdraw_method":"USDT","withdraw_account":"wallet-42"}`)
+	if missingCSRF.Code != http.StatusForbidden {
+		t.Fatalf("withdraw without CSRF status=%d body=%s", missingCSRF.Code, missingCSRF.Body)
+	}
+	summary := userClient.request(t, api, http.MethodGet, "/api/v1/invitations", "")
+	if summary.Code != http.StatusOK || !containsAll(summary.Body.String(),
+		`"withdraw_enabled":true`, `"withdraw_limit":250.5`, `"withdraw_methods":["USDT","银行转账"]`) {
+		t.Fatalf("withdrawal summary status=%d body=%s", summary.Code, summary.Body)
+	}
+	createdResponse := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/withdraw", `{
+		"withdraw_method":"USDT","withdraw_account":"wallet-42"
+	}`)
+	if createdResponse.Code != http.StatusCreated {
+		t.Fatalf("withdraw status=%d body=%s", createdResponse.Code, createdResponse.Body)
+	}
+	created := decodeTicketEnvelope(t, createdResponse)
+	if created.Subject != "[提现申请] 本工单由系统发出" || created.Level != store.TicketLevelHigh ||
+		created.Status != store.TicketStatusOpen || created.ReplyStatus != store.TicketReplyWaiting {
+		t.Fatalf("withdrawal ticket=%#v", created)
+	}
+	detailResponse := userClient.request(t, api, http.MethodGet, "/api/v1/tickets/"+ticketID(created.ID), "")
+	detail := decodeTicketEnvelope(t, detailResponse)
+	if len(detail.Messages) != 1 || detail.Messages[0].Message != "提现方式：USDT\r\n提现账号：wallet-42" {
+		t.Fatalf("withdrawal messages=%#v", detail.Messages)
+	}
+	after, err := database.GetAdminUser(t.Context(), user.ID)
+	if err != nil || after.CommissionBalance != balance {
+		t.Fatalf("commission balance=%d err=%v", after.CommissionBalance, err)
+	}
+	duplicate := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/withdraw", `{"withdraw_method":"USDT","withdraw_account":"wallet-43"}`)
+	expectAPIError(t, duplicate, http.StatusConflict, "open_ticket_exists")
+	closed := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/"+ticketID(created.ID)+"/close", `{}`)
+	if closed.Code != http.StatusOK {
+		t.Fatalf("close withdrawal ticket status=%d body=%s", closed.Code, closed.Body)
+	}
+	withoutBearer := bearerRequest(api, http.MethodPost, "/api/v1/user/ticket/withdraw", "", `{"withdraw_method":"USDT","withdraw_account":"legacy-wallet"}`)
+	if withoutBearer.Code != http.StatusForbidden {
+		t.Fatalf("legacy withdrawal without bearer status=%d body=%s", withoutBearer.Code, withoutBearer.Body)
+	}
+	authorization := loginLegacyBearer(t, api, "withdraw-user@example.test", "withdraw-user-password-123").Authorization
+	legacy := bearerRequest(api, http.MethodPost, "/api/v1/user/ticket/withdraw", authorization, `{"withdraw_method":"银行转账","withdraw_account":"legacy-account"}`)
+	if legacy.Code != http.StatusOK || !containsAll(legacy.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("legacy withdrawal status=%d body=%s", legacy.Code, legacy.Body)
+	}
+}
+
 func TestAdminTicketHTTPFiltersValidationAndRoleBoundary(t *testing.T) {
 	api, database := newTestAPI(t)
 	createHTTPTestUser(t, database, "filter-ticket@example.test", "filter-ticket-password-123")
