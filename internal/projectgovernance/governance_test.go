@@ -36,7 +36,10 @@ func TestRepositoryGovernanceIsValid(t *testing.T) {
 
 func TestAcceptedRequirementNeedsCurrentEvidence(t *testing.T) {
 	_, state := repositoryState(t)
-	state.Requirements.Requirements[0].AcceptanceStatus = "accepted"
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "historical"
+	requirement.AcceptanceStatus = "accepted"
+	requirement.Evidence = nil
 	if err := Validate(state); err == nil {
 		t.Fatal("expected accepted historical requirement to fail validation")
 	}
@@ -142,6 +145,11 @@ func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	requirement.MigrationStatus = "not_applicable"
 	requirement.AcceptanceStatus = "accepted"
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	for index := range state.WorkItems.WorkItems {
+		if state.WorkItems.WorkItems[index].ID == requirement.WorkItemIDs[0] {
+			state.WorkItems.WorkItems[index].Status = "open"
+		}
+	}
 	if err := Validate(state); err == nil {
 		t.Fatal("expected an accepted requirement with an open work item to fail validation")
 	}
@@ -161,6 +169,24 @@ func TestAcceptedRequirementWithCompletedWorkItemsIsValid(t *testing.T) {
 	}
 	if err := Validate(state); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRenderStatusInterpretationUsesCurrentCounts(t *testing.T) {
+	_, state := repositoryState(t)
+	for index := range state.Requirements.Requirements {
+		state.Requirements.Requirements[index].VerificationStatus = "historical"
+		state.Requirements.Requirements[index].AcceptanceStatus = "pending"
+	}
+	state.Requirements.Requirements[0].VerificationStatus = "current"
+	state.Requirements.Requirements[0].AcceptanceStatus = "accepted"
+
+	status, err := RenderStatus(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(status, "Current-head verification is 1/80 and formal acceptance is 1/80.") {
+		t.Fatalf("status interpretation did not use current counts:\n%s", status)
 	}
 }
 

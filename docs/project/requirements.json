@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "baseline": "M0",
-  "as_of": "2026-09-02",
-  "baseline_commit": "ea55ce3c071770b838f280a8db99aefe53f84d9f",
+  "as_of": "2026-09-03",
+  "baseline_commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -12,15 +12,73 @@
       "title": "支持邮箱注册、密码登录、邮件验证码、忘记密码、邮件链接登录、快速登录链接和 token 登录兼容。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/registration.spec.ts",
+            "e2e/registration-email-verification.spec.ts",
+            "e2e/password-recovery.spec.ts",
+            "e2e/login-links.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:1161",
+            "parity/admin-surface.spec.ts:1611",
+            "parity/admin-surface.spec.ts:2080"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-002",
@@ -29,15 +87,68 @@
       "title": "邮箱写入前去首尾空格并转小写；注册邮箱唯一；可配置邮箱后缀白名单。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/registration-policies.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:1339"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-003",
@@ -46,15 +157,82 @@
       "title": "登录错误采用不泄漏账号存在性的统一错误；可配置错误次数和锁定时长；封禁用户不能登录。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/login-lockout.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-003-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:1745",
+            "parity/admin-surface.spec.ts:1821"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-003-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-003"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-004",
@@ -63,15 +241,68 @@
       "title": "内部订阅用户不能登录、重置密码、出现在普通用户查询/导出/群发中。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/users.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-004-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-004"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-004-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-004"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-005",
@@ -80,15 +311,83 @@
       "title": "登录令牌支持永久或显式过期；修改密码/邮箱等安全事件撤销全部令牌；退出只撤销当前令牌；用户可列出和移除活动会话。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-005-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/account-security.spec.ts",
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-005-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-005-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-005"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-005-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:1910",
+            "parity/admin-surface.spec.ts:2014"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-005-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-005"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-006",
@@ -97,15 +396,56 @@
       "title": "管理员、员工、分销商标志可并存；管理员不得撤销当前账号自己的管理员身份。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-006-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/users.spec.ts",
+            "e2e/distributor.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-006-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-006-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-006"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-007",
@@ -114,15 +454,69 @@
       "title": "所有权限必须在服务端实施；分销商能力采用允许清单；管理员接口验证管理员角色。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-007-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/users.spec.ts",
+            "e2e/distributor.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-007-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-007-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-007"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-007-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-007"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-008",
@@ -131,15 +525,68 @@
       "title": "固定旧版没有 staff 专属路由或前端入口；staff-only 与普通用户权限一致，只有同时具备管理员或分销商标志时取得对应能力。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-008-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/distributor.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-008-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-008-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-008"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-008-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-008"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "AUTH-009",
@@ -148,15 +595,69 @@
       "title": "Go 重构不得降低认证、授权、密码、令牌和审计安全等级。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-AUTH-009-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/account-security.spec.ts",
+            "e2e/login-lockout.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-009-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-009-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/AUTH-009"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-AUTH-009-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/AUTH-009"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "USER-001",
@@ -184,15 +685,69 @@
       "title": "用户资料包含订阅套餐、权限组、流量总额/用量、到期、速度、设备数、余额、佣金、提醒、Telegram 等业务属性。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-USER-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/users.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/USER-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:182",
+            "parity/admin-surface.spec.ts:443"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "USER-003",
@@ -220,15 +775,55 @@
       "title": "套餐支持名称、描述、权限组、流量、速度、设备数、库存、排序、显隐、周期价格和是否允许续费/升级等规则。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-PLAN-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/plans.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/PLAN-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "PLAN-002",
@@ -237,15 +832,55 @@
       "title": "计费周期至少覆盖月、季、半年、年、两年、三年、一次性和流量重置包。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-PLAN-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/plans.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/PLAN-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "PLAN-003",
@@ -254,15 +889,55 @@
       "title": "流量重置策略支持跟随系统、每月首日、按自然月、永不、每年首日、按年。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-PLAN-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/plans.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLAN-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/PLAN-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "SUB-001",
@@ -271,15 +946,81 @@
       "title": "旧订阅 HTTP 入口只要求未封禁、额度非零且未过期或永久；不要求 plan_id，且即使 `u+d >= transfer_enable` 仍返回配置。节点用户下发另行要求剩余流量大于 0，因此超额配置不可实际连通。新实现须保持这两个边界，不把节点授权规则错误前移到订阅响应。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-SUB-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SUB-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/SUB-001"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "SUB-002",
@@ -288,15 +1029,81 @@
       "title": "订阅入口按用户 token 返回客户端协议配置、用户信息响应头和当前可用节点；节点按权限组/显隐/状态过滤。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-SUB-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SUB-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/SUB-002"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "SUB-003",
@@ -305,15 +1112,68 @@
       "title": "支持 Clash/Meta、Sing-box、Surge、Stash、Surfboard、Shadowrocket、Quantumult X、Loon、Shadowsocks、General 等现有输出类；首期商业必需清单待确认。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-SUB-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SUB-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-003-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "SUB-004",
@@ -322,15 +1182,68 @@
       "title": "订阅模板可由管理员配置；站点订阅路径和域名可配置。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-SUB-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-004-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SUB-004"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-004-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "SUB-005",
@@ -339,15 +1252,82 @@
       "title": "UUID/token 同时轮换，旧 token 提交后立即失效；响应禁止缓存，客户端在明确确认后使用新地址，不提供双 token 宽限。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-SUB-005-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/subscription.spec.ts",
+            "e2e/users.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-005-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-005-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SUB-005"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-005-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SUB-005-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/SUB-005"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ORD-001",
@@ -783,17 +1763,67 @@
       "title": "管理员可创建/编辑/禁用/删除服务器机器；服务器有名称、备注、状态、节点数、负载和最后心跳。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-MACH-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/machine-management.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/MACH-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:131"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -803,17 +1833,80 @@
       "title": "创建机器后仅向管理员展示一次性接入码和安装命令；机器兑换接入码时仅返回一次长期凭据；接入码和凭据只存摘要，管理员不能回读长期凭据；生成替换接入码不提前中断当前凭据，兑换成功后旧凭据立即失效。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-002-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["API-MACH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(APIMACH002|MachineAgentEnrollmentNodesAndStatus|MachineNodesAndDailyScheduleAPI) -count=1","result":"pass"},
-        {"id":"EV-MACH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-MACH-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/machine-management.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/MACH-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/MACH-002"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-002-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -823,17 +1916,80 @@
       "title": "服务器详情可查看信息、关联节点、负载/网络历史，关联未绑定节点、解除关联和跳转节点管理。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-003-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-003"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-MACH-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/machine-management.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/MACH-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-003-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:131"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-003-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -843,18 +1999,80 @@
       "title": "删除服务器先解绑节点但不删除节点；节点变更通知关联机器重新同步。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-004-SYSTEM","kind":"integration","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(DeletingMachineUnlinksNodesWithoutDeletingThem|MachineNodesAndDailyScheduleAPI|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"},
-        {"id":"EV-MACH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-MACH-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/machine-management.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-004-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/MACH-004"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-004-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/MACH-004"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-MACH-004-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -864,18 +2082,80 @@
       "title": "节点支持当前 11 种类型，协议字段、父子节点、权限组、路由、连接/服务端口、监听地址、倍率、动态倍率、流量上限和标签。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-001-CONTRACT","kind":"contract","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:905cf1377bcd39063a8936683b81c7360886b690b2d852daba6903899d5e38a4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:06Z","command":"go test -race ./internal/store ./internal/httpapi -run Test(AdminNode|BasicAdminNode|SchemaV4[02].*Node|CurrentSchemaIncludesLosslessNodeProtocol|HydrateLegacyNodeDefinition|ValidateSchemaV42|NodePortPreservesDynamicRanges|ListSubscriptionNodesUsesLegacyVisibilityGroupAndCapacityRules|XboardNodeRuntimeConfigContract|XboardNodeRuntimeEndpoints) -count=1","result":"pass"},
-        {"id":"EV-NODE-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-NODE-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|SchemaV24ThroughV26) -count=1","result":"pass"}
+        {
+          "id": "EV-NODE-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/NODE-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:131"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-001-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -885,18 +2165,80 @@
       "title": "节点可独立部署或绑定服务器，具有显隐、启用、在线状态、排序、复制、批量显隐/启停/删除/重置流量。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-002-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:b3b1a72ea0b0caae71b9fd45f2a8d4ab8324ea78e2eea98f2447935fa5cdc737","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:18:01Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-NODE-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-NODE-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-NODE-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/NODE-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:131"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-002-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -906,17 +2248,93 @@
       "title": "节点配置变更通过观察器和同步服务通知正确连接；多实例连接使用租约/所有权和 fencing 防止旧连接写入。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "not_applicable",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-003-REDIS","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(INTNODE003|TIMENODE006|NODE007|INTNODE007|DIFFNODE004|NodeReport|XboardNodeRuntime|ValidateNodeReport|MachineWebSocket|LegacyNode) -count=1","result":"pass"},
-        {"id":"EV-NODE-003-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/nodecoord ./internal/devicestate -run ^$ -bench Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines) -benchmem -count=3","result":"pass"}
+        {
+          "id": "EV-NODE-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-003-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/NODE-003"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-003-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-003-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/NODE-003"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-003-REDISPERF",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "redis-performance/NODE-003"
+          ],
+          "artifact": "bingo-dev:sha256:7d0bbe92e2311a4f6cfd254c5db4da651901a7110395cd495d40b5fbea92b13d",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:24:11Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/14 go test -run '^$' -bench BenchmarkRedis -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -926,9 +2344,9 @@
       "title": "HTTP/WS 支持旧全局 server token 与机器级凭据；机器只能访问归属且已启用节点。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [
         "D-001"
@@ -937,9 +2355,71 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-004-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-004"],"artifact":"bingo-dev:sha256:abbcb661bb751894d4121b7501dc09a0fadc73dcf29907c2e5a27c066bca96ba","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:56:14Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts node-dual-auth.spec.ts","result":"pass"},
-        {"id":"EV-NODE-004-REAL-CLIENT","kind":"integration","environment":"bingo-dev","case_ids":["REAL-NODE-CLIENT-SMOKE"],"artifact":"bingo-dev:sha256:46f8f300120b569afed8d58f5c124975dd66647596c4ff5886b090172150daa4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:07:23Z","command":"bash /home/bingo/apps/xboard-go-test-results/run-ver003-real-node-smoke-bingo.sh","result":"pass"},
-        {"id":"EV-NODE-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodeAgentSettingsSnapshot|ImportLegacyNodeAgentSettings|LegacyNodeAgentSettings) -count=1","result":"pass"}
+        {
+          "id": "EV-NODE-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-004-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/NODE-004"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-004-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/NODE-004"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-004-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -949,17 +2429,67 @@
       "title": "握手、配置、用户、状态、设备、流量上报有请求体大小、请求频率、字段/条目上限、类型校验和批次去重。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "not_applicable",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-005-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-NODE-005"],"artifact":"bingo-dev:sha256:294f182818f3a922e76b30e0e757ac3f0e3df0bdfe4a1ba182fd08aa89e73059","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:45:44Z","command":"go test -race ./internal/config ./internal/httpapi -run TestSECNODE005 -count=5","result":"pass"},
-        {"id":"EV-NODE-005-CI","kind":"security","environment":"github-actions","case_ids":["SEC-NODE-005"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949180","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:10:35Z","command":"go test -race -timeout=30m -coverprofile=coverage.out ./...; Redis failure tests; go vet ./...; govulncheck ./...","result":"pass"}
+        {
+          "id": "EV-NODE-005-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-005-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-005-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/NODE-005"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-005-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -969,17 +2499,93 @@
       "title": "设备在线按 300 秒窗口、IP 归一化和去重计算；写数据库有节流与延迟刷新；节点断开清理其设备状态。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "not_applicable",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-006-TIME","kind":"integration","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(TIMENODE006|MachineWebSocket|NodeReport) -count=1","result":"pass"},
-        {"id":"EV-NODE-006-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/devicestate -run ^$ -bench BenchmarkTIMENODE006 -benchmem -count=3","result":"pass"}
+        {
+          "id": "EV-NODE-006-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-006-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-006-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/NODE-006"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-006-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-006-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/NODE-006"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-006-REDISPERF",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "redis-performance/NODE-006"
+          ],
+          "artifact": "bingo-dev:sha256:7d0bbe92e2311a4f6cfd254c5db4da651901a7110395cd495d40b5fbea92b13d",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:24:11Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/14 go test -run '^$' -bench BenchmarkRedis -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -989,18 +2595,106 @@
       "title": "流量更新按用户批量原子累加，并以报告 ID/分片回执防止重复消费；随后进入超额检查。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-007-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(NODE007|INTNODE007|NodeReport|ValidateNodeReport) -count=1","result":"pass"},
-        {"id":"EV-NODE-007-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:514060e37420e6d81cc268f007892073bd60b9e941e1c7cf55630628dcc3be6f","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:48:58Z","command":"GOMAXPROCS=4 go test ./internal/store -run ^$ -bench BenchmarkApplyNodeReport -benchmem -count=3","result":"pass"},
-        {"id":"EV-NODE-007-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-007"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-NODE-007-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/nodes.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/NODE-007"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/NODE-007"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-REALNODE",
+          "kind": "contract",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "REAL-NODE-CLIENT-SMOKE"
+          ],
+          "artifact": "bingo-dev:sha256:455e018ccdd069aa671520e0b0d4a37dc8e92ca968f364f3c95f1cb2aa8b4d7f",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:58:18Z",
+          "command": "/home/bingo/apps/xboard-go-workspaces/acceptance-92bae890/.local/run-real-node-smoke.sh",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/NODE-007"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE-007-REDISPERF",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "redis-performance/NODE-007"
+          ],
+          "artifact": "bingo-dev:sha256:7d0bbe92e2311a4f6cfd254c5db4da651901a7110395cd495d40b5fbea92b13d",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:24:11Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/14 go test -run '^$' -bench BenchmarkRedis -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -1010,17 +2704,54 @@
       "title": "每个节点最多一项激活计划；支持每日和遗留一次性结构，日计划固定 Asia/Singapore。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|LegacyOnceSchedule) -count=1","result":"pass"},
-        {"id":"EV-SCH-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule ./internal/scheduler -run Test(DailySchedule|DailyWindow|LegacyOnceSchedule|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"}
+        {
+          "id": "EV-SCH-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/server-schedule.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SCH-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -1030,18 +2761,54 @@
       "title": "每日开始/结束必须是不同 HH:MM，支持跨午夜；保存立即将节点校准为当前应有状态。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-002-TIME","kind":"unit","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule -run Test(DailySchedule|DailyWindow|ScheduleRequires) -count=1","result":"pass"},
-        {"id":"EV-SCH-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-SCH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-SCH-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/server-schedule.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SCH-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -1051,17 +2818,54 @@
       "title": "每个版本使用 revision；重复、延迟或陈旧 worker 不能覆盖新计划；计划持久化、节点状态和下一次唤醒在同库事务中原子提交，失败时全部回滚且不会丢失待执行唤醒。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "current",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-003-TRANSACTION","kind":"integration","environment":"bingo-dev","case_ids":["TX-SCH-003"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/scheduler -run Test(TXSCH003|DueSchedule|WorkerAppliesPersistedDueSchedule|DeletingSchedule) -count=1","result":"pass"},
-        {"id":"EV-SCH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {
+          "id": "EV-SCH-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/server-schedule.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/SCH-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -1071,17 +2875,41 @@
       "title": "管理端每次打开服务器详情时都显示“定时设置”；嵌套计划弹窗可点击，支持 Esc、Tab 焦点循环和关闭后焦点恢复。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
+      "verification_status": "current",
       "migration_status": "not_applicable",
-      "acceptance_status": "pending",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-SCH-004-CI","kind":"browser","environment":"github-actions","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949331","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:46:28Z","command":"pnpm test:e2e","result":"pass"}
+        {
+          "id": "EV-SCH-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/server-schedule.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-SCH-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        }
       ]
     },
     {
@@ -1091,15 +2919,68 @@
       "title": "管理员可创建、编辑、显隐、排序和删除公告与知识；知识有分类和订阅条件。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CONT-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CONT-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2787"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CONT-002",
@@ -1108,15 +2989,81 @@
       "title": "用户按订阅条件访问知识库；正文中的站点名和订阅地址占位符按当前用户替换。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CONT-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CONT-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2787"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-002-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/CONT-002"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CONT-003",
@@ -1125,15 +3072,68 @@
       "title": "知识可生成公开分享页；公开页不泄漏用户订阅变量；公开附件有独立受限读取入口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CONT-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CONT-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CONT-003-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2787"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ATT-001",
@@ -1142,15 +3142,94 @@
       "title": "附件使用私有存储，支持初始化、分片、状态、完成、取消、列表、删除、克隆和 QR；不直接暴露存储路径。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-ATT-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge-attachments.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/ATT-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/ATT-001"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-001-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/ATT-001"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-001-LARGE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestOneGiBAttachmentCompletesWithChunkBoundedMemory"
+          ],
+          "artifact": "bingo-dev:sha256:fc6e4def37541673217e87438b5b9175ed50e6436dd5e6f165158f72aa603a6d",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:40Z",
+          "command": "XBOARD_RUN_LARGE_ATTACHMENT_TEST=1 go test ./internal/attachments -run '^TestOneGiBAttachmentCompletesWithChunkBoundedMemory$' -count=1 -v",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ATT-002",
@@ -1159,15 +3238,94 @@
       "title": "校验文件名、大小、分片编号/数量、哈希、MIME、路径和配额；完成操作并发幂等，失败清理临时资源。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-ATT-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge-attachments.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/ATT-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/ATT-002"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-002-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/ATT-002"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-002-LARGE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestOneGiBAttachmentCompletesWithChunkBoundedMemory"
+          ],
+          "artifact": "bingo-dev:sha256:fc6e4def37541673217e87438b5b9175ed50e6436dd5e6f165158f72aa603a6d",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:40Z",
+          "command": "XBOARD_RUN_LARGE_ATTACHMENT_TEST=1 go test ./internal/attachments -run '^TestOneGiBAttachmentCompletesWithChunkBoundedMemory$' -count=1 -v",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ATT-003",
@@ -1176,15 +3334,68 @@
       "title": "附件状态包含隔离、就绪、拒绝；上传状态包含初始化、上传、合并、完成、失败、过期；草稿和软删除有清理窗口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-ATT-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge-attachments.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-003-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/ATT-003"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-003-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/ATT-003"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ATT-004",
@@ -1193,15 +3404,68 @@
       "title": "图片/安全视频可内联，其他文件强制下载；签名短时有效，Range、nosniff、安全 Content-Disposition 正确。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-ATT-004-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge-attachments.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-004-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-004-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/ATT-004"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-004-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/ATT-004"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "ATT-005",
@@ -1210,15 +3474,81 @@
       "title": "管理编辑器数据库保存 Markdown；粘贴 HTML 使用白名单；跨文章复制产生新附件 UUID 和物理副本，同文复制不克隆。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-ATT-005-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/knowledge-attachments.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-005-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-005-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/ATT-005"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-005-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/ATT-005"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-ATT-005-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "performance/ATT-005"
+          ],
+          "artifact": "bingo-dev:sha256:7b7dafa44245be574312c120298d86df1101700324ee95b50c74b1209ec5a902",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:23:47Z",
+          "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListAdminTickets10000|ImportLegacyKnowledge10000|SaveNodeReport)' -benchmem -count=3 ./internal/attachments ./internal/knowledge ./internal/store",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CLIENT-001",
@@ -1227,15 +3557,55 @@
       "title": "客户端目录按 Android/iOS/Windows/macOS/Linux 筛选，提供直接、二维码、网盘和教程入口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CLIENT-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/client-catalog.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CLIENT-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CLIENT-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CLIENT-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CLIENT-002",
@@ -1244,15 +3614,68 @@
       "title": "下载/跳转地址服务端白名单校验；未知客户端、平台或危险重定向被拒绝；外链使用安全打开属性。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CLIENT-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/client-catalog.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CLIENT-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CLIENT-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CLIENT-002"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CLIENT-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/CLIENT-002"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "TICKET-001",
@@ -1261,15 +3684,85 @@
       "title": "用户可创建、查看、回复和关闭自己的工单，同一时间至多一个未关闭工单；用户关闭后不可再回复。管理员可搜索、筛选、查看、回复和关闭全部工单；管理员可回复已关闭工单且不会重开。管理员最后回复超过 24 小时的未关闭工单自动关闭。佣金 `withdraw` 是提现自动建单，不是撤回工单。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-TICKET-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/tickets.spec.ts",
+            "e2e/ticket-settings-mail.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-TICKET-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-TICKET-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/TICKET-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        },
+        {
+          "id": "EV-TICKET-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2400",
+            "parity/admin-surface.spec.ts:2446",
+            "parity/admin-surface.spec.ts:2528",
+            "parity/admin-surface.spec.ts:2720"
+          ],
+          "artifact": "bingo-dev:sha256:fdcbd17309bf0273bcabeb09efc35047e4cbc74145ad60ba75b2cadcb9cf0aac",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:57:57Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-TICKET-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "security/TICKET-001"
+          ],
+          "artifact": "bingo-dev:sha256:ce878cd9ff25e55c38f2ee55a9cd814ccdcbbe020337f8e603a2d20dec7f6972",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:21:20Z",
+          "command": "go test -race -count=5 ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi ./internal/store -run <25 targeted security and concurrency classes>",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "NOTICE-001",
@@ -1278,15 +3771,55 @@
       "title": "用户读取可见公告；管理员管理显隐和排序。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-NOTICE-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/notices.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:dd5a4d914da0f97dfcfacca8a05ff52b7054f03889b4aebebf87f56223ef4f31",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:53:59Z",
+          "command": "Fresh Docker stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NOTICE-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:429d95fcbb3d87576bd3bde712cb8c78069c20968c02907589cd78581fe6b0db",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:11:40Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NOTICE-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/NOTICE-001"
+          ],
+          "artifact": "bingo-dev:sha256:6a79bc58262ff0cfc6d070a74297962bdd014b401db386f0a04193d2de16256c",
+          "commit": "92bae89021d18ee0eff0dca8f0783b734a04850f",
+          "observed_at": "2026-09-02T17:18:35Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run '^(TestRead|TestImportLegacy|TestConcurrentLegacy|TestLegacy|TestTicketMessageStream|TestBuildLegacy|TestParseLegacy|TestValidateLegacy|TestNodeRateMicrosAt|TestValidClockMinute|TestMigrateV)'",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CFG-001",
