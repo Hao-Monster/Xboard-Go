@@ -177,7 +177,7 @@ func validTestEvidence(state State) Evidence {
 func TestCheckRejectsUnknownEvidenceTargetCommit(t *testing.T) {
 	root, state := repositoryState(t)
 	temporaryRoot := copyProjectFixture(t, root)
-	state.Requirements.BaselineCommit = strings.Repeat("f", 40)
+	retargetCurrentEvidence(&state, strings.Repeat("f", 40))
 	writeRequirementFixture(t, temporaryRoot, state)
 	runGit(t, temporaryRoot, "init")
 	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
@@ -197,7 +197,7 @@ func TestCheckRejectsProductDriftAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
 	runGit(t, temporaryRoot, "add", ".")
 	runGit(t, temporaryRoot, "commit", "-m", "verification target")
-	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	retargetCurrentEvidence(&state, strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD")))
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
@@ -220,7 +220,7 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
 	runGit(t, temporaryRoot, "add", ".")
 	runGit(t, temporaryRoot, "commit", "-m", "verification target")
-	state.Requirements.BaselineCommit = strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD"))
+	retargetCurrentEvidence(&state, strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD")))
 	requirement := &state.Requirements.Requirements[0]
 	requirement.VerificationStatus = "current"
 	requirement.Evidence = []Evidence{validTestEvidence(state)}
@@ -229,6 +229,22 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	runGit(t, temporaryRoot, "commit", "-m", "evidence metadata")
 	if err := Check(temporaryRoot); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// retargetCurrentEvidence keeps these tests independent from whichever
+// requirements happen to be current in the repository fixture. A baseline
+// change is valid only when every current evidence record follows it.
+func retargetCurrentEvidence(state *State, commit string) {
+	state.Requirements.BaselineCommit = commit
+	for requirementIndex := range state.Requirements.Requirements {
+		requirement := &state.Requirements.Requirements[requirementIndex]
+		if requirement.VerificationStatus != "current" {
+			continue
+		}
+		for evidenceIndex := range requirement.Evidence {
+			requirement.Evidence[evidenceIndex].Commit = commit
+		}
 	}
 }
 

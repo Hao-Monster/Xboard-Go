@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
@@ -213,7 +215,7 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 	report.LegacyAuth = legacyAuth
 	report.NodeID = payload.NodeID
 	report.Now = s.now()
-	result, err := s.store.ApplyNodeReport(r.Context(), report)
+	result, err := s.applyNodeReport(r.Context(), report)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -303,7 +305,7 @@ func (s *server) xboardNodeAliveList(w http.ResponseWriter, r *http.Request) {
 			userIDs = append(userIDs, user.ID)
 		}
 	}
-	alive, err := s.store.ListUserDevices(r.Context(), userIDs, s.now())
+	alive, err := s.listUserDevices(r.Context(), userIDs, s.now())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -312,7 +314,7 @@ func (s *server) xboardNodeAliveList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) applyNodeReportResponse(w http.ResponseWriter, r *http.Request, report store.NodeReportInput) {
-	result, err := s.store.ApplyNodeReport(r.Context(), report)
+	result, err := s.applyNodeReport(r.Context(), report)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -321,6 +323,33 @@ func (s *server) applyNodeReportResponse(w http.ResponseWriter, r *http.Request,
 		s.hub.NotifyDeviceStates(r.Context(), result.DeviceUserIDs)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
+}
+
+func (s *server) applyNodeReport(ctx context.Context, report store.NodeReportInput) (store.NodeReportResult, error) {
+	if s.deviceState == nil {
+		return s.store.ApplyNodeReport(ctx, report)
+	}
+	report.ExternalDeviceState = true
+	result, err := s.store.ApplyNodeReport(ctx, report)
+	if err != nil {
+		return store.NodeReportResult{}, err
+	}
+	if len(report.Alive) == 0 && !report.ReplaceAllDevices {
+		return result, nil
+	}
+	userIDs, err := s.deviceState.ReplaceNodeDevices(ctx, report.NodeID, report.Alive, report.ReplaceAllDevices, report.Now)
+	if err != nil {
+		return store.NodeReportResult{}, err
+	}
+	result.DeviceUserIDs = userIDs
+	return result, nil
+}
+
+func (s *server) listUserDevices(ctx context.Context, userIDs []int64, now time.Time) (map[int64][]string, error) {
+	if s.deviceState != nil {
+		return s.deviceState.ListUserDevices(ctx, userIDs, now)
+	}
+	return s.store.ListUserDevices(ctx, userIDs, now)
 }
 
 func validateNodeReport(payload nodeReportPayload) (store.NodeReportInput, error) {

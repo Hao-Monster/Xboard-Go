@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
@@ -58,6 +59,7 @@ type wsHub struct {
 	allowedOrigins map[string]struct{}
 	deviceSyncMu   sync.Mutex
 	coordinator    nodecoord.Coordinator
+	deviceState    devicestate.Service
 	registrationMu [64]sync.Mutex
 }
 
@@ -78,7 +80,11 @@ type wsConnection struct {
 	nodeMessageRequests    *requestLimiter
 }
 
-func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, coordinator nodecoord.Coordinator) *wsHub {
+func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, coordinator nodecoord.Coordinator, deviceStates ...devicestate.Service) *wsHub {
+	var deviceState devicestate.Service
+	if len(deviceStates) > 0 {
+		deviceState = deviceStates[0]
+	}
 	return &wsHub{
 		machines:       make(map[int64]*wsConnection),
 		nodes:          make(map[int64]*wsConnection),
@@ -87,7 +93,42 @@ func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, 
 		logger:         logger,
 		allowedOrigins: allowedOrigins,
 		coordinator:    coordinator,
+		deviceState:    deviceState,
 	}
+}
+
+func (h *wsHub) applyNodeReport(ctx context.Context, report store.NodeReportInput) (store.NodeReportResult, error) {
+	if h.deviceState == nil {
+		return h.store.ApplyNodeReport(ctx, report)
+	}
+	report.ExternalDeviceState = true
+	result, err := h.store.ApplyNodeReport(ctx, report)
+	if err != nil {
+		return store.NodeReportResult{}, err
+	}
+	if len(report.Alive) == 0 && !report.ReplaceAllDevices {
+		return result, nil
+	}
+	userIDs, err := h.deviceState.ReplaceNodeDevices(ctx, report.NodeID, report.Alive, report.ReplaceAllDevices, report.Now)
+	if err != nil {
+		return store.NodeReportResult{}, err
+	}
+	result.DeviceUserIDs = userIDs
+	return result, nil
+}
+
+func (h *wsHub) listUserDevices(ctx context.Context, userIDs []int64, now time.Time) (map[int64][]string, error) {
+	if h.deviceState != nil {
+		return h.deviceState.ListUserDevices(ctx, userIDs, now)
+	}
+	return h.store.ListUserDevices(ctx, userIDs, now)
+}
+
+func (h *wsHub) clearDevices(ctx context.Context, nodeIDs []int64, now time.Time) ([]int64, error) {
+	if h.deviceState != nil {
+		return h.deviceState.ClearNodeDevices(ctx, nodeIDs, now)
+	}
+	return h.store.ClearNodeDevices(ctx, nodeIDs, now)
 }
 
 func (h *wsHub) runUntil(ctx context.Context) {
@@ -425,7 +466,7 @@ func (h *wsHub) nodeSnapshotWithIntervals(ctx context.Context, node store.Node, 
 	for _, user := range users {
 		userIDs = append(userIDs, user.ID)
 	}
-	devices, err := h.store.ListUserDevices(ctx, userIDs, now)
+	devices, err := h.listUserDevices(ctx, userIDs, now)
 	if err != nil {
 		return wsNodeSnapshot{}, err
 	}
@@ -515,7 +556,7 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 		if len(releasedNodes) == 0 {
 			return true, nil, errors.Join(releaseErrors...)
 		}
-		userIDs, clearErr := h.store.ClearNodeDevices(context.Background(), releasedNodes, h.now())
+		userIDs, clearErr := h.clearDevices(context.Background(), releasedNodes, h.now())
 		return true, userIDs, errors.Join(append(releaseErrors, clearErr)...)
 	}
 	h.mu.Lock()
@@ -537,7 +578,7 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 	// Keep registration fenced while the former owner's device snapshot is
 	// cleared. A reconnect cannot publish a new snapshot and then have it
 	// removed by this stale close path.
-	userIDs, err := h.store.ClearNodeDevices(context.Background(), ownedNodes, h.now())
+	userIDs, err := h.clearDevices(context.Background(), ownedNodes, h.now())
 	return true, userIDs, err
 }
 
@@ -808,7 +849,7 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 		validated.LegacyAuth = c.legacy
 		validated.NodeID = nodeID
 		validated.Now = c.hub.now()
-		_, err = c.hub.store.ApplyNodeReport(context.Background(), validated)
+		_, err = c.hub.applyNodeReport(context.Background(), validated)
 		return err
 	case "report.devices":
 		var payload struct {
@@ -837,7 +878,7 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 		validated.NodeID = payload.NodeID
 		validated.ReplaceAllDevices = true
 		validated.Now = c.hub.now()
-		result, applyErr := c.hub.store.ApplyNodeReport(context.Background(), validated)
+		result, applyErr := c.hub.applyNodeReport(context.Background(), validated)
 		if applyErr == nil {
 			c.hub.NotifyDeviceStates(context.Background(), result.DeviceUserIDs)
 		}
@@ -1152,7 +1193,7 @@ func (h *wsHub) ClearNodeDevices(ctx context.Context, nodeIDs []int64) {
 }
 
 func (h *wsHub) clearNodeDevices(ctx context.Context, nodeIDs []int64, broadcast bool) {
-	affectedUsers, err := h.store.ClearNodeDevices(ctx, nodeIDs, h.now())
+	affectedUsers, err := h.clearDevices(ctx, nodeIDs, h.now())
 	if err != nil {
 		h.logger.Warn("clear removed node devices", "node_ids", nodeIDs, "error", err)
 		return
@@ -1295,7 +1336,7 @@ func (h *wsHub) notifyDeviceStatesToNodeIDs(ctx context.Context, targetNodeIDs [
 		for _, user := range users {
 			nodeUserIDs = append(nodeUserIDs, user.ID)
 		}
-		devices, err := h.store.ListUserDevices(ctx, nodeUserIDs, now)
+		devices, err := h.listUserDevices(ctx, nodeUserIDs, now)
 		if err != nil {
 			h.logger.Warn("prepare websocket device synchronization", "machine_id", expected.machineID, "node_id", nodeID, "error", err)
 			continue
@@ -1402,6 +1443,11 @@ func uniquePositiveIDs(values []int64) []int64 {
 // NotifyUserMutation publishes an O(changed users) delta to every runtime node
 // in the old or new group. A full snapshot remains the reconnect baseline.
 func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUUID string, oldGroupID, newGroupID *int64, devicesCleared bool) {
+	if devicesCleared && h.deviceState != nil {
+		if _, err := h.deviceState.ClearUserDevices(ctx, []int64{userID}, h.now()); err != nil {
+			h.logger.Warn("clear mutated user device state", "user_id", userID, "error", err)
+		}
+	}
 	groupIDs := make([]int64, 0, 2)
 	if oldGroupID != nil {
 		groupIDs = append(groupIDs, *oldGroupID)
@@ -1453,6 +1499,22 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 // removal chunks. This avoids one node lookup per user on large bans while
 // preserving the next full pull as the reconnect baseline.
 func (h *wsHub) NotifyBulkUserRemoval(ctx context.Context, users []store.AdminUserBulkTarget) error {
+	if h.deviceState != nil {
+		userIDs := make([]int64, 0, len(users))
+		for _, user := range users {
+			if user.Status != store.AdminUserBulkTargetSucceeded {
+				continue
+			}
+			userID := user.UserID
+			if userID == 0 {
+				userID = user.Sequence
+			}
+			userIDs = append(userIDs, userID)
+		}
+		if _, err := h.deviceState.ClearUserDevices(ctx, uniquePositiveIDs(userIDs), h.now()); err != nil {
+			return err
+		}
+	}
 	byGroup := make(map[int64][]store.RuntimeUser)
 	groupIDs := make([]int64, 0)
 	seenGroups := make(map[int64]struct{})

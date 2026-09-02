@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
@@ -560,15 +561,19 @@ func newHTTPAPITestCoordinator(t *testing.T, redisURL, prefix, revision string) 
 	return coordinator
 }
 
-func newCoordinatedWebSocketAPI(t *testing.T, database *store.Store, coordinator nodecoord.Coordinator) (http.Handler, context.CancelFunc) {
+func newCoordinatedWebSocketAPI(t *testing.T, database *store.Store, coordinator nodecoord.Coordinator, deviceStates ...devicestate.Service) (http.Handler, context.CancelFunc) {
 	t.Helper()
+	var deviceState devicestate.Service
+	if len(deviceStates) > 0 {
+		deviceState = deviceStates[0]
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	handler := New(Dependencies{
 		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
 		PanelURL: "https://panel.example.test", NodeRelease: "v1.14.3",
 		AllowedOrigins: []string{"https://panel.example.test"},
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
-		NodeCoordinator: coordinator,
+		NodeCoordinator: coordinator, DeviceState: deviceState,
 	})
 	return handler, cancel
 }

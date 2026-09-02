@@ -503,6 +503,89 @@ func TestNodeReportBindsReportIDToTrafficAndIgnoresRetryUserState(t *testing.T) 
 	assertTrafficTotals(t, database, user.ID, node.ID, 15, 30, 10, 20)
 }
 
+func TestTIMENODE006ExternalDeviceStateIsAuthorizedRetryableAndKeptOutOfSQLite(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 2, 3, 30, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	user := createRuntimeUser(t, database, now, "external-device", 7, 1_000_000, 0, 0, nil, false)
+	input := NodeReportInput{
+		MachineID: machine.ID, NodeID: node.ID, ReportID: "33ef2d65-938d-45d6-9584-ad61c4d8631f",
+		Traffic: map[int64]TrafficUsage{user.ID: {Upload: 10, Download: 20}},
+		Alive:   map[int64][]string{user.ID: {"192.0.2.60"}}, ExternalDeviceState: true, Now: now,
+	}
+	first, err := database.ApplyNodeReport(ctx, input)
+	if err != nil || first.DuplicateTraffic || !reflect.DeepEqual(first.DeviceUserIDs, []int64{user.ID}) {
+		t.Fatalf("ApplyNodeReport(first external) = (%#v, %v)", first, err)
+	}
+	var rows int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_device_ips WHERE user_id = ?`, user.ID).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("external report SQLite device rows = %d, err=%v; want 0", rows, err)
+	}
+
+	retry := input
+	retry.Now = now.Add(time.Second)
+	retry.Alive = map[int64][]string{user.ID: {"198.51.100.60"}}
+	second, err := database.ApplyNodeReport(ctx, retry)
+	if err != nil || !second.DuplicateTraffic || !reflect.DeepEqual(second.DeviceUserIDs, []int64{user.ID}) {
+		t.Fatalf("ApplyNodeReport(retried external) = (%#v, %v)", second, err)
+	}
+	assertTrafficTotals(t, database, user.ID, node.ID, 15, 30, 10, 20)
+
+	ensureTestServerGroups(t, database, now, 8)
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET group_id = 8 WHERE id = ?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ApplyNodeReport(ctx, retry); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unauthorized external retry error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestTIMENODE006UpdateUserDeviceSummariesIsAtomicAndValidated(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 2, 3, 35, 0, 0, time.UTC)
+	first := createRuntimeUser(t, database, now, "summary-first", 7, 1_000_000, 0, 0, nil, false)
+	second := createRuntimeUser(t, database, now, "summary-second", 7, 1_000_000, 0, 0, nil, false)
+	observed := now.Add(time.Minute)
+	if err := database.UpdateUserDeviceSummaries(ctx, []UserDeviceSummary{
+		{UserID: first.ID, OnlineCount: 2, ObservedAt: observed},
+		{UserID: second.ID, OnlineCount: 3, ObservedAt: observed},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for userID, want := range map[int64]int{first.ID: 2, second.ID: 3} {
+		var count int
+		var lastOnline int64
+		if err := database.db.QueryRowContext(ctx, `SELECT online_count, last_online_at FROM users WHERE id = ?`, userID).Scan(&count, &lastOnline); err != nil || count != want || lastOnline != observed.Unix() {
+			t.Fatalf("user %d summary = (%d, %d, %v), want (%d, %d, nil)", userID, count, lastOnline, err, want, observed.Unix())
+		}
+	}
+	if _, err := database.db.ExecContext(ctx, fmt.Sprintf(`
+		CREATE TRIGGER fail_device_summary BEFORE UPDATE OF online_count ON users
+		WHEN NEW.id = %d AND NEW.online_count = 99
+		BEGIN SELECT RAISE(ABORT, 'injected device summary failure'); END;
+	`, second.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateUserDeviceSummaries(ctx, []UserDeviceSummary{
+		{UserID: first.ID, OnlineCount: 4, ObservedAt: observed.Add(time.Second)},
+		{UserID: second.ID, OnlineCount: 99, ObservedAt: observed.Add(time.Second)},
+	}); err == nil {
+		t.Fatal("UpdateUserDeviceSummaries() succeeded through injected transaction failure")
+	}
+	var firstCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT online_count FROM users WHERE id = ?`, first.ID).Scan(&firstCount); err != nil || firstCount != 2 {
+		t.Fatalf("first summary escaped rolled-back batch: count=%d err=%v", firstCount, err)
+	}
+	if err := database.UpdateUserDeviceSummaries(ctx, []UserDeviceSummary{
+		{UserID: first.ID, OnlineCount: 1, ObservedAt: observed},
+		{UserID: first.ID, OnlineCount: 1, ObservedAt: observed},
+	}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("duplicate summary error = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestTIMENODE006NodeReportExpiryHonorsThe300SecondBoundary(t *testing.T) {
 	for _, testCase := range []struct {
 		name       string

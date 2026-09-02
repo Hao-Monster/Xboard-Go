@@ -452,15 +452,22 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 			if !bytes.Equal(storedHash, trafficHash) {
 				return NodeReportResult{}, fmt.Errorf("%w: report_id was already used for different traffic", ErrInvalidInput)
 			}
-			// The original transaction already applied the traffic and its device
-			// snapshot. Ignore retry-time user state so a later group change cannot
-			// strand the durable report, while still allowing fresh status metrics.
-			input.Alive = nil
+			// The original transaction already applied the traffic. SQLite device
+			// snapshots were in that transaction too, while an external authoritative
+			// device store is applied after commit and must remain retryable.
+			if !input.ExternalDeviceState {
+				input.Alive = nil
+			}
 			input.Online = nil
 		}
 	}
-	if !result.DuplicateTraffic {
-		if err := authorizeReportedUsers(ctx, tx, input); err != nil {
+	if !result.DuplicateTraffic || input.ExternalDeviceState && len(input.Alive) > 0 {
+		authorizationInput := input
+		if result.DuplicateTraffic {
+			authorizationInput.Traffic = nil
+			authorizationInput.Online = nil
+		}
+		if err := authorizeReportedUsers(ctx, tx, authorizationInput); err != nil {
 			return NodeReportResult{}, err
 		}
 	}
@@ -474,7 +481,7 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 	for userID := range input.Alive {
 		deviceUsers[userID] = struct{}{}
 	}
-	if input.ReplaceAllDevices {
+	if input.ReplaceAllDevices && !input.ExternalDeviceState {
 		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT user_id FROM node_device_ips WHERE node_id = ?`, input.NodeID)
 		if err != nil {
 			return NodeReportResult{}, fmt.Errorf("list replaced node device users: %w", err)
@@ -494,8 +501,10 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 			return NodeReportResult{}, fmt.Errorf("clear node device snapshot: %w", err)
 		}
 	}
-	if err := applyAlive(ctx, tx, input.NodeID, input.Alive, input.Now); err != nil {
-		return NodeReportResult{}, err
+	if !input.ExternalDeviceState {
+		if err := applyAlive(ctx, tx, input.NodeID, input.Alive, input.Now); err != nil {
+			return NodeReportResult{}, err
+		}
 	}
 	if err := applyOnline(ctx, tx, input.NodeID, input.Online, input.Now); err != nil {
 		return NodeReportResult{}, err
@@ -525,12 +534,14 @@ func (s *Store) ApplyNodeReport(ctx context.Context, input NodeReportInput) (Nod
 	`, input.Now.Add(-7*24*time.Hour).Unix(), input.NodeID, input.ReportID); err != nil {
 		return NodeReportResult{}, fmt.Errorf("expire node report receipts: %w", err)
 	}
-	expiredDeviceUsers, err := expireNodeDevices(ctx, tx, input.Now)
-	if err != nil {
-		return NodeReportResult{}, err
-	}
-	for _, userID := range expiredDeviceUsers {
-		deviceUsers[userID] = struct{}{}
+	if !input.ExternalDeviceState {
+		expiredDeviceUsers, err := expireNodeDevices(ctx, tx, input.Now)
+		if err != nil {
+			return NodeReportResult{}, err
+		}
+		for _, userID := range expiredDeviceUsers {
+			deviceUsers[userID] = struct{}{}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_online WHERE expires_at <= ?`, input.Now.Unix()); err != nil {
 		return NodeReportResult{}, fmt.Errorf("expire node online state: %w", err)
@@ -841,6 +852,45 @@ func applyAlive(ctx context.Context, tx *sql.Tx, nodeID int64, alive map[int64][
 		`, userID, now.Unix(), now.Unix(), userID); err != nil {
 			return fmt.Errorf("update user device state: %w", err)
 		}
+	}
+	return nil
+}
+
+func (s *Store) UpdateUserDeviceSummaries(ctx context.Context, summaries []UserDeviceSummary) error {
+	if len(summaries) == 0 {
+		return nil
+	}
+	if len(summaries) > 5_000 {
+		return fmt.Errorf("%w: too many user device summaries", ErrInvalidInput)
+	}
+	seen := make(map[int64]struct{}, len(summaries))
+	for _, summary := range summaries {
+		if summary.UserID < 1 || summary.OnlineCount < 0 || summary.ObservedAt.Unix() < 0 {
+			return fmt.Errorf("%w: invalid user device summary", ErrInvalidInput)
+		}
+		if _, exists := seen[summary.UserID]; exists {
+			return fmt.Errorf("%w: duplicate user device summary", ErrInvalidInput)
+		}
+		seen[summary.UserID] = struct{}{}
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin user device summary update: %w", err)
+	}
+	defer tx.Rollback()
+	statement, err := tx.PrepareContext(ctx, `UPDATE users SET online_count = ?, last_online_at = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare user device summary update: %w", err)
+	}
+	defer statement.Close()
+	for _, summary := range summaries {
+		if _, err := statement.ExecContext(ctx, summary.OnlineCount, summary.ObservedAt.Unix(), summary.UserID); err != nil {
+			return fmt.Errorf("update user %d device summary: %w", summary.UserID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit user device summary updates: %w", err)
 	}
 	return nil
 }
