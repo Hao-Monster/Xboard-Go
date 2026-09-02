@@ -173,11 +173,12 @@ func TestTIMENODE006RedisDatabaseThrottleAndTrailingFlush(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		flushed, err := service.FlushPending(ctx, time.Now().UTC(), DefaultFlushLimit)
+		_, err := service.FlushPending(ctx, time.Now().UTC(), DefaultFlushLimit)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if flushed == 1 {
+		_, successes := writer.counts()
+		if successes == 2 {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -213,11 +214,12 @@ func TestTIMENODE006RedisFailedSummaryRemainsPendingAndRecovers(t *testing.T) {
 	writer.setFailure(false)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		flushed, flushErr := service.FlushPending(ctx, time.Now().UTC(), DefaultFlushLimit)
+		_, flushErr := service.FlushPending(ctx, time.Now().UTC(), DefaultFlushLimit)
 		if flushErr != nil {
 			t.Fatal(flushErr)
 		}
-		if flushed == 1 {
+		_, successes := writer.counts()
+		if successes == 1 {
 			break
 		}
 		if time.Now().After(deadline) {

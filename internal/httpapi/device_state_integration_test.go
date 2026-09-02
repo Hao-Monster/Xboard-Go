@@ -138,11 +138,15 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		setNow(time.Now().UTC())
-		flushed, flushErr := deviceState.FlushPending(ctx, now(), devicestate.DefaultFlushLimit)
+		_, flushErr := deviceState.FlushPending(ctx, now(), devicestate.DefaultFlushLimit)
 		if flushErr != nil {
 			t.Fatal(flushErr)
 		}
-		if flushed == 1 {
+		account, err = database.GetAdminUser(ctx, user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if account.OnlineCount == 1 {
 			break
 		}
 		if time.Now().After(deadline) {
