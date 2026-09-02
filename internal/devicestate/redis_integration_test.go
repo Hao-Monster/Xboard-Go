@@ -203,6 +203,38 @@ func TestTIMENODE006RedisDatabaseThrottleAndTrailingFlush(t *testing.T) {
 	}
 }
 
+func TestTIMENODE006RedisDatabaseSummaryExpiresWithoutAnotherNodeReport(t *testing.T) {
+	writer := &recordingSummaryWriter{}
+	service := newTIMENODE006RedisService(t, writer, 100*time.Millisecond)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := service.ReplaceNodeDevices(ctx, 22, map[int64][]string{19: {"192.0.2.19"}}, false, base); err != nil {
+		t.Fatal(err)
+	}
+	writer.mu.Lock()
+	initial := writer.summaries[19]
+	writer.mu.Unlock()
+	if initial.OnlineCount != 1 {
+		t.Fatalf("initial database summary = %d, want 1", initial.OnlineCount)
+	}
+	if flushed, err := service.FlushPending(ctx, base.Add(299*time.Second), DefaultFlushLimit); err != nil || flushed != 0 {
+		t.Fatalf("299-second FlushPending() = (%d, %v), want (0, nil)", flushed, err)
+	}
+	if flushed, err := service.FlushPending(ctx, base.Add(300*time.Second), DefaultFlushLimit); err != nil || flushed != 1 {
+		t.Fatalf("300-second FlushPending() = (%d, %v), want (1, nil)", flushed, err)
+	}
+	writer.mu.Lock()
+	expired := writer.summaries[19]
+	writer.mu.Unlock()
+	if expired.OnlineCount != 0 || !expired.ObservedAt.Equal(base.Add(300*time.Second)) {
+		t.Fatalf("expired database summary = %#v, want zero at the 300-second boundary", expired)
+	}
+	if flushed, err := service.FlushPending(ctx, base.Add(301*time.Second), DefaultFlushLimit); err != nil || flushed != 0 {
+		t.Fatalf("301-second FlushPending() = (%d, %v), want (0, nil)", flushed, err)
+	}
+}
+
 func TestTIMENODE006RedisFailedSummaryRemainsPendingAndRecovers(t *testing.T) {
 	writer := &recordingSummaryWriter{fail: true}
 	throttle := 60 * time.Millisecond
