@@ -150,8 +150,8 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
     for (const nodeID of legacyNodeIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/manage/drop", { id: nodeID });
     for (const machineID of legacyMachineIDs) await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/server/machine/drop", { id: machineID });
     if (legacyOriginal && legacyAuthorization) {
-      await bestEffortLegacyPost(legacyPage, legacyAuthorization, "/config/save", legacyOriginal);
-      bestEffortRestartLegacyWebSocketWorker();
+      await setLegacyServerSettings(legacyPage, legacyAuthorization, legacyOriginal);
+      restartLegacyWebSocketWorker();
     }
     if (goNodes.length > 0) await bestEffortGoRequest(goPage, "/api/v1/admin/nodes/bulk-delete", "POST", { targets: goNodes });
     for (const machineID of goMachineIDs) await bestEffortGoRequest(goPage, `/api/v1/admin/machines/${machineID}`, "DELETE");
@@ -322,14 +322,6 @@ function restartLegacyWebSocketWorker(): void {
     stdio: "pipe",
     timeout: 15_000
   });
-}
-
-function bestEffortRestartLegacyWebSocketWorker(): void {
-  try {
-    restartLegacyWebSocketWorker();
-  } catch {
-    // Preserve the primary assertion or cleanup failure.
-  }
 }
 
 function probeWebSocket(baseURL: string, query: Record<string, number>, credential: string): Promise<{ accepted: boolean; payload: string }> {
