@@ -68,13 +68,21 @@ jobs:
           node .github/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
           node --test .github/scripts/check-production-licenses.test.mjs
       - name: Generate source SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
-        with:
-          path: .
-          format: spdx-json
-          output-file: artifacts/xboard-go-source.spdx.json
-          syft-version: v1.51.1
-          upload-artifact: false
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
+        run: |
+          syft_archive="$RUNNER_TEMP/syft_1.51.1_linux_amd64.tar.gz"
+          syft_root="$RUNNER_TEMP/xboard-go-syft-1.51.1"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 120 \
+            --output "$syft_archive" \
+            https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_amd64.tar.gz
+          printf '%s  %s\n' \
+            '8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3' \
+            "$syft_archive" | sha256sum --check --strict
+          mkdir -p "$syft_root"
+          tar -xzf "$syft_archive" -C "$syft_root" syft
+          "$syft_root/syft" scan dir:. \
+            --output spdx-json=artifacts/xboard-go-source.spdx.json
       - name: Review changed dependencies
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
