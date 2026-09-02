@@ -12,7 +12,7 @@
     {"id":"R-008","severity":"high","status":"controlled","milestone":"M3","title":"任意插件或主题上传形成 RCE 和供应链风险","mitigation":"D-003、签名/来源/压缩安全、隔离与最小权限。"},
     {"id":"R-009","severity":"high","status":"controlled","milestone":"M0","title":"大爆炸重构长期无可用反馈并最终集成失败","mitigation":"垂直切片、里程碑、独立工作项和分领域门禁。"},
     {"id":"R-010","severity":"high","status":"open","milestone":"M4","title":"双系统并行期间数据漂移或双写不一致","mitigation":"单写主、事件/outbox、可重放增量与对账。"},
-    {"id":"R-011","severity":"high","status":"open","milestone":"M3","title":"附件数据库与文件存储部分失败产生丢失或孤儿","mitigation":"状态机、临时对象、哈希、补偿、清理和恢复演练。"},
+    {"id":"R-011","severity":"high","status":"controlled","milestone":"M3","title":"附件数据库与文件存储部分失败产生丢失或孤儿","mitigation":"持久化状态机、临时对象、哈希校验、原子绑定、失败补偿、有界清理、1 GiB 分片及并发配额测试，并绑定精确候选证据。"},
     {"id":"R-012","severity":"medium","status":"controlled","milestone":"M3","title":"过早性能复杂化引入竞态和安全缺陷","mitigation":"先 benchmark/pprof；复杂优化必须有收益和回归证据。"},
     {"id":"R-013","severity":"high","status":"open","milestone":"M3","title":"API 与订阅入口滥用造成资源耗尽","mitigation":"分层限流、请求响应上限、成本配额、监控和压测。"},
     {"id":"R-014","severity":"medium","status":"open","milestone":"M3","title":"WebSocket 单进程容量与单点风险","mitigation":"多实例所有权、容量测试、优雅重启和重连抖动。"},
