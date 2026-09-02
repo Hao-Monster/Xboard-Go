@@ -23,7 +23,7 @@ func TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState(
 	}
 	proxy, proxiedURL := newDeviceRedisFaultProxy(t, rawURL)
 	writer := &recordingSummaryWriter{}
-	prefix := "xboard-go:test-device-failure:" + uuid.NewString() + ":"
+	prefix := "xg:device-failure:" + uuid.NewString() + ":"
 	service, err := NewRedis(context.Background(), Options{
 		URL: proxiedURL, Prefix: prefix, WriteSummaries: writer.write, DatabaseThrottle: 50 * time.Millisecond,
 	})
