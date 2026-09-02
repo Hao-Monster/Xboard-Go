@@ -411,6 +411,20 @@ func TestSECNODE005RequestLimiterWindowOverflowAndConcurrency(t *testing.T) {
 	if got := accepted.Load(); got != 50 {
 		t.Fatalf("concurrent accepted requests=%d, want 50", got)
 	}
+
+	attempts := newAttemptLimiter(2, time.Minute)
+	attempts.failed("early", now)
+	attempts.failed("early", now)
+	if attempts.allowed("early", now) {
+		t.Fatal("attempt limiter accepted a key at its failure boundary")
+	}
+	attempts.failed("later", now.Add(30*time.Second))
+	if !attempts.allowed("early", now.Add(time.Minute)) || len(attempts.entries) != 1 {
+		t.Fatalf("attempt limiter did not remove only expired entries: %#v", attempts.entries)
+	}
+	if !attempts.allowed("later", now.Add(90*time.Second)) || len(attempts.entries) != 0 {
+		t.Fatalf("attempt limiter did not collect the next staggered expiry: %#v", attempts.entries)
+	}
 }
 
 func TestSECNODE005RuntimeHTTPBodyBoundaries(t *testing.T) {

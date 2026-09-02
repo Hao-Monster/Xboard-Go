@@ -170,6 +170,7 @@ type attemptLimiter struct {
 	entries map[string]attemptEntry
 	maximum int
 	window  time.Duration
+	nextGC  time.Time
 }
 
 type attemptEntry struct {
@@ -218,14 +219,26 @@ func (l *attemptLimiter) reset(key string) {
 	if _, exists := l.entries[key]; !exists && len(l.entries) >= 4096 {
 		delete(l.entries, "__overflow__")
 	}
+	l.nextGC = time.Time{}
 	l.mu.Unlock()
 }
 
 func (l *attemptLimiter) removeExpired(now time.Time) {
+	if !l.nextGC.IsZero() && now.Before(l.nextGC) {
+		return
+	}
+	l.nextGC = time.Time{}
 	for key, entry := range l.entries {
 		if !now.Before(entry.resetAt) {
 			delete(l.entries, key)
+			continue
 		}
+		if l.nextGC.IsZero() || entry.resetAt.Before(l.nextGC) {
+			l.nextGC = entry.resetAt
+		}
+	}
+	if l.nextGC.IsZero() {
+		l.nextGC = now.Add(l.window)
 	}
 }
 
