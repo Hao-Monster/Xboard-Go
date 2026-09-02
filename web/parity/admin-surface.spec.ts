@@ -2598,21 +2598,21 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
     });
     expect(goFundedResponse.status, goFundedResponse.body).toBe(200);
     const goFunded = readObjectProperty(JSON.parse(goFundedResponse.body) as unknown, "data");
-    const legacyBalanceBefore = Number(legacyTinker(`$email=base64_decode("${encodedLegacyEmail}"); echo App\\Models\\User::where("email",$email)->value("commission_balance");`));
+    const legacyBalanceBefore = legacyUserCommissionBalance(legacyUserEmail);
     const goBalanceBefore = Number(readProperty(goFunded, "commission_balance"));
 
     const exerciseWithdrawal = async (baseURL: string, email: string, legacy: boolean) => {
       const userAPI = await playwrightRequest.newContext({ baseURL, extraHTTPHeaders: { "Accept-Language": "zh-CN" } });
-      const login = await userAPI.post("/api/v1/passport/auth/login", { data: { email, password } });
+      const login = await userAPI.post(legacy ? "/api/v1/passport/auth/login" : "/api/v1/auth/login", { data: { email, password } });
       expect(login.status(), await login.text()).toBe(200);
-      const authorization = readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data");
-      if (!authorization) throw new Error("withdrawal parity user authorization is missing");
+      const authorization = legacy ? readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data") : null;
+      if (legacy && !authorization) throw new Error("withdrawal parity user authorization is missing");
       try {
         let listPath: string;
         let detailPath: (ticketID: number) => string;
         if (legacy) {
           const withdrawn = await userAPI.post("/api/v1/user/ticket/withdraw", {
-            headers: { authorization }, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+            headers: { authorization: authorization ?? "" }, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
           });
           expect(withdrawn.status(), await withdrawn.text()).toBe(200);
           listPath = "/api/v1/user/ticket/fetch";
@@ -2629,7 +2629,7 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
           listPath = "/api/v1/tickets";
           detailPath = (ticketID) => `/api/v1/tickets/${ticketID}`;
         }
-        const list = await userAPI.get(listPath, legacy ? { headers: { authorization } } : undefined);
+        const list = await userAPI.get(listPath, legacy ? { headers: { authorization: authorization ?? "" } } : undefined);
         expect(list.status(), await list.text()).toBe(200);
         const listData = readProperty(await list.json() as unknown, "data");
         const tickets = legacy ? listData : readProperty(listData, "items");
@@ -2638,7 +2638,7 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
         const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === "[提现申请] 本工单由系统发出");
         const ticketID = Number(readProperty(item, "id"));
         expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
-        const detail = await userAPI.get(detailPath(ticketID), legacy ? { headers: { authorization } } : undefined);
+        const detail = await userAPI.get(detailPath(ticketID), legacy ? { headers: { authorization: authorization ?? "" } } : undefined);
         expect(detail.status(), await detail.text()).toBe(200);
         const ticket = readProperty(await detail.json() as unknown, "data");
         const messages = readProperty(ticket, legacy ? "message" : "messages");
@@ -2660,7 +2660,7 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
       subject: "[提现申请] 本工单由系统发出", level: 2, status: 0,
       message: `提现方式：USDT\r\n提现账号：${withdrawalAccount}`
     });
-    const legacyBalanceAfter = Number(legacyTinker(`$email=base64_decode("${encodedLegacyEmail}"); echo App\\Models\\User::where("email",$email)->value("commission_balance");`));
+    const legacyBalanceAfter = legacyUserCommissionBalance(legacyUserEmail);
     const goAfterResponse = await goAdminRequest(goPage, `/api/v1/admin/users/${Number(readProperty(goCreated, "id"))}`, "GET");
     expect(goAfterResponse.status, goAfterResponse.body).toBe(200);
     const goAfter = readObjectProperty(JSON.parse(goAfterResponse.body) as unknown, "data");
@@ -3510,6 +3510,17 @@ function legacyTinker(statement: string): string {
     ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${statement}`],
     { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }
   ).trim();
+}
+
+function legacyUserCommissionBalance(email: string): number {
+  const encodedEmail = Buffer.from(email, "utf8").toString("base64");
+  const script = `require "/www/vendor/autoload.php"; $app=require "/www/bootstrap/app.php"; $app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $email=base64_decode("${encodedEmail}"); echo (int) \\App\\Models\\User::where("email",$email)->value("commission_balance");`;
+  const value = execFileSync("docker", ["exec", legacyDockerContainer, "php", "-r", script], {
+    stdio: ["ignore", "pipe", "pipe"], encoding: "utf8"
+  }).trim();
+  const balance = Number(value);
+  if (!Number.isSafeInteger(balance) || balance < 0) throw new Error("legacy commission balance is invalid");
+  return balance;
 }
 
 function hashSearchParams(address: string): URLSearchParams {
