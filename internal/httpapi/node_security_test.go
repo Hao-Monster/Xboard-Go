@@ -214,6 +214,8 @@ func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
 		{name: "first untrusted intermediary is the client boundary", remoteAddr: "10.0.0.2:8080", forwarded: []string{"198.51.100.20, 192.0.2.30"}, wantClient: "192.0.2.30", wantPeer: "10.0.0.2"},
 		{name: "duplicate headers fail closed", remoteAddr: "10.0.0.2:8080", forwarded: []string{"198.51.100.20", "203.0.113.40"}, wantClient: "10.0.0.2", wantPeer: "10.0.0.2"},
 		{name: "invalid chain fails closed", remoteAddr: "10.0.0.2:8080", forwarded: []string{"invalid"}, wantClient: "10.0.0.2", wantPeer: "10.0.0.2"},
+		{name: "bare peer address is accepted", remoteAddr: "192.0.2.11", forwarded: []string{"198.51.100.20"}, wantClient: "192.0.2.11", wantPeer: "192.0.2.11"},
+		{name: "malformed peer fails into one direct bucket", remoteAddr: "malformed:peer:address", forwarded: []string{"198.51.100.20"}, wantClient: "malformed:peer:address", wantPeer: "malformed:peer:address"},
 		{name: "IPv4-mapped peer is canonicalized", remoteAddr: "[::ffff:192.0.2.10]:443", wantClient: "192.0.2.10", wantPeer: "192.0.2.10"},
 		{name: "trusted IPv6 proxy", remoteAddr: "[2001:db8:ffff::2]:8080", forwarded: []string{"2001:db8::20"}, wantClient: "2001:db8::20", wantPeer: "2001:db8:ffff::2"},
 	} {
@@ -241,6 +243,21 @@ func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
 	overlong.Header.Set("X-Forwarded-For", strings.Repeat("198.51.100.1,", 32)+"198.51.100.2")
 	if client, peer := nodeRequestAddresses(overlong, trusted); client != "10.0.0.2" || peer != "10.0.0.2" {
 		t.Fatalf("overlong forwarded hops=(%q,%q), want trusted peer fallback", client, peer)
+	}
+}
+
+func TestSECNODE005LegacyWebSocketNodeRateScope(t *testing.T) {
+	connection := &wsConnection{
+		legacy:  true,
+		nodeIDs: map[int64]struct{}{42: {}},
+	}
+	message := wsIncomingEnvelope{Event: "report.devices", Data: json.RawMessage(`{"node_id":999}`)}
+	if nodeID, scoped := connection.incomingMessageNodeID(message); !scoped || nodeID != 42 {
+		t.Fatalf("single-node legacy message scope=(%d,%t), want (42,true)", nodeID, scoped)
+	}
+	connection.nodeIDs[43] = struct{}{}
+	if nodeID, scoped := connection.incomingMessageNodeID(message); scoped || nodeID != 0 {
+		t.Fatalf("ambiguous legacy message scope=(%d,%t), want control-bucket fallback", nodeID, scoped)
 	}
 }
 
