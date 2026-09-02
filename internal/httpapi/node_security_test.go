@@ -103,6 +103,33 @@ func TestSECNODE005WebSocketNodeMessageRateBoundary(t *testing.T) {
 	}
 }
 
+func TestSECNODE005WebSocketRateBucketsCountUnknownEventsAndScalePerNode(t *testing.T) {
+	hub := &wsHub{now: fixedNow}
+	connection := &wsConnection{
+		hub: hub, nodeIDs: map[int64]struct{}{1: {}, 2: {}},
+		messageRequests: newRequestLimiter(4, time.Minute), nodeMessageRequests: newRequestLimiter(1, time.Minute),
+	}
+	unknown := wsIncomingEnvelope{Event: "future.compat.event", Data: json.RawMessage(`{"value":1}`)}
+	if !connection.allowIncomingMessage(unknown) {
+		t.Fatal("first unknown compatibility event was unexpectedly limited")
+	}
+	nodeStatus := func(nodeID int64) wsIncomingEnvelope {
+		return wsIncomingEnvelope{Event: "node.status", Data: json.RawMessage(fmt.Sprintf(`{"node_id":%d}`, nodeID))}
+	}
+	if !connection.allowIncomingMessage(nodeStatus(1)) || !connection.allowIncomingMessage(nodeStatus(2)) {
+		t.Fatal("independent authorized nodes did not receive independent message budgets")
+	}
+	if connection.allowIncomingMessage(nodeStatus(1)) {
+		t.Fatal("second node-1 write event bypassed its per-node budget")
+	}
+	if got := connection.messageRequests.entries["connection"].count; got != 4 {
+		t.Fatalf("connection count=%d, want unknown and rejected node events to consume the shared budget", got)
+	}
+	if connection.allowIncomingMessage(unknown) {
+		t.Fatal("unknown event bypassed the exhausted connection budget")
+	}
+}
+
 func TestSECNODE005WebSocketMessageSizeBoundary(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()
