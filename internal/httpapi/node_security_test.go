@@ -2,14 +2,17 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/gorilla/websocket"
 )
 
 func TestSECNODE005HandshakeBodyBoundary(t *testing.T) {
@@ -37,6 +40,65 @@ func TestSECNODE005HandshakeBodyBoundary(t *testing.T) {
 	oversized := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", credential.Token,
 		paddedNodeSecurityJSON(t, base, legacyHandshakeBodyLimit+1))
 	expectAPIError(t, oversized, http.StatusRequestEntityTooLarge, "request_too_large")
+}
+
+func TestSECNODE005WebSocketNodeMessageRateBoundary(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+
+	now := fixedNow()
+	machine, node := createWebSocketReportingNode(t, database, now)
+	user, err := database.CreateRuntimeUser(context.Background(), store.CreateRuntimeUserInput{
+		Email: "node-security-ws@example.test", PasswordHash: "test-password-hash",
+		UUID: "0d5f6595-743f-4e10-98a3-dda5f7fbe0f4", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment, err := database.CreateEnrollment(context.Background(), machine.ID, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
+
+	const perNodeMessageLimit = 240
+	for sequence := 0; sequence <= perNodeMessageLimit; sequence++ {
+		if err := connection.WriteJSON(map[string]any{
+			"event": "node.status",
+			"data":  map[string]any{"node_id": node.ID, "sequence": sequence},
+		}); err != nil {
+			if sequence <= perNodeMessageLimit-1 {
+				t.Fatalf("accepted message %d write error: %v", sequence, err)
+			}
+			break
+		}
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := connection.ReadMessage(); !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+		t.Fatalf("message above per-node limit error=%v, want policy-violation close", err)
+	}
+
+	state, err := database.GetNodeRuntimeState(context.Background(), node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics struct {
+		Sequence int `json:"sequence"`
+	}
+	if err := json.Unmarshal(state.Metrics, &metrics); err != nil {
+		t.Fatalf("decode persisted metrics: %v; metrics=%s", err, state.Metrics)
+	}
+	if metrics.Sequence != perNodeMessageLimit-1 {
+		t.Fatalf("persisted sequence=%d, want rejected message to leave sequence %d", metrics.Sequence, perNodeMessageLimit-1)
+	}
 }
 
 func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
