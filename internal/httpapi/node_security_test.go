@@ -625,3 +625,19 @@ func BenchmarkSECNODE005AttemptLimiterFullMap(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkSECNODE005AttemptLimiterFullMapAfterReset(b *testing.B) {
+	now := fixedNow()
+	limiter := newAttemptLimiter(100, time.Minute)
+	for index := 0; index < 4096; index++ {
+		limiter.failed(fmt.Sprintf("client-%d", index), now)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		limiter.reset("successful-client-without-failures")
+		if !limiter.allowed("client-0", now) {
+			b.Fatal("benchmark key was unexpectedly limited")
+		}
+	}
+}
