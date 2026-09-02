@@ -89,6 +89,10 @@ func TestInvitationHTTPGenerationPVRegistrationAndPrivacy(t *testing.T) {
 	}
 	invalidTransfer := owner.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":0}`)
 	assertAPIError(t, invalidTransfer, http.StatusUnprocessableEntity, "validation_failed", "划转金额必须大于 0")
+	missingTransferKey := owner.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":1}`)
+	assertAPIError(t, missingTransferKey, http.StatusUnprocessableEntity, "idempotency_key_required", "佣金划转必须提供有效的幂等键")
+	invalidTransferKey := owner.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":1,"idempotency_key":"invalid key/value"}`)
+	assertAPIError(t, invalidTransferKey, http.StatusUnprocessableEntity, "idempotency_key_required", "佣金划转必须提供有效的幂等键")
 	legacyFetch := owner.request(t, api, http.MethodGet, "/api/v1/user/invite/fetch", "")
 	if legacyFetch.Code != http.StatusOK || !containsAll(legacyFetch.Body.String(), `"stat":[0,0,0,10,0]`, `"codes":[`) {
 		t.Fatalf("legacy invite fetch status=%d body=%s", legacyFetch.Code, legacyFetch.Body)
@@ -193,6 +197,19 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	if fetched.Code != http.StatusOK || !containsAll(fetched.Body.String(), `"codes":[{`, `"stat":[0,0,0,10,0]`) {
 		t.Fatalf("bearer legacy invitation fetch status=%d body=%s", fetched.Code, fetched.Body)
 	}
+	adminTarget, err := database.GetAdminUser(t.Context(), administrator.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedCommission := int64(2)
+	if _, _, err := database.UpdateAdminUser(t.Context(), administrator.ID, store.UpdateAdminUserInput{
+		AdministratorID: administrator.ID, Revision: adminTarget.Revision, Email: adminTarget.Email,
+		GroupID: adminTarget.GroupID, TransferEnable: adminTarget.TransferEnable, ExpiredAt: adminTarget.ExpiredAt,
+		SpeedLimit: adminTarget.SpeedLimit, DeviceLimit: adminTarget.DeviceLimit, Banned: adminTarget.Banned,
+		CommissionBalance: &seedCommission,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 
 	wrongMediaType := bearerRequest(api, http.MethodPost, "/api/v1/user/transfer", authorization, `{"transfer_amount":1}`)
 	if wrongMediaType.Code != http.StatusUnprocessableEntity {
@@ -203,10 +220,40 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "佣金余额不足") {
-		t.Fatalf("form legacy transfer status=%d body=%s", response.Code, response.Body)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "划转必须提供有效的幂等键") {
+		t.Fatalf("unkeyed legacy transfer status=%d body=%s", response.Code, response.Body)
 	}
-	modernOverdraw := cookie.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":1}`)
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-form-0001"))
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Idempotency-Key", "legacy-transfer-header-0001")
+	response = httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "幂等键参数冲突") {
+		t.Fatalf("conflicting legacy transfer key status=%d body=%s", response.Code, response.Body)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Idempotency-Key", "legacy-transfer-test-0001")
+	response = httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !containsAll(response.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("keyed legacy transfer status=%d body=%s", response.Code, response.Body)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-test-0001"))
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response = httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !containsAll(response.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("retried legacy transfer status=%d body=%s", response.Code, response.Body)
+	}
+	retriedSummary := bearerRequest(api, http.MethodGet, "/api/v1/user/invite/fetch", authorization, "")
+	if retriedSummary.Code != http.StatusOK || !strings.Contains(retriedSummary.Body.String(), `"stat":[0,0,0,10,1]`) {
+		t.Fatalf("legacy retry changed commission more than once: status=%d body=%s", retriedSummary.Code, retriedSummary.Body)
+	}
+	modernOverdraw := cookie.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", `{"amount":2,"idempotency_key":"modern-overdraw-test-0001"}`)
 	assertAPIError(t, modernOverdraw, http.StatusConflict, "insufficient_commission", "佣金余额不足")
 }
 

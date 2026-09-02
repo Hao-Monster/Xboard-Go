@@ -762,16 +762,21 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 			return
 		}
 		recorder := &responseStatusRecorder{ResponseWriter: w}
-		next.ServeHTTP(recorder, r)
+		auditState := &requestMutationAuditState{}
+		request := r.WithContext(context.WithValue(r.Context(), requestMutationAuditStateKey{}, auditState))
+		next.ServeHTTP(recorder, request)
+		if auditState.recorded {
+			return
+		}
 		statusCode := recorder.statusCode()
 		if r.Method == http.MethodPut && r.URL.Path == "/api/v1/admin/node-agent-settings" && statusCode >= 200 && statusCode < 300 {
 			return
 		}
-		session, ok := sessionFromContext(r.Context())
+		session, ok := sessionFromContext(request.Context())
 		if !ok {
 			return
 		}
-		route := r.Pattern
+		route := request.Pattern
 		if route == "" || route == "/api/v1/admin/" {
 			route = r.URL.Path
 		} else if _, patternRoute, found := strings.Cut(route, " "); found {

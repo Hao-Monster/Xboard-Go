@@ -366,6 +366,8 @@ func ensureCurrencyChangeAllowed(ctx context.Context, tx *sql.Tx, current, next 
 			OR EXISTS(SELECT 1 FROM payment_checkout_attempts)
 			OR EXISTS(SELECT 1 FROM commission_logs)
 			OR EXISTS(SELECT 1 FROM commission_withdrawals)
+			OR EXISTS(SELECT 1 FROM commission_transfer_events)
+			OR EXISTS(SELECT 1 FROM admin_balance_adjustment_events)
 			OR EXISTS(SELECT 1 FROM users WHERE balance<>0 OR commission_balance<>0 OR frozen_commission_balance<>0)
 			OR EXISTS(SELECT 1 FROM gift_card_templates)
 			OR EXISTS(SELECT 1 FROM gift_card_codes)

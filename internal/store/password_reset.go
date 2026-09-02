@@ -18,7 +18,7 @@ const (
 )
 
 // RequestPasswordReset creates the same persistent cooldown record for known
-// and unknown email addresses. Only a human account receives an outbox job.
+// and unknown email addresses. Only an active human account receives an outbox job.
 func (s *Store) RequestPasswordReset(ctx context.Context, input PasswordResetRequestInput, now time.Time) (bool, error) {
 	input.Email = normalizeEmail(input.Email)
 	if input.Email == "" || len(input.Email) > 320 || len(input.EmailDigest) != 32 || len(input.CodeDigest) != 32 ||
@@ -51,8 +51,9 @@ func (s *Store) RequestPasswordReset(ctx context.Context, input PasswordResetReq
 
 	var userID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id FROM users WHERE email = ? COLLATE NOCASE AND account_kind = ?
-	`, input.Email, AccountKindHuman).Scan(&userID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		SELECT id FROM users
+		WHERE email = ? COLLATE NOCASE AND account_kind = ? AND lifecycle_status = ?
+	`, input.Email, AccountKindHuman, UserLifecycleActive).Scan(&userID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("find password reset account: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -191,8 +192,8 @@ func (s *Store) ResetPasswordWithChallenge(ctx context.Context, emailDigest, cod
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users SET password_hash = ?, updated_at = ?
-		WHERE id = ? AND password_hash = ? AND account_kind = ?
-	`, newHash, now.Unix(), challenge.UserID, challenge.PasswordHash, AccountKindHuman)
+		WHERE id = ? AND password_hash = ? AND account_kind = ? AND lifecycle_status = ?
+	`, newHash, now.Unix(), challenge.UserID, challenge.PasswordHash, AccountKindHuman, UserLifecycleActive)
 	if err != nil {
 		return fmt.Errorf("update password from reset challenge: %w", err)
 	}
@@ -386,9 +387,9 @@ func readPasswordResetChallenge(ctx context.Context, query passwordResetChalleng
 	err := query.QueryRowContext(ctx, `
 		SELECT c.user_id, c.code_digest, c.expires_at, c.failed_attempts, c.failure_reset_at, u.password_hash
 		FROM password_reset_challenges c
-		LEFT JOIN users u ON u.id = c.user_id AND u.account_kind = ?
+		LEFT JOIN users u ON u.id = c.user_id AND u.account_kind = ? AND u.lifecycle_status = ?
 		WHERE c.email_digest = ?
-	`, AccountKindHuman, emailDigest).Scan(&userID, &storedDigest, &expiresAt, &failedAttempts, &failureResetAt, &passwordHash)
+	`, AccountKindHuman, UserLifecycleActive, emailDigest).Scan(&userID, &storedDigest, &expiresAt, &failedAttempts, &failureResetAt, &passwordHash)
 	if userID.Valid {
 		challenge.UserID = userID.Int64
 	}

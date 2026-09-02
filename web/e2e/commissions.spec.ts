@@ -108,7 +108,10 @@ test("administrator commission rules drive the invited order, history, and posit
     await page.getByLabel("划转金额（CNY）").fill("10.00");
     await page.getByRole("button", { name: "佣金划转余额", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("操作成功");
-    await expect(page.locator(".invitation-overview .overview-metric").filter({ hasText: "可用佣金" }).getByText("¥0.00", { exact: true })).toBeVisible();
+    const availableCommissionMetric = page.locator(".invitation-overview .overview-metric")
+      .filter({ hasText: "可用佣金" })
+      .first();
+    await expect(availableCommissionMetric.locator("strong")).toHaveText("¥0.00");
     const transferred = await getInvitationSummary(page);
     expect(transferred).toMatchObject({
       valid_commission: 1_000, pending_commission: 0, commission_rate: 20,

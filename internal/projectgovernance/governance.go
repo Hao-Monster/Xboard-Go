@@ -36,19 +36,40 @@ type RequirementRegistry struct {
 }
 
 type Requirement struct {
-	ID                   string     `json:"id"`
-	Level                string     `json:"level"`
-	Domain               string     `json:"domain"`
-	Title                string     `json:"title"`
-	ScopeStatus          string     `json:"scope_status"`
-	ImplementationStatus string     `json:"implementation_status"`
-	VerificationStatus   string     `json:"verification_status"`
-	MigrationStatus      string     `json:"migration_status"`
-	AcceptanceStatus     string     `json:"acceptance_status"`
-	Milestone            string     `json:"milestone"`
-	DecisionIDs          []string   `json:"decision_ids"`
-	WorkItemIDs          []string   `json:"work_item_ids"`
-	Evidence             []Evidence `json:"evidence"`
+	ID                   string                `json:"id"`
+	Level                string                `json:"level"`
+	Domain               string                `json:"domain"`
+	Title                string                `json:"title"`
+	ScopeStatus          string                `json:"scope_status"`
+	ImplementationStatus string                `json:"implementation_status"`
+	VerificationStatus   string                `json:"verification_status"`
+	MigrationStatus      string                `json:"migration_status"`
+	AcceptanceStatus     string                `json:"acceptance_status"`
+	Milestone            string                `json:"milestone"`
+	DecisionIDs          []string              `json:"decision_ids"`
+	WorkItemIDs          []string              `json:"work_item_ids"`
+	StatusReason         string                `json:"status_reason,omitempty"`
+	AcceptanceCriteria   []AcceptanceCriterion `json:"acceptance_criteria,omitempty"`
+	ProgressEvidence     []ProgressEvidence    `json:"progress_evidence,omitempty"`
+	Evidence             []Evidence            `json:"evidence"`
+}
+
+type AcceptanceCriterion struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// ProgressEvidence records reproducible local progress without promoting it to
+// durable current-candidate acceptance evidence.
+type ProgressEvidence struct {
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Environment string   `json:"environment"`
+	CaseIDs     []string `json:"case_ids"`
+	Commit      string   `json:"commit"`
+	ObservedAt  string   `json:"observed_at"`
+	Command     string   `json:"command"`
+	Result      string   `json:"result"`
 }
 
 type Evidence struct {
@@ -109,9 +130,20 @@ type CompatibilityException struct {
 }
 
 type WorkItemRegistry struct {
-	SchemaVersion int        `json:"schema_version"`
-	AsOf          string     `json:"as_of"`
-	WorkItems     []WorkItem `json:"work_items"`
+	SchemaVersion int         `json:"schema_version"`
+	AsOf          string      `json:"as_of"`
+	WorkItems     []WorkItem  `json:"work_items"`
+	Tracks        []WorkTrack `json:"tracks,omitempty"`
+}
+
+type WorkTrack struct {
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Status         string   `json:"status"`
+	Milestone      string   `json:"milestone"`
+	WorkItemIDs    []string `json:"work_item_ids"`
+	DependsOn      []string `json:"depends_on"`
+	CompletionGate string   `json:"completion_gate"`
 }
 
 type WorkItem struct {
@@ -261,6 +293,7 @@ func Validate(state State) error {
 	decisionStatuses := make(map[string]string)
 	workItemIDs := make(map[string]bool)
 	workItemStatuses := make(map[string]string)
+	workTrackIDs := make(map[string]bool)
 
 	if len(state.Requirements.Requirements) != 80 {
 		problems = append(problems, fmt.Sprintf("requirements must contain exactly 80 entries, got %d", len(state.Requirements.Requirements)))
@@ -326,10 +359,50 @@ func Validate(state State) error {
 			problems = append(problems, fmt.Sprintf("%s must reference a GitHub issue", workItem.ID))
 		}
 	}
+	for _, track := range state.WorkItems.Tracks {
+		if !regexp.MustCompile(`^(?:FIN|USER)-[A-C]$|^QA$`).MatchString(track.ID) {
+			problems = append(problems, fmt.Sprintf("invalid work track id %q", track.ID))
+		}
+		if workTrackIDs[track.ID] {
+			problems = append(problems, fmt.Sprintf("duplicate work track id %s", track.ID))
+		}
+		workTrackIDs[track.ID] = true
+		if strings.TrimSpace(track.Title) == "" || strings.TrimSpace(track.CompletionGate) == "" {
+			problems = append(problems, fmt.Sprintf("%s requires a title and completion_gate", track.ID))
+		}
+		if !oneOf(track.Status, "open", "in_progress", "blocked", "done") {
+			problems = append(problems, fmt.Sprintf("%s has invalid status %q", track.ID, track.Status))
+		}
+		if !milestones[track.Milestone] {
+			problems = append(problems, fmt.Sprintf("%s has invalid milestone %q", track.ID, track.Milestone))
+		}
+		if len(track.WorkItemIDs) == 0 {
+			problems = append(problems, fmt.Sprintf("%s must reference at least one work item", track.ID))
+		}
+		for _, id := range track.WorkItemIDs {
+			if !workItemIDs[id] {
+				problems = append(problems, fmt.Sprintf("%s references unknown work item %s", track.ID, id))
+			}
+		}
+	}
+	for _, track := range state.WorkItems.Tracks {
+		seenDependencies := make(map[string]bool)
+		for _, id := range track.DependsOn {
+			if !workTrackIDs[id] {
+				problems = append(problems, fmt.Sprintf("%s references unknown dependency %s", track.ID, id))
+			}
+			if id == track.ID || seenDependencies[id] {
+				problems = append(problems, fmt.Sprintf("%s has invalid dependency %s", track.ID, id))
+			}
+			seenDependencies[id] = true
+		}
+	}
 
 	requirementPattern := regexp.MustCompile(`^[A-Z]+-\d{3}$`)
 	evidenceIDPattern := regexp.MustCompile(`^EV-[A-Z0-9][A-Z0-9-]{2,63}$`)
+	progressEvidenceIDPattern := regexp.MustCompile(`^PE-[A-Z0-9][A-Z0-9-]{2,63}$`)
 	evidenceCasePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{1,159}$`)
+	acceptanceCriterionPattern := regexp.MustCompile(`^[A-Z]+-\d{3}-AC\d+$`)
 	githubArtifactPattern := regexp.MustCompile(`^https://github\.com/Hao-Monster/Xboard-Go/actions/runs/\d+(?:/job/\d+)?$`)
 	bingoArtifactPattern := regexp.MustCompile(`^bingo-dev:sha256:[0-9a-f]{64}$`)
 	expectedRequirements := expectedRequirementIDs()
@@ -371,6 +444,16 @@ func Validate(state State) error {
 		if len(requirement.WorkItemIDs) == 0 {
 			problems = append(problems, fmt.Sprintf("%s must reference at least one work item", requirement.ID))
 		}
+		if (requirement.ImplementationStatus == "partial" || requirement.VerificationStatus == "partial" || requirement.MigrationStatus == "partial") && strings.TrimSpace(requirement.StatusReason) == "" {
+			problems = append(problems, fmt.Sprintf("%s has a partial status without status_reason", requirement.ID))
+		}
+		criterionIDs := make(map[string]bool, len(requirement.AcceptanceCriteria))
+		for _, criterion := range requirement.AcceptanceCriteria {
+			if !acceptanceCriterionPattern.MatchString(criterion.ID) || !strings.HasPrefix(criterion.ID, requirement.ID+"-AC") || strings.TrimSpace(criterion.Title) == "" || criterionIDs[criterion.ID] {
+				problems = append(problems, fmt.Sprintf("%s has invalid acceptance criterion %q", requirement.ID, criterion.ID))
+			}
+			criterionIDs[criterion.ID] = true
+		}
 		if requirement.ScopeStatus == "blocked" && len(requirement.DecisionIDs) == 0 {
 			problems = append(problems, fmt.Sprintf("%s is blocked without a decision reference", requirement.ID))
 		}
@@ -386,6 +469,27 @@ func Validate(state State) error {
 		if requirement.VerificationStatus == "current" && len(requirement.Evidence) == 0 {
 			problems = append(problems, fmt.Sprintf("%s is current without evidence", requirement.ID))
 		}
+		for _, evidence := range requirement.ProgressEvidence {
+			_, observedAtErr := time.Parse(time.RFC3339, evidence.ObservedAt)
+			validCases := len(evidence.CaseIDs) > 0
+			coversCriterion := len(criterionIDs) == 0
+			seenCases := make(map[string]bool, len(evidence.CaseIDs))
+			for _, caseID := range evidence.CaseIDs {
+				if !evidenceCasePattern.MatchString(caseID) || seenCases[caseID] {
+					validCases = false
+				}
+				coversCriterion = coversCriterion || criterionIDs[caseID]
+				seenCases[caseID] = true
+			}
+			if !progressEvidenceIDPattern.MatchString(evidence.ID) || !oneOf(evidence.Kind, "unit", "integration", "contract", "browser", "migration", "security", "manual") ||
+				evidence.Environment != "local" || !validCases || !coversCriterion || !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
+				problems = append(problems, fmt.Sprintf("%s has incomplete or invalid progress evidence", requirement.ID))
+			}
+			if evidence.Commit != state.Requirements.BaselineCommit {
+				problems = append(problems, fmt.Sprintf("%s progress evidence must target baseline_commit %s", requirement.ID, state.Requirements.BaselineCommit))
+			}
+		}
+		coveredCriteria := make(map[string]bool, len(criterionIDs))
 		for _, evidence := range requirement.Evidence {
 			_, observedAtErr := time.Parse(time.RFC3339, evidence.ObservedAt)
 			validArtifact := (evidence.Environment == "github-actions" && githubArtifactPattern.MatchString(evidence.Artifact)) ||
@@ -397,6 +501,7 @@ func Validate(state State) error {
 					validCases = false
 				}
 				seenCases[caseID] = true
+				coveredCriteria[caseID] = coveredCriteria[caseID] || criterionIDs[caseID]
 			}
 			if !evidenceIDPattern.MatchString(evidence.ID) || !oneOf(evidence.Kind, "unit", "integration", "contract", "browser", "differential", "migration", "security", "performance", "manual") ||
 				!oneOf(evidence.Environment, "github-actions", "bingo-dev") || !validCases || !validArtifact ||
@@ -408,6 +513,13 @@ func Validate(state State) error {
 			}
 			if requirement.VerificationStatus == "current" && evidence.Result != "pass" {
 				problems = append(problems, fmt.Sprintf("%s current evidence must pass", requirement.ID))
+			}
+		}
+		if requirement.VerificationStatus == "current" {
+			for id := range criterionIDs {
+				if !coveredCriteria[id] {
+					problems = append(problems, fmt.Sprintf("%s current evidence does not cover acceptance criterion %s", requirement.ID, id))
+				}
 			}
 		}
 		if requirement.AcceptanceStatus == "accepted" {
@@ -615,11 +727,12 @@ func RenderStatus(state State) (string, error) {
 	fmt.Fprintf(&out, "- Compatibility exceptions: %d accepted, %d proposed.\n", countExceptionStatus(state.Exceptions.Exceptions, "accepted"), countExceptionStatus(state.Exceptions.Exceptions, "proposed"))
 	fmt.Fprintf(&out, "- Current-head verification: %d/80; accepted: %d/80. Historical evidence is not current acceptance.\n", countRequirementStatus(state.Requirements.Requirements, "verification", "current"), countRequirementStatus(state.Requirements.Requirements, "acceptance", "accepted"))
 
-	fmt.Fprintf(&out, "\n## Blocked or partial requirements\n\n")
-	fmt.Fprintf(&out, "| ID | Milestone | Scope | Implementation | Verification | Decisions | Work items |\n| --- | --- | --- | --- | --- | --- | --- |\n")
+	fmt.Fprintf(&out, "\n## Requirements needing work\n\n")
+	fmt.Fprintf(&out, "| ID | Milestone | Scope | Implementation | Verification | Migration | Acceptance | Reason | Progress evidence | Decisions | Work items |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, requirement := range state.Requirements.Requirements {
-		if requirement.ScopeStatus == "blocked" || requirement.ImplementationStatus != "implemented" {
-			fmt.Fprintf(&out, "| `%s` | %s | %s | %s | %s | %s | %s |\n", requirement.ID, requirement.Milestone, requirement.ScopeStatus, requirement.ImplementationStatus, requirement.VerificationStatus, joinCode(requirement.DecisionIDs), joinCode(requirement.WorkItemIDs))
+		if requirement.ScopeStatus != "decided" || requirement.ImplementationStatus != "implemented" || requirement.VerificationStatus != "current" ||
+			!oneOf(requirement.MigrationStatus, "current", "not_applicable") || requirement.AcceptanceStatus != "accepted" {
+			fmt.Fprintf(&out, "| `%s` | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", requirement.ID, requirement.Milestone, requirement.ScopeStatus, requirement.ImplementationStatus, requirement.VerificationStatus, requirement.MigrationStatus, requirement.AcceptanceStatus, escapeTable(requirement.StatusReason), joinCode(progressEvidenceIDs(requirement.ProgressEvidence)), joinCode(requirement.DecisionIDs), joinCode(requirement.WorkItemIDs))
 		}
 	}
 
@@ -631,6 +744,13 @@ func RenderStatus(state State) (string, error) {
 			issue = fmt.Sprintf("[#%d](https://github.com/Hao-Monster/Xboard-Go/issues/%d)", workItem.IssueNumber, workItem.IssueNumber)
 		}
 		fmt.Fprintf(&out, "| `%s` | %s | %s | %s | %s |\n", workItem.ID, workItem.Milestone, workItem.Status, issue, escapeTable(workItem.Title))
+	}
+	if len(state.WorkItems.Tracks) > 0 {
+		fmt.Fprintf(&out, "\n## Execution tracks\n\n")
+		fmt.Fprintf(&out, "| Track | Milestone | Status | Work items | Depends on | Completion gate | Title |\n| --- | --- | --- | --- | --- | --- | --- |\n")
+		for _, track := range state.WorkItems.Tracks {
+			fmt.Fprintf(&out, "| `%s` | %s | %s | %s | %s | %s | %s |\n", track.ID, track.Milestone, track.Status, joinCode(track.WorkItemIDs), joinCode(track.DependsOn), escapeTable(track.CompletionGate), escapeTable(track.Title))
+		}
 	}
 
 	fmt.Fprintf(&out, "\n## Release gates\n\n")
@@ -700,6 +820,14 @@ func joinCode(values []string) string {
 		quoted = append(quoted, "`"+value+"`")
 	}
 	return strings.Join(quoted, ", ")
+}
+
+func progressEvidenceIDs(evidence []ProgressEvidence) []string {
+	ids := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		ids = append(ids, item.ID)
+	}
+	return ids
 }
 
 func escapeTable(value string) string {

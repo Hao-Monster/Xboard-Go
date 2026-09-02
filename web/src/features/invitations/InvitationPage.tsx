@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { CommissionLogPage, CommissionTransferResult, CommissionWithdrawal, CommissionWithdrawalPage, CommissionWithdrawalPolicy, InvitationCode, InvitationSummary } from "../../lib/api";
 import { secureRandomUUID } from "../../lib/random";
@@ -9,7 +9,7 @@ interface InvitationPageAPI {
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
-  transferCommission: (amount: number) => Promise<CommissionTransferResult>;
+  transferCommission: (amount: number, idempotencyKey: string) => Promise<CommissionTransferResult>;
   getCommissionWithdrawalPolicy: () => Promise<CommissionWithdrawalPolicy>;
   listCommissionWithdrawals: (page?: number, pageSize?: number) => Promise<CommissionWithdrawalPage>;
   createCommissionWithdrawal: (idempotencyKey: string, method: string, account: string) => Promise<CommissionWithdrawal>;
@@ -65,6 +65,7 @@ export function InvitationPage({ api, locale = "zh-CN" }: { api: InvitationPageA
   const [withdrawals, setWithdrawals] = useState(emptyWithdrawals);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"" | "generate" | "transfer" | "withdraw">("");
+  const transferRequest = useRef<{ amount: number; idempotencyKey: string } | null>(null);
   const [transferAmount, setTransferAmount] = useState("");
   const [withdrawalMethod, setWithdrawalMethod] = useState("");
   const [withdrawalAccount, setWithdrawalAccount] = useState("");
@@ -147,9 +148,13 @@ export function InvitationPage({ api, locale = "zh-CN" }: { api: InvitationPageA
     }
     setBusy("transfer");
     try {
-      await api.transferCommission(amount);
+      if (transferRequest.current?.amount !== amount) {
+        transferRequest.current = { amount, idempotencyKey: secureRandomUUID() };
+      }
+      await api.transferCommission(amount, transferRequest.current.idempotencyKey);
       setTransferAmount("");
       await refresh();
+      transferRequest.current = null;
       setMessage(labels.success);
     } catch (cause) {
       setError(messageOf(cause, labels.requestFailed));

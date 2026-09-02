@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -214,6 +216,52 @@ func TestCommissionWithdrawalConcurrentCreateAndPaidTransitionPreserveMoney(t *t
 	}
 	if _, err := database.RejectCommissionWithdrawal(ctx, admin.ID, second.ID, second.Revision, "duplicate payment reference", now.Add(8*time.Minute)); err != nil {
 		t.Fatalf("reject after duplicate reference conflict: %v", err)
+	}
+}
+
+func TestCommissionWithdrawalAccountRevealAuditIsSynchronousAndUsesActualID(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 9, 2, 14, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "withdraw-reveal-user@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "withdraw-reveal-admin@example.test", PasswordHash: "hash", IsAdmin: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_balance=10000 WHERE id=?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	created, err := database.CreateCommissionWithdrawal(ctx, user.ID, CreateCommissionWithdrawalInput{
+		IdempotencyKey: "withdrawal-reveal-audit-0001", Method: "支付宝",
+		AccountCipher: []byte("encrypted-sensitive-account"), AccountFingerprint: withdrawalFingerprint(42), AccountMasked: "****6789",
+	}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := "/api/v1/admin/commission-withdrawals/" + fmt.Sprint(created.ID) + "/account/reveal"
+	if err := database.RecordCommissionWithdrawalAccountRevealAudit(ctx, admin.ID, admin.Email, created.ID, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("RecordCommissionWithdrawalAccountRevealAudit() error = %v", err)
+	}
+	logs, err := database.ListAdminAuditLogs(ctx, AdminAuditFilter{Page: 1, PageSize: 20, Query: "account/reveal"})
+	if err != nil || logs.Total != 1 || len(logs.Items) != 1 || logs.Items[0].Route != route {
+		t.Fatalf("account reveal audit = (%#v, %v)", logs, err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		CREATE TRIGGER fail_withdrawal_reveal_audit
+		BEFORE INSERT ON admin_audit_logs
+		WHEN NEW.route LIKE '/api/v1/admin/commission-withdrawals/%/account/reveal'
+		BEGIN
+			SELECT RAISE(ABORT, 'reveal audit unavailable');
+		END
+	`); err != nil {
+		t.Fatal(err)
+	}
+	err = database.RecordCommissionWithdrawalAccountRevealAudit(ctx, admin.ID, admin.Email, created.ID, now.Add(3*time.Minute))
+	if err == nil || !strings.Contains(err.Error(), "audit") {
+		t.Fatalf("failed reveal audit error = %v, want audit error", err)
 	}
 }
 

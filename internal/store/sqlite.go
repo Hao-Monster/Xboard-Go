@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 61
+const currentSchemaVersion = 62
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -441,6 +441,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v61: %w", err)
 		}
 		version = 61
+	}
+	if version < 62 {
+		if _, err := tx.ExecContext(ctx, schemaV62); err != nil {
+			return fmt.Errorf("apply schema v62: %w", err)
+		}
+		version = 62
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2711,6 +2717,73 @@ CREATE TABLE IF NOT EXISTS user_lifecycle_events (
     UNIQUE (user_id, revision)
 );
 CREATE INDEX IF NOT EXISTS idx_user_lifecycle_events_user ON user_lifecycle_events(user_id, revision);
+`
+
+const schemaV62 = `
+CREATE TABLE IF NOT EXISTS commission_transfer_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key TEXT NOT NULL CHECK (
+        length(idempotency_key) BETWEEN 16 AND 128
+        AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+    ),
+    amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 9000000000000000),
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    commission_balance_before INTEGER NOT NULL CHECK (commission_balance_before BETWEEN amount AND 9000000000000000),
+    commission_balance_after INTEGER NOT NULL CHECK (
+        commission_balance_after BETWEEN 0 AND 9000000000000000
+        AND commission_balance_before = commission_balance_after + amount
+    ),
+    balance_before INTEGER NOT NULL CHECK (balance_before BETWEEN 0 AND 9000000000000000),
+    balance_after INTEGER NOT NULL CHECK (
+        balance_after BETWEEN amount AND 9000000000000000
+        AND balance_after = balance_before + amount
+    ),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    UNIQUE (user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_commission_transfer_events_user_created
+    ON commission_transfer_events(user_id, created_at DESC, id DESC);
+CREATE TRIGGER IF NOT EXISTS commission_transfer_events_no_update
+BEFORE UPDATE ON commission_transfer_events
+BEGIN
+    SELECT RAISE(ABORT, 'commission transfer events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS commission_transfer_events_no_delete
+BEFORE DELETE ON commission_transfer_events
+BEGIN
+    SELECT RAISE(ABORT, 'commission transfer events are immutable');
+END;
+
+CREATE TABLE IF NOT EXISTS admin_balance_adjustment_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    balance_before INTEGER NOT NULL CHECK (balance_before BETWEEN 0 AND 9000000000000000),
+    balance_after INTEGER NOT NULL CHECK (balance_after BETWEEN 0 AND 9000000000000000),
+    commission_balance_before INTEGER NOT NULL CHECK (commission_balance_before BETWEEN 0 AND 9000000000000000),
+    commission_balance_after INTEGER NOT NULL CHECK (commission_balance_after BETWEEN 0 AND 9000000000000000),
+    target_revision_before INTEGER NOT NULL CHECK (target_revision_before > 0),
+    target_revision_after INTEGER NOT NULL CHECK (target_revision_after = target_revision_before + 1),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    UNIQUE (target_user_id, target_revision_after),
+    CHECK (balance_before <> balance_after OR commission_balance_before <> commission_balance_after)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_balance_adjustment_events_target_created
+    ON admin_balance_adjustment_events(target_user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_balance_adjustment_events_actor_created
+    ON admin_balance_adjustment_events(actor_user_id, created_at DESC, id DESC);
+CREATE TRIGGER IF NOT EXISTS admin_balance_adjustment_events_no_update
+BEFORE UPDATE ON admin_balance_adjustment_events
+BEGIN
+    SELECT RAISE(ABORT, 'administrator balance adjustment events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS admin_balance_adjustment_events_no_delete
+BEFORE DELETE ON admin_balance_adjustment_events
+BEGIN
+    SELECT RAISE(ABORT, 'administrator balance adjustment events are immutable');
+END;
 `
 
 func applySchemaV60(ctx context.Context, tx *sql.Tx) error {

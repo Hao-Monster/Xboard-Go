@@ -27,7 +27,7 @@ func TestCommissionWithdrawalAPIEncryptsAccountAndEnforcesAdminStateMachine(t *t
 	}
 	commissionBalance := int64(15000)
 	if _, _, err := database.UpdateAdminUser(context.Background(), target.ID, store.UpdateAdminUserInput{
-		Revision: target.Revision, Email: target.Email, GroupID: target.GroupID, TransferEnable: target.TransferEnable,
+		AdministratorID: adminRecord.ID, Revision: target.Revision, Email: target.Email, GroupID: target.GroupID, TransferEnable: target.TransferEnable,
 		ExpiredAt: target.ExpiredAt, SpeedLimit: target.SpeedLimit, DeviceLimit: target.DeviceLimit, Banned: target.Banned,
 		CommissionBalance: &commissionBalance,
 	}, fixedNow()); err != nil {
@@ -74,7 +74,7 @@ func TestCommissionWithdrawalAPIEncryptsAccountAndEnforcesAdminStateMachine(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(audits.Items) != 1 || audits.Items[0].Method != http.MethodPost || audits.Items[0].Route != "/api/v1/admin/commission-withdrawals/{withdrawalID}/account/reveal" || audits.Items[0].StatusCode != http.StatusOK {
+	if len(audits.Items) != 1 || audits.Items[0].Method != http.MethodPost || audits.Items[0].Route != fmt.Sprintf("/api/v1/admin/commission-withdrawals/%d/account/reveal", envelope.Data.ID) || audits.Items[0].StatusCode != http.StatusOK {
 		t.Fatalf("account reveal audit = %+v", audits.Items)
 	}
 	approved := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/commission-withdrawals/%d/approve", envelope.Data.ID), `{"revision":1,"confirm":true}`)

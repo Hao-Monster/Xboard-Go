@@ -364,6 +364,12 @@ func TestAdminUserFullProfileUpdateAppliesPlanAndSideEffectsAtomically(t *testin
 	ctx := context.Background()
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	seedAdminUserGroups(t, database, now)
+	administrator, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "financial-admin@example.test", PasswordHash: "admin-hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateAdminUser(administrator) error = %v", err)
+	}
 
 	resetMethod := 1
 	speedLimit := 125
@@ -415,7 +421,7 @@ func TestAdminUserFullProfileUpdateAppliesPlanAndSideEffectsAtomically(t *testin
 	remarks := "U2 priority account"
 	isStaff := true
 	updated, mutation, err := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
-		Revision: user.Revision, Email: "profile-after@example.test", PasswordHash: pointerTo("new-hash"),
+		AdministratorID: administrator.ID, Revision: user.Revision, Email: "profile-after@example.test", PasswordHash: pointerTo("new-hash"),
 		IsStaff: &isStaff, GroupID: pointerTo(int64(7)), TransferEnable: 999, ExpiredAt: &expiresAt,
 		SpeedLimit: 1, DeviceLimit: 1, PlanIDSet: true, PlanID: &plan.ID,
 		InviteUserEmailSet: true, InviteUserEmail: &inviter.Email,
@@ -466,6 +472,24 @@ func TestAdminUserFullProfileUpdateAppliesPlanAndSideEffectsAtomically(t *testin
 	if devices != 0 || onlineRows != 0 || onlineCount != 0 {
 		t.Fatalf("full update retained runtime state: devices=%d online_rows=%d online_count=%d", devices, onlineRows, onlineCount)
 	}
+	var actorID, targetID, balanceBefore, balanceAfter, commissionBefore, commissionAfter, revisionBefore, revisionAfter, eventCreatedAt int64
+	var currency string
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT actor_user_id,target_user_id,currency,balance_before,balance_after,
+		       commission_balance_before,commission_balance_after,target_revision_before,target_revision_after,created_at
+		FROM admin_balance_adjustment_events WHERE target_user_id=?
+	`, user.ID).Scan(&actorID, &targetID, &currency, &balanceBefore, &balanceAfter,
+		&commissionBefore, &commissionAfter, &revisionBefore, &revisionAfter, &eventCreatedAt); err != nil {
+		t.Fatalf("read administrator balance adjustment event: %v", err)
+	}
+	if actorID != administrator.ID || targetID != user.ID || currency != "CNY" || balanceBefore != 0 || balanceAfter != balance ||
+		commissionBefore != 0 || commissionAfter != commissionBalance || revisionBefore != user.Revision || revisionAfter != updated.Revision || eventCreatedAt != now.Add(time.Minute).Unix() {
+		t.Fatalf("administrator balance adjustment event = actor %d target %d currency %q balances %d/%d commissions %d/%d revisions %d/%d",
+			actorID, targetID, currency, balanceBefore, balanceAfter, commissionBefore, commissionAfter, revisionBefore, revisionAfter)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE admin_balance_adjustment_events SET balance_after=balance_after WHERE target_user_id=?`, user.ID); err == nil {
+		t.Fatal("administrator balance adjustment event update succeeded, want immutable ledger")
+	}
 }
 
 func TestAdminUserFullProfileUpdateRollsBackOnMissingReferences(t *testing.T) {
@@ -497,6 +521,13 @@ func TestAdminUserFullProfileUpdateRollsBackOnMissingReferences(t *testing.T) {
 	if fresh.Email != user.Email || fresh.Revision != user.Revision || fresh.Balance != user.Balance ||
 		fresh.GroupID == nil || *fresh.GroupID != 7 || fresh.TransferEnable != user.TransferEnable {
 		t.Fatalf("missing plan partially updated user: %#v", fresh)
+	}
+	var financialEvents int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_balance_adjustment_events WHERE target_user_id=?`, user.ID).Scan(&financialEvents); err != nil {
+		t.Fatal(err)
+	}
+	if financialEvents != 0 {
+		t.Fatalf("failed user update recorded %d financial events", financialEvents)
 	}
 
 	missingInviter := "missing-inviter@example.test"
@@ -768,6 +799,12 @@ func BenchmarkUpdateAdminUserFullProfile(b *testing.B) {
 	}
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	seedAdminUserGroups(b, database, now)
+	administrator, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "benchmark-financial-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		b.Fatal(err)
+	}
 	resetMethod := 1
 	speedLimit := 100
 	deviceLimit := 5
@@ -807,7 +844,7 @@ func BenchmarkUpdateAdminUserFullProfile(b *testing.B) {
 	for index := range b.N {
 		plan := plans[index%len(plans)]
 		updated, _, updateErr := database.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{
-			Revision: user.Revision, Email: user.Email, GroupID: user.GroupID, PlanIDSet: true, PlanID: &plan.ID,
+			AdministratorID: administrator.ID, Revision: user.Revision, Email: user.Email, GroupID: user.GroupID, PlanIDSet: true, PlanID: &plan.ID,
 			InviteUserEmailSet: true, InviteUserEmail: &inviter.Email, TransferEnable: user.TransferEnable,
 			TrafficUpload: &upload, TrafficDownload: &download, ExpiredAt: user.ExpiredAt,
 			SpeedLimit: user.SpeedLimit, DeviceLimit: user.DeviceLimit, Banned: user.Banned,

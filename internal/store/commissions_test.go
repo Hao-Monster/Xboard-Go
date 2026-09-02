@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -164,14 +166,14 @@ func TestCommissionProcessingSummaryAndTransferAreExactlyOnce(t *testing.T) {
 		page.Items[0].OrderAmount != 1_000 || page.Items[0].GetAmount != 200 {
 		t.Fatalf("ListCommissionLogs() = (%#v, %v)", page, err)
 	}
-	transferred, err := database.TransferCommission(ctx, inviter.ID, 125, now.Add(74*time.Hour))
+	transferred, err := database.TransferCommission(ctx, inviter.ID, CommissionTransferInput{Amount: 125, IdempotencyKey: "commission-transfer-basic-0001"}, now.Add(74*time.Hour))
 	if err != nil || transferred.CommissionBalance != 75 || transferred.Balance != 125 {
 		t.Fatalf("TransferCommission() = (%#v, %v)", transferred, err)
 	}
-	if _, err := database.TransferCommission(ctx, inviter.ID, 76, now.Add(75*time.Hour)); !errors.Is(err, ErrInsufficientCommission) {
+	if _, err := database.TransferCommission(ctx, inviter.ID, CommissionTransferInput{Amount: 76, IdempotencyKey: "commission-transfer-overdraw-0001"}, now.Add(75*time.Hour)); !errors.Is(err, ErrInsufficientCommission) {
 		t.Fatalf("overdraw transfer error = %v, want ErrInsufficientCommission", err)
 	}
-	if _, err := database.TransferCommission(ctx, inviter.ID, 0, now.Add(75*time.Hour)); !errors.Is(err, ErrInvalidInput) {
+	if _, err := database.TransferCommission(ctx, inviter.ID, CommissionTransferInput{Amount: 0, IdempotencyKey: "commission-transfer-zero-0001"}, now.Add(75*time.Hour)); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("zero transfer error = %v, want ErrInvalidInput", err)
 	}
 }
@@ -228,11 +230,13 @@ func TestCommissionDistributionAndConcurrentTransferPreserveMoney(t *testing.T) 
 	var successes int
 	var mutex sync.Mutex
 	var wait sync.WaitGroup
-	for range 10 {
+	for index := range 10 {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			if _, err := database.TransferCommission(ctx, level1.ID, 75, now.Add(73*time.Hour)); err == nil {
+			if _, err := database.TransferCommission(ctx, level1.ID, CommissionTransferInput{
+				Amount: 75, IdempotencyKey: fmt.Sprintf("commission-transfer-concurrent-%02d", index),
+			}, now.Add(73*time.Hour)); err == nil {
 				mutex.Lock()
 				successes++
 				mutex.Unlock()
@@ -251,5 +255,189 @@ func TestCommissionDistributionAndConcurrentTransferPreserveMoney(t *testing.T) 
 	}
 	if commissionBalance != 50 || balance != 450 || commissionBalance+balance != 500 {
 		t.Fatalf("concurrent transfer balances = commission %d + balance %d", commissionBalance, balance)
+	}
+}
+
+func TestTransferCommissionIdempotencyAndLedger(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "transfer-ledger@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_balance=1000,balance=250 WHERE id=?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET currency='USD' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+
+	input := CommissionTransferInput{Amount: 400, IdempotencyKey: "commission-transfer-retry-0001"}
+	first, err := database.TransferCommission(ctx, user.ID, input, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Idempotent || first.TransferID < 1 || first.Amount != 400 || first.Currency != "USD" ||
+		first.CommissionBalanceBefore != 1000 || first.CommissionBalanceAfter != 600 ||
+		first.BalanceBefore != 250 || first.BalanceAfter != 650 ||
+		first.CommissionBalance != 600 || first.Balance != 650 {
+		t.Fatalf("first transfer = %#v", first)
+	}
+	retry, err := database.TransferCommission(ctx, user.ID, input, now.Add(2*time.Minute))
+	if err != nil || !retry.Idempotent || retry.TransferID != first.TransferID || !retry.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("retry transfer = (%#v, %v), first=%#v", retry, err, first)
+	}
+	if _, err := database.TransferCommission(ctx, user.ID, CommissionTransferInput{
+		Amount: 401, IdempotencyKey: input.IdempotencyKey,
+	}, now.Add(3*time.Minute)); !errors.Is(err, ErrCommissionTransferIdempotencyConflict) {
+		t.Fatalf("conflicting retry error = %v", err)
+	}
+	var events, commissionBalance, balance int64
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM commission_transfer_events WHERE user_id=?`, user.ID).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT commission_balance,balance FROM users WHERE id=?`, user.ID).Scan(&commissionBalance, &balance); err != nil {
+		t.Fatal(err)
+	}
+	if events != 1 || commissionBalance != 600 || balance != 650 {
+		t.Fatalf("retry ledger/balances = events %d, commission %d, balance %d", events, commissionBalance, balance)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE commission_transfer_events SET amount=amount WHERE id=?`, first.TransferID); err == nil {
+		t.Fatal("commission transfer event update succeeded, want immutable ledger")
+	}
+}
+
+func TestConcurrentCommissionTransferRetryAppliesOnce(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "transfer-race@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_balance=500,balance=100 WHERE id=?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	input := CommissionTransferInput{Amount: 300, IdempotencyKey: "commission-transfer-race-0001"}
+	results := make(chan CommissionTransferResult, 12)
+	errorsSeen := make(chan error, 12)
+	var wait sync.WaitGroup
+	for range 12 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			result, err := database.TransferCommission(ctx, user.ID, input, now.Add(time.Minute))
+			if err != nil {
+				errorsSeen <- err
+				return
+			}
+			results <- result
+		}()
+	}
+	wait.Wait()
+	close(results)
+	close(errorsSeen)
+	for err := range errorsSeen {
+		t.Errorf("concurrent retry error = %v", err)
+	}
+	var fresh, cached int
+	var transferID int64
+	for result := range results {
+		if transferID == 0 {
+			transferID = result.TransferID
+		} else if result.TransferID != transferID {
+			t.Errorf("concurrent retry transfer ID = %d, want %d", result.TransferID, transferID)
+		}
+		if result.Idempotent {
+			cached++
+		} else {
+			fresh++
+		}
+	}
+	var events, commissionBalance, balance int64
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM commission_transfer_events WHERE user_id=?`, user.ID).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT commission_balance,balance FROM users WHERE id=?`, user.ID).Scan(&commissionBalance, &balance); err != nil {
+		t.Fatal(err)
+	}
+	if fresh != 1 || cached != 11 || events != 1 || commissionBalance != 200 || balance != 400 {
+		t.Fatalf("concurrent retries = fresh %d cached %d events %d balances %d/%d", fresh, cached, events, commissionBalance, balance)
+	}
+}
+
+func TestConcurrentCommissionTransferRetryAcrossStoresAppliesOnce(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 8, 27, 14, 0, 0, 0, time.UTC)
+	databasePath := filepath.Join(t.TempDir(), "commission-transfer.db")
+	first, err := OpenSQLite(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	if err := first.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	user, err := first.CreateAdminUser(ctx, CreateAdminUserInput{Email: "transfer-multistore@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.db.ExecContext(ctx, `UPDATE users SET commission_balance=500,balance=100 WHERE id=?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := OpenSQLite(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	input := CommissionTransferInput{Amount: 300, IdempotencyKey: "commission-transfer-multistore-0001"}
+	results := make(chan CommissionTransferResult, 2)
+	errorsSeen := make(chan error, 2)
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for _, database := range []*Store{first, second} {
+		wait.Add(1)
+		go func(database *Store) {
+			defer wait.Done()
+			<-start
+			result, transferErr := database.TransferCommission(ctx, user.ID, input, now.Add(time.Minute))
+			if transferErr != nil {
+				errorsSeen <- transferErr
+				return
+			}
+			results <- result
+		}(database)
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	close(errorsSeen)
+	for transferErr := range errorsSeen {
+		t.Errorf("multi-store concurrent retry error = %v", transferErr)
+	}
+	var fresh, cached int
+	var transferID int64
+	for result := range results {
+		if transferID == 0 {
+			transferID = result.TransferID
+		} else if result.TransferID != transferID {
+			t.Errorf("multi-store transfer ID = %d, want %d", result.TransferID, transferID)
+		}
+		if result.Idempotent {
+			cached++
+		} else {
+			fresh++
+		}
+	}
+	var events, commissionBalance, balance int64
+	if err := first.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM commission_transfer_events WHERE user_id=?`, user.ID).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.db.QueryRowContext(ctx, `SELECT commission_balance,balance FROM users WHERE id=?`, user.ID).Scan(&commissionBalance, &balance); err != nil {
+		t.Fatal(err)
+	}
+	if fresh != 1 || cached != 1 || events != 1 || commissionBalance != 200 || balance != 400 {
+		t.Fatalf("multi-store retries = fresh %d cached %d events %d balances %d/%d", fresh, cached, events, commissionBalance, balance)
 	}
 }

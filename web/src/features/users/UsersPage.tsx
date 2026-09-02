@@ -613,6 +613,7 @@ function UserDeletionDialog({ api, account, onClose, onSaved }: { api: UsersAPI;
       {impact !== null && <div className="user-detail-grid">
         <DetailField label="订单 / 支付尝试" value={`${impact.orders} / ${impact.payment_checkouts}`} /><DetailField label="提现" value={String(impact.commission_withdrawals)} />
         <DetailField label="佣金记录" value={String(impact.commission_logs)} /><DetailField label="分销订阅" value={String(impact.distributor_subscriptions)} />
+        <DetailField label="佣金划转 / 余额调整" value={`${impact.commission_transfers} / ${impact.admin_balance_adjustments}`} />
         <DetailField label="邀请码 / 被邀请用户" value={`${impact.invitation_codes} / ${impact.invited_users}`} /><DetailField label="工单 / 消息" value={`${impact.tickets} / ${impact.ticket_messages}`} />
         <DetailField label="知识库附件" value={String(impact.knowledge_attachments)} /><DetailField label="审计记录" value={String(impact.audit_logs)} />
       </div>}

@@ -135,6 +135,61 @@ func TestCurrentEvidenceWithAuditableMetadataIsValid(t *testing.T) {
 	}
 }
 
+func TestPartialRequirementNeedsStatusReason(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "partial"
+	requirement.StatusReason = ""
+	if err := Validate(state); err == nil {
+		t.Fatal("expected partial requirement without a status reason to fail validation")
+	}
+}
+
+func TestProgressEvidenceMustTargetCandidateCommit(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "partial"
+	requirement.StatusReason = "Local verification is not durable acceptance evidence."
+	requirement.ProgressEvidence = []ProgressEvidence{{
+		ID: "PE-TEST-LOCAL", Kind: "integration", Environment: "local",
+		CaseIDs: []string{"TestProgressRequirement"}, Commit: strings.Repeat("f", 40),
+		ObservedAt: "2026-09-02T00:00:00Z", Command: "go test ./internal/httpapi", Result: "pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected progress evidence from another commit to fail validation")
+	}
+	requirement.ProgressEvidence[0].Commit = state.Requirements.BaselineCommit
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCurrentEvidenceMustCoverAcceptanceCriteria(t *testing.T) {
+	_, state := repositoryState(t)
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.AcceptanceCriteria = []AcceptanceCriterion{{ID: "AUTH-001-AC1", Title: "A stable acceptance criterion"}}
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected current evidence without acceptance-criterion coverage to fail validation")
+	}
+	requirement.Evidence[0].CaseIDs = append(requirement.Evidence[0].CaseIDs, "AUTH-001-AC1")
+	if err := Validate(state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorkTrackNeedsKnownDependencies(t *testing.T) {
+	_, state := repositoryState(t)
+	state.WorkItems.Tracks = []WorkTrack{{
+		ID: "FIN-A", Title: "Ledger", Status: "in_progress", Milestone: "M1",
+		WorkItemIDs: []string{"FUNC-001"}, DependsOn: []string{"FIN-Z"}, CompletionGate: "Tests pass",
+	}}
+	if err := Validate(state); err == nil {
+		t.Fatal("expected unknown work-track dependency to fail validation")
+	}
+}
+
 func TestAcceptedRequirementRequiresCompletedWorkItems(t *testing.T) {
 	_, state := repositoryState(t)
 	requirement := &state.Requirements.Requirements[0]

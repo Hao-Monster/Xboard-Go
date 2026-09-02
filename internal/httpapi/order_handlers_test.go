@@ -108,12 +108,23 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 		t.Fatalf("paid commission logs status=%d body=%s", commissionLogs.Code, commissionLogs.Body)
 	}
 	transferAmount := order.CommissionBalance / 2
-	transferred := admin.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", fmt.Sprintf(`{"amount":%d}`, transferAmount))
+	transferBody := fmt.Sprintf(`{"amount":%d,"idempotency_key":"order-commission-transfer-0001"}`, transferAmount)
+	transferred := admin.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", transferBody)
 	if transferred.Code != http.StatusOK || !containsAll(transferred.Body.String(),
 		fmt.Sprintf(`"commission_balance":%d`, order.CommissionBalance-transferAmount),
 		fmt.Sprintf(`"balance":%d`, transferAmount)) {
 		t.Fatalf("positive commission transfer status=%d body=%s", transferred.Code, transferred.Body)
 	}
+	retriedTransfer := admin.request(t, api, http.MethodPost, "/api/v1/invitations/transfer", transferBody)
+	if retriedTransfer.Code != http.StatusOK || !containsAll(retriedTransfer.Body.String(), `"idempotent":true`,
+		fmt.Sprintf(`"commission_balance_before":%d`, order.CommissionBalance),
+		fmt.Sprintf(`"commission_balance_after":%d`, order.CommissionBalance-transferAmount),
+		`"balance_before":0`, fmt.Sprintf(`"balance_after":%d`, transferAmount)) {
+		t.Fatalf("idempotent commission transfer status=%d body=%s", retriedTransfer.Code, retriedTransfer.Body)
+	}
+	conflictingTransfer := admin.request(t, api, http.MethodPost, "/api/v1/invitations/transfer",
+		fmt.Sprintf(`{"amount":%d,"idempotency_key":"order-commission-transfer-0001"}`, transferAmount+1))
+	assertAPIError(t, conflictingTransfer, http.StatusConflict, "idempotency_conflict", "该幂等键已用于不同的佣金划转请求")
 	refreshedSummary := admin.request(t, api, http.MethodGet, "/api/v1/invitations", "")
 	if refreshedSummary.Code != http.StatusOK || !strings.Contains(refreshedSummary.Body.String(),
 		fmt.Sprintf(`"available_commission":%d`, order.CommissionBalance-transferAmount)) {

@@ -56,6 +56,8 @@ func getAdminUserDeletionImpact(ctx context.Context, database interface {
 		 (SELECT COUNT(*) FROM payment_checkout_attempts a JOIN orders o ON o.id=a.order_id WHERE o.user_id=?),
 		 (SELECT COUNT(*) FROM commission_withdrawals WHERE user_id=?),
 		 (SELECT COUNT(*) FROM commission_logs WHERE invite_user_id=? OR user_id=?),
+		 (SELECT COUNT(*) FROM commission_transfer_events WHERE user_id=?),
+		 (SELECT COUNT(*) FROM admin_balance_adjustment_events WHERE actor_user_id=? OR target_user_id=?),
 		 (SELECT COUNT(*) FROM distributor_subscriptions WHERE distributor_user_id=? OR subscriber_user_id=?),
 		 (SELECT COUNT(*) FROM invitation_codes WHERE user_id=?),
 		 (SELECT COUNT(*) FROM users WHERE invite_user_id=?),
@@ -63,8 +65,9 @@ func getAdminUserDeletionImpact(ctx context.Context, database interface {
 		 (SELECT COUNT(*) FROM ticket_messages WHERE user_id=?),
 		 (SELECT COUNT(*) FROM knowledge_attachments WHERE uploader_user_id=?),
 		 (SELECT COUNT(*) FROM admin_audit_logs WHERE administrator_id=?)
-	`, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID).Scan(
-		&impact.Orders, &impact.PaymentCheckouts, &impact.CommissionWithdrawals, &impact.CommissionLogs, &impact.DistributorSubscriptions,
+	`, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID).Scan(
+		&impact.Orders, &impact.PaymentCheckouts, &impact.CommissionWithdrawals, &impact.CommissionLogs,
+		&impact.CommissionTransfers, &impact.AdminBalanceAdjustments, &impact.DistributorSubscriptions,
 		&impact.InvitationCodes, &impact.InvitedUsers, &impact.Tickets, &impact.TicketMessages,
 		&impact.KnowledgeAttachments, &impact.AuditLogs,
 	); err != nil {
@@ -258,11 +261,10 @@ func (s *Store) ProcessDueUserAnonymizations(ctx context.Context, now time.Time,
 		if tokenErr != nil {
 			return UserAnonymizationResult{}, tokenErr
 		}
-		newUUID, uuidErr := uuid.NewRandom()
-		if uuidErr != nil {
-			return UserAnonymizationResult{}, fmt.Errorf("generate anonymized user uuid: %w", uuidErr)
+		newUUID, tombstone, identityErr := newAnonymizedUserIdentity(ctx, tx)
+		if identityErr != nil {
+			return UserAnonymizationResult{}, identityErr
 		}
-		tombstone := fmt.Sprintf("deleted+%x@invalid.invalid", item.id)
 		updated, updateErr := tx.ExecContext(ctx, `
 			UPDATE users SET email=?,password_hash=?,uuid=?,subscription_token=?,is_admin=0,is_staff=0,is_distributor=0,
 				distributor_name=NULL,banned=1,telegram_id=NULL,remarks=NULL,remind_expire=0,remind_traffic=0,
@@ -294,6 +296,24 @@ func (s *Store) ProcessDueUserAnonymizations(ctx context.Context, now time.Time,
 		return UserAnonymizationResult{}, fmt.Errorf("commit due user anonymization: %w", err)
 	}
 	return result, nil
+}
+
+func newAnonymizedUserIdentity(ctx context.Context, tx *sql.Tx) (uuid.UUID, string, error) {
+	for range 16 {
+		candidate, err := uuid.NewRandom()
+		if err != nil {
+			return uuid.Nil, "", fmt.Errorf("generate anonymized user uuid: %w", err)
+		}
+		tombstone := "deleted+" + candidate.String() + "@invalid.invalid"
+		var occupied bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE uuid=? OR email=? COLLATE NOCASE)`, candidate.String(), tombstone).Scan(&occupied); err != nil {
+			return uuid.Nil, "", fmt.Errorf("check anonymized user identity: %w", err)
+		}
+		if !occupied {
+			return candidate, tombstone, nil
+		}
+	}
+	return uuid.Nil, "", errors.New("generate unique anonymized user identity: collision limit reached")
 }
 
 func revokeUserCredentialsForDeletion(ctx context.Context, tx *sql.Tx, userID int64, email string, now time.Time) error {
@@ -374,6 +394,7 @@ func anonymizeUserDisplaySnapshots(ctx context.Context, tx *sql.Tx, userID int64
 		{`UPDATE registration_email_mail_outbox SET recipient=?,updated_at=? WHERE recipient=? COLLATE NOCASE`, []any{tombstone, now.Unix(), originalEmail}},
 		{`UPDATE login_link_mail_outbox SET recipient=?,updated_at=? WHERE user_id=?`, []any{tombstone, now.Unix(), userID}},
 		{`UPDATE subscription_reminder_outbox SET recipient=?,updated_at=? WHERE user_id=?`, []any{tombstone, now.Unix(), userID}},
+		{`UPDATE commission_withdrawals SET account_cipher=zeroblob(1),account_fingerprint=zeroblob(32),account_masked='[anonymized]' WHERE user_id=?`, []any{userID}},
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {

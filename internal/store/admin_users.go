@@ -694,6 +694,7 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if input.CommissionBalance != nil {
 		commissionBalance = *input.CommissionBalance
 	}
+	financialChanged := existing.Balance != balance || existing.CommissionBalance != commissionBalance
 	discount := cloneIntPointer(existing.Discount)
 	if input.DiscountSet {
 		discount = cloneIntPointer(input.Discount)
@@ -754,6 +755,27 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 		}
 		nextResetAt = CalculateNextTrafficReset(resetMethod, systemResetMethod, input.ExpiredAt, now)
 	}
+	financialCurrency := ""
+	if financialChanged {
+		if input.AdministratorID < 1 {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("%w: administrator is required for balance adjustment", ErrInvalidInput)
+		}
+		var administratorAllowed bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM users
+				WHERE id=? AND account_kind='human' AND lifecycle_status='active' AND is_admin=1 AND banned=0
+			)
+		`, input.AdministratorID).Scan(&administratorAllowed); err != nil {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("validate balance adjustment administrator: %w", err)
+		}
+		if !administratorAllowed {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("%w: invalid balance adjustment administrator", ErrInvalidInput)
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT currency FROM app_settings WHERE id=1`).Scan(&financialCurrency); err != nil {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("read balance adjustment currency: %w", err)
+		}
+	}
 	passwordHash := ""
 	passwordChanged := input.PasswordHash != nil
 	if passwordChanged {
@@ -788,6 +810,17 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	}
 	if changed != 1 {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
+	}
+	if financialChanged {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO admin_balance_adjustment_events (
+				actor_user_id,target_user_id,currency,balance_before,balance_after,
+				commission_balance_before,commission_balance_after,target_revision_before,target_revision_after,created_at
+			) VALUES (?,?,?,?,?,?,?,?,?,?)
+		`, input.AdministratorID, userID, financialCurrency, existing.Balance, balance,
+			existing.CommissionBalance, commissionBalance, input.Revision, input.Revision+1, now.Unix()); err != nil {
+			return AdminUser{}, AdminUserMutation{}, fmt.Errorf("record administrator balance adjustment: %w", err)
+		}
 	}
 	if existing.Email != input.Email || existing.Banned != input.Banned ||
 		existing.RemindExpire != remindExpire || existing.RemindTraffic != remindTraffic {

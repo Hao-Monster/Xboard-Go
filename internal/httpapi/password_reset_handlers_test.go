@@ -47,6 +47,106 @@ func TestPasswordResetRequestIsPrivatePersistentAndCooledDown(t *testing.T) {
 	}
 }
 
+func TestPasswordResetRequestDoesNotEnumerateDeletedLifecycleAccounts(t *testing.T) {
+	api, database := newTestAPI(t)
+	enablePasswordResetSMTP(t, database)
+	administrator, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := database.CreateAdminUser(t.Context(), store.CreateAdminUserInput{
+		Email: "pending-reset@example.test", PasswordHash: "hash",
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err = database.RequestAdminUserDeletion(t.Context(), administrator.ID, pending.ID, pending.Revision, fixedNow().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymized, err := database.CreateAdminUser(t.Context(), store.CreateAdminUserInput{
+		Email: "anonymized-reset@example.test", PasswordHash: "hash",
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymized, err = database.RequestAdminUserDeletion(t.Context(), administrator.ID, anonymized.ID, anonymized.Revision, fixedNow().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anonymized.DeletionDueAt == nil {
+		t.Fatal("pending-deletion account has no deletion due time")
+	}
+	if result, processErr := database.ProcessDueUserAnonymizations(t.Context(), *anonymized.DeletionDueAt, 10); processErr != nil || result.Processed != 1 {
+		t.Fatalf("ProcessDueUserAnonymizations() = (%#v, %v)", result, processErr)
+	}
+	anonymized, err = database.GetAdminUser(t.Context(), anonymized.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unknown := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request", `{"email":"unknown-lifecycle@example.test"}`)
+	pendingResponse := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request", `{"email":"`+pending.Email+`"}`)
+	anonymizedResponse := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request", `{"email":"`+anonymized.Email+`"}`)
+	for lifecycle, response := range map[string]*httptest.ResponseRecorder{
+		"pending_deletion": pendingResponse, "anonymized": anonymizedResponse,
+	} {
+		if response.Code != unknown.Code || response.Body.String() != unknown.Body.String() {
+			t.Fatalf("%s account enumeration response: lifecycle=(%d,%s) unknown=(%d,%s)",
+				lifecycle, response.Code, response.Body, unknown.Code, unknown.Body)
+		}
+	}
+	if _, claimed, claimErr := database.ClaimPasswordResetMail(t.Context(), "deleted-lifecycle-proof", fixedNow(), time.Minute); claimErr != nil || claimed {
+		t.Fatalf("deleted lifecycle account queued password-reset mail: claimed=%v err=%v", claimed, claimErr)
+	}
+}
+
+func TestPasswordResetConfirmationCannotRacePendingDeletionOrRevealLifecycle(t *testing.T) {
+	api, database := newTestAPI(t)
+	enablePasswordResetSMTP(t, database)
+	administrator, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(t.Context(), store.CreateAdminUserInput{
+		Email: "interleaved-reset@example.test", PasswordHash: "original-hash",
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/request", `{"email":"interleaved-reset@example.test"}`)
+	if requested.Code != http.StatusAccepted {
+		t.Fatalf("request status=%d body=%s", requested.Code, requested.Body)
+	}
+	code := claimPasswordResetCode(t, database, user.Email)
+	deleted, err := database.RequestAdminUserDeletion(t.Context(), administrator.ID, user.ID, user.Revision, fixedNow().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	passwordBefore, err := database.FindUserByID(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pendingResponse := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/confirm", `{
+		"email":"interleaved-reset@example.test","email_code":"`+code+`","password":"forbidden-password-456"
+	}`)
+	unknownResponse := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/password-reset/confirm", `{
+		"email":"unknown-interleaved@example.test","email_code":"`+code+`","password":"forbidden-password-456"
+	}`)
+	if pendingResponse.Code != unknownResponse.Code || pendingResponse.Body.String() != unknownResponse.Body.String() {
+		t.Fatalf("pending lifecycle confirmation leaked state: pending=(%d,%s) unknown=(%d,%s)",
+			pendingResponse.Code, pendingResponse.Body, unknownResponse.Code, unknownResponse.Body)
+	}
+	expectAPIError(t, pendingResponse, http.StatusBadRequest, "password_reset_invalid")
+	passwordAfter, err := database.FindUserByID(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if passwordAfter.PasswordHash != passwordBefore.PasswordHash || passwordAfter.PasswordHash == "forbidden-password-456" || deleted.LifecycleStatus != store.UserLifecyclePendingDeletion {
+		t.Fatalf("pending-deletion password changed: before=%q after=%q lifecycle=%q", passwordBefore.PasswordHash, passwordAfter.PasswordHash, deleted.LifecycleStatus)
+	}
+}
+
 func TestPasswordResetConfirmationChangesPasswordRevokesSessionsAndConsumesCode(t *testing.T) {
 	api, database := newTestAPI(t)
 	enablePasswordResetSMTP(t, database)

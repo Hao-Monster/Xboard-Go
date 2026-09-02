@@ -19,7 +19,7 @@ interface DistributorPortalAPI {
   getInvitations: () => Promise<InvitationSummary>;
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
-  transferCommission: (amount: number) => Promise<CommissionTransferResult>;
+  transferCommission: (amount: number, idempotencyKey: string) => Promise<CommissionTransferResult>;
   getCommissionWithdrawalPolicy: () => Promise<CommissionWithdrawalPolicy>;
   listCommissionWithdrawals: (page?: number, pageSize?: number) => Promise<CommissionWithdrawalPage>;
   createCommissionWithdrawal: (idempotencyKey: string, method: string, account: string) => Promise<CommissionWithdrawal>;

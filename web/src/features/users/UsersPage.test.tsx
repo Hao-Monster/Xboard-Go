@@ -574,6 +574,7 @@ describe("UsersPage", () => {
     api.getAdminUserDeletionImpact.mockResolvedValue({
       user_id: account.id, revision: account.revision, lifecycle_status: "active", allowed: true, blockers: [],
       orders: 3, payment_checkouts: 10, commission_withdrawals: 1, commission_logs: 2, distributor_subscriptions: 0,
+      commission_transfers: 11, admin_balance_adjustments: 12,
       invitation_codes: 4, invited_users: 5, tickets: 6, ticket_messages: 7, knowledge_attachments: 8, audit_logs: 9
     });
     api.requestAdminUserDeletion.mockResolvedValue({ ...account, lifecycle_status: "pending_deletion", banned: true, revision: 2 });
@@ -584,6 +585,7 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: "申请删除用户" }));
     const dialog = await screen.findByRole("alertdialog", { name: "删除用户影响确认" });
     expect(await within(dialog).findByText("3 / 10", { exact: true })).toBeVisible();
+    expect(within(dialog).getByText("11 / 12", { exact: true })).toBeVisible();
     expect(within(dialog).getByText(/30 天恢复期/)).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "确认申请删除" }));
     await waitFor(() => expect(api.requestAdminUserDeletion).toHaveBeenCalledWith(account.id, account.revision));

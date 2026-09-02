@@ -85,6 +85,8 @@ var requiredSchemaTables = []struct {
 	{"commission_withdrawals", 60},
 	{"commission_withdrawal_events", 60},
 	{"user_lifecycle_events", 61},
+	{"commission_transfer_events", 62},
+	{"admin_balance_adjustment_events", 62},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -222,6 +224,11 @@ var requiredSchemaColumnsV60 = map[string][]string{
 var requiredSchemaColumnsV61 = map[string][]string{
 	"users":                 {"lifecycle_status", "deletion_requested_at", "deletion_due_at", "deletion_banned_snapshot", "anonymized_at"},
 	"user_lifecycle_events": {"id", "user_id", "actor_user_id", "kind", "from_status", "to_status", "revision", "created_at"},
+}
+
+var requiredSchemaColumnsV62 = map[string][]string{
+	"commission_transfer_events":      {"id", "user_id", "idempotency_key", "amount", "currency", "commission_balance_before", "commission_balance_after", "balance_before", "balance_after", "created_at"},
+	"admin_balance_adjustment_events": {"id", "actor_user_id", "target_user_id", "currency", "balance_before", "balance_after", "commission_balance_before", "commission_balance_after", "target_revision_before", "target_revision_after", "created_at"},
 }
 
 type schemaQueryer interface {
@@ -411,6 +418,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 62 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV62); err != nil {
+			return err
+		}
+		if err := validateV62FinancialEventSchema(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n
@@ -429,6 +444,112 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if missing {
 			return fmt.Errorf("Xboard schema version %d contains a node without a protocol definition", schemaVersion)
+		}
+	}
+	return nil
+}
+
+func validateV62FinancialEventSchema(ctx context.Context, database schemaQueryer) error {
+	expected := map[string]string{
+		"commission_transfer_events": `
+			CREATE TABLE commission_transfer_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+				idempotency_key TEXT NOT NULL CHECK (
+					length(idempotency_key) BETWEEN 16 AND 128
+					AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+				),
+				amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 9000000000000000),
+				currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+				commission_balance_before INTEGER NOT NULL CHECK (commission_balance_before BETWEEN amount AND 9000000000000000),
+				commission_balance_after INTEGER NOT NULL CHECK (
+					commission_balance_after BETWEEN 0 AND 9000000000000000
+					AND commission_balance_before = commission_balance_after + amount
+				),
+				balance_before INTEGER NOT NULL CHECK (balance_before BETWEEN 0 AND 9000000000000000),
+				balance_after INTEGER NOT NULL CHECK (
+					balance_after BETWEEN amount AND 9000000000000000
+					AND balance_after = balance_before + amount
+				),
+				created_at INTEGER NOT NULL CHECK (created_at >= 0),
+				UNIQUE (user_id, idempotency_key)
+			)
+		`,
+		"admin_balance_adjustment_events": `
+			CREATE TABLE admin_balance_adjustment_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+				target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+				currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+				balance_before INTEGER NOT NULL CHECK (balance_before BETWEEN 0 AND 9000000000000000),
+				balance_after INTEGER NOT NULL CHECK (balance_after BETWEEN 0 AND 9000000000000000),
+				commission_balance_before INTEGER NOT NULL CHECK (commission_balance_before BETWEEN 0 AND 9000000000000000),
+				commission_balance_after INTEGER NOT NULL CHECK (commission_balance_after BETWEEN 0 AND 9000000000000000),
+				target_revision_before INTEGER NOT NULL CHECK (target_revision_before > 0),
+				target_revision_after INTEGER NOT NULL CHECK (target_revision_after = target_revision_before + 1),
+				created_at INTEGER NOT NULL CHECK (created_at >= 0),
+				UNIQUE (target_user_id, target_revision_after),
+				CHECK (balance_before <> balance_after OR commission_balance_before <> commission_balance_after)
+			)
+		`,
+		"commission_transfer_events_no_update": `
+			CREATE TRIGGER commission_transfer_events_no_update
+			BEFORE UPDATE ON commission_transfer_events
+			BEGIN
+				SELECT RAISE(ABORT, 'commission transfer events are immutable');
+			END
+		`,
+		"commission_transfer_events_no_delete": `
+			CREATE TRIGGER commission_transfer_events_no_delete
+			BEFORE DELETE ON commission_transfer_events
+			BEGIN
+				SELECT RAISE(ABORT, 'commission transfer events are immutable');
+			END
+		`,
+		"admin_balance_adjustment_events_no_update": `
+			CREATE TRIGGER admin_balance_adjustment_events_no_update
+			BEFORE UPDATE ON admin_balance_adjustment_events
+			BEGIN
+				SELECT RAISE(ABORT, 'administrator balance adjustment events are immutable');
+			END
+		`,
+		"admin_balance_adjustment_events_no_delete": `
+			CREATE TRIGGER admin_balance_adjustment_events_no_delete
+			BEFORE DELETE ON admin_balance_adjustment_events
+			BEGIN
+				SELECT RAISE(ABORT, 'administrator balance adjustment events are immutable');
+			END
+		`,
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT name,sql FROM sqlite_schema
+		WHERE name IN (
+			'commission_transfer_events','admin_balance_adjustment_events',
+			'commission_transfer_events_no_update','commission_transfer_events_no_delete',
+			'admin_balance_adjustment_events_no_update','admin_balance_adjustment_events_no_delete'
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect V62 financial event schema: %w", err)
+	}
+	found := make(map[string]string, len(expected))
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect V62 financial event schema: %w", err)
+		}
+		found[name] = definition
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect V62 financial event schema: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect V62 financial event schema: %w", err)
+	}
+	for name, definition := range expected {
+		if normalizeSchemaDefinition(found[name]) != normalizeSchemaDefinition(definition) {
+			return fmt.Errorf("V62 financial event schema %q is missing or invalid", name)
 		}
 	}
 	return nil

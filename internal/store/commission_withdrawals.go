@@ -267,6 +267,38 @@ func (s *Store) GetCommissionWithdrawalAccountCipher(ctx context.Context, withdr
 	return append([]byte(nil), ciphertext...), nil
 }
 
+func (s *Store) RecordCommissionWithdrawalAccountRevealAudit(ctx context.Context, administratorID int64, administratorEmail string, withdrawalID int64, now time.Time) error {
+	if administratorID < 1 || withdrawalID < 1 || now.IsZero() {
+		return ErrInvalidInput
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin commission withdrawal account reveal audit: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireActiveAdministrator(ctx, tx, administratorID); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM commission_withdrawals WHERE id=?)`, withdrawalID).Scan(&exists); err != nil {
+		return fmt.Errorf("read commission withdrawal for reveal audit: %w", err)
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	if err := insertAdminAudit(ctx, tx, AdminAuditInput{
+		AdministratorID: administratorID, AdministratorEmail: administratorEmail,
+		Method: "POST", Route: fmt.Sprintf("/api/v1/admin/commission-withdrawals/%d/account/reveal", withdrawalID), StatusCode: 200,
+	}, now); err != nil {
+		return fmt.Errorf("record commission withdrawal account reveal audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit commission withdrawal account reveal audit: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ListAdminCommissionWithdrawals(ctx context.Context, status string, page, pageSize int) (CommissionWithdrawalPage, error) {
 	status = strings.TrimSpace(status)
 	if status != "" && status != CommissionWithdrawalPending && status != CommissionWithdrawalApproved && status != CommissionWithdrawalPaid && status != CommissionWithdrawalRejected {

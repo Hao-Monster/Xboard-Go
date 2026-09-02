@@ -1,7 +1,9 @@
 package store
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -126,8 +128,37 @@ func TestDueUserAnonymizationPreservesBusinessFactsAndIsIdempotent(t *testing.T)
 	if _, err := database.db.ExecContext(ctx, `INSERT INTO traffic_reset_logs (user_id,reset_at,upload_before,download_before,reset_count,trigger_source,reason,administrator_id,administrator_email,idempotency_key) VALUES (?, ?,0,0,1,'manual','test',?,?,'deletion-snapshot-001')`, targetID, now.Unix(), targetID, target.Email); err != nil {
 		t.Fatal(err)
 	}
+	accountCipher := []byte("encrypted-withdrawal-account")
+	accountFingerprint := bytes.Repeat([]byte{0x5a}, 32)
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO commission_withdrawals (
+			user_id,idempotency_key,amount,fee_basis_points,fee_amount,net_amount,currency,method,
+			account_cipher,account_fingerprint,account_masked,status,revision,external_reference,
+			created_at,updated_at,approved_at,paid_at
+		) VALUES (?, 'deletion-withdrawal-0001', 2500, 0, 0, 2500, 'CNY', '支付宝', ?, ?, '****9876', 'paid', 3,
+			'deletion-payment-0001', ?, ?, ?, ?)
+	`, targetID, accountCipher, accountFingerprint, now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO commission_transfer_events (
+			user_id,idempotency_key,amount,currency,commission_balance_before,commission_balance_after,
+			balance_before,balance_after,created_at
+		) VALUES (?, 'deletion-transfer-0001', 1, 'CNY', 1, 0, 0, 1, ?)
+	`, targetID, now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO admin_balance_adjustment_events (
+			actor_user_id,target_user_id,currency,balance_before,balance_after,
+			commission_balance_before,commission_balance_after,target_revision_before,target_revision_after,created_at
+		) VALUES (?, ?, 'CNY', 0, 1, 0, 0, 1, 2, ?)
+	`, admin.ID, targetID, now.Unix()); err != nil {
+		t.Fatal(err)
+	}
 	impact, err := database.GetAdminUserDeletionImpact(ctx, admin.ID, targetID)
-	if err != nil || impact.Allowed || impact.Orders != 1 || !strings.Contains(strings.Join(impact.Blockers, ","), "active_order") {
+	if err != nil || impact.Allowed || impact.Orders != 1 || impact.CommissionTransfers != 1 || impact.AdminBalanceAdjustments != 1 ||
+		!strings.Contains(strings.Join(impact.Blockers, ","), "active_order") {
 		t.Fatalf("active order deletion impact = (%#v, %v)", impact, err)
 	}
 	if _, err := database.RequestAdminUserDeletion(ctx, admin.ID, targetID, target.Revision, now.Add(30*time.Second)); !errors.Is(err, ErrUserDeletionBlocked) {
@@ -148,6 +179,10 @@ func TestDueUserAnonymizationPreservesBusinessFactsAndIsIdempotent(t *testing.T)
 		t.Fatalf("pending-deletion assigned order error = %v, want ErrNotFound", err)
 	}
 	due := *requested.DeletionDueAt
+	preclaimedTombstone := fmt.Sprintf("deleted+%x@invalid.invalid", targetID)
+	if _, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: preclaimedTombstone, PasswordHash: "hash"}, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("preclaim deterministic tombstone: %v", err)
+	}
 	if result, err := database.ProcessDueUserAnonymizations(ctx, due.Add(-time.Second), 100); err != nil || result.Processed != 0 {
 		t.Fatalf("early anonymization = (%#v, %v)", result, err)
 	}
@@ -167,6 +202,9 @@ func TestDueUserAnonymizationPreservesBusinessFactsAndIsIdempotent(t *testing.T)
 		!strings.HasPrefix(anonymized.Email, "deleted+") || !strings.HasSuffix(anonymized.Email, "@invalid.invalid") || anonymized.TelegramID != nil || anonymized.Remarks != nil {
 		t.Fatalf("anonymized user = %#v", anonymized)
 	}
+	if anonymized.Email == preclaimedTombstone {
+		t.Fatalf("anonymized user reused preclaimed deterministic tombstone %q", anonymized.Email)
+	}
 	var auditEmail, trafficAdministratorEmail string
 	if err := database.db.QueryRowContext(ctx, `SELECT administrator_email FROM admin_audit_logs WHERE administrator_id=?`, targetID).Scan(&auditEmail); err != nil {
 		t.Fatal(err)
@@ -176,6 +214,21 @@ func TestDueUserAnonymizationPreservesBusinessFactsAndIsIdempotent(t *testing.T)
 	}
 	if auditEmail != anonymized.Email || trafficAdministratorEmail != anonymized.Email || strings.Contains(auditEmail, "anonymize-user") {
 		t.Fatalf("display snapshots were not anonymized: audit=%q traffic=%q tombstone=%q", auditEmail, trafficAdministratorEmail, anonymized.Email)
+	}
+	var storedCipher, storedFingerprint []byte
+	var storedMasked, withdrawalStatus, withdrawalCurrency, externalReference string
+	var withdrawalAmount int64
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT account_cipher,account_fingerprint,account_masked,status,currency,amount,external_reference
+		FROM commission_withdrawals WHERE user_id=?
+	`, targetID).Scan(&storedCipher, &storedFingerprint, &storedMasked, &withdrawalStatus, &withdrawalCurrency, &withdrawalAmount, &externalReference); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(storedCipher, accountCipher) || bytes.Equal(storedFingerprint, accountFingerprint) || storedMasked != "[anonymized]" {
+		t.Fatalf("withdrawal account data was not purged: cipher=%x fingerprint=%x masked=%q", storedCipher, storedFingerprint, storedMasked)
+	}
+	if withdrawalStatus != CommissionWithdrawalPaid || withdrawalCurrency != "CNY" || withdrawalAmount != 2500 || externalReference != "deletion-payment-0001" {
+		t.Fatalf("withdrawal financial facts changed: status=%q currency=%q amount=%d external_reference=%q", withdrawalStatus, withdrawalCurrency, withdrawalAmount, externalReference)
 	}
 	storedOrder, err := database.GetUserOrder(ctx, targetID, order.TradeNo)
 	if err != nil || storedOrder.UserID != targetID {

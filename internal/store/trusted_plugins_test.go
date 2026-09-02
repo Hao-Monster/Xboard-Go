@@ -14,8 +14,8 @@ func TestSchemaV55SeedsOnlyTrustedCorePlugins(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 61 {
-		t.Fatalf("schema version = %d, want 61", version)
+	if version != 62 {
+		t.Fatalf("schema version = %d, want 62", version)
 	}
 
 	rows, err := database.db.QueryContext(ctx, `

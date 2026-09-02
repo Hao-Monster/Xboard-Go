@@ -36,6 +36,7 @@ var (
 	ErrInvitationCodeLimit                    = errors.New("invitation code generation limit reached")
 	ErrInvitationCodeCollision                = fmt.Errorf("%w: invitation code collision", ErrConflict)
 	ErrInsufficientCommission                 = fmt.Errorf("%w: insufficient commission balance", ErrConflict)
+	ErrCommissionTransferIdempotencyConflict  = fmt.Errorf("%w: commission transfer idempotency key reused with different input", ErrConflict)
 	ErrCommissionWithdrawalActive             = fmt.Errorf("%w: an active commission withdrawal already exists", ErrConflict)
 	ErrCommissionWithdrawalState              = fmt.Errorf("%w: invalid commission withdrawal state", ErrConflict)
 	ErrCommissionWithdrawalMethod             = fmt.Errorf("%w: commission withdrawal method is not allowed", ErrInvalidInput)
@@ -591,8 +592,22 @@ type CommissionLogPage struct {
 }
 
 type CommissionTransferResult struct {
-	CommissionBalance int64 `json:"commission_balance"`
-	Balance           int64 `json:"balance"`
+	TransferID              int64     `json:"transfer_id"`
+	Amount                  int64     `json:"amount"`
+	Currency                string    `json:"currency"`
+	CommissionBalanceBefore int64     `json:"commission_balance_before"`
+	CommissionBalanceAfter  int64     `json:"commission_balance_after"`
+	BalanceBefore           int64     `json:"balance_before"`
+	BalanceAfter            int64     `json:"balance_after"`
+	CommissionBalance       int64     `json:"commission_balance"`
+	Balance                 int64     `json:"balance"`
+	Idempotent              bool      `json:"idempotent"`
+	CreatedAt               time.Time `json:"created_at"`
+}
+
+type CommissionTransferInput struct {
+	Amount         int64
+	IdempotencyKey string
 }
 
 const (
@@ -1064,6 +1079,8 @@ type AdminUserDeletionImpact struct {
 	PaymentCheckouts         int64    `json:"payment_checkouts"`
 	CommissionWithdrawals    int64    `json:"commission_withdrawals"`
 	CommissionLogs           int64    `json:"commission_logs"`
+	CommissionTransfers      int64    `json:"commission_transfers"`
+	AdminBalanceAdjustments  int64    `json:"admin_balance_adjustments"`
 	DistributorSubscriptions int64    `json:"distributor_subscriptions"`
 	InvitationCodes          int64    `json:"invitation_codes"`
 	InvitedUsers             int64    `json:"invited_users"`
@@ -1309,7 +1326,8 @@ type CreatedAdminUser struct {
 }
 
 type UpdateAdminUserInput struct {
-	Revision           int64
+	AdministratorID    int64
+	Revision           int64 // CAS token; the committed revision uniquely identifies any balance adjustment event.
 	Email              string
 	PasswordHash       *string
 	IsAdmin            *bool

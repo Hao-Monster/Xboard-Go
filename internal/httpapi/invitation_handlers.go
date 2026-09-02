@@ -150,7 +150,8 @@ func (s *server) listCommissionLogs(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) transferCommission(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Amount int64 `json:"amount"`
+		Amount         int64  `json:"amount"`
+		IdempotencyKey string `json:"idempotency_key"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -159,13 +160,34 @@ func (s *server) transferCommission(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "划转金额必须大于 0", map[string]string{"amount": "必须大于 0"})
 		return
 	}
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if !validCommissionTransferIdempotencyKey(input.IdempotencyKey) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "idempotency_key_required", "佣金划转必须提供有效的幂等键", map[string]string{"idempotency_key": "长度必须为 16 到 128 个字符"})
+		return
+	}
 	session, _ := sessionFromContext(r.Context())
-	result, err := s.store.TransferCommission(r.Context(), session.UserID, input.Amount, s.now())
+	result, err := s.store.TransferCommission(r.Context(), session.UserID, store.CommissionTransferInput{
+		Amount: input.Amount, IdempotencyKey: input.IdempotencyKey,
+	}, s.now())
 	if err != nil {
 		writeCommissionTransferError(w, err, false)
 		return
 	}
 	writeSuccess(w, http.StatusOK, result)
+}
+
+func validCommissionTransferIdempotencyKey(value string) bool {
+	if len(value) < 16 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || strings.ContainsRune("._:-", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (s *server) legacyGetInvitations(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +263,17 @@ func (s *server) legacyCreateInvitation(w http.ResponseWriter, r *http.Request) 
 
 func (s *server) legacyTransferCommission(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := r.ParseForm(); err != nil || len(r.PostForm) != 1 {
+	if err := r.ParseForm(); err != nil || len(r.PostForm) < 1 || len(r.PostForm) > 2 {
+		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "划转金额参数错误")
+		return
+	}
+	for name := range r.PostForm {
+		if name != "transfer_amount" && name != "idempotency_key" {
+			writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "划转金额参数错误")
+			return
+		}
+	}
+	if len(r.PostForm["transfer_amount"]) != 1 || len(r.PostForm["idempotency_key"]) > 1 {
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "划转金额参数错误")
 		return
 	}
@@ -250,8 +282,24 @@ func (s *server) legacyTransferCommission(w http.ResponseWriter, r *http.Request
 		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "划转金额参数错误")
 		return
 	}
+	headerKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	formKey := strings.TrimSpace(r.PostForm.Get("idempotency_key"))
+	if headerKey != "" && formKey != "" && headerKey != formKey {
+		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "幂等键参数冲突")
+		return
+	}
+	idempotencyKey := headerKey
+	if idempotencyKey == "" {
+		idempotencyKey = formKey
+	}
+	if !validCommissionTransferIdempotencyKey(idempotencyKey) {
+		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "划转必须提供有效的幂等键")
+		return
+	}
 	session, _ := sessionFromContext(r.Context())
-	if _, err := s.store.TransferCommission(r.Context(), session.UserID, amount, s.now()); err != nil {
+	if _, err := s.store.TransferCommission(r.Context(), session.UserID, store.CommissionTransferInput{
+		Amount: amount, IdempotencyKey: idempotencyKey,
+	}, s.now()); err != nil {
 		writeCommissionTransferError(w, err, true)
 		return
 	}
@@ -259,6 +307,14 @@ func (s *server) legacyTransferCommission(w http.ResponseWriter, r *http.Request
 }
 
 func writeCommissionTransferError(w http.ResponseWriter, err error, legacy bool) {
+	if errors.Is(err, store.ErrCommissionTransferIdempotencyConflict) {
+		if legacy {
+			writeLegacyInviteFailure(w, http.StatusConflict, "划转请求冲突")
+		} else {
+			writeAPIError(w, http.StatusConflict, "idempotency_conflict", "该幂等键已用于不同的佣金划转请求", nil)
+		}
+		return
+	}
 	if errors.Is(err, store.ErrInsufficientCommission) {
 		if legacy {
 			writeLegacyInviteFailure(w, http.StatusBadRequest, "佣金余额不足")

@@ -123,6 +123,13 @@ func (s *server) revealAdminCommissionWithdrawalAccount(w http.ResponseWriter, r
 			plaintext[index] = 0
 		}
 	}()
+	session, _ := sessionFromContext(r.Context())
+	if err := s.store.RecordCommissionWithdrawalAccountRevealAudit(r.Context(), session.UserID, session.Email, withdrawalID, s.now()); err != nil {
+		s.logger.Error("record commission withdrawal account reveal audit", "administrator_id", session.UserID, "withdrawal_id", withdrawalID, "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "withdrawal_audit_unavailable", "提现账户审计暂不可用", nil)
+		return
+	}
+	markRequestMutationAudited(r)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 	writeSuccess(w, http.StatusOK, map[string]string{"account": string(plaintext)})

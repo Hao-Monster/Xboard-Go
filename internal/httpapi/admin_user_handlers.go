@@ -593,7 +593,7 @@ func (s *server) legacyUpdateAdminUser(w http.ResponseWriter, r *http.Request) {
 		passwordHash = &hashed
 	}
 	updated, mutation, err := s.store.UpdateAdminUser(r.Context(), input.ID, store.UpdateAdminUserInput{
-		Revision: revision, Email: email, PasswordHash: passwordHash,
+		AdministratorID: session.UserID, Revision: revision, Email: email, PasswordHash: passwordHash,
 		IsAdmin: input.IsAdmin, IsStaff: input.IsStaff, IsDistributor: input.IsDistributor.Pointer(), DistributorName: input.DistributorName,
 		GroupID: groupID, PlanIDSet: input.PlanID.Set, PlanID: input.PlanID.Value,
 		InviteUserEmailSet: input.InviteUserEmail.Set, InviteUserEmail: input.InviteUserEmail.Value,
@@ -1202,7 +1202,7 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 		passwordHash = &hashed
 	}
 	user, mutation, err := s.store.UpdateAdminUser(r.Context(), userID, store.UpdateAdminUserInput{
-		Revision: *input.Revision, Email: *input.Email, PasswordHash: passwordHash,
+		AdministratorID: session.UserID, Revision: *input.Revision, Email: *input.Email, PasswordHash: passwordHash,
 		GroupID: input.GroupID.Value, PlanIDSet: input.PlanID.Set, PlanID: input.PlanID.Value,
 		InviteUserEmailSet: input.InviteUserEmail.Set, InviteUserEmail: input.InviteUserEmail.Value,
 		TransferEnable: *input.TransferEnable, TrafficUpload: input.TrafficUpload, TrafficDownload: input.TrafficDownload,

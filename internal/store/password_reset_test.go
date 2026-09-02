@@ -171,6 +171,84 @@ func TestPasswordResetChallengeHidesUnknownAccountsLocksAndRevokesSessions(t *te
 	}
 }
 
+func TestPasswordResetLifecycleRejectsRequestsAndInterleavedConfirmation(t *testing.T) {
+	database := newPasswordResetStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 25, 1, 30, 0, 0, time.UTC)
+	protector, err := security.NewPasswordResetProtector(bytes.Repeat([]byte{0x51}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	administrator, err := database.FindUserByEmail(ctx, "reset-admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "lifecycle-reset@example.test", PasswordHash: "original-hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	activeInput := passwordResetInput(t, protector, user.Email, "465738")
+	if queued, requestErr := database.RequestPasswordReset(ctx, activeInput, now); requestErr != nil || !queued {
+		t.Fatalf("active RequestPasswordReset() = (%v, %v)", queued, requestErr)
+	}
+	challenge, err := database.CheckPasswordResetChallenge(ctx, activeInput.EmailDigest, activeInput.CodeDigest, now)
+	if err != nil {
+		t.Fatalf("active CheckPasswordResetChallenge() error = %v", err)
+	}
+	requested, err := database.RequestAdminUserDeletion(ctx, administrator.ID, user.ID, user.Revision, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("RequestAdminUserDeletion() error = %v", err)
+	}
+	if err := database.ResetPasswordWithChallenge(ctx, activeInput.EmailDigest, activeInput.CodeDigest, challenge, "forbidden-hash", now.Add(2*time.Second)); !errors.Is(err, ErrPasswordResetInvalid) {
+		t.Fatalf("interleaved pending-deletion reset error = %v, want ErrPasswordResetInvalid", err)
+	}
+	pendingUser, err := database.FindUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pendingUser.PasswordHash == "forbidden-hash" {
+		t.Fatal("pending-deletion password was reset")
+	}
+
+	pendingInput := passwordResetInput(t, protector, user.Email, "576849")
+	if queued, requestErr := database.RequestPasswordReset(ctx, pendingInput, now.Add(2*time.Second)); requestErr != nil || queued {
+		t.Fatalf("pending-deletion RequestPasswordReset() = (%v, %v), want private acceptance without mail", queued, requestErr)
+	}
+	var pendingChallengeWithoutUser, deliverableMail int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM password_reset_challenges WHERE email_digest=? AND user_id IS NULL`, pendingInput.EmailDigest).
+		Scan(&pendingChallengeWithoutUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM password_reset_mail_outbox WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL`).
+		Scan(&deliverableMail); err != nil {
+		t.Fatal(err)
+	}
+	if pendingChallengeWithoutUser != 1 || deliverableMail != 0 {
+		t.Fatalf("pending-deletion reset artifacts: private_challenges=%d deliverable_mail=%d", pendingChallengeWithoutUser, deliverableMail)
+	}
+
+	if requested.DeletionDueAt == nil {
+		t.Fatal("pending-deletion user has no deletion due time")
+	}
+	if result, processErr := database.ProcessDueUserAnonymizations(ctx, *requested.DeletionDueAt, 1); processErr != nil || result.Processed != 1 {
+		t.Fatalf("ProcessDueUserAnonymizations() = (%#v, %v)", result, processErr)
+	}
+	anonymized, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymizedInput := passwordResetInput(t, protector, anonymized.Email, "687950")
+	if queued, requestErr := database.RequestPasswordReset(ctx, anonymizedInput, requested.DeletionDueAt.Add(time.Second)); requestErr != nil || queued {
+		t.Fatalf("anonymized RequestPasswordReset() = (%v, %v), want private acceptance without mail", queued, requestErr)
+	}
+	if _, checkErr := database.CheckPasswordResetChallenge(ctx, anonymizedInput.EmailDigest, anonymizedInput.CodeDigest, requested.DeletionDueAt.Add(time.Second)); !errors.Is(checkErr, ErrPasswordResetInvalid) {
+		t.Fatalf("anonymized CheckPasswordResetChallenge() error = %v, want ErrPasswordResetInvalid", checkErr)
+	}
+}
+
 func TestPasswordResetRequestConcurrencyQueuesOneCurrentMailAndExpiryRejectsCode(t *testing.T) {
 	database := newPasswordResetStore(t)
 	ctx := t.Context()

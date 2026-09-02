@@ -19,7 +19,12 @@ describe("InvitationPage", () => {
         .mockResolvedValueOnce({ ...initial, codes: [generated], available_commission: 8_765 }),
       createInvitation: vi.fn().mockResolvedValue(generated),
       listCommissionLogs: vi.fn().mockResolvedValue(history),
-      transferCommission: vi.fn().mockResolvedValue({ commission_balance: 8_765, balance: 1_234 }),
+      transferCommission: vi.fn().mockResolvedValue({
+        transfer_id: 1, amount: 1_234, currency: "CNY",
+        commission_balance_before: 9_999, commission_balance_after: 8_765,
+        balance_before: 0, balance_after: 1_234, commission_balance: 8_765, balance: 1_234,
+        idempotent: false, created_at: "2026-08-27T04:00:00Z"
+      }),
       getCommissionWithdrawalPolicy: vi.fn().mockResolvedValue({ currency: "CNY", minimum_amount: 10_000, methods: ["USDT"], available_commission: 9_999, frozen_commission: 0, active: null }),
       listCommissionWithdrawals: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       createCommissionWithdrawal: vi.fn()
@@ -41,7 +46,7 @@ describe("InvitationPage", () => {
 
     await user.type(screen.getByLabelText("划转金额（CNY）"), "12.34");
     await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
-    await waitFor(() => expect(api.transferCommission).toHaveBeenCalledWith(1_234));
+    await waitFor(() => expect(api.transferCommission).toHaveBeenCalledWith(1_234, expect.any(String)));
     expect(await screen.findByRole("status")).toHaveTextContent("操作成功");
 
     await user.click(screen.getByRole("button", { name: "生成邀请码" }));
@@ -53,6 +58,75 @@ describe("InvitationPage", () => {
     await user.click(screen.getByRole("button", { name: "复制邀请链接" }));
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/#/register?code=Abcd1234`);
     expect(screen.getByRole("status")).toHaveTextContent("邀请链接已复制");
+  });
+
+  it("reuses the same transfer key after an ambiguous client failure", async () => {
+    const summary = { ...emptyInvitationSummary, available_commission: 5_000 };
+    const api = {
+      getInvitations: vi.fn().mockResolvedValue(summary), createInvitation: vi.fn(),
+      listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }),
+      transferCommission: vi.fn()
+        .mockRejectedValueOnce(new Error("连接中断"))
+        .mockResolvedValue({
+          transfer_id: 2, amount: 1_000, currency: "CNY",
+          commission_balance_before: 5_000, commission_balance_after: 4_000,
+          balance_before: 0, balance_after: 1_000, commission_balance: 4_000, balance: 1_000,
+          idempotent: true, created_at: "2026-08-27T05:00:00Z"
+        }),
+      getCommissionWithdrawalPolicy: vi.fn().mockResolvedValue({ currency: "CNY", minimum_amount: 10_000, methods: ["USDT"], available_commission: 5_000, frozen_commission: 0, active: null }),
+      listCommissionWithdrawals: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
+      createCommissionWithdrawal: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<InvitationPage api={api} />);
+    await screen.findByRole("heading", { name: "我的邀请" });
+    await user.type(screen.getByLabelText("划转金额（CNY）"), "10.00");
+    await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("连接中断");
+    const firstKey = api.transferCommission.mock.calls[0]?.[1];
+    expect(firstKey).toEqual(expect.any(String));
+    await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
+    await waitFor(() => expect(api.transferCommission).toHaveBeenCalledTimes(2));
+    expect(api.transferCommission.mock.calls[1]?.[1]).toBe(firstKey);
+    expect(await screen.findByRole("status")).toHaveTextContent("操作成功");
+    await user.type(screen.getByLabelText("划转金额（CNY）"), "5.00");
+    await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
+    await waitFor(() => expect(api.transferCommission).toHaveBeenCalledTimes(3));
+    expect(api.transferCommission.mock.calls[2]?.[1]).not.toBe(firstKey);
+  });
+
+  it("keeps the transfer key until the post-success refresh is confirmed", async () => {
+    const summary = { ...emptyInvitationSummary, available_commission: 5_000 };
+    const api = {
+      getInvitations: vi.fn()
+        .mockResolvedValueOnce(summary)
+        .mockRejectedValueOnce(new Error("刷新失败"))
+        .mockResolvedValue(summary),
+      createInvitation: vi.fn(),
+      listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }),
+      transferCommission: vi.fn().mockResolvedValue({
+        transfer_id: 3, amount: 1_000, currency: "CNY",
+        commission_balance_before: 5_000, commission_balance_after: 4_000,
+        balance_before: 0, balance_after: 1_000, commission_balance: 4_000, balance: 1_000,
+        idempotent: false, created_at: "2026-08-27T06:00:00Z"
+      }),
+      getCommissionWithdrawalPolicy: vi.fn().mockResolvedValue({ currency: "CNY", minimum_amount: 10_000, methods: ["USDT"], available_commission: 5_000, frozen_commission: 0, active: null }),
+      listCommissionWithdrawals: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
+      createCommissionWithdrawal: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<InvitationPage api={api} />);
+    await screen.findByRole("heading", { name: "我的邀请" });
+    const input = screen.getByLabelText("划转金额（CNY）");
+    await user.type(input, "10.00");
+    await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("刷新失败");
+    const firstKey = api.transferCommission.mock.calls[0]?.[1];
+    await user.type(input, "10.00");
+    await user.click(screen.getByRole("button", { name: "佣金划转余额" }));
+    await waitFor(() => expect(api.transferCommission).toHaveBeenCalledTimes(2));
+    expect(api.transferCommission.mock.calls[1]?.[1]).toBe(firstKey);
+    expect(await screen.findByRole("status")).toHaveTextContent("操作成功");
   });
 
   it("keeps existing data visible when generation reaches the limit", async () => {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -111,8 +112,10 @@ func (s *Store) ListCommissionLogs(ctx context.Context, ownerID int64, page, pag
 	return result, nil
 }
 
-func (s *Store) TransferCommission(ctx context.Context, userID, amount int64, now time.Time) (CommissionTransferResult, error) {
-	if userID < 1 || amount < 1 || amount > maxOrderMoneyCents || now.Unix() < 0 {
+func (s *Store) TransferCommission(ctx context.Context, userID int64, input CommissionTransferInput, now time.Time) (CommissionTransferResult, error) {
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if userID < 1 || input.Amount < 1 || input.Amount > maxOrderMoneyCents ||
+		!validCommissionTransferIdempotencyKey(input.IdempotencyKey) || now.Unix() < 0 {
 		return CommissionTransferResult{}, ErrInvalidInput
 	}
 	defer s.lockWrite()()
@@ -121,12 +124,38 @@ func (s *Store) TransferCommission(ctx context.Context, userID, amount int64, no
 		return CommissionTransferResult{}, fmt.Errorf("begin commission transfer: %w", err)
 	}
 	defer tx.Rollback()
+	existing, err := getCommissionTransferByIdempotency(ctx, tx, userID, input.IdempotencyKey)
+	if err == nil {
+		if existing.Amount != input.Amount {
+			return CommissionTransferResult{}, ErrCommissionTransferIdempotencyConflict
+		}
+		existing.Idempotent = true
+		return existing, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return CommissionTransferResult{}, err
+	}
+	var commissionBefore, balanceBefore int64
+	var currency string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT u.commission_balance, u.balance, s.currency
+		FROM users u CROSS JOIN app_settings s
+		WHERE u.id = ? AND u.account_kind = 'human' AND s.id = 1
+	`, userID).Scan(&commissionBefore, &balanceBefore, &currency); errors.Is(err, sql.ErrNoRows) {
+		return CommissionTransferResult{}, ErrNotFound
+	} else if err != nil {
+		return CommissionTransferResult{}, fmt.Errorf("read commission transfer balances: %w", err)
+	}
+	if commissionBefore < input.Amount || balanceBefore > maxOrderMoneyCents-input.Amount {
+		return CommissionTransferResult{}, ErrInsufficientCommission
+	}
+	commissionAfter := commissionBefore - input.Amount
+	balanceAfter := balanceBefore + input.Amount
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users
 		SET commission_balance = commission_balance - ?, balance = balance + ?, updated_at = ?
-		WHERE id = ? AND account_kind = 'human' AND commission_balance >= ?
-		  AND balance <= ?
-	`, amount, amount, now.Unix(), userID, amount, maxOrderMoneyCents-amount)
+		WHERE id = ? AND account_kind = 'human' AND commission_balance = ? AND balance = ?
+	`, input.Amount, input.Amount, now.Unix(), userID, commissionBefore, balanceBefore)
 	if err != nil {
 		return CommissionTransferResult{}, fmt.Errorf("transfer commission: %w", err)
 	}
@@ -135,24 +164,67 @@ func (s *Store) TransferCommission(ctx context.Context, userID, amount int64, no
 		return CommissionTransferResult{}, fmt.Errorf("count commission transfer: %w", err)
 	}
 	if updated != 1 {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND account_kind = 'human')`, userID).Scan(&exists); err != nil {
-			return CommissionTransferResult{}, fmt.Errorf("check commission transfer user: %w", err)
-		}
-		if !exists {
-			return CommissionTransferResult{}, ErrNotFound
-		}
-		return CommissionTransferResult{}, ErrInsufficientCommission
+		return CommissionTransferResult{}, ErrConflict
 	}
-	var transferred CommissionTransferResult
-	if err := tx.QueryRowContext(ctx, `SELECT commission_balance, balance FROM users WHERE id = ?`, userID).
-		Scan(&transferred.CommissionBalance, &transferred.Balance); err != nil {
-		return CommissionTransferResult{}, fmt.Errorf("read commission transfer result: %w", err)
+	inserted, err := tx.ExecContext(ctx, `
+		INSERT INTO commission_transfer_events (
+			user_id,idempotency_key,amount,currency,commission_balance_before,commission_balance_after,
+			balance_before,balance_after,created_at
+		) VALUES (?,?,?,?,?,?,?,?,?)
+	`, userID, input.IdempotencyKey, input.Amount, currency, commissionBefore, commissionAfter,
+		balanceBefore, balanceAfter, now.Unix())
+	if err != nil {
+		return CommissionTransferResult{}, fmt.Errorf("record commission transfer event: %w", err)
+	}
+	transferID, err := inserted.LastInsertId()
+	if err != nil {
+		return CommissionTransferResult{}, fmt.Errorf("read commission transfer event ID: %w", err)
+	}
+	transferred := CommissionTransferResult{
+		TransferID: transferID, Amount: input.Amount, Currency: currency,
+		CommissionBalanceBefore: commissionBefore, CommissionBalanceAfter: commissionAfter,
+		BalanceBefore: balanceBefore, BalanceAfter: balanceAfter,
+		CommissionBalance: commissionAfter, Balance: balanceAfter, CreatedAt: time.Unix(now.Unix(), 0).UTC(),
 	}
 	if err := tx.Commit(); err != nil {
 		return CommissionTransferResult{}, fmt.Errorf("commit commission transfer: %w", err)
 	}
 	return transferred, nil
+}
+
+func getCommissionTransferByIdempotency(ctx context.Context, tx *sql.Tx, userID int64, key string) (CommissionTransferResult, error) {
+	var result CommissionTransferResult
+	var createdAt int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT id,amount,currency,commission_balance_before,commission_balance_after,balance_before,balance_after,created_at
+		FROM commission_transfer_events WHERE user_id=? AND idempotency_key=?
+	`, userID, key).Scan(&result.TransferID, &result.Amount, &result.Currency,
+		&result.CommissionBalanceBefore, &result.CommissionBalanceAfter,
+		&result.BalanceBefore, &result.BalanceAfter, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CommissionTransferResult{}, ErrNotFound
+	}
+	if err != nil {
+		return CommissionTransferResult{}, fmt.Errorf("read commission transfer event: %w", err)
+	}
+	result.CommissionBalance = result.CommissionBalanceAfter
+	result.Balance = result.BalanceAfter
+	result.CreatedAt = time.Unix(createdAt, 0).UTC()
+	return result, nil
+}
+
+func validCommissionTransferIdempotencyKey(value string) bool {
+	if len(value) < 16 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || strings.ContainsRune("._:-", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int) (CommissionProcessingResult, error) {

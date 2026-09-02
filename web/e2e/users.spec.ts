@@ -118,8 +118,8 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await dialog.getByLabel("新密码（留空不修改）").fill("e2e-profile-password-456");
 	await dialog.getByLabel("已用上行流量（GiB）").fill("1.5");
 	await dialog.getByLabel("已用下行流量（GiB）").fill("2");
-	await dialog.getByLabel("余额（元）", { exact: true }).fill("45.67");
-	await dialog.getByLabel("佣金余额（元）", { exact: true }).fill("8.09");
+	await dialog.getByLabel("余额（CNY）", { exact: true }).fill("45.67");
+	await dialog.getByLabel("佣金余额（CNY）", { exact: true }).fill("8.09");
 	await dialog.getByLabel("佣金类型").selectOption("1");
 	await dialog.getByLabel("专享折扣（留空使用系统默认）").fill("75");
 	await dialog.getByLabel("Telegram ID（留空表示未绑定）").fill(String(telegramID));

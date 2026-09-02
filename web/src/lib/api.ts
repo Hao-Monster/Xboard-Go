@@ -1534,8 +1534,17 @@ export interface CommissionLogPage {
 }
 
 export interface CommissionTransferResult {
+  transfer_id: number;
+  amount: number;
+  currency: string;
+  commission_balance_before: number;
+  commission_balance_after: number;
+  balance_before: number;
+  balance_after: number;
   commission_balance: number;
   balance: number;
+  idempotent: boolean;
+  created_at: string;
 }
 
 export type CommissionWithdrawalStatus = "pending" | "approved" | "paid" | "rejected";
@@ -1588,6 +1597,8 @@ export interface AdminUserDeletionImpact {
   payment_checkouts: number;
   commission_withdrawals: number;
   commission_logs: number;
+  commission_transfers: number;
+  admin_balance_adjustments: number;
   distributor_subscriptions: number;
   invitation_codes: number;
   invited_users: number;
@@ -2031,8 +2042,10 @@ export class APIClient implements AdminAPI {
     return this.request<CommissionLogPage>(`/api/v1/invitations/commissions?page=${page}&page_size=${pageSize}`);
   }
 
-  async transferCommission(amount: number): Promise<CommissionTransferResult> {
-    return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", { method: "POST", body: { amount } });
+  async transferCommission(amount: number, idempotencyKey: string): Promise<CommissionTransferResult> {
+    return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", {
+      method: "POST", body: { amount, idempotency_key: idempotencyKey }
+    });
   }
 
   async getCommissionWithdrawalPolicy(): Promise<CommissionWithdrawalPolicy> {

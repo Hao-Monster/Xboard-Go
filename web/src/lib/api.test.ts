@@ -4,6 +4,23 @@ import { APIClient } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("APIClient commission transfer contracts", () => {
+  it("sends the caller-owned idempotency key with the financial mutation", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push({ path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    await api.transferCommission(1234, "commission-transfer-client-0001");
+    expect(requests).toEqual([{
+      path: "/api/v1/invitations/transfer", method: "POST",
+      body: { amount: 1234, idempotency_key: "commission-transfer-client-0001" }
+    }]);
+  });
+});
+
 describe("APIClient CAPTCHA contracts", () => {
   it("sends the legacy provider token fields only on protected actions", async () => {
     const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
