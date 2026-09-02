@@ -101,6 +101,68 @@ func TestSECNODE005WebSocketNodeMessageRateBoundary(t *testing.T) {
 	}
 }
 
+func TestSECNODE005WebSocketMessageSizeBoundary(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+
+	now := fixedNow()
+	machine, node := createWebSocketReportingNode(t, database, now)
+	user, err := database.CreateRuntimeUser(context.Background(), store.CreateRuntimeUserInput{
+		Email: "node-security-ws-size@example.test", PasswordHash: "test-password-hash",
+		UUID: "6c61bb2d-cd16-416e-bf1b-2f95db2650f5", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment, err := database.CreateEnrollment(context.Background(), machine.ID, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
+
+	const expectedMessageLimit = 10 << 20
+	atLimit := paddedWebSocketJSONMessage(t, `{"event":"unknown","data":"`, `"}`, expectedMessageLimit)
+	if err := connection.WriteMessage(websocket.TextMessage, atLimit); err != nil {
+		t.Fatalf("write message at limit: %v", err)
+	}
+	if err := connection.WriteJSON(map[string]any{
+		"event": "node.status",
+		"data":  map[string]any{"node_id": node.ID, "size_boundary": true},
+	}); err != nil {
+		t.Fatalf("write status after at-limit message: %v", err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		state, stateErr := database.GetNodeRuntimeState(context.Background(), node.ID)
+		return stateErr == nil && strings.Contains(string(state.Metrics), `"size_boundary":true`)
+	})
+
+	oversized := paddedWebSocketJSONMessage(t, `{"event":"unknown","data":"`, `"}`, expectedMessageLimit+1)
+	if err := connection.WriteMessage(websocket.TextMessage, oversized); err != nil {
+		t.Fatalf("write oversized message: %v", err)
+	}
+	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := connection.ReadMessage(); !websocket.IsCloseError(err, websocket.CloseMessageTooBig) {
+		t.Fatalf("oversized message error=%v, want message-too-big close", err)
+	}
+}
+
+func paddedWebSocketJSONMessage(t *testing.T, prefix, suffix string, size int) []byte {
+	t.Helper()
+	padding := size - len(prefix) - len(suffix)
+	if padding < 0 {
+		t.Fatalf("JSON envelope is larger than requested %d-byte message", size)
+	}
+	return []byte(prefix + strings.Repeat("x", padding) + suffix)
+}
+
 func TestSECNODE005TrustedProxyAddressBoundary(t *testing.T) {
 	trusted := []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/8"),
