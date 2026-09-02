@@ -347,6 +347,27 @@ func TestSECNODE005MachineAuthenticationLimitCannotBeBypassedWithMachineIDs(t *t
 	expectAPIError(t, limited, http.StatusTooManyRequests, "machine_auth_rate_limited")
 }
 
+func TestSECNODE005MachineAuthenticationFailuresRetainDirectPeerLimit(t *testing.T) {
+	api, _ := newTestAPIWithTrustedProxyPrefixes(t, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+	request := func(attempt int) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v2/server/handshake",
+			strings.NewReader(fmt.Sprintf(`{"machine_id":%d}`, 20_000+attempt)))
+		r.RemoteAddr = "10.0.0.2:8080"
+		r.Header.Set("X-Forwarded-For", fmt.Sprintf("198.18.%d.%d", attempt/256, attempt%256))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer invalid-machine-credential")
+		response := httptest.NewRecorder()
+		api.ServeHTTP(response, r)
+		return response
+	}
+	for attempt := 0; attempt < 600; attempt++ {
+		if response := request(attempt); response.Code != http.StatusUnauthorized {
+			t.Fatalf("peer attempt %d status=%d, want %d; body=%s", attempt+1, response.Code, http.StatusUnauthorized, response.Body)
+		}
+	}
+	expectAPIError(t, request(600), http.StatusTooManyRequests, "machine_auth_rate_limited")
+}
+
 func TestSECNODE005RequestLimiterWindowOverflowAndConcurrency(t *testing.T) {
 	now := fixedNow()
 	window := newRequestLimiter(2, time.Minute)
