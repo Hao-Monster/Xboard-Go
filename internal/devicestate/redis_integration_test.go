@@ -285,6 +285,37 @@ func TestTIMENODE006RedisReplaceAllAndClearMaintainIndexes(t *testing.T) {
 	}
 }
 
+func TestTIMENODE006NodeGenerationFencesStaleDisconnectCleanup(t *testing.T) {
+	writer := &recordingSummaryWriter{}
+	service := newTIMENODE006RedisService(t, writer, 100*time.Millisecond)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	staleGeneration, err := service.bumpNodeGeneration(ctx, 43)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentGeneration, err := service.bumpNodeGeneration(ctx, 43)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentPipeline := service.client.Pipeline()
+	currentCommand := service.replaceNodeUser(currentPipeline, ctx, 43, 15, []string{"203.0.113.15"}, now, currentGeneration)
+	_, currentErr := currentPipeline.Exec(ctx)
+	if changed, err := currentCommand.Int64(); currentErr != nil || err != nil || changed < 0 {
+		t.Fatalf("current generation replacement = (%d, exec=%v, result=%v)", changed, currentErr, err)
+	}
+	stalePipeline := service.client.Pipeline()
+	staleCommand := service.replaceNodeUser(stalePipeline, ctx, 43, 15, nil, now.Add(time.Second), staleGeneration)
+	_, staleErr := stalePipeline.Exec(ctx)
+	if changed, err := staleCommand.Int64(); staleErr != nil || err != nil || changed != -1 {
+		t.Fatalf("stale generation clear = (%d, exec=%v, result=%v), want (-1, nil, nil)", changed, staleErr, err)
+	}
+	devices, err := service.ListUserDevices(ctx, []int64{15}, now.Add(time.Second))
+	if err != nil || !reflect.DeepEqual(devices[15], []string{"203.0.113.15"}) {
+		t.Fatalf("current snapshot after stale clear = (%#v, %v)", devices, err)
+	}
+}
+
 func TestTIMENODE006PendingAcknowledgementPreservesANewerVersion(t *testing.T) {
 	writer := &recordingSummaryWriter{}
 	throttle := 40 * time.Millisecond

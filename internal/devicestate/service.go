@@ -35,14 +35,18 @@ const (
 var safePrefixRE = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 
 const replaceNodeDevicesScript = `
+if redis.call('GET', KEYS[5]) ~= ARGV[6] then
+  return -1
+end
+
 local removed = 0
 for _, field in ipairs(redis.call('SMEMBERS', KEYS[4])) do
   removed = removed + redis.call('HDEL', KEYS[1], field)
 end
 redis.call('DEL', KEYS[4])
 
-if #ARGV > 5 then
-  for index = 6, #ARGV do
+if #ARGV > 6 then
+  for index = 7, #ARGV do
     local field = ARGV[1] .. ARGV[index]
     redis.call('HSET', KEYS[1], field, ARGV[2])
     redis.call('SADD', KEYS[4], field)
@@ -61,6 +65,12 @@ else
 end
 
 return removed
+`
+
+const bumpNodeGenerationScript = `
+local generation = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+return generation
 `
 
 const removeDuePendingScript = `
@@ -171,6 +181,10 @@ func (service *RedisService) ReplaceNodeDevices(ctx context.Context, nodeID int6
 		normalized[userID] = normalizeIPs(ips)
 		affected[userID] = struct{}{}
 	}
+	generation, err := service.bumpNodeGeneration(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("begin node device replacement: %w", err)
+	}
 	if replaceAll {
 		oldUsers, err := service.scanSetIDs(ctx, service.nodeUsersKey(nodeID))
 		if err != nil {
@@ -186,14 +200,24 @@ func (service *RedisService) ReplaceNodeDevices(ctx context.Context, nodeID int6
 	userIDs := sortedIDSet(affected)
 	for start := 0; start < len(userIDs); start += redisOperationBatch {
 		end := min(start+redisOperationBatch, len(userIDs))
+		commands := make([]*redis.Cmd, end-start)
 		_, err := service.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-			for _, userID := range userIDs[start:end] {
-				service.replaceNodeUser(pipe, ctx, nodeID, userID, normalized[userID], now)
+			for index, userID := range userIDs[start:end] {
+				commands[index] = service.replaceNodeUser(pipe, ctx, nodeID, userID, normalized[userID], now, generation)
 			}
 			return nil
 		})
 		if err != nil {
 			return userIDs, fmt.Errorf("replace node device state: %w", err)
+		}
+		for _, command := range commands {
+			changed, commandErr := command.Int64()
+			if commandErr != nil {
+				return userIDs, fmt.Errorf("read node device replacement: %w", commandErr)
+			}
+			if changed < 0 {
+				return userIDs, errors.New("node device snapshot was superseded")
+			}
 		}
 	}
 	if len(userIDs) > 0 {
@@ -274,16 +298,21 @@ func (service *RedisService) ClearNodeDevices(ctx context.Context, nodeIDs []int
 	}
 	affected := make(map[int64]struct{})
 	for _, nodeID := range ids {
+		generation, generationErr := service.bumpNodeGeneration(ctx, nodeID)
+		if generationErr != nil {
+			return sortedIDSet(affected), fmt.Errorf("begin node %d device clear: %w", nodeID, generationErr)
+		}
 		userIDs, scanErr := service.scanSetIDs(ctx, service.nodeUsersKey(nodeID))
 		if scanErr != nil {
 			return sortedIDSet(affected), fmt.Errorf("list node %d device users: %w", nodeID, scanErr)
 		}
-		for start := 0; start < len(userIDs); start += redisOperationBatch {
+		superseded := false
+		for start := 0; start < len(userIDs) && !superseded; start += redisOperationBatch {
 			end := min(start+redisOperationBatch, len(userIDs))
 			commands := make([]*redis.Cmd, end-start)
 			_, pipelineErr := service.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 				for index, userID := range userIDs[start:end] {
-					commands[index] = service.replaceNodeUser(pipe, ctx, nodeID, userID, nil, now)
+					commands[index] = service.replaceNodeUser(pipe, ctx, nodeID, userID, nil, now, generation)
 				}
 				return nil
 			})
@@ -295,10 +324,17 @@ func (service *RedisService) ClearNodeDevices(ctx context.Context, nodeIDs []int
 				if commandErr != nil {
 					return sortedIDSet(affected), fmt.Errorf("clear node %d device state: %w", nodeID, commandErr)
 				}
+				if removed < 0 {
+					superseded = true
+					break
+				}
 				if removed > 0 {
 					affected[userIDs[start+index]] = struct{}{}
 				}
 			}
+		}
+		if superseded {
+			continue
 		}
 		if err := service.client.Del(ctx, service.nodeUsersKey(nodeID)).Err(); err != nil {
 			return sortedIDSet(affected), fmt.Errorf("remove node %d device index: %w", nodeID, err)
@@ -427,15 +463,20 @@ func (service *RedisService) Close() error {
 	return service.closeErr
 }
 
-func (service *RedisService) replaceNodeUser(pipe redis.Pipeliner, ctx context.Context, nodeID, userID int64, ips []string, now time.Time) *redis.Cmd {
+func (service *RedisService) bumpNodeGeneration(ctx context.Context, nodeID int64) (int64, error) {
+	return service.client.Eval(ctx, bumpNodeGenerationScript, []string{service.nodeGenerationKey(nodeID)}, int64(indexRetention/time.Second)).Int64()
+}
+
+func (service *RedisService) replaceNodeUser(pipe redis.Pipeliner, ctx context.Context, nodeID, userID int64, ips []string, now time.Time, generation int64) *redis.Cmd {
 	nodePrefix := strconv.FormatInt(nodeID, 10) + ":"
-	args := make([]any, 0, 5+len(ips))
-	args = append(args, nodePrefix, now.Unix(), int64(stateRetention/time.Second), userID, int64(indexRetention/time.Second))
+	args := make([]any, 0, 6+len(ips))
+	args = append(args, nodePrefix, now.Unix(), int64(stateRetention/time.Second), userID, int64(indexRetention/time.Second), generation)
 	for _, ip := range ips {
 		args = append(args, ip)
 	}
 	return pipe.Eval(ctx, replaceNodeDevicesScript, []string{
 		service.userDevicesKey(userID), service.nodeUsersKey(nodeID), service.userNodesKey(userID), service.userNodeFieldsKey(userID, nodeID),
+		service.nodeGenerationKey(nodeID),
 	}, args...)
 }
 
@@ -641,6 +682,10 @@ func (service *RedisService) userNodeFieldsKey(userID, nodeID int64) string {
 
 func (service *RedisService) nodeUsersKey(nodeID int64) string {
 	return service.prefix + "device:node-users:" + strconv.FormatInt(nodeID, 10)
+}
+
+func (service *RedisService) nodeGenerationKey(nodeID int64) string {
+	return service.prefix + "device:node-generation:" + strconv.FormatInt(nodeID, 10)
 }
 
 func (service *RedisService) throttleKey(userID int64) string {

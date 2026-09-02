@@ -49,6 +49,16 @@ node report is written; Pub/Sub remains an acceleration path, while reconnect
 full snapshots and the node's bounded HTTP pull provide eventual recovery.
 The application refuses to silently fall back to local ownership.
 
+Redis coordination mode also makes Redis authoritative for live device state.
+Reports normalize and de-duplicate IP addresses, cap each user snapshot at 64
+addresses, and count only observations newer than the fixed 300-second online
+window. Database `online_count` summaries are written at most once per user in
+10 seconds, with a bounded 5-second trailing flush in batches of 500. Node
+disconnects and access-revoking user mutations clear the corresponding Redis
+state. Redis read or write failures fail the affected request instead of
+presenting an empty device list; local coordination mode retains the
+single-replica transactional SQLite behavior.
+
 `XBOARD_WEBSOCKET_ENABLED`, `XBOARD_WEBSOCKET_URL`,
 `XBOARD_NODE_PUSH_INTERVAL`, and `XBOARD_NODE_PULL_INTERVAL` are deployment
 capability and first-run defaults only. After the database has been

@@ -218,6 +218,121 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	}
 }
 
+func TestTIMENODE006RedisGenerationFencesCrossInstanceReconnectAndDisconnect(t *testing.T) {
+	rawURL := os.Getenv("XBOARD_TEST_REDIS_URL")
+	if rawURL == "" {
+		t.Skip("XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests")
+	}
+	database := cloneHTTPAPITestDatabase(t)
+	prefix := "xg:test-device-fence:" + uuid.NewString() + ":"
+	deviceState, err := devicestate.NewRedis(context.Background(), devicestate.Options{
+		URL: rawURL, Prefix: prefix, DatabaseThrottle: 80 * time.Millisecond,
+		WriteSummaries: func(ctx context.Context, summaries []devicestate.Summary) error {
+			values := make([]store.UserDeviceSummary, len(summaries))
+			for index, summary := range summaries {
+				values[index] = store.UserDeviceSummary{
+					UserID: summary.UserID, OnlineCount: summary.OnlineCount, ObservedAt: summary.ObservedAt,
+				}
+			}
+			return database.UpdateUserDeviceSummaries(ctx, values)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = deviceState.Close()
+		removeTIMENODE006RedisKeys(t, rawURL, prefix)
+	})
+	firstCoordinator := newHTTPAPITestCoordinator(t, rawURL, prefix, "device-first")
+	secondCoordinator := newHTTPAPITestCoordinator(t, rawURL, prefix, "device-second")
+	firstAPI, firstCancel := newCoordinatedWebSocketAPI(t, database, firstCoordinator, deviceState)
+	defer firstCancel()
+	secondAPI, secondCancel := newCoordinatedWebSocketAPI(t, database, secondCoordinator, deviceState)
+	defer secondCancel()
+	firstServer := httptest.NewServer(firstAPI)
+	defer firstServer.Close()
+	secondServer := httptest.NewServer(secondAPI)
+	defer secondServer.Close()
+
+	ctx := context.Background()
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "device-fence-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "device-fence-node", Type: "vless", Host: "device-fence.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "device-fence-user@example.test", PasswordHash: "test-password-hash",
+		UUID: "a8cb8be9-9f2f-477a-adc5-666407855f63", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := dialMachineWebSocket(t, firstServer.URL, machine.ID, credential.Token, "")
+	assertInitialMachineSync(t, first, machine.ID, node.ID, user.ID)
+	if err := first.WriteJSON(map[string]any{
+		"event": "report.devices",
+		"data":  map[string]any{"node_id": node.ID, "devices": map[string]any{fmt.Sprint(user.ID): []string{"192.0.2.81"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if event := readWSEvent(t, first); event.Event != "sync.devices" {
+		t.Fatalf("first device report event=%q", event.Event)
+	}
+
+	second := dialMachineWebSocket(t, secondServer.URL, machine.ID, credential.Token, "")
+	for _, want := range []string{"auth.success", "sync.config", "sync.users", "sync.devices"} {
+		if event := readWSEvent(t, second); event.Event != want {
+			t.Fatalf("second initial event=%q, want %q", event.Event, want)
+		}
+	}
+	_ = first.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := first.ReadMessage(); err == nil {
+		t.Fatal("replaced cross-instance connection remained open")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.WriteJSON(map[string]any{
+		"event": "report.devices",
+		"data":  map[string]any{"node_id": node.ID, "devices": map[string]any{fmt.Sprint(user.ID): []string{"198.51.100.81"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if event := readWSEvent(t, second); event.Event != "sync.devices" {
+		t.Fatalf("replacement device report event=%q", event.Event)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		devices, listErr := deviceState.ListUserDevices(ctx, []int64{user.ID}, now)
+		return listErr == nil && reflect.DeepEqual(devices[user.ID], []string{"198.51.100.81"})
+	})
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		devices, listErr := deviceState.ListUserDevices(ctx, []int64{user.ID}, now)
+		return listErr == nil && len(devices[user.ID]) == 0
+	})
+}
+
 func removeTIMENODE006RedisKeys(t *testing.T, rawURL, prefix string) {
 	t.Helper()
 	options, err := redis.ParseURL(rawURL)
