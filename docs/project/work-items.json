@@ -18,7 +18,8 @@
     {"id":"SEC-001","title":"建立 Actions 固定、SBOM、许可证和供应链门禁","status":"open","milestone":"M3","issue_number":128,"requirement_ids":[],"decision_ids":[]},
     {"id":"DEP-001","title":"分类并处理现有 Dependabot 更新积压","status":"done","milestone":"M0","issue_number":129,"requirement_ids":[],"decision_ids":[]},
     {"id":"PERF-001","title":"建立代表性容量基线并确认 SLO","status":"blocked","milestone":"M4","issue_number":130,"requirement_ids":[],"decision_ids":["D-015"]},
-    {"id":"REL-001","title":"完成生产切换、回滚和事故响应运行手册","status":"blocked","milestone":"M4","issue_number":131,"requirement_ids":[],"decision_ids":["D-016","D-018"]}
+    {"id":"REL-001","title":"完成生产切换、回滚和事故响应运行手册","status":"blocked","milestone":"M4","issue_number":131,"requirement_ids":[],"decision_ids":["D-016","D-018"]},
+    {"id":"ARCH-001","title":"按 Issue #148 已确认边界拆分网关、前端与后端独立部署单元","status":"in_progress","milestone":"M4","issue_number":148,"requirement_ids":[],"decision_ids":[]}
   ],
   "tracks": [
     {"id":"FIN-A","title":"财务 schema、追加账本与状态机","status":"done","milestone":"M1","work_item_ids":["FUNC-001"],"depends_on":[],"completion_gate":"资金守恒、幂等、并发、迁移与不可变事件测试通过"},
