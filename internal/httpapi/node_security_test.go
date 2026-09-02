@@ -245,6 +245,41 @@ func TestSECNODE005NodeRateLimitUsesClientPeerAndCredentialBuckets(t *testing.T)
 	}
 }
 
+func TestSECNODE005TrustedProxyIsAppliedAtNodeAuthenticationEntry(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	request := func(api http.Handler, remoteAddr, forwarded string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v2/server/handshake", strings.NewReader(`{"machine_id":999999}`))
+		r.RemoteAddr = remoteAddr
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer invalid-machine-credential")
+		r.Header.Set("X-Forwarded-For", forwarded)
+		response := httptest.NewRecorder()
+		api.ServeHTTP(response, r)
+		return response
+	}
+
+	trustedAPI, _ := newTestAPIWithTrustedProxyPrefixes(t, trusted)
+	for attempt := 0; attempt < 60; attempt++ {
+		response := request(trustedAPI, "10.0.0.2:8080", "198.51.100.1")
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("trusted client attempt %d status=%d, want %d", attempt+1, response.Code, http.StatusUnauthorized)
+		}
+	}
+	if response := request(trustedAPI, "10.0.0.2:8080", "198.51.100.2"); response.Code != http.StatusUnauthorized {
+		t.Fatalf("independent forwarded client status=%d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body)
+	}
+
+	untrustedAPI, _ := newTestAPIWithTrustedProxyPrefixes(t, trusted)
+	for attempt := 0; attempt < 60; attempt++ {
+		response := request(untrustedAPI, "192.0.2.10:8080", fmt.Sprintf("198.51.100.%d", attempt+1))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("untrusted peer attempt %d status=%d, want %d", attempt+1, response.Code, http.StatusUnauthorized)
+		}
+	}
+	limited := request(untrustedAPI, "192.0.2.10:8080", "203.0.113.200")
+	expectAPIError(t, limited, http.StatusTooManyRequests, "machine_auth_rate_limited")
+}
+
 func paddedNodeSecurityJSON(t *testing.T, base string, size int) string {
 	t.Helper()
 	if len(base) > size {

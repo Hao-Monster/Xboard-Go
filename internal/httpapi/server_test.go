@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -668,7 +669,17 @@ func newTestAPIWithTicketRegionResolver(t *testing.T, resolver ticketRegionResol
 	return newTestAPIWithAllOptions(t, nil, true, nil, nil, false, nil, resolver)
 }
 
+func newTestAPIWithTrustedProxyPrefixes(t *testing.T, prefixes []netip.Prefix) (http.Handler, *store.Store) {
+	return newTestAPIWithAllOptionsAndModifier(t, nil, true, nil, nil, false, nil, nil, func(dependencies *Dependencies) {
+		dependencies.TrustedProxyPrefixes = prefixes
+	})
+}
+
 func newTestAPIWithAllOptions(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool, telegramClient telegrambot.Client, regionResolver ticketRegionResolver) (http.Handler, *store.Store) {
+	return newTestAPIWithAllOptionsAndModifier(t, function, protectInvitations, captchaVerifier, gateway, enableAttachments, telegramClient, regionResolver, nil)
+}
+
+func newTestAPIWithAllOptionsAndModifier(t *testing.T, function func(*http.Request) (*http.Response, error), protectInvitations bool, captchaVerifier captcha.Verifier, gateway paymentGateway, enableAttachments bool, telegramClient telegrambot.Client, regionResolver ticketRegionResolver, modify func(*Dependencies)) (http.Handler, *store.Store) {
 	t.Helper()
 	database := cloneHTTPAPITestDatabase(t)
 	hasher := newHTTPAPITestPasswordHasher()
@@ -720,7 +731,7 @@ func newTestAPIWithAllOptions(t *testing.T, function func(*http.Request) (*http.
 	if err != nil {
 		t.Fatalf("bulkops.New() error = %v", err)
 	}
-	handler := New(Dependencies{
+	dependencies := Dependencies{
 		Store:                      database,
 		PasswordHasher:             hasher,
 		Now:                        fixedNow,
@@ -740,7 +751,11 @@ func newTestAPIWithAllOptions(t *testing.T, function func(*http.Request) (*http.
 		BulkOperations:             bulkService,
 		TelegramBot:                telegramClient,
 		TicketRegionResolver:       regionResolver,
-	})
+	}
+	if modify != nil {
+		modify(&dependencies)
+	}
+	handler := New(dependencies)
 	return handler, database
 }
 
