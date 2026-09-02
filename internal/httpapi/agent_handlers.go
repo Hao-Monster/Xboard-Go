@@ -11,6 +11,8 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
+const maxNodeHandshakeBody = 64 << 10
+
 type resourceUsage struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
@@ -136,7 +138,7 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 		if input.NodeID, ok = optionalPositiveQueryID(w, r, "node_id"); !ok {
 			return
 		}
-	} else if !decodeJSON(w, r, &input) {
+	} else if !decodeJSONLimit(w, r, &input, maxNodeHandshakeBody) {
 		return
 	}
 	if input.MachineID < 0 {
