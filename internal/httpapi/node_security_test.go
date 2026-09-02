@@ -545,3 +545,37 @@ func paddedNodeSecurityJSON(t *testing.T, base string, size int) string {
 	}
 	return base + strings.Repeat(" ", size-len(base))
 }
+
+func BenchmarkSECNODE005NodeRequestLimitGroup(b *testing.B) {
+	maximum := int(^uint(0) >> 1)
+	for _, test := range []struct {
+		name      string
+		remote    string
+		forwarded string
+		trusted   []netip.Prefix
+	}{
+		{name: "direct", remote: "192.0.2.10:8080"},
+		{name: "trusted-proxy", remote: "10.0.0.2:8080", forwarded: "198.51.100.1, 10.0.0.3", trusted: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			request := httptest.NewRequest(http.MethodGet, "/api/v2/server/config", nil)
+			request.RemoteAddr = test.remote
+			request.Header.Set("Authorization", "Bearer benchmark-credential")
+			if test.forwarded != "" {
+				request.Header.Set("X-Forwarded-For", test.forwarded)
+			}
+			limiter := newNodeRequestLimitGroup(maximum, maximum, maximum, test.trusted)
+			now := fixedNow()
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(parallel *testing.PB) {
+				for parallel.Next() {
+					if !limiter.allow(request, 1, now) {
+						b.Error("unbounded benchmark limiter rejected a request")
+						return
+					}
+				}
+			})
+		})
+	}
+}
