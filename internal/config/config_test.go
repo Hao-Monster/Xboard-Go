@@ -78,6 +78,13 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestSECNODE005LoadRejectsInvalidTrustedProxyCIDRs(t *testing.T) {
+	t.Setenv("XBOARD_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,not-a-cidr")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an invalid trusted proxy CIDR")
+	}
+}
+
 func TestLoadRejectsRelativeIP2RegionFile(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
