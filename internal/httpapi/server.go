@@ -107,7 +107,9 @@ type server struct {
 	adminUserGenerationSlots   chan struct{}
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
+	machineAuthPeerFailures    *attemptLimiter
 	legacyNodeAuthFailures     *attemptLimiter
+	legacyNodeAuthPeerFailures *attemptLimiter
 	handshakeRequests          *nodeRequestLimitGroup
 	pullRequests               *nodeRequestLimitGroup
 	reportRequests             *nodeRequestLimitGroup
@@ -252,7 +254,9 @@ func New(dependencies Dependencies) http.Handler {
 		adminUserGenerationSlots:   make(chan struct{}, 1),
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
+		machineAuthPeerFailures:    newAttemptLimiter(600, time.Minute),
 		legacyNodeAuthFailures:     newAttemptLimiter(60, time.Minute),
+		legacyNodeAuthPeerFailures: newAttemptLimiter(600, time.Minute),
 		handshakeRequests:          newNodeRequestLimitGroup(60, 600, 20, trustedProxyPrefixes),
 		pullRequests:               newNodeRequestLimitGroup(2_400, 10_000, 600, trustedProxyPrefixes),
 		reportRequests:             newNodeRequestLimitGroup(1_200, 10_000, 240, trustedProxyPrefixes),

@@ -67,7 +67,12 @@ func (g *nodeRequestLimitGroup) allow(r *http.Request, machineID int64, now time
 }
 
 func nodeCredentialLimitKey(r *http.Request, machineID int64) string {
-	digest := sha256.Sum256([]byte(r.Header.Get("Authorization")))
+	authorization := r.Header.Get("Authorization")
+	parts := strings.Fields(authorization)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		authorization = parts[1]
+	}
+	digest := sha256.Sum256([]byte(authorization))
 	return hex.EncodeToString(digest[:]) + ":" + strconv.FormatInt(machineID, 10)
 }
 
