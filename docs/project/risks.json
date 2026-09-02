@@ -8,7 +8,7 @@
     {"id":"R-004","severity":"high","status":"open","milestone":"M2","title":"缺少真实 schema、脱敏数据和容量导致迁移失真","mitigation":"高风险迁移前取得只读 schema、脱敏副本和指标。"},
     {"id":"R-005","severity":"critical","status":"open","milestone":"M1","title":"支付、结算、余额、佣金或续费发生重复或丢失","mitigation":"数据库约束、事务、幂等、差分、并发和资金守恒测试。"},
     {"id":"R-006","severity":"high","status":"open","milestone":"M3","title":"分销内部订阅凭据经 API、日志、导出或 trace 泄漏","mitigation":"显式 DTO、递归脱敏、敏感字段扫描和授权测试。"},
-    {"id":"R-007","severity":"high","status":"open","milestone":"M3","title":"节点重复或乱序上报造成流量与状态错误","mitigation":"report receipt、所有权 fencing、批量原子更新和故障测试。"},
+    {"id":"R-007","severity":"high","status":"controlled","milestone":"M3","title":"节点重复或乱序上报造成流量与状态错误","mitigation":"report receipt、所有权 fencing、批量原子更新、跨实例 Redis 恢复、重复/乱序/1K/10K 分片故障测试与精确候选证据。"},
     {"id":"R-008","severity":"high","status":"controlled","milestone":"M3","title":"任意插件或主题上传形成 RCE 和供应链风险","mitigation":"D-003、签名/来源/压缩安全、隔离与最小权限。"},
     {"id":"R-009","severity":"high","status":"controlled","milestone":"M0","title":"大爆炸重构长期无可用反馈并最终集成失败","mitigation":"垂直切片、里程碑、独立工作项和分领域门禁。"},
     {"id":"R-010","severity":"high","status":"open","milestone":"M4","title":"双系统并行期间数据漂移或双写不一致","mitigation":"单写主、事件/outbox、可重放增量与对账。"},
