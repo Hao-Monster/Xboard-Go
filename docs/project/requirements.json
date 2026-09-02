@@ -5432,15 +5432,110 @@
       "title": "管理员可配置站点、订阅、安全、注册、邀请、节点、邮件、Telegram、主题和模板。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CFG-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/client-app-settings.spec.ts",
+            "e2e/node-agent-settings.spec.ts",
+            "e2e/mail-settings-reminders.spec.ts",
+            "e2e/telegram-settings.spec.ts",
+            "e2e/theme-management.spec.ts",
+            "e2e/mail-templates.spec.ts",
+            "e2e/subscription.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CFG-001"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:785",
+            "parity/admin-surface.spec.ts:956",
+            "parity/admin-surface.spec.ts:1006",
+            "parity/admin-surface.spec.ts:1086",
+            "parity/admin-surface.spec.ts:1147",
+            "parity/admin-surface.spec.ts:2208",
+            "parity/admin-surface.spec.ts:2925"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestLegacyConfigurationSaveSupportsAllTenAtomicPartialGroups",
+            "TestThemeLayoutSettingsAreRevisionSafeAndRefreshAppearance"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-001-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "BenchmarkLegacyConfigurationFullFetch",
+            "BenchmarkLegacyConfigurationProjections",
+            "BenchmarkUserCatalogCachedConfig",
+            "BenchmarkRenderNotifyTemplate"
+          ],
+          "artifact": "bingo-dev:sha256:da0c5c2b4474fcd93a9530b82fa2463f3dbfc0f0adad626d3ef8032627aba6f0",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:22:17Z",
+          "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "CFG-002",
@@ -5449,15 +5544,105 @@
       "title": "敏感配置不得通过普通读取接口返回明文；配置变更需要审计、缓存失效和常驻进程一致性策略。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-CFG-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/client-app-settings.spec.ts",
+            "e2e/node-agent-settings.spec.ts",
+            "e2e/mail-settings-reminders.spec.ts",
+            "e2e/telegram-settings.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/CFG-002"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:956",
+            "parity/admin-surface.spec.ts:1006",
+            "parity/admin-surface.spec.ts:1086"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestLoadReadsAndValidatesSettingsEncryptionKey",
+            "TestCipherEncryptsAuthenticatesAndRandomizesSettingsSecrets",
+            "TestCipherSeparatesSecretPurposesWithoutBreakingSMTPCompatibility",
+            "TestConfigCacheRefreshesChangesSavedByAnotherService",
+            "TestLegacyConfigurationCompatibilityPartialWritesAreAtomic"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        },
+        {
+          "id": "EV-CFG-002-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "BenchmarkLegacyConfigurationFullFetch",
+            "BenchmarkLegacyConfigurationProjections",
+            "BenchmarkUserCatalogCachedConfig"
+          ],
+          "artifact": "bingo-dev:sha256:da0c5c2b4474fcd93a9530b82fa2463f3dbfc0f0adad626d3ef8032627aba6f0",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:22:17Z",
+          "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "PLUG-001",
@@ -5466,15 +5651,82 @@
       "title": "当前插件可上传、安装、卸载、启停、升级和配置，并能挂钩注册、订单、支付、订阅、调度等流程。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-PLUG-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/zy-plugins.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/PLUG-001"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:32"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestLegacyTrustedPluginCatalogMatchesTheFixedCoreSurface",
+            "TestLegacyTrustedPluginEnableDisableAndTelegramConfigUseTheVersionedStore"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "PLUG-002",
@@ -5483,15 +5735,81 @@
       "title": "Go 首版只允许受信清单中的编译内置 Go adapter 或签名、版本固定、最小权限的进程外扩展；禁止主进程直接执行任意 PHP/上传脚本。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-PLUG-002-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/zy-plugins.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-002-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-002-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/PLUG-002"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-002-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:32"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-PLUG-002-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestLegacyRuntimePluginMutationRoutesFailClosedWithoutReadingTheBody"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "THEME-001",
@@ -5500,15 +5818,98 @@
       "title": "管理员可上传 ZIP 主题、预览、激活、配置和删除非当前主题；文件路径/类型和压缩包内容必须安全校验。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-THEME-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/theme-management.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-THEME-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-THEME-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/THEME-001"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-THEME-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:3008"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-THEME-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestParseArchiveRejectsExecutableAndAmbiguousArchives",
+            "TestParseArchiveRejectsInvalidVersionAndOversizedCompressedInput",
+            "TestParseArchiveRejectsSymlinkCompressionBombAndEntryFlood",
+            "TestThemeUploadRequiresCSRFBeforeParsingOrPersistence",
+            "TestThemeUploadRejectsUnsafeArchiveBeforePersistence"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        },
+        {
+          "id": "EV-THEME-001-PERFORMANCE",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "BenchmarkParseArchive"
+          ],
+          "artifact": "bingo-dev:sha256:da0c5c2b4474fcd93a9530b82fa2463f3dbfc0f0adad626d3ef8032627aba6f0",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:22:17Z",
+          "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "OPS-001",
@@ -5517,15 +5918,81 @@
       "title": "管理员可查看系统状态、队列统计/负载、失败任务和审计日志。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "current",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-OPS-001-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "e2e/system-operations.spec.ts"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-001-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-001-MIGRATION",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "migration/OPS-001"
+          ],
+          "artifact": "bingo-dev:sha256:2f0eddb0f6d80f9d103e8ed721cfe97796f9e3c3759b4f8400698f66f364dfc4",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:27:28Z",
+          "command": "go test -race -count=1 -timeout=20m ./internal/legacymigration ./internal/store -run <legacy migration classes>",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-001-DIFFERENTIAL",
+          "kind": "differential",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "parity/admin-surface.spec.ts:2360"
+          ],
+          "artifact": "bingo-dev:sha256:d1980015f2eeafc08793448da166dd5f5e080ec34a77c72d18c6c98a5ef5c611",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:07:52Z",
+          "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-001-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestAdministratorSystemOperationsAndAuditEndpoints"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "OPS-002",
@@ -5556,15 +6023,56 @@
       "title": "当前阶段所有运行、迁移和测试只针对本地或隔离测试环境。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
-      "acceptance_status": "pending",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
+      "acceptance_status": "accepted",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-005"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-OPS-003-BROWSER",
+          "kind": "browser",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "environment/bingo-dev-isolated-compose"
+          ],
+          "artifact": "bingo-dev:sha256:3896feca20ac61dd0f06723c5aa1e439d7569279533e2dadcc50b461205a0461",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:03:53Z",
+          "command": "Fresh isolated Docker Compose stack per group; pnpm exec playwright test --project chromium|mobile-chromium --grep[-invert] @fresh-server; 3 rounds",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-003-GO",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "go/all-packages"
+          ],
+          "artifact": "bingo-dev:sha256:fb28d506895a4d236e5fb670dc2fbe0c598902d98a775d84c4776971c2c3b15f",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T19:20:23Z",
+          "command": "go test -race -timeout=30m -coverprofile=go-coverage.out ./...",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-003-SECURITY",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestLoadRejectsUnsafeLegacyAdminPath",
+            "TestFrontendAccessCheckerFailsClosedOnSettingsError"
+          ],
+          "artifact": "bingo-dev:sha256:037b64deab04de316537b10d77bcdd273fedda052b1440479e156992c6c9dabe",
+          "commit": "5b3d7b00db1cc727881de2bf3a550bbb610d4f19",
+          "observed_at": "2026-09-02T20:21:29Z",
+          "command": "go test -race -count=5 -timeout=20m ./internal/config ./internal/settings ./internal/clientcatalog ./internal/theme ./internal/httpapi ./internal/operations ./internal/webui ./internal/store -run <21 configuration, plugin, theme, and operations security classes> -v",
+          "result": "pass"
+        }
+      ]
     }
   ]
 }
