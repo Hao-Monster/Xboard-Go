@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -335,6 +336,50 @@ func TestTIMENODE006PendingAcknowledgementPreservesANewerVersion(t *testing.T) {
 	writer.mu.Lock()
 	writer.afterWrite = nil
 	writer.mu.Unlock()
+}
+
+func TestTIMENODE006PendingFlushIsBoundedAndDrainsTheRemainder(t *testing.T) {
+	tests := []struct {
+		name      string
+		pending   int
+		limit     int
+		wantFirst int
+	}{
+		{name: "default batch", pending: DefaultFlushLimit + 1, limit: DefaultFlushLimit, wantFirst: DefaultFlushLimit},
+		{name: "hard maximum", pending: MaximumFlushLimit + 1, limit: MaximumFlushLimit + 1_000, wantFirst: MaximumFlushLimit},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			writer := &recordingSummaryWriter{}
+			service := newTIMENODE006RedisService(t, writer, time.Minute)
+			ctx := context.Background()
+			now := time.Now().UTC()
+			values := make([]redis.Z, test.pending)
+			for index := range values {
+				values[index] = redis.Z{Score: float64(now.Add(-time.Second).UnixMilli()), Member: strconv.Itoa(index + 1)}
+			}
+			if err := service.client.ZAdd(ctx, service.pendingKey(), values...).Err(); err != nil {
+				t.Fatal(err)
+			}
+
+			flushed, err := service.FlushPending(ctx, now, test.limit)
+			if err != nil || flushed != test.wantFirst {
+				t.Fatalf("first FlushPending() = (%d, %v), want (%d, nil)", flushed, err, test.wantFirst)
+			}
+			remaining, err := service.client.ZCard(ctx, service.pendingKey()).Result()
+			if err != nil || remaining != int64(test.pending-test.wantFirst) {
+				t.Fatalf("remaining pending = (%d, %v), want %d", remaining, err, test.pending-test.wantFirst)
+			}
+			flushed, err = service.FlushPending(ctx, now, MaximumFlushLimit)
+			if err != nil || flushed != test.pending-test.wantFirst {
+				t.Fatalf("remainder FlushPending() = (%d, %v), want (%d, nil)", flushed, err, test.pending-test.wantFirst)
+			}
+			remaining, err = service.client.ZCard(ctx, service.pendingKey()).Result()
+			if err != nil || remaining != 0 {
+				t.Fatalf("final pending = (%d, %v), want (0, nil)", remaining, err)
+			}
+		})
+	}
 }
 
 func TestTIMENODE006ConstantsMatchTheFixedContract(t *testing.T) {
