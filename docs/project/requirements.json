@@ -906,7 +906,9 @@
       "migration_status": "historical",
       "acceptance_status": "pending",
       "milestone": "M3",
-      "decision_ids": [],
+      "decision_ids": [
+        "D-001"
+      ],
       "work_item_ids": [
         "VER-003"
       ],

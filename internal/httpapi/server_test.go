@@ -365,7 +365,7 @@ func TestMachineAgentEnrollmentNodesAndStatus(t *testing.T) {
 	}
 }
 
-func TestXboardNodeV2MachineContract(t *testing.T) {
+func TestDIFFNODE004MachineHTTPAuthorizationMatrix(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
 	now := fixedNow()
@@ -394,6 +394,18 @@ func TestXboardNodeV2MachineContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNode(disabled) error = %v", err)
 	}
+	unassignedNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "unassigned", Type: "vless", Host: "unassigned.example.test", Port: "9443", Show: true, Enabled: true,
+	}, now)
+	if err != nil {
+		t.Fatalf("CreateNode(unassigned) error = %v", err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, unassignedNode.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000,
+		Config:     []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":9443}`),
+	}, now); err != nil {
+		t.Fatalf("SaveNodeRuntime(unassigned) error = %v", err)
+	}
 
 	enrollBody := fmt.Sprintf(`{"machine_id":%d,"enrollment_code":%q}`, machine.ID, enrollment.Code)
 	enrollRequest := httptest.NewRequest(http.MethodPost, "/api/v2/server/machine/enroll", strings.NewReader(enrollBody))
@@ -411,6 +423,10 @@ func TestXboardNodeV2MachineContract(t *testing.T) {
 	decodeResponse(t, enrollResponse, &enrolled)
 	if enrolled.Data.Token == "" {
 		t.Fatal("v2 enrollment returned an empty credential")
+	}
+	invalidCredential := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", "invalid-machine-credential", fmt.Sprintf(`{"machine_id":%d}`, machine.ID))
+	if invalidCredential.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid machine credential status = %d, want %d", invalidCredential.Code, http.StatusUnauthorized)
 	}
 
 	// v1.13 included the credential in the JSON body as well as the Bearer
@@ -496,6 +512,11 @@ func TestXboardNodeV2MachineContract(t *testing.T) {
 	disabledNode := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", enrolled.Data.Token, disabledNodeBody)
 	if disabledNode.Code != http.StatusForbidden {
 		t.Fatalf("disabled node handshake status = %d, want %d; body=%s", disabledNode.Code, http.StatusForbidden, disabledNode.Body)
+	}
+	unassignedNodeBody := fmt.Sprintf(`{"machine_id":%d,"node_id":%d}`, machine.ID, unassignedNode.ID)
+	unassigned := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", enrolled.Data.Token, unassignedNodeBody)
+	if unassigned.Code != http.StatusForbidden {
+		t.Fatalf("unassigned node handshake status = %d, want %d; body=%s", unassigned.Code, http.StatusForbidden, unassigned.Body)
 	}
 }
 

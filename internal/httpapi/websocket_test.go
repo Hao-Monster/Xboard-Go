@@ -17,7 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testing.T) {
+func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()
 	server := httptest.NewServer(api)
@@ -210,7 +210,7 @@ func TestMachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testin
 	}
 }
 
-func TestLegacyNodeWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettingChange(t *testing.T) {
+func TestDIFFNODE004LegacyWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettingChange(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()
 	server := httptest.NewServer(api)
@@ -622,7 +622,7 @@ func TestRoutingRuleUpdatePushesCompatibleWebSocketConfig(t *testing.T) {
 	}
 }
 
-func TestMachineWebSocketRejectsInvalidCredentialAndOrigin(t *testing.T) {
+func TestDIFFNODE004MachineWebSocketRejectsInvalidCredentialOriginAndRevokedCredential(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
 	defer cancel()
 	server := httptest.NewServer(api)

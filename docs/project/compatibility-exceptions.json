@@ -5,6 +5,7 @@
     {"id":"CE-002","status":"accepted","decision_id":"D-003","requirement_ids":["PLUG-002"],"title":"拒绝在 Go 主进程执行任意 PHP 或上传脚本","rationale":"旧插件执行模型造成不可接受的 RCE 与供应链边界。"},
     {"id":"CE-003","status":"proposed","decision_id":"D-013","requirement_ids":["OPS-002"],"title":"旧 PHP 失败任务只作不可执行历史记录","rationale":"载荷可能含敏感信息且不属于 Go worker 的可信输入。"},
     {"id":"CE-004","status":"accepted","decision_id":"D-008","requirement_ids":["SUB-001"],"title":"订阅响应与节点授权保留不同边界","rationale":"超额用户仍可取得订阅配置，但节点下发要求剩余流量大于零。"},
-    {"id":"CE-005","status":"accepted","decision_id":"D-010","requirement_ids":["DIST-014"],"title":"旧 claim 仅兼容读取消费，新购使用长期二维码","rationale":"保持旧数据可消费，同时以固定新主流程交付。"}
+    {"id":"CE-005","status":"accepted","decision_id":"D-010","requirement_ids":["DIST-014"],"title":"旧 claim 仅兼容读取消费，新购使用长期二维码","rationale":"保持旧数据可消费，同时以固定新主流程交付。"},
+    {"id":"CE-006","status":"accepted","decision_id":"D-001","requirement_ids":["NODE-004"],"title":"全局 server token 同样拒绝已禁用节点","rationale":"固定旧版 HTTP/WS 全局 token 路径遗漏 enabled 检查；Go 保持 fail-closed，避免复制越权缺陷。"}
   ]
 }
