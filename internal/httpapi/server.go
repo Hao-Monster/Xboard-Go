@@ -157,15 +157,30 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.NodeRelease == "" {
 		dependencies.NodeRelease = "v1.14.3"
 	}
-	if dependencies.LegacyAdminPath == "" {
-		dependencies.LegacyAdminPath = "admin"
+	dependencies.LegacyAdminPath = strings.TrimSpace(dependencies.LegacyAdminPath)
+	if dependencies.LegacyAdminPath != "" && !validConfigurableAdminPath(dependencies.LegacyAdminPath) {
+		panic("httpapi: LegacyAdminPath must contain 8 to 64 ASCII letters, digits, underscores, or hyphens and must not use a reserved namespace")
 	}
-	if !validLegacyAdminPath(dependencies.LegacyAdminPath) {
-		panic("httpapi: LegacyAdminPath must contain 1 to 64 ASCII letters, digits, underscores, or hyphens")
+	accessSettings, err := dependencies.Store.GetSiteAccessSettings(dependencies.Context)
+	if err != nil {
+		panic(fmt.Sprintf("httpapi: read site access settings: %v", err))
 	}
-	if err := dependencies.Store.EnsureSiteAccessSettings(dependencies.Context, dependencies.LegacyAdminPath, dependencies.Now()); err != nil {
-		panic(fmt.Sprintf("httpapi: ensure site access settings: %v", err))
+	if accessSettings.SecurePath == "" {
+		if dependencies.LegacyAdminPath == "" {
+			panic("httpapi: XBOARD_LEGACY_ADMIN_PATH is required for a new database")
+		}
+		if err := dependencies.Store.EnsureSiteAccessSettings(dependencies.Context, dependencies.LegacyAdminPath, dependencies.Now()); err != nil {
+			panic(fmt.Sprintf("httpapi: ensure site access settings: %v", err))
+		}
+		accessSettings, err = dependencies.Store.GetSiteAccessSettings(dependencies.Context)
+		if err != nil {
+			panic(fmt.Sprintf("httpapi: read initialized site access settings: %v", err))
+		}
 	}
+	if !validLegacyAdminPath(accessSettings.SecurePath) {
+		panic("httpapi: persisted secure administrator path is invalid")
+	}
+	dependencies.LegacyAdminPath = accessSettings.SecurePath
 	if dependencies.NodePushInterval == 0 {
 		dependencies.NodePushInterval = 60
 	}
@@ -707,7 +722,9 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/system/status", api.getSystemStatus)
 	admin.HandleFunc("GET /api/v1/admin/system/audit", api.listAdminAudit)
 	admin.HandleFunc("GET /api/v1/admin/system/mail-failures", api.listTicketMailFailures)
-	root.Handle("/api/v1/admin/", api.requireSession(api.requireAdmin(api.auditAdminMutations(api.requireCSRF(api.recoverPanic(admin))))))
+	protectedAdmin := api.requireSession(api.requireAdmin(api.auditAdminMutations(api.requireCSRF(api.recoverPanic(admin)))))
+	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
 	return api.securityHeaders(api.recoverPanic(root))
 }
@@ -725,6 +742,18 @@ func validLegacyAdminPath(value string) bool {
 		return false
 	}
 	return true
+}
+
+func validConfigurableAdminPath(value string) bool {
+	if len(value) < 8 || !validLegacyAdminPath(value) {
+		return false
+	}
+	switch strings.ToLower(value) {
+	case "admin", "api", "assets", "client", "client-download", "client-link", "guide", "guide-attachments", "healthz", "index.html", "knowledge-attachments", "passport", "server", "ws":
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *server) dynamicLegacyAdminPath(routingPath string, next http.Handler) http.Handler {
@@ -748,6 +777,32 @@ func (s *server) dynamicLegacyAdminPath(routingPath string, next http.Handler) h
 		requestURL := *r.URL
 		request.URL = &requestURL
 		request.URL.Path = "/api/v2/" + routingPath + strings.TrimPrefix(r.URL.Path, "/api/v2/"+candidate)
+		request.URL.RawPath = ""
+		next.ServeHTTP(w, request)
+	})
+}
+
+func (s *server) dynamicModernAdminPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		candidate := r.PathValue("adminPath")
+		if !validLegacyAdminPath(candidate) {
+			http.NotFound(w, r)
+			return
+		}
+		settings, err := s.store.GetSiteAccessSettings(r.Context())
+		if err != nil {
+			s.logger.Error("read secure admin path", "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		if len(candidate) != len(settings.SecurePath) || subtle.ConstantTimeCompare([]byte(candidate), []byte(settings.SecurePath)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		request := r.Clone(r.Context())
+		requestURL := *r.URL
+		request.URL = &requestURL
+		request.URL.Path = "/api/v1/admin" + strings.TrimPrefix(r.URL.Path, "/api/v1/admin/"+candidate)
 		request.URL.RawPath = ""
 		next.ServeHTTP(w, request)
 	})
@@ -777,7 +832,7 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 			return
 		}
 		route := request.Pattern
-		if route == "" || route == "/api/v1/admin/" {
+		if route == "" || route == "/api/v1/admin/" || route == "/api/v1/admin/{adminPath}/" {
 			route = r.URL.Path
 		} else if _, patternRoute, found := strings.Cut(route, " "); found {
 			route = patternRoute

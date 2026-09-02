@@ -97,7 +97,7 @@ func TestRegistrationEmailWrongCodesLockBeforePasswordHash(t *testing.T) {
 		passwordHashSlots: make(chan struct{}, 2),
 	}
 	register := func(body string) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
+		request := newTestRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 		api.register(response, request)
@@ -120,7 +120,7 @@ func TestRegistrationEmailWrongCodesLockBeforePasswordHash(t *testing.T) {
 
 func TestRegistrationEmailRequestRejectsUntrustedOriginsAndBoundsRequests(t *testing.T) {
 	api, _ := newTestAPI(t)
-	originRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/registration-email/request", strings.NewReader(`{"email":"origin@example.test"}`))
+	originRequest := newTestRequest(http.MethodPost, "/api/v1/auth/registration-email/request", strings.NewReader(`{"email":"origin@example.test"}`))
 	originRequest.Header.Set("Content-Type", "application/json")
 	originRequest.Header.Set("Origin", "https://attacker.example.test")
 	originResponse := httptest.NewRecorder()

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 interface SiteSettings {
   revision: number;
@@ -58,7 +58,7 @@ test("administrator site identity persists into the public shell and can be rest
   let createdKnowledge: { id: number; revision: number } | null = null;
 
   try {
-    await page.goto("/");
+    await page.goto(adminEntryPath);
     changed.logo = new URL("/xboard-logo.svg", page.url()).toString();
     await page.getByLabel("邮箱").fill(adminEmail);
     await page.getByLabel("密码").fill(adminPassword);
@@ -97,7 +97,7 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址", { exact: true })).toHaveValue(changed.app_url);
     await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).not.toBeChecked();
-    await expect(page.getByLabel("后台路径")).toHaveValue(original.secure_path);
+    await expect(page.getByLabel("管理员安全路径")).toHaveValue(original.secure_path);
     await expect(page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).toBeChecked();
     await expect(page.getByLabel("订阅公开地址")).toHaveValue(changed.subscribe_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);
@@ -175,6 +175,7 @@ test("administrator site identity persists into the public shell and can be rest
     expect(contentPayload.data?.page_title).toBe(`Brand guide ${unique} - ${changed.app_name}`);
 
     await page.getByRole("button", { name: "退出" }).click();
+    await page.goto("/");
     await expect(page.getByRole("heading", { name: `登录 ${changed.app_name}` })).toBeVisible();
     const logo = page.getByRole("img", { name: `${changed.app_name} LOGO` });
     await expect(logo).toHaveAttribute("src", changed.logo);
@@ -234,7 +235,7 @@ test("administrator site identity persists into the public shell and can be rest
 
 async function ensureAdmin(page: Page) {
   if (await page.getByRole("button", { name: "退出" }).count() > 0) return;
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -263,5 +264,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }

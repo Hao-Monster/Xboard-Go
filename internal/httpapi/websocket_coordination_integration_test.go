@@ -565,7 +565,7 @@ func newCoordinatedWebSocketAPI(t *testing.T, database *store.Store, coordinator
 	ctx, cancel := context.WithCancel(context.Background())
 	handler := New(Dependencies{
 		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
-		PanelURL: "https://panel.example.test", NodeRelease: "v1.14.3",
+		PanelURL: "https://panel.example.test", LegacyAdminPath: testAdminPath, NodeRelease: "v1.14.3",
 		AllowedOrigins: []string{"https://panel.example.test"},
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
 		NodeCoordinator: coordinator,

@@ -91,7 +91,7 @@ func TestLoadRejectsRelativeIP2RegionFile(t *testing.T) {
 func TestLoadRejectsUnsafeLegacyAdminPath(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
-	for _, value := range []string{"/admin", "admin/order", "..", "admin path"} {
+	for _, value := range []string{"admin", "api", "assets", "healthz", "passport", "client-download", "ws", "/admin", "admin/order", "..", "admin path"} {
 		t.Setenv("XBOARD_LEGACY_ADMIN_PATH", value)
 		if _, err := Load(); err == nil {
 			t.Fatalf("Load() accepted unsafe legacy administrator path %q", value)

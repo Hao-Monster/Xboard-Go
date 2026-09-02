@@ -123,6 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
       XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
       XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3

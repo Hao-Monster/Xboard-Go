@@ -72,7 +72,7 @@ func passwordLoginRequest(t *testing.T, api http.Handler, path, email, password 
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	request := newTestRequest(http.MethodPost, path, bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

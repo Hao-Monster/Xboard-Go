@@ -2,6 +2,14 @@ import { expect, type Page } from "@playwright/test";
 
 export const adminEmail = process.env.XBOARD_E2E_ADMIN_EMAIL ?? "admin@e2e.test";
 export const adminPassword = process.env.XBOARD_E2E_ADMIN_PASSWORD ?? "e2e-admin-password-123";
+export const adminSecurePath = process.env.XBOARD_E2E_ADMIN_PATH?.trim() || "e2e-admin-secure";
+export const adminEntryPath = `/${adminSecurePath}/`;
+
+export function adminAPIPath(path: string): string {
+  const prefix = "/api/v1/admin/";
+  if (!path.startsWith(prefix)) return path;
+  return `${prefix}${adminSecurePath}/${path.slice(prefix.length)}`;
+}
 
 export async function createAdminUserFixture(page: Page, input: {
   email: string;
@@ -26,17 +34,18 @@ export async function createAdminUserFixture(page: Page, input: {
     device_limit: 0,
     banned: false
   };
-  const result = await page.evaluate(async (body) => {
+  const createPath = adminAPIPath("/api/v1/admin/users");
+  const result = await page.evaluate(async ({ body, path }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const response = await fetch("/api/v1/admin/users", {
+    const response = await fetch(path, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
       body: JSON.stringify(body)
     });
     return { status: response.status, body: await response.text() };
-  }, payload);
+  }, { body: payload, path: createPath });
   expect(result.status, result.body).toBe(201);
   if (input.inviteUserEmail === undefined) return;
 
@@ -48,17 +57,18 @@ export async function createAdminUserFixture(page: Page, input: {
   if (!Number.isSafeInteger(userID) || userID < 1 || !Number.isSafeInteger(revision) || revision < 1) {
     throw new Error("created user identity is invalid");
   }
-  const update = await page.evaluate(async ({ id, body }) => {
+  const updatePath = adminAPIPath(`/api/v1/admin/users/${userID}`);
+  const update = await page.evaluate(async ({ body, path }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const response = await fetch(`/api/v1/admin/users/${id}`, {
+    const response = await fetch(path, {
       method: "PATCH",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
       body: JSON.stringify(body)
     });
     return { status: response.status, body: await response.text() };
-  }, { id: userID, body: {
+  }, { path: updatePath, body: {
     revision,
     email: input.email,
     group_id: null,
@@ -97,5 +107,6 @@ export async function expectLoginPage(page: Page) {
 
 export async function logoutAndWait(page: Page) {
   await page.getByRole("button", { name: "退出" }).click();
+  await page.goto("/");
   await expectLoginPage(page);
 }

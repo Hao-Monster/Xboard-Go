@@ -39,7 +39,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 
 	modernUnknown := "/api/v1/admin/not-a-registered-route"
 	visitor := httptest.NewRecorder()
-	api.ServeHTTP(visitor, httptest.NewRequest(http.MethodGet, modernUnknown, nil))
+	api.ServeHTTP(visitor, newTestRequest(http.MethodGet, modernUnknown, nil))
 	if visitor.Code != http.StatusUnauthorized {
 		t.Fatalf("visitor modern admin namespace status=%d want=%d body=%s", visitor.Code, http.StatusUnauthorized, visitor.Body)
 	}
@@ -52,7 +52,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 	if response := bearerRequest(api, http.MethodGet, modernUnknown, adminBearer, ""); response.Code != http.StatusNotFound {
 		t.Fatalf("administrator modern unknown route status=%d want=%d body=%s", response.Code, http.StatusNotFound, response.Body)
 	}
-	missingCSRFRequest := httptest.NewRequest(http.MethodPost, modernUnknown, nil)
+	missingCSRFRequest := newTestRequest(http.MethodPost, modernUnknown, nil)
 	administrator.addCookies(missingCSRFRequest)
 	missingCSRFResponse := httptest.NewRecorder()
 	api.ServeHTTP(missingCSRFResponse, missingCSRFRequest)
@@ -228,7 +228,7 @@ func TestJSONWritesRequireAnExactJSONMediaType(t *testing.T) {
 		"application/json garbage",
 		"application/json, text/plain",
 	} {
-		request := httptest.NewRequest(http.MethodPut, path, strings.NewReader(`{}`))
+		request := newTestRequest(http.MethodPut, path, strings.NewReader(`{}`))
 		request.Header.Set("Authorization", authorization)
 		request.Header.Set("Content-Type", contentType)
 		response := httptest.NewRecorder()
@@ -238,7 +238,7 @@ func TestJSONWritesRequireAnExactJSONMediaType(t *testing.T) {
 		}
 	}
 
-	valid := httptest.NewRequest(http.MethodPut, path, strings.NewReader(`{}`))
+	valid := newTestRequest(http.MethodPut, path, strings.NewReader(`{}`))
 	valid.Header.Set("Authorization", authorization)
 	valid.Header.Set("Content-Type", "application/json; charset=utf-8")
 	validResponse := httptest.NewRecorder()
@@ -270,7 +270,7 @@ func TestAPISecurityHeadersCoverSuccessfulAndRejectedRequests(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			api.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+			api.ServeHTTP(response, newTestRequest(http.MethodGet, test.path, nil))
 			if response.Code != test.wantStatus {
 				t.Fatalf("status=%d want=%d body=%s", response.Code, test.wantStatus, response.Body)
 			}

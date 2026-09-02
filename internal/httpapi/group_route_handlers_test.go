@@ -146,7 +146,7 @@ func TestAdminGroupAndRoutingRuleEndpointsRejectInvalidOrUntrustedWrites(t *test
 		t.Fatalf("unknown group field status = %d; body=%s", response.Code, response.Body)
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/server-groups", strings.NewReader(`{"name":"no csrf"}`))
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/server-groups", strings.NewReader(`{"name":"no csrf"}`))
 	request.Header.Set("Content-Type", "application/json")
 	for _, cookie := range admin.cookies {
 		request.AddCookie(cookie)

@@ -400,7 +400,7 @@ func paymentWebhookHMAC(secret, body string) string {
 }
 
 func paymentWebhookRequest(api http.Handler, path, body, signature string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request := newTestRequest(http.MethodPost, path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("HMAC", signature)
 	response := httptest.NewRecorder()

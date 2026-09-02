@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 interface NodeRecord {
   id: number;
@@ -399,7 +399,7 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
 });
 
 async function loginAdministrator(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -454,7 +454,7 @@ async function adminFetch(page: Page, path: string, method: "GET" | "POST", body
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { target: path, requestMethod: method, requestBody: body });
+  }, { target: adminAPIPath(path), requestMethod: method, requestBody: body });
 }
 
 async function loadNodeDefinition(page: Page, name: string): Promise<Record<string, unknown>> {

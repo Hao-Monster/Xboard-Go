@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +42,7 @@ func TestLegacyTicketNotificationClientIPTrustBoundary(t *testing.T) {
 		{name: "invalid peer address", remoteAddr: "invalid", want: ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest("POST", "/api/v1/tickets", nil)
+			request := newTestRequest("POST", "/api/v1/tickets", nil)
 			request.RemoteAddr = test.remoteAddr
 			for _, value := range test.forwarded {
 				request.Header.Add("X-Forwarded-For", value)
@@ -54,7 +53,7 @@ func TestLegacyTicketNotificationClientIPTrustBoundary(t *testing.T) {
 		})
 	}
 
-	request := httptest.NewRequest("POST", "/api/v1/tickets", nil)
+	request := newTestRequest("POST", "/api/v1/tickets", nil)
 	request.RemoteAddr = "10.0.0.4:8080"
 	request.Header.Set("X-Forwarded-For", strings.Repeat("1", maxTicketForwardedForBytes+1))
 	if got := legacyTicketNotificationClientIP(request); got != "10.0.0.4" {
@@ -69,7 +68,7 @@ func TestLegacyTicketNotificationClientIPTrustBoundary(t *testing.T) {
 func TestTicketNotificationLocationPreservesIPv4AndIPv6Semantics(t *testing.T) {
 	resolver := &fixedTicketRegionResolver{wantIP: "114.114.114.114", region: "中国江苏省南京市"}
 	api := &server{ticketRegionResolver: resolver}
-	request := httptest.NewRequest("POST", "/api/v1/tickets", nil)
+	request := newTestRequest("POST", "/api/v1/tickets", nil)
 	request.RemoteAddr = "172.18.0.2:8080"
 	request.Header.Set("X-Forwarded-For", "114.114.114.114")
 	if got := api.ticketNotificationLocation(request); got != "中国江苏省南京市" || resolver.calls != 1 {

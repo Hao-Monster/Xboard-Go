@@ -264,7 +264,7 @@ func TestPasswordResetInvalidCodeSkipsPasswordHash(t *testing.T) {
 		store: database, passwordHasher: hasher, now: fixedNow, passwordResetProtector: protector,
 		passwordResetConfirmations: newRequestLimiter(20, 15*time.Minute), passwordHashSlots: make(chan struct{}, 2),
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password-reset/confirm", strings.NewReader(`{
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/password-reset/confirm", strings.NewReader(`{
 		"email":"admin@example.test","email_code":"654321","password":"new-admin-password-456"
 	}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -278,7 +278,7 @@ func TestPasswordResetInvalidCodeSkipsPasswordHash(t *testing.T) {
 
 func TestPasswordResetRejectsUntrustedOriginsAndBoundsRequests(t *testing.T) {
 	api, _ := newTestAPI(t)
-	originRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password-reset/request", strings.NewReader(`{"email":"admin@example.test"}`))
+	originRequest := newTestRequest(http.MethodPost, "/api/v1/auth/password-reset/request", strings.NewReader(`{"email":"admin@example.test"}`))
 	originRequest.Header.Set("Content-Type", "application/json")
 	originRequest.Header.Set("Origin", "https://attacker.example.test")
 	originResponse := httptest.NewRecorder()

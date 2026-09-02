@@ -18,7 +18,7 @@ func TestQuickLoginLinkRequiresSessionAndCSRFAndExchangesOnce(t *testing.T) {
 	expectAPIError(t, unauthenticated, http.StatusUnauthorized, "unauthenticated")
 
 	client := loginAdmin(t, api)
-	missingCSRFRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/quick-link", strings.NewReader(`{"redirect":"invite"}`))
+	missingCSRFRequest := newTestRequest(http.MethodPost, "/api/v1/auth/quick-link", strings.NewReader(`{"redirect":"invite"}`))
 	missingCSRFRequest.Header.Set("Content-Type", "application/json")
 	client.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()

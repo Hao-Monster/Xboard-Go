@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectAuthPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectAuthPage, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -72,7 +72,7 @@ test("visitor registers with the legacy one-time email code through Mailpit", as
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     const emailVerification = page.getByRole("checkbox", { name: "邮箱验证" });
     if (!(await emailVerification.isChecked())) await emailVerification.click();
-    const saveResponse = page.waitForResponse((response) => response.url().endsWith("/api/v1/admin/site-settings") && response.request().method() === "PUT");
+    const saveResponse = page.waitForResponse((response) => response.url().endsWith(adminAPIPath("/api/v1/admin/site-settings")) && response.request().method() === "PUT");
     await page.getByRole("button", { name: "保存站点设置" }).click();
     expect((await saveResponse).status()).toBe(200);
     await expect(page.getByRole("status")).toHaveText("站点设置已保存");
@@ -138,7 +138,7 @@ async function waitForEmailCode(request: APIRequestContext, recipient: string, s
 }
 
 async function loginAdministrator(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -213,5 +213,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }

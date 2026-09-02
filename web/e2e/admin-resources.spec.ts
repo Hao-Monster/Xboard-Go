@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 test("administrator manages permission groups and routing rules", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -10,7 +10,7 @@ test("administrator manages permission groups and routing rules", async ({ page 
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -82,5 +82,5 @@ async function readAdminResources(page: Page, path: string): Promise<Array<{ id:
       if (typeof name !== "string" || name === "") throw new Error("resource snapshot name must be non-empty");
       return { id: item.id as number, name };
     });
-  }, path);
+  }, adminAPIPath(path));
 }

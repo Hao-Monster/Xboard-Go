@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminEntryPath, adminEmail, adminPassword, expectLoginPage } from "./support";
 
 const originalPassword = adminPassword;
 const replacementPassword = "e2e-replacement-password-456";
@@ -108,7 +108,7 @@ test("administrator revokes other sessions and changes the password without accu
 });
 
 async function login(page: Page, password: string) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();
@@ -119,7 +119,7 @@ async function restoreOriginalPassword(browser: Browser) {
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
-    await page.goto("/");
+    await page.goto(adminEntryPath);
     await page.getByLabel("邮箱").fill(adminEmail);
     await page.getByLabel("密码").fill(replacementPassword);
     await page.getByRole("button", { name: "登录" }).click();

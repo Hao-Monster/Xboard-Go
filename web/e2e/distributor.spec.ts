@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("distributor purchase, delivery, renewal, administration, and settlement work on every supported viewport", async ({ page }) => {
   test.setTimeout(120_000);
@@ -132,7 +132,7 @@ test("distributor purchase, delivery, renewal, administration, and settlement wo
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);

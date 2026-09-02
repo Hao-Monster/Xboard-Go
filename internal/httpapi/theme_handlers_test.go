@@ -79,7 +79,7 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 		asset.Header().Get("Content-Security-Policy") != "default-src 'none'; sandbox" || asset.Header().Get("ETag") == "" {
 		t.Fatalf("theme asset status=%d headers=%v body=%s", asset.Code, asset.Header(), asset.Body)
 	}
-	conditionalRequest := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	conditionalRequest := newTestRequest(http.MethodGet, assetPath, nil)
 	conditionalRequest.Header.Set("If-None-Match", asset.Header().Get("ETag"))
 	conditional := httptest.NewRecorder()
 	api.ServeHTTP(conditional, conditionalRequest)
@@ -182,7 +182,7 @@ func themeUploadRequest(t *testing.T, api http.Handler, client testClient, archi
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/themes", &body)
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/themes", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("X-CSRF-Token", client.csrf)
 	client.addCookies(request)

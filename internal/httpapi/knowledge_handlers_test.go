@@ -112,20 +112,20 @@ func TestPublicKnowledgeUsesCanonicalSafeSharePageWithoutUserSecrets(t *testing.
 	privateToken := viewerState.SubscriptionToken
 
 	bare := httptest.NewRecorder()
-	api.ServeHTTP(bare, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d", article.ID), nil))
+	api.ServeHTTP(bare, newTestRequest(http.MethodGet, fmt.Sprintf("/guide/%d", article.ID), nil))
 	wantCanonical := fmt.Sprintf("https://panel.example.test/guide/%d/public-security-guide", article.ID)
 	if bare.Code != http.StatusFound || bare.Header().Get("Location") != wantCanonical {
 		t.Fatalf("bare share = status %d location %q", bare.Code, bare.Header().Get("Location"))
 	}
 
 	wrong := httptest.NewRecorder()
-	api.ServeHTTP(wrong, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d/wrong", article.ID), nil))
+	api.ServeHTTP(wrong, newTestRequest(http.MethodGet, fmt.Sprintf("/guide/%d/wrong", article.ID), nil))
 	if wrong.Code != http.StatusFound || wrong.Header().Get("Location") != wantCanonical {
 		t.Fatalf("wrong slug = status %d location %q", wrong.Code, wrong.Header().Get("Location"))
 	}
 
 	page := httptest.NewRecorder()
-	api.ServeHTTP(page, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d/public-security-guide", article.ID), nil))
+	api.ServeHTTP(page, newTestRequest(http.MethodGet, fmt.Sprintf("/guide/%d/public-security-guide", article.ID), nil))
 	if page.Code != http.StatusOK || !strings.Contains(page.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("public page status=%d type=%q body=%s", page.Code, page.Header().Get("Content-Type"), page.Body)
 	}
@@ -150,7 +150,7 @@ func TestPublicKnowledgeUsesCanonicalSafeSharePageWithoutUserSecrets(t *testing.
 	}
 
 	content := httptest.NewRecorder()
-	api.ServeHTTP(content, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d/content", article.ID), nil))
+	api.ServeHTTP(content, newTestRequest(http.MethodGet, fmt.Sprintf("/guide/%d/content", article.ID), nil))
 	if content.Code != http.StatusOK || !strings.Contains(content.Body.String(), `"share_url":"`+wantCanonical+`"`) ||
 		!strings.Contains(content.Body.String(), `"page_title":"Public Security Guide - Public Board"`) || strings.Contains(content.Body.String(), privateToken) {
 		t.Fatalf("public content status=%d body=%s", content.Code, content.Body)

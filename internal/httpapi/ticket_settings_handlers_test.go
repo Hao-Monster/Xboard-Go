@@ -75,7 +75,7 @@ func TestTicketSettingsRejectInsecureSMTPAndUnavailableEncryption(t *testing.T) 
 	hasher := security.NewPasswordHasher(security.PasswordParams{
 		MemoryKiB: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
 	})
-	withoutCipher := New(Dependencies{Store: database, PasswordHasher: hasher, Now: fixedNow, PanelURL: "https://panel.example.test"})
+	withoutCipher := New(Dependencies{Store: database, PasswordHasher: hasher, Now: fixedNow, PanelURL: "https://panel.example.test", LegacyAdminPath: testAdminPath})
 	adminWithoutCipher := loginAdmin(t, withoutCipher)
 	unavailable := adminWithoutCipher.request(t, withoutCipher, http.MethodPut, "/api/v1/admin/ticket-settings", `{
 		"revision":1,"app_name":"Xboard","app_url":"","ticket_must_wait_reply":false,

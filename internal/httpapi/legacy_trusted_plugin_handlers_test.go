@@ -154,7 +154,7 @@ func TestLegacyTrustedPluginEnableDisableAndTelegramConfigUseTheVersionedStore(t
 	if enabled.Code != http.StatusOK || err != nil || !epay.Enabled || epay.Revision != 3 {
 		t.Fatalf("legacy enable status=%d plugin=%#v err=%v body=%s", enabled.Code, epay, err, enabled.Body)
 	}
-	foreignOriginRequest := httptest.NewRequest(http.MethodPost, "/api/v2/admin/plugin/disable", strings.NewReader(`{"code":"epay"}`))
+	foreignOriginRequest := newTestRequest(http.MethodPost, "/api/v2/admin/plugin/disable", strings.NewReader(`{"code":"epay"}`))
 	foreignOriginRequest.Header.Set("Authorization", authorization)
 	foreignOriginRequest.Header.Set("Content-Type", "application/json")
 	foreignOriginRequest.Header.Set("Origin", "https://untrusted.example.test")
@@ -213,7 +213,7 @@ func TestLegacyTrustedPluginEnableDisableAndTelegramConfigUseTheVersionedStore(t
 	if err != nil || telegram.Config["help_text"] != "兼容配置帮助" || telegram.Revision != 2 {
 		t.Fatalf("Telegram after legacy config update=(%#v,%v)", telegram, err)
 	}
-	invalidUTF8 := httptest.NewRequest(http.MethodPost, "/api/v2/admin/plugin/config", bytes.NewReader([]byte{'{', '"', 'c', 'o', 'd', 'e', '"', ':', '"', 't', 'e', 'l', 'e', 'g', 'r', 'a', 'm', '"', ',', '"', 'c', 'o', 'n', 'f', 'i', 'g', '"', ':', '{', '"', 'h', 'e', 'l', 'p', '_', 't', 'e', 'x', 't', '"', ':', '"', 0xff, '"', '}', '}'}))
+	invalidUTF8 := newTestRequest(http.MethodPost, "/api/v2/admin/plugin/config", bytes.NewReader([]byte{'{', '"', 'c', 'o', 'd', 'e', '"', ':', '"', 't', 'e', 'l', 'e', 'g', 'r', 'a', 'm', '"', ',', '"', 'c', 'o', 'n', 'f', 'i', 'g', '"', ':', '{', '"', 'h', 'e', 'l', 'p', '_', 't', 'e', 'x', 't', '"', ':', '"', 0xff, '"', '}', '}'}))
 	invalidUTF8.Header.Set("Authorization", authorization)
 	invalidUTF8.Header.Set("Content-Type", "application/json")
 	invalidUTF8Response := httptest.NewRecorder()
@@ -271,7 +271,7 @@ func TestLegacyRuntimePluginMutationRoutesFailClosedWithoutReadingTheBody(t *tes
 	for _, action := range []string{"upload", "delete", "install", "uninstall", "upgrade"} {
 		var response *httptest.ResponseRecorder
 		if action == "upload" {
-			request := httptest.NewRequest(http.MethodPost, "/api/v2/admin/plugin/upload", nil)
+			request := newTestRequest(http.MethodPost, "/api/v2/admin/plugin/upload", nil)
 			request.Body = failIfReadBody{}
 			request.Header.Set("Authorization", authorization)
 			request.Header.Set("Content-Type", "multipart/form-data; boundary=untrusted")

@@ -36,7 +36,7 @@ describe("App public identity bootstrap", () => {
 		expect(requested.some((path) => path.includes("/api/v1/notices"))).toBe(false);
 	});
 
-	it("keeps the administrator shell for an admin, staff, and distributor hybrid session", async () => {
+	it("keeps the administrator shell only on the secure administrator surface", async () => {
 		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
 			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
@@ -51,7 +51,7 @@ describe("App public identity bootstrap", () => {
 			return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
 		}));
 
-		render(<App />);
+		render(<App surface={{ kind: "admin", path: "secure-admin-01" }} />);
 		const navigation = await screen.findByRole("navigation", { name: "管理端导航" });
 		expect(navigation).toBeVisible();
 		expect(navigation).toHaveClass("admin-sidebar");
@@ -61,6 +61,66 @@ describe("App public identity bootstrap", () => {
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
 		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
+	});
+
+	it("never renders the administrator shell for an administrator session on the public surface", async () => {
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Public Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				id: 93, email: "admin-user@example.test", is_admin: true, is_staff: false, is_distributor: false
+			} }));
+			if (path.endsWith("/api/v1/notices?page=1")) return Promise.resolve(jsonResponse(200, { status: "success", data: { items: [], total: 0, page: 1, page_size: 5 } }));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App surface={{ kind: "public" }} />);
+		expect(await screen.findByText("admin-user@example.test", { exact: true })).toBeVisible();
+		expect(screen.queryByRole("navigation", { name: "管理端导航" })).not.toBeInTheDocument();
+	});
+
+	it("keeps registration off the administrator surface even for a direct registration hash", async () => {
+		window.history.replaceState(null, "", "#/register");
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Secure Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(401, { status: "fail", error: { code: "unauthenticated", message: "请先登录" } }));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App surface={{ kind: "admin", path: "secure-admin-01" }} />);
+		expect(await screen.findByRole("heading", { name: "登录 Secure Board" })).toBeVisible();
+		expect(screen.queryByRole("button", { name: "注册账号" })).not.toBeInTheDocument();
+	});
+
+	it("rejects a non-administrator session on the administrator surface", async () => {
+		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+			const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+			if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				app_name: "Secure Board", app_description: null, app_url: null, tos_url: null, logo: null,
+				is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+				captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+				recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+			} }));
+			if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+				id: 94, email: "ordinary@example.test", is_admin: false, is_staff: false, is_distributor: false
+			} }));
+			throw new Error(`unexpected fetch ${path}`);
+		}));
+
+		render(<App surface={{ kind: "admin", path: "secure-admin-01" }} />);
+		expect(await screen.findByRole("heading", { name: "无权访问管理面板" })).toBeVisible();
+		expect(screen.queryByRole("navigation", { name: "管理端导航" })).not.toBeInTheDocument();
 	});
 
   it("warns before leaving client app settings with unsaved changes", async () => {
@@ -77,7 +137,7 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         id: 92, email: "client-admin@example.test", is_admin: true, is_staff: false, is_distributor: false
       } }));
-      if (path.endsWith("/api/v1/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+      if (path.endsWith("/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         revision: 1,
         windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
         macos_version: "4.8.2", macos_download_url: "https://download.example.test/macos.dmg",
@@ -87,7 +147,7 @@ describe("App public identity bootstrap", () => {
       return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
     }));
     const user = userEvent.setup();
-    render(<App />);
+    render(<App surface={{ kind: "admin", path: "secure-admin-01" }} />);
 
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");

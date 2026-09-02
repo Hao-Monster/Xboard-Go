@@ -49,14 +49,14 @@ func TestClientCatalogAdminUserQRAndRedirectContracts(t *testing.T) {
 	}
 
 	redirect := httptest.NewRecorder()
-	api.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, "/client-download/karing/android", nil))
+	api.ServeHTTP(redirect, newTestRequest(http.MethodGet, "/client-download/karing/android", nil))
 	if redirect.Code != http.StatusFound || redirect.Header().Get("Location") != "https://downloads.example.test/karing.apk" ||
 		redirect.Header().Get("Referrer-Policy") != "no-referrer" || redirect.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("download redirect status=%d location=%q", redirect.Code, redirect.Header().Get("Location"))
 	}
 	for _, path := range []string{"/client-download/unknown/android", "/client-link/karing/android/shell", "/client-link/karing/beos/cloud"} {
 		response := httptest.NewRecorder()
-		api.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		api.ServeHTTP(response, newTestRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("unsafe route %s status=%d body=%s", path, response.Code, response.Body)
 		}
@@ -83,7 +83,7 @@ func TestClientCatalogRejectsCSRFUnsafeURLsUnknownFieldsAndStaleWrites(t *testin
 		})
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/client-catalog", strings.NewReader(`{"revision":1,"links":{}}`))
+	request := newTestRequest(http.MethodPut, "/api/v1/admin/client-catalog", strings.NewReader(`{"revision":1,"links":{}}`))
 	request.Header.Set("Content-Type", "application/json")
 	admin.addCookies(request)
 	response := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestClientCatalogGitHubResponseCannotBecomeOpenRedirect(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 	})
 	response := httptest.NewRecorder()
-	api.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/client-download/karing/android", nil))
+	api.ServeHTTP(response, newTestRequest(http.MethodGet, "/client-download/karing/android", nil))
 	if response.Code != http.StatusServiceUnavailable || response.Header().Get("Location") != "" ||
 		response.Header().Get("Cache-Control") != "private, no-store" || response.Header().Get("Referrer-Policy") != "no-referrer" {
 		t.Fatalf("malicious asset status=%d location=%q body=%s", response.Code, response.Header().Get("Location"), response.Body)

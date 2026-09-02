@@ -182,14 +182,14 @@ func TestTelegramAdministratorRoutesEnforceRoleCSRFOriginAndBoundedStrictJSON(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	missingCSRFRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
+	missingCSRFRequest := newTestRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
 	missingCSRFRequest.Header.Set("Content-Type", "application/json")
 	administrator.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()
 	api.ServeHTTP(missingCSRF, missingCSRFRequest)
 	expectAPIError(t, missingCSRF, http.StatusForbidden, "csrf_failed")
 
-	crossOriginRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
+	crossOriginRequest := newTestRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
 	crossOriginRequest.Header.Set("Content-Type", "application/json")
 	crossOriginRequest.Header.Set("Origin", "https://attacker.example.test")
 	crossOriginRequest.Header.Set("X-CSRF-Token", administrator.csrf)
@@ -375,7 +375,7 @@ func TestTelegramWebhookProvisionPersistsSuccessAfterRequestCancellation(t *test
 	requestContext, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	telegramClient.onSetWebhook = cancelRequest
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/telegram-settings/webhook", strings.NewReader(`{"revision":2}`)).WithContext(requestContext)
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/telegram-settings/webhook", strings.NewReader(`{"revision":2}`)).WithContext(requestContext)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-CSRF-Token", administrator.csrf)
 	administrator.addCookies(request)
@@ -424,7 +424,7 @@ func TestAdminTelegramSettingsRejectsInvalidSecretsConflictsAndUpstreamDetails(t
 }
 
 func telegramWebhookRequest(api http.Handler, secret, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, telegramWebhookPath, strings.NewReader(body))
+	request := newTestRequest(http.MethodPost, telegramWebhookPath, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Telegram-Bot-Api-Secret-Token", secret)
 	response := httptest.NewRecorder()

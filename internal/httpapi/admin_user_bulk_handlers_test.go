@@ -44,7 +44,7 @@ func TestAdminUserBulkBanPersistsWarningWhenRuntimeNotificationFails(t *testing.
 	testServer := &server{
 		store: database, hub: newWSHub(failedHubStore, fixedNow, logger, nil, nil), logger: logger, now: fixedNow,
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/bulk/ban", nil)
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/users/bulk/ban", nil)
 	warned := testServer.notifyAndRecordAdminUserBulkBan(request, job)
 	if warned.Status != store.AdminUserBulkStatusSucceeded || !strings.Contains(warned.LastError, "next full pull") {
 		t.Fatalf("runtime notification warning = %#v", warned)
@@ -235,7 +235,7 @@ func TestLegacyAndModernAdminUserBulkCSVDownload(t *testing.T) {
 		t.Fatalf("CSV jobs=%#v error=%v", jobs, err)
 	}
 	unauthenticated := httptest.NewRecorder()
-	api.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", nil))
+	api.ServeHTTP(unauthenticated, newTestRequest(http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", nil))
 	if unauthenticated.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated download status=%d body=%s", unauthenticated.Code, unauthenticated.Body)
 	}

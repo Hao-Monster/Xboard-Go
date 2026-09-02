@@ -86,11 +86,16 @@ XBOARD_GO_REDIS_PASSWORD_FILE=.local/redis-password.txt \
 unset redis_password
 ```
 
-`XBOARD_LEGACY_ADMIN_PATH` changes only the compatibility route segment under
-`/api/v2`; it defaults to `admin` and accepts 1 to 64 ASCII letters, digits,
-underscores, or hyphens. It is not an authorization factor: every route still
-requires an authenticated administrator, and mutation audit records normalize
-the configured segment instead of persisting it.
+`XBOARD_LEGACY_ADMIN_PATH` initializes the administrator security path for a
+new database and must be an unreserved 8–64 character segment containing only
+ASCII letters, digits, underscores, or hyphens. Generate a unique value (for
+example with `openssl rand -hex 16`) instead of using a shared default. Existing
+databases keep their persisted `secure_path` when the variable is empty. The
+administrator page is available at `/{secure_path}/#/`; V1 and V2 administrator
+APIs use `/api/v1/admin/{secure_path}/...` and `/api/v2/{secure_path}/...`.
+The path is not an authorization factor: every route still requires an
+authenticated administrator, mutations retain CSRF protection, and audit
+records normalize the route instead of persisting the configured segment.
 
 The packaged image also includes the exact Apache-2.0 Ip2Region IPv4 data used
 by the captured Xboard runtime. The build downloads it from an immutable commit

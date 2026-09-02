@@ -37,11 +37,15 @@ func TestSiteAccessSettingsValidateSwitchAndStayAtomic(t *testing.T) {
 	}
 
 	for name, path := range map[string]string{
-		"short":    "short",
-		"reserved": "passport",
-		"slash":    "secure/path",
-		"unicode":  "安全后台路径",
-		"too long": strings.Repeat("a", 65),
+		"short":     "short",
+		"reserved":  "admin",
+		"api":       "api",
+		"backend":   "client-download",
+		"health":    "healthz",
+		"websocket": "ws",
+		"slash":     "secure/path",
+		"unicode":   "安全后台路径",
+		"too long":  strings.Repeat("a", 65),
 	} {
 		t.Run(name, func(t *testing.T) {
 			invalid := siteSettingsSaveInput(updated)

@@ -85,7 +85,7 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 	invalidUTF8Body := []byte(`{"revision":2,"windows_version":"`)
 	invalidUTF8Body = append(invalidUTF8Body, 0xff)
 	invalidUTF8Body = append(invalidUTF8Body, []byte(`","windows_download_url":"","macos_version":"","macos_download_url":"","android_version":"","android_download_url":""}`)...)
-	invalidUTF8Request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/client-app-settings", bytes.NewReader(invalidUTF8Body))
+	invalidUTF8Request := newTestRequest(http.MethodPut, "/api/v1/admin/client-app-settings", bytes.NewReader(invalidUTF8Body))
 	invalidUTF8Request.Header.Set("Content-Type", "application/json")
 	invalidUTF8Request.Header.Set("X-CSRF-Token", administrator.csrf)
 	administrator.addCookies(invalidUTF8Request)
@@ -122,7 +122,7 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 	legacyInvalidUTF8Body := []byte(`{"windows_version":"`)
 	legacyInvalidUTF8Body = append(legacyInvalidUTF8Body, 0xff)
 	legacyInvalidUTF8Body = append(legacyInvalidUTF8Body, []byte(`"}`)...)
-	legacyInvalidUTF8Request := httptest.NewRequest(http.MethodPost, "/api/v2/admin/config/save", bytes.NewReader(legacyInvalidUTF8Body))
+	legacyInvalidUTF8Request := newTestRequest(http.MethodPost, "/api/v2/admin/config/save", bytes.NewReader(legacyInvalidUTF8Body))
 	legacyInvalidUTF8Request.Header.Set("Content-Type", "application/json")
 	legacyInvalidUTF8Request.Header.Set("Authorization", legacyLogin.Authorization)
 	legacyInvalidUTF8 := httptest.NewRecorder()
@@ -196,7 +196,7 @@ func decodeClientAppSettingsEnvelope(t *testing.T, response *httptest.ResponseRe
 }
 
 func requestClientAppVersion(api http.Handler, path, userAgent string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request := newTestRequest(http.MethodGet, path, nil)
 	request.Header.Set("User-Agent", userAgent)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

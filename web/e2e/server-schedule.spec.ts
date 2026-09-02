@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][FE-SCH-007][FE-SCH-008] nested schedule modal is complete", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -16,14 +16,15 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
   page.on("response", (response) => {
     if (response.status() < 500) return;
     const path = new URL(response.url()).pathname;
-    if (response.status() === 503 && response.request().method() === "PUT" && /^\/api\/v1\/admin\/nodes\/\d+\/activation-schedule$/.test(path)) {
+    const schedulePrefix = adminAPIPath("/api/v1/admin/nodes/");
+    if (response.status() === 503 && response.request().method() === "PUT" && path.startsWith(schedulePrefix) && /^\d+\/activation-schedule$/.test(path.slice(schedulePrefix.length))) {
       expectedFailureResponses += 1;
       return;
     }
     serverErrors.push(`${response.status()} ${response.request().method()} ${path}`);
   });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -32,17 +33,17 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
   const unique = `${Date.now()}`;
   const nodeName = `E2E 节点 ${unique}`;
   const machineName = `E2E 服务器 ${unique}`;
-  const createNodeResult = await page.evaluate(async ({ name }) => {
+  const createNodeResult = await page.evaluate(async ({ name, path }) => {
     const prefix = "xboard_csrf=";
     const csrf = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length);
-    const response = await fetch("/api/v1/admin/nodes", {
+    const response = await fetch(path, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf ?? "") },
       body: JSON.stringify({ name, type: "vless", host: "sg.example.test", port: "443", show: true, enabled: true, sort: 0 })
     });
     return { status: response.status, body: await response.text() };
-  }, { name: nodeName });
+  }, { name: nodeName, path: adminAPIPath("/api/v1/admin/nodes") });
   expect(createNodeResult.status, createNodeResult.body).toBe(201);
   const nodeIdentity = createdNodeIdentity(createNodeResult.body);
 
@@ -51,7 +52,7 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
   await createDialog.getByLabel("服务器名称").fill(machineName);
   await createDialog.getByLabel("备注").fill("Playwright regression fixture");
   const machineResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/admin/machines"
+    response.request().method() === "POST" && new URL(response.url()).pathname === adminAPIPath("/api/v1/admin/machines")
   );
   await createDialog.getByRole("button", { name: "创建服务器" }).click();
   const createdMachineResponse = await machineResponse;
@@ -61,17 +62,18 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
   await expect(enrollmentDialog).toBeVisible();
   await enrollmentDialog.getByRole("button", { name: "关闭服务器接入命令" }).click();
 
-  const assignment = await page.evaluate(async ({ machineID, nodeID, revision }) => {
+  const assignmentPath = adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${nodeIdentity.id}`);
+  const assignment = await page.evaluate(async ({ revision, path }) => {
     const prefix = "xboard_csrf=";
     const csrf = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length);
-    const response = await fetch(`/api/v1/admin/machines/${machineID}/nodes/${nodeID}`, {
+    const response = await fetch(path, {
       method: "PUT",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf ?? "") },
       body: JSON.stringify({ revision })
     });
     return { status: response.status, body: await response.text() };
-  }, { machineID, nodeID: nodeIdentity.id, revision: nodeIdentity.revision });
+  }, { revision: nodeIdentity.revision, path: assignmentPath });
   expect(assignment.status, assignment.body).toBe(204);
 
   const machineCard = page.locator("article.machine-card", { hasText: machineName });
@@ -122,7 +124,7 @@ test("[FE-SCH-001][FE-SCH-002][FE-SCH-003][FE-SCH-004][FE-SCH-005][FE-SCH-006][F
 
   await scheduleDialog.getByLabel("启用时间").fill("20:30");
   await scheduleDialog.getByLabel("停用时间").fill("01:00");
-  const schedulePath = `/api/v1/admin/nodes/${nodeIdentity.id}/activation-schedule`;
+  const schedulePath = adminAPIPath(`/api/v1/admin/nodes/${nodeIdentity.id}/activation-schedule`);
   let signalFailureRequest!: () => void;
   let releaseFailureResponse!: () => void;
   const failureRequest = new Promise<void>((resolve) => { signalFailureRequest = resolve; });

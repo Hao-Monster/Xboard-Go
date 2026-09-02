@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 test("administrator creates and changes a user's access state", async ({ page, context }) => {
   const pageErrors: string[] = [];
@@ -11,7 +11,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
 	await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url() || "http://127.0.0.1:4173").origin });
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
@@ -54,7 +54,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
   await dialog.getByLabel("邮箱").fill(email);
   await dialog.getByLabel(/初始密码/).fill("e2e-user-password-123");
   await dialog.getByLabel("订阅计划").selectOption({ label: planName });
-  const singleResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/api/v1/admin/users/generate"));
+  const singleResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(adminAPIPath("/api/v1/admin/users/generate")));
   await dialog.getByRole("button", { name: "创建" }).click();
   const singleResponse = await singleResponsePromise;
   expect(singleResponse.status(), await singleResponse.text()).toBe(201);
@@ -86,7 +86,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
   await dialog.getByLabel("邮箱域").fill("example.test");
   await dialog.getByLabel(/生成数量/).fill("2");
   await dialog.getByLabel("订阅计划").selectOption({ label: planName });
-  const batchRequestPromise = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/api/v1/admin/users/generate"));
+  const batchRequestPromise = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith(adminAPIPath("/api/v1/admin/users/generate")));
   await dialog.getByRole("button", { name: "生成账号" }).click();
   const batchRequest = await batchRequestPromise;
   expect(batchRequest.postDataJSON()).toMatchObject({
@@ -130,7 +130,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await dialog.getByLabel("员工", { exact: true }).check();
 	await dialog.getByLabel("分销商", { exact: true }).check();
 	await dialog.getByLabel("分销商名称").fill("E2E 混合角色");
-	const updateResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/api/v1/admin/users/"));
+	const updateResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(adminAPIPath("/api/v1/admin/users/")));
 	await dialog.getByRole("button", { name: "保存" }).click();
 	const updateResponse = await updateResponsePromise;
 	expect(updateResponse.status(), await updateResponse.text()).toBe(200);
@@ -174,7 +174,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	dialog = page.getByRole("dialog", { name: "重置订阅凭据" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);
 	await expect(dialog).toContainText("旧订阅地址会立即失效");
-	const securityResetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/subscription-security\/reset$/.test(new URL(request.url()).pathname));
+	const securityResetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && matchesAdminUserAction(new URL(request.url()).pathname, "subscription-security/reset"));
 	await dialog.getByRole("button", { name: "确认重置订阅凭据" }).click();
 	const securityResetRequest = await securityResetRequestPromise;
 	expect(securityResetRequest.postDataJSON()).toEqual({ revision: expect.any(Number) });
@@ -203,7 +203,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await expect(dialog.getByLabel("用户邮箱")).toHaveAttribute("readonly", "");
 	await dialog.getByLabel("订阅套餐").selectOption({ label: planName });
 	await dialog.getByLabel("支付金额（CNY）").fill("2.50");
-	const assignedOrderResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/orders$/.test(new URL(response.url()).pathname));
+	const assignedOrderResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && matchesAdminUserAction(new URL(response.url()).pathname, "orders"));
 	await dialog.getByRole("button", { name: "创建订单" }).click();
 	const assignedOrderResponse = await assignedOrderResponsePromise;
 	expect(assignedOrderResponse.status(), await assignedOrderResponse.text()).toBe(201);
@@ -223,7 +223,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	dialog = page.getByRole("dialog", { name: "重置流量" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);
 	await dialog.getByLabel("重置原因（可选）").fill("E2E U4 manual reset");
-	const resetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/traffic-reset$/.test(new URL(request.url()).pathname));
+	const resetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && matchesAdminUserAction(new URL(request.url()).pathname, "traffic-reset"));
 	await dialog.getByRole("button", { name: "确认重置流量" }).click();
 	const resetRequest = await resetRequestPromise;
 	expect(resetRequest.headers()["idempotency-key"]).toBeTruthy();
@@ -257,7 +257,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
   await expect(page.getByLabel("筛选操作符 1").getByRole("option")).toHaveCount(2);
   const secretProbe = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // gitleaks:allow -- deterministic transport-safety fixture
   await page.getByLabel("筛选值 1").fill(secretProbe);
-  const secretRequestPromise = page.waitForRequest((request) => request.url().endsWith("/api/v1/admin/users/query"));
+  const secretRequestPromise = page.waitForRequest((request) => request.url().endsWith(adminAPIPath("/api/v1/admin/users/query")));
   await page.getByRole("button", { name: "查询用户" }).click();
   const secretRequest = await secretRequestPromise;
   expect(secretRequest.method()).toBe("POST");
@@ -273,3 +273,11 @@ test("administrator creates and changes a user's access state", async ({ page, c
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
 });
+
+function matchesAdminUserAction(pathname: string, action: string): boolean {
+  const prefix = adminAPIPath("/api/v1/admin/users/");
+  if (!pathname.startsWith(prefix)) return false;
+  const remainder = pathname.slice(prefix.length);
+  const separator = remainder.indexOf("/");
+  return separator > 0 && /^\d+$/.test(remainder.slice(0, separator)) && remainder.slice(separator + 1) === action;
+}

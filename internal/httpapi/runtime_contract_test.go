@@ -70,7 +70,7 @@ func TestXboardNodeRuntimeConfigContract(t *testing.T) {
 		t.Fatal("config response is missing ETag")
 	}
 
-	secondRequest := httptest.NewRequest(http.MethodGet, configPath, nil)
+	secondRequest := newTestRequest(http.MethodGet, configPath, nil)
 	secondRequest.Header.Set("Authorization", "Bearer "+credential.Token)
 	secondRequest.Header.Set("If-None-Match", first.Header().Get("ETag"))
 	second := httptest.NewRecorder()

@@ -172,7 +172,7 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	}
 	legacyOldToken := legacyBeforeSubscription.SubscriptionToken
 	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
-	foreignOriginRequest := httptest.NewRequest(http.MethodPost, "/api/v2/admin/user/resetSecret", strings.NewReader(fmt.Sprintf(`{"id":%d}`, legacyAccount.ID)))
+	foreignOriginRequest := newTestRequest(http.MethodPost, "/api/v2/admin/user/resetSecret", strings.NewReader(fmt.Sprintf(`{"id":%d}`, legacyAccount.ID)))
 	foreignOriginRequest.Header.Set("Authorization", authorization)
 	foreignOriginRequest.Header.Set("Content-Type", "application/json")
 	foreignOriginRequest.Header.Set("Origin", "https://untrusted.example.test")
@@ -282,7 +282,7 @@ func TestLegacyAdminTrafficResetAndTrafficHistoryCompatibility(t *testing.T) {
 
 func adminOperationRequest(t *testing.T, client testClient, api http.Handler, method, path, body, idempotencyKey string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	request := newTestRequest(method, path, bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-CSRF-Token", client.csrf)
 	request.Header.Set("Idempotency-Key", idempotencyKey)

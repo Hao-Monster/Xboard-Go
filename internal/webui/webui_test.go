@@ -18,7 +18,9 @@ func TestHandlerServesFrontendAndDelegatesBackend(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"success"}`))
 	})
-	handler, err := New(root, api)
+	handler, err := New(root, api, func(*http.Request) (FrontendAccess, error) {
+		return FrontendAccess{Allowed: true, SecurePath: "secure-admin-01"}, nil
+	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -29,7 +31,7 @@ func TestHandlerServesFrontendAndDelegatesBackend(t *testing.T) {
 		wantCache string
 	}{
 		{path: "/", wantBody: "Xboard-Go", wantCache: "no-store"},
-		{path: "/users/42", wantBody: "Xboard-Go", wantCache: "no-store"},
+		{path: "/secure-admin-01/", wantBody: "Xboard-Go", wantCache: "no-store"},
 		{path: "/assets/app-123.js", wantBody: "console.log", wantCache: "public, max-age=31536000, immutable"},
 		{path: "/api/v1/auth/session", wantBody: `"status":"success"`},
 		{path: "/client-download/karing/android", wantBody: `"status":"success"`},
@@ -50,6 +52,16 @@ func TestHandlerServesFrontendAndDelegatesBackend(t *testing.T) {
 		}
 	}
 	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/users/42", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown SPA route status = %d", recorder.Code)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/wrong-admin-path/", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("wrong administrator path status = %d", recorder.Code)
+	}
+	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/missing.js", nil))
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("missing asset status = %d", recorder.Code)
@@ -121,9 +133,9 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 	checks := 0
 	handler, err := New(root, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}), func(request *http.Request) (bool, error) {
+	}), func(request *http.Request) (FrontendAccess, error) {
 		checks++
-		return HostMatchesURL(request.Host, "https://panel.example.test:8443"), nil
+		return FrontendAccess{Allowed: HostMatchesURL(request.Host, "https://panel.example.test:8443"), SecurePath: "secure-admin-01"}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +145,8 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 		status     int
 	}{
 		{path: "/", host: "PANEL.EXAMPLE.TEST.:443", status: http.StatusOK},
-		{path: "/account", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/secure-admin-01/", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/wrong-admin-path/", host: "attacker.example.test", status: http.StatusNotFound},
 		{path: "/index.html", host: "attacker.example.test", status: http.StatusForbidden},
 		{path: "/assets/app.js", host: "attacker.example.test", status: http.StatusOK},
 		{path: "/api/v1/auth/session", host: "attacker.example.test", status: http.StatusNoContent},
@@ -146,8 +159,8 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 			t.Fatalf("GET %s Host %q status=%d want=%d body=%s", test.path, test.host, response.Code, test.status, response.Body)
 		}
 	}
-	if checks != 3 {
-		t.Fatalf("frontend access checks = %d, want 3 HTML entries only", checks)
+	if checks != 4 {
+		t.Fatalf("frontend access checks = %d, want 4 HTML entries only", checks)
 	}
 }
 
@@ -172,14 +185,14 @@ func TestHostMatchesURLHandlesPortsIPv6AndRejectsMalformedInputs(t *testing.T) {
 func TestFrontendAccessCheckerFailsClosedOnSettingsError(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "index.html", "protected")
-	handler, err := New(root, http.NotFoundHandler(), func(*http.Request) (bool, error) {
-		return false, errors.New("settings unavailable")
+	handler, err := New(root, http.NotFoundHandler(), func(*http.Request) (FrontendAccess, error) {
+		return FrontendAccess{}, errors.New("settings unavailable")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/account", nil))
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/secure-admin-01/", nil))
 	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "settings unavailable") {
 		t.Fatalf("settings failure status=%d body=%q", response.Code, response.Body.String())
 	}
