@@ -46,6 +46,7 @@ type Config struct {
 	RedisURL                   string
 	RedisKeyPrefix             string
 	WebRoot                    string
+	FrontendOrigin             string
 	AttachmentRoot             string
 	AttachmentChunkSize        int64
 	AttachmentMaxFileSize      int64
@@ -179,6 +180,7 @@ func Load() (Config, error) {
 		RedisURL:                   strings.TrimSpace(redisURL),
 		RedisKeyPrefix:             strings.TrimSpace(envOrDefault("XBOARD_REDIS_KEY_PREFIX", "xboard-go:")),
 		WebRoot:                    strings.TrimSpace(os.Getenv("XBOARD_WEB_ROOT")),
+		FrontendOrigin:             strings.TrimRight(strings.TrimSpace(os.Getenv("XBOARD_FRONTEND_ORIGIN")), "/"),
 		AttachmentRoot:             strings.TrimSpace(os.Getenv("XBOARD_ATTACHMENT_ROOT")),
 		AttachmentChunkSize:        attachmentChunkSize,
 		AttachmentMaxFileSize:      attachmentMaxFileSize,
@@ -209,6 +211,17 @@ func Load() (Config, error) {
 	}
 	if config.WebRoot != "" && !filepath.IsAbs(config.WebRoot) {
 		return Config{}, errors.New("XBOARD_WEB_ROOT must be an absolute path")
+	}
+	if config.WebRoot != "" && config.FrontendOrigin != "" {
+		return Config{}, errors.New("XBOARD_WEB_ROOT and XBOARD_FRONTEND_ORIGIN are mutually exclusive")
+	}
+	if config.FrontendOrigin != "" {
+		parsedFrontendOrigin, err := url.Parse(config.FrontendOrigin)
+		if err != nil || len(config.FrontendOrigin) > 2048 || parsedFrontendOrigin.Host == "" ||
+			(parsedFrontendOrigin.Scheme != "http" && parsedFrontendOrigin.Scheme != "https") || parsedFrontendOrigin.User != nil ||
+			parsedFrontendOrigin.Path != "" || parsedFrontendOrigin.RawPath != "" || parsedFrontendOrigin.RawQuery != "" || parsedFrontendOrigin.Fragment != "" {
+			return Config{}, errors.New("XBOARD_FRONTEND_ORIGIN must be an absolute http or https origin without credentials, path, query, or fragment")
+		}
 	}
 	if config.LegacyAppClashTemplateFile != "" && !filepath.IsAbs(config.LegacyAppClashTemplateFile) {
 		return Config{}, errors.New("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE must be an absolute path")

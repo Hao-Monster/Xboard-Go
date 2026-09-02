@@ -132,6 +132,42 @@ func TestLoadRejectsRelativeWebRoot(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesRemoteFrontendOrigin(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_WEB_ROOT", "")
+	t.Setenv("XBOARD_FRONTEND_ORIGIN", "http://frontend:8080/")
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if settings.FrontendOrigin != "http://frontend:8080" {
+		t.Fatalf("FrontendOrigin = %q", settings.FrontendOrigin)
+	}
+
+	for _, value := range []string{
+		"frontend:8080", "ftp://frontend", "http://user@frontend", "http://frontend/path",
+		"http://frontend?query=1", "http://frontend#fragment",
+	} {
+		t.Setenv("XBOARD_FRONTEND_ORIGIN", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted unsafe frontend origin %q", value)
+		}
+	}
+}
+
+func TestLoadRejectsMultipleFrontendSources(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_WEB_ROOT", filepath.Join(t.TempDir(), "web"))
+	t.Setenv("XBOARD_FRONTEND_ORIGIN", "http://frontend:8080")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted both local and remote frontend sources")
+	}
+}
+
 func TestLoadRejectsRelativeLegacyAppClashTemplate(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
