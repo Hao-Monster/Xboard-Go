@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-02",
-  "baseline_commit": "b151f914fbf90fe5d341c5fd7caea7983799a66f",
+  "baseline_commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -938,15 +938,59 @@
       "title": "设备在线按 300 秒窗口、IP 归一化和去重计算；写数据库有节流与延迟刷新；节点断开清理其设备状态。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "historical",
-      "migration_status": "historical",
+      "verification_status": "current",
+      "migration_status": "not_applicable",
       "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-003"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-NODE006-BINGO-RACE",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TIME-NODE-006-REDIS-WINDOW",
+            "TIME-NODE-006-TRAILING-FLUSH",
+            "TIME-NODE-006-FLUSH-FAILURE",
+            "TIME-NODE-006-DISCONNECT",
+            "TIME-NODE-006-CAPACITY"
+          ],
+          "artifact": "bingo-dev:sha256:d525a098fee6cdfdc65aa77834be80a21d8f270e9970c624f21ef8039d5c40d7",
+          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
+          "observed_at": "2026-09-02T04:33:52Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 go test -race -count=1 -timeout=4m ./internal/devicestate ./internal/store ./internal/httpapi -run TestTIMENODE006",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE006-BINGO-OUTAGE",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TIME-NODE-006-REDIS-OUTAGE"
+          ],
+          "artifact": "bingo-dev:sha256:8997f97b331261a38ed6a80794613cf2f142137d1d5660f7f271f5c065fe5813",
+          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
+          "observed_at": "2026-09-02T04:33:52Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 XBOARD_TEST_REDIS_FAILURES=true go test -race -timeout=5m ./internal/devicestate -run TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState -count=1",
+          "result": "pass"
+        },
+        {
+          "id": "EV-NODE006-BINGO-PERF",
+          "kind": "performance",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TIME-NODE-006-CAPACITY"
+          ],
+          "artifact": "bingo-dev:sha256:a113f96712e6fa6ac6d9bc84048178f88b092eb43f54e862091099adc8eefdb5",
+          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
+          "observed_at": "2026-09-02T04:33:52Z",
+          "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 go test -run ^$ -bench BenchmarkTIMENODE006 -benchmem -benchtime=10x -count=3 ./internal/devicestate",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "NODE-007",
