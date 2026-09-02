@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 59
+const currentSchemaVersion = 61
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -429,6 +429,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v59: %w", err)
 		}
 		version = 59
+	}
+	if version < 60 {
+		if err := applySchemaV60(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v60: %w", err)
+		}
+		version = 60
+	}
+	if version < 61 {
+		if err := applySchemaV61(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v61: %w", err)
+		}
+		version = 61
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2624,6 +2636,129 @@ BEGIN
     SELECT RAISE(ABORT, 'user traffic total overflow');
 END;
 `
+
+const schemaV60 = `
+CREATE TABLE IF NOT EXISTS commission_withdrawals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key TEXT NOT NULL CHECK (
+        length(idempotency_key) BETWEEN 16 AND 128
+        AND idempotency_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+    ),
+    amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 9000000000000000),
+    fee_basis_points INTEGER NOT NULL CHECK (fee_basis_points BETWEEN 0 AND 10000),
+    fee_amount INTEGER NOT NULL CHECK (fee_amount BETWEEN 0 AND amount),
+    net_amount INTEGER NOT NULL CHECK (net_amount = amount - fee_amount AND net_amount >= 0),
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    method TEXT NOT NULL CHECK (length(CAST(method AS BLOB)) BETWEEN 1 AND 128),
+    account_cipher BLOB NOT NULL CHECK (length(account_cipher) BETWEEN 1 AND 8192),
+    account_fingerprint BLOB NOT NULL CHECK (length(account_fingerprint) = 32),
+    account_masked TEXT NOT NULL CHECK (length(CAST(account_masked AS BLOB)) BETWEEN 1 AND 320),
+    status TEXT NOT NULL CHECK (status IN ('pending','approved','paid','rejected')),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    external_reference TEXT CHECK (external_reference IS NULL OR length(CAST(external_reference AS BLOB)) BETWEEN 1 AND 128),
+    rejection_reason TEXT CHECK (rejection_reason IS NULL OR length(CAST(rejection_reason AS BLOB)) BETWEEN 1 AND 500),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+    approved_at INTEGER CHECK (approved_at IS NULL OR approved_at >= created_at),
+    paid_at INTEGER CHECK (paid_at IS NULL OR paid_at >= created_at),
+    rejected_at INTEGER CHECK (rejected_at IS NULL OR rejected_at >= created_at),
+    UNIQUE (user_id, idempotency_key),
+    CHECK ((status = 'pending' AND approved_at IS NULL AND paid_at IS NULL AND rejected_at IS NULL)
+        OR (status = 'approved' AND approved_at IS NOT NULL AND paid_at IS NULL AND rejected_at IS NULL)
+        OR (status = 'paid' AND approved_at IS NOT NULL AND paid_at IS NOT NULL AND rejected_at IS NULL AND external_reference IS NOT NULL)
+        OR (status = 'rejected' AND paid_at IS NULL AND rejected_at IS NOT NULL AND rejection_reason IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_withdrawals_one_active
+    ON commission_withdrawals(user_id) WHERE status IN ('pending','approved');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_withdrawals_external_reference
+    ON commission_withdrawals(external_reference) WHERE external_reference IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commission_withdrawals_user_created
+    ON commission_withdrawals(user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_commission_withdrawals_admin_status
+    ON commission_withdrawals(status, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS commission_withdrawal_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    withdrawal_id INTEGER NOT NULL REFERENCES commission_withdrawals(id) ON DELETE RESTRICT,
+    actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('created','approved','paid','rejected')),
+    from_status TEXT CHECK (from_status IS NULL OR from_status IN ('pending','approved')),
+    to_status TEXT NOT NULL CHECK (to_status IN ('pending','approved','paid','rejected')),
+    amount INTEGER NOT NULL CHECK (amount BETWEEN 1 AND 9000000000000000),
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    UNIQUE (withdrawal_id, revision)
+);
+CREATE INDEX IF NOT EXISTS idx_commission_withdrawal_events_withdrawal
+    ON commission_withdrawal_events(withdrawal_id, revision);
+`
+
+const schemaV61 = `
+CREATE INDEX IF NOT EXISTS idx_users_due_anonymization
+    ON users(deletion_due_at, id) WHERE lifecycle_status='pending_deletion';
+
+CREATE TABLE IF NOT EXISTS user_lifecycle_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('deletion_requested','restored','anonymized')),
+    from_status TEXT NOT NULL CHECK (from_status IN ('active','pending_deletion')),
+    to_status TEXT NOT NULL CHECK (to_status IN ('active','pending_deletion','anonymized')),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    created_at INTEGER NOT NULL CHECK (created_at >= 0),
+    UNIQUE (user_id, revision)
+);
+CREATE INDEX IF NOT EXISTS idx_user_lifecycle_events_user ON user_lifecycle_events(user_id, revision);
+`
+
+func applySchemaV60(ctx context.Context, tx *sql.Tx) error {
+	if err := addSchemaColumnIfMissing(ctx, tx, "users", "frozen_commission_balance", `ALTER TABLE users ADD COLUMN frozen_commission_balance INTEGER NOT NULL DEFAULT 0 CHECK (frozen_commission_balance BETWEEN 0 AND 9000000000000000)`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, schemaV60); err != nil {
+		return fmt.Errorf("create commission withdrawal schema: %w", err)
+	}
+	return nil
+}
+
+func applySchemaV61(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"lifecycle_status", `ALTER TABLE users ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_status IN ('active','pending_deletion','anonymized'))`},
+		{"deletion_requested_at", `ALTER TABLE users ADD COLUMN deletion_requested_at INTEGER CHECK (deletion_requested_at IS NULL OR deletion_requested_at >= 0)`},
+		{"deletion_due_at", `ALTER TABLE users ADD COLUMN deletion_due_at INTEGER CHECK (deletion_due_at IS NULL OR deletion_due_at >= 0)`},
+		{"deletion_banned_snapshot", `ALTER TABLE users ADD COLUMN deletion_banned_snapshot INTEGER CHECK (deletion_banned_snapshot IS NULL OR deletion_banned_snapshot IN (0,1))`},
+		{"anonymized_at", `ALTER TABLE users ADD COLUMN anonymized_at INTEGER CHECK (anonymized_at IS NULL OR anonymized_at >= 0)`},
+	}
+	for _, column := range columns {
+		if err := addSchemaColumnIfMissing(ctx, tx, "users", column.name, column.ddl); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, schemaV61); err != nil {
+		return fmt.Errorf("create user lifecycle schema: %w", err)
+	}
+	return nil
+}
+
+func addSchemaColumnIfMissing(ctx context.Context, tx *sql.Tx, table, column, ddl string) error {
+	var exists bool
+	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('%s') WHERE name = ?)`, table)
+	if err := tx.QueryRowContext(ctx, query, column).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect %s.%s: %w", table, column, err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
+	}
+	return nil
+}
 
 func applySchemaV59(ctx context.Context, tx *sql.Tx) error {
 	var invalidUserID int64

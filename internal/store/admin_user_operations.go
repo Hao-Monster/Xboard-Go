@@ -296,7 +296,8 @@ func (s *Store) GetAdminUserSubscriptionToken(ctx context.Context, userID int64)
 	}
 	var token string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT subscription_token FROM users WHERE id = ? AND account_kind = 'human'
+		SELECT subscription_token FROM users
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active'
 	`, userID).Scan(&token); errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	} else if err != nil {

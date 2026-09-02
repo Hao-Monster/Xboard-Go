@@ -84,6 +84,37 @@ func TestStartPaymentCheckoutCalculatesFeeBindsOrderAndReusesCreatedAttempt(t *t
 	}
 }
 
+func TestPaymentCheckoutUsesLockedDeploymentCurrency(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 9, 2, 13, 0, 0, 0, time.UTC)
+	admin, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "currency-admin@example.test", PasswordHash: "hash", IsAdmin: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usd := "USD"
+	if _, err := database.UpdateLegacySiteSettings(ctx, admin.ID, SaveLegacySiteSettingsInput{Currency: &usd}, now.Add(time.Second)); err != nil {
+		t.Fatalf("configure pristine deployment currency: %v", err)
+	}
+	plan, userID := createOrderFixture(t, database, now.Add(2*time.Second), PlanPrices{"monthly": 1000}, nil)
+	method, err := database.CreatePayment(ctx, SavePaymentInput{Provider: PaymentProviderCoinPayments, Name: "USD gateway", ConfigCiphertext: []byte("cipher"), Enabled: true}, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, CreateOrderInput{UserID: userID, PlanID: plan.ID, Period: "monthly"}, now.Add(4*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := database.StartPaymentCheckout(ctx, StartPaymentCheckoutInput{UserID: userID, TradeNo: order.TradeNo, PaymentID: method.ID}, now.Add(5*time.Second))
+	if err != nil || started.Attempt.Currency != "USD" {
+		t.Fatalf("USD checkout = (%#v, %v)", started, err)
+	}
+	eur := "EUR"
+	if _, err := database.UpdateLegacySiteSettings(ctx, admin.ID, SaveLegacySiteSettingsInput{Currency: &eur}, now.Add(6*time.Second)); !errors.Is(err, ErrCurrencyLocked) {
+		t.Fatalf("currency mutation after financial facts error = %v, want ErrCurrencyLocked", err)
+	}
+}
+
 func TestDisabledTrustedPaymentPluginIsHiddenAndCannotStartCheckout(t *testing.T) {
 	tests := []struct {
 		provider PaymentProvider

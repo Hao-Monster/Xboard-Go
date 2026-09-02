@@ -98,7 +98,8 @@ func NewService(options Options) *Service {
 func (service *Service) Checkout(ctx context.Context, request CheckoutRequest) (CheckoutResult, error) {
 	config, err := MergeConfig(request.Provider, request.Config, nil, nil, true)
 	if err != nil || !validGatewayTradeNo(request.TradeNo) || request.Amount < 1 || request.Amount > maxProviderMoneyCents ||
-		request.Currency != "CNY" || !validGatewayCallbackURL(request.NotifyURL) || !validGatewayCallbackURL(request.ReturnURL) || !validIdempotencyKey(request.IdempotencyKey) {
+		!validCurrency(request.Currency) || !providerSupportsCurrency(request.Provider, config, request.Currency) ||
+		!validGatewayCallbackURL(request.NotifyURL) || !validGatewayCallbackURL(request.ReturnURL) || !validIdempotencyKey(request.IdempotencyKey) {
 		return CheckoutResult{}, ErrInvalidGatewayRequest
 	}
 	request.Config = config
@@ -117,6 +118,21 @@ func (service *Service) Checkout(ctx context.Context, request CheckoutRequest) (
 		return service.checkoutMGate(ctx, request)
 	default:
 		return CheckoutResult{}, ErrInvalidGatewayRequest
+	}
+}
+
+func providerSupportsCurrency(provider store.PaymentProvider, config map[string]string, currency string) bool {
+	switch provider {
+	case store.PaymentProviderAlipayF2F, store.PaymentProviderEPay:
+		return currency == "CNY"
+	case store.PaymentProviderCoinPayments:
+		return config["coinpayments_currency"] == currency
+	case store.PaymentProviderMGate:
+		return defaultCurrency(config["mgate_source_currency"]) == currency
+	case store.PaymentProviderBTCPay, store.PaymentProviderCoinbase:
+		return true
+	default:
+		return false
 	}
 }
 

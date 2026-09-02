@@ -965,6 +965,7 @@ export interface AdminUser {
   commission_type: number;
   commission_rate: number | null;
   commission_balance: number;
+  frozen_commission_balance?: number;
   discount: number | null;
   next_reset_at: string | null;
   last_reset_at: string | null;
@@ -973,6 +974,10 @@ export interface AdminUser {
   remind_expire: boolean;
   remind_traffic: boolean;
   remarks: string | null;
+  lifecycle_status?: "active" | "pending_deletion" | "anonymized";
+  deletion_requested_at?: string | null;
+  deletion_due_at?: string | null;
+  anonymized_at?: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -1480,6 +1485,8 @@ export interface GuestConfig {
   app_url: string | null;
   tos_url: string | null;
   logo: string | null;
+  currency: string;
+  currency_symbol: string;
   is_email_verify: number;
   is_invite_force: number;
   enable_coupon_system: number;
@@ -1529,6 +1536,65 @@ export interface CommissionLogPage {
 export interface CommissionTransferResult {
   commission_balance: number;
   balance: number;
+}
+
+export type CommissionWithdrawalStatus = "pending" | "approved" | "paid" | "rejected";
+
+export interface CommissionWithdrawal {
+  id: number;
+  user_id: number;
+  user_email?: string;
+  amount: number;
+  fee_basis_points: number;
+  fee_amount: number;
+  net_amount: number;
+  currency: string;
+  method: string;
+  account_masked: string;
+  status: CommissionWithdrawalStatus;
+  revision: number;
+  external_reference?: string;
+  rejection_reason?: string;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  paid_at: string | null;
+  rejected_at: string | null;
+}
+
+export interface CommissionWithdrawalPage {
+  items: CommissionWithdrawal[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CommissionWithdrawalPolicy {
+  currency: string;
+  minimum_amount: number;
+  methods: string[];
+  available_commission: number;
+  frozen_commission: number;
+  active: CommissionWithdrawal | null;
+}
+
+export interface AdminUserDeletionImpact {
+  user_id: number;
+  revision: number;
+  lifecycle_status: "active" | "pending_deletion" | "anonymized";
+  allowed: boolean;
+  blockers: string[];
+  orders: number;
+  payment_checkouts: number;
+  commission_withdrawals: number;
+  commission_logs: number;
+  distributor_subscriptions: number;
+  invitation_codes: number;
+  invited_users: number;
+  tickets: number;
+  ticket_messages: number;
+  knowledge_attachments: number;
+  audit_logs: number;
 }
 
 export interface WorkerStatus {
@@ -1778,6 +1844,9 @@ export interface AdminAPI {
 	listAdminUserTraffic: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficStatPage>;
 	listAdminUserTrafficResets: (id: number, page?: number, pageSize?: number) => Promise<AdminUserTrafficResetPage>;
   resetAdminUserTraffic: (id: number, reason: string, idempotencyKey: string) => Promise<AdminUserTrafficReset>;
+  getAdminUserDeletionImpact: (id: number) => Promise<AdminUserDeletionImpact>;
+  requestAdminUserDeletion: (id: number, revision: number) => Promise<AdminUser>;
+  restoreAdminUser: (id: number, revision: number) => Promise<AdminUser>;
   createAdminUserBulkMail: (scope: AdminUserBulkScopeInput, subject: string, content: string) => Promise<AdminUserBulkJob>;
   createAdminUserBulkCSV: (scope: AdminUserBulkScopeInput) => Promise<AdminUserBulkJob>;
   banAdminUsers: (scope: AdminUserBulkScopeInput, idempotencyKey: string) => Promise<AdminUserBulkJob>;
@@ -1809,6 +1878,11 @@ export interface AdminAPI {
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   getCommissionSettings: () => Promise<CommissionSettings>;
   updateCommissionSettings: (input: CommissionSettingsInput) => Promise<CommissionSettings>;
+  listAdminCommissionWithdrawals: (status?: CommissionWithdrawalStatus, page?: number, pageSize?: number) => Promise<CommissionWithdrawalPage>;
+  getAdminCommissionWithdrawalAccount: (id: number) => Promise<string>;
+  approveCommissionWithdrawal: (id: number, revision: number) => Promise<CommissionWithdrawal>;
+  rejectCommissionWithdrawal: (id: number, revision: number, reason: string) => Promise<CommissionWithdrawal>;
+  payCommissionWithdrawal: (id: number, revision: number, externalReference: string) => Promise<CommissionWithdrawal>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
@@ -1959,6 +2033,20 @@ export class APIClient implements AdminAPI {
 
   async transferCommission(amount: number): Promise<CommissionTransferResult> {
     return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", { method: "POST", body: { amount } });
+  }
+
+  async getCommissionWithdrawalPolicy(): Promise<CommissionWithdrawalPolicy> {
+    return this.request<CommissionWithdrawalPolicy>("/api/v1/commission-withdrawals/policy");
+  }
+
+  async listCommissionWithdrawals(page = 1, pageSize = 20): Promise<CommissionWithdrawalPage> {
+    return this.request<CommissionWithdrawalPage>(`/api/v1/commission-withdrawals?page=${page}&page_size=${pageSize}`);
+  }
+
+  async createCommissionWithdrawal(idempotencyKey: string, method: string, account: string): Promise<CommissionWithdrawal> {
+    return this.request<CommissionWithdrawal>("/api/v1/commission-withdrawals", {
+      method: "POST", body: { idempotency_key: idempotencyKey, method, account }
+    });
   }
 
   async recordInvitationView(invitationCode: string): Promise<void> {
@@ -2535,6 +2623,22 @@ export class APIClient implements AdminAPI {
 		});
 	}
 
+  async getAdminUserDeletionImpact(id: number): Promise<AdminUserDeletionImpact> {
+    return this.request<AdminUserDeletionImpact>(`/api/v1/admin/users/${id}/deletion-impact`);
+  }
+
+  async requestAdminUserDeletion(id: number, revision: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/deletion`, {
+      method: "POST", body: { revision, confirm: true }
+    });
+  }
+
+  async restoreAdminUser(id: number, revision: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/deletion/restore`, {
+      method: "POST", body: { revision, confirm: true }
+    });
+  }
+
   async createAdminUserBulkMail(scope: AdminUserBulkScopeInput, subject: string, content: string): Promise<AdminUserBulkJob> {
     return this.request<AdminUserBulkJob>("/api/v1/admin/users/bulk/mail", { method: "POST", body: { ...scope, subject, content } });
   }
@@ -2718,6 +2822,37 @@ export class APIClient implements AdminAPI {
 
   async updateCommissionSettings(input: CommissionSettingsInput): Promise<CommissionSettings> {
     return this.request<CommissionSettings>("/api/v1/admin/commission-settings", { method: "PUT", body: input });
+  }
+
+  async listAdminCommissionWithdrawals(status?: CommissionWithdrawalStatus, page = 1, pageSize = 50): Promise<CommissionWithdrawalPage> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (status !== undefined) params.set("status", status);
+    return this.request<CommissionWithdrawalPage>(`/api/v1/admin/commission-withdrawals?${params.toString()}`);
+  }
+
+  async getAdminCommissionWithdrawalAccount(id: number): Promise<string> {
+    const result = await this.request<{ account: string }>(`/api/v1/admin/commission-withdrawals/${id}/account/reveal`, {
+      method: "POST", body: {}
+    });
+    return result.account;
+  }
+
+  async approveCommissionWithdrawal(id: number, revision: number): Promise<CommissionWithdrawal> {
+    return this.request<CommissionWithdrawal>(`/api/v1/admin/commission-withdrawals/${id}/approve`, {
+      method: "POST", body: { revision, confirm: true }
+    });
+  }
+
+  async rejectCommissionWithdrawal(id: number, revision: number, reason: string): Promise<CommissionWithdrawal> {
+    return this.request<CommissionWithdrawal>(`/api/v1/admin/commission-withdrawals/${id}/reject`, {
+      method: "POST", body: { revision, reason, confirm: true }
+    });
+  }
+
+  async payCommissionWithdrawal(id: number, revision: number, externalReference: string): Promise<CommissionWithdrawal> {
+    return this.request<CommissionWithdrawal>(`/api/v1/admin/commission-withdrawals/${id}/pay`, {
+      method: "POST", body: { revision, external_reference: externalReference, confirm: true }
+    });
   }
 
   async getSubscriptionSettings(): Promise<SubscriptionSettings> {

@@ -283,6 +283,24 @@ describe("APIClient administrator user contracts", () => {
 		]);
 	});
 
+  it("uses revisioned, confirmed user lifecycle routes", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push({ path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    await api.getAdminUserDeletionImpact(41);
+    await api.requestAdminUserDeletion(41, 7);
+    await api.restoreAdminUser(41, 8);
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/users/41/deletion-impact", method: "GET", body: undefined },
+      { path: "/api/v1/admin/users/41/deletion", method: "POST", body: { revision: 7, confirm: true } },
+      { path: "/api/v1/admin/users/41/deletion/restore", method: "POST", body: { revision: 8, confirm: true } }
+    ]);
+  });
+
   it("uses bounded administrator bulk-job routes, encoded IDs, CSRF, and authenticated CSV download", async () => {
     const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null; accept: string | null }> = [];
     document.cookie = "xboard_csrf=user-bulk-csrf; path=/";
@@ -327,6 +345,37 @@ describe("APIClient administrator user contracts", () => {
       { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash", method: "GET", body: undefined, csrf: null, accept: "application/json" },
       { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash/cancel", method: "POST", body: {}, csrf: "user-bulk-csrf", accept: "application/json" },
       { path: "/api/v1/admin/user-bulk-jobs/job%2Fwith%20slash/download", method: "GET", body: undefined, csrf: null, accept: "text/csv" }
+    ]);
+  });
+});
+
+describe("APIClient commission withdrawal contracts", () => {
+  it("keeps list reads non-mutating and protects sensitive reveals and state transitions", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push({ path, method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined });
+      const data = path.endsWith("/account/reveal") ? { account: "wallet-secret" } : {};
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    const api = new APIClient();
+    await api.getCommissionWithdrawalPolicy();
+    await api.listCommissionWithdrawals(2, 20);
+    await api.createCommissionWithdrawal("test-0000000000000001", "USDT", "wallet-secret");
+    await api.listAdminCommissionWithdrawals("pending", 1, 50);
+    expect(await api.getAdminCommissionWithdrawalAccount(7)).toBe("wallet-secret");
+    await api.approveCommissionWithdrawal(7, 1);
+    await api.rejectCommissionWithdrawal(7, 2, "invalid account");
+    await api.payCommissionWithdrawal(7, 2, "BANK-001");
+    expect(requests).toEqual([
+      { path: "/api/v1/commission-withdrawals/policy", method: "GET", body: undefined },
+      { path: "/api/v1/commission-withdrawals?page=2&page_size=20", method: "GET", body: undefined },
+      { path: "/api/v1/commission-withdrawals", method: "POST", body: { idempotency_key: "test-0000000000000001", method: "USDT", account: "wallet-secret" } },
+      { path: "/api/v1/admin/commission-withdrawals?page=1&page_size=50&status=pending", method: "GET", body: undefined },
+      { path: "/api/v1/admin/commission-withdrawals/7/account/reveal", method: "POST", body: {} },
+      { path: "/api/v1/admin/commission-withdrawals/7/approve", method: "POST", body: { revision: 1, confirm: true } },
+      { path: "/api/v1/admin/commission-withdrawals/7/reject", method: "POST", body: { revision: 2, reason: "invalid account", confirm: true } },
+      { path: "/api/v1/admin/commission-withdrawals/7/pay", method: "POST", body: { revision: 2, external_reference: "BANK-001", confirm: true } }
     ]);
   });
 });

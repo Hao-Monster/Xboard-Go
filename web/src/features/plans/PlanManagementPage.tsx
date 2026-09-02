@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, Plan, PlanInput, PlanPeriod, PlanPrices, ServerGroup } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 
 type PlansAPI = Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups">;
 
@@ -38,6 +39,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
   const [sorting, setSorting] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [busyIDs, setBusyIDs] = useState<Set<number>>(() => new Set());
+  const { format: formatMoney } = useCurrency();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -137,7 +139,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
             <td data-label="套餐"><strong>{plan.name}</strong><small className="muted monospace">PID {plan.id} · Revision {plan.revision}</small>{plan.tags.length > 0 && <small>{plan.tags.join(" · ")}</small>}</td>
             <td data-label="权益">{plan.transfer_enable} GiB<small className="muted">速度 {limitText(plan.speed_limit)} · 设备 {limitText(plan.device_limit)}</small><small className="muted">权限组 {plan.group_id === null ? "不限制" : groupNames.get(plan.group_id) ?? `#${plan.group_id}`}</small></td>
             <td data-label="统计"><strong>总 {plan.users_count}</strong><small className="muted">有效 {plan.active_users_count} · 活跃率 {plan.users_count > 0 ? Math.round(plan.active_users_count / plan.users_count * 100) : 0}%</small></td>
-            <td data-label="价格"><div className="plan-offer-prices">{periods.some(({ key }) => plan.prices[key] !== undefined) ? periods.map(({ key, label }) => plan.prices[key] === undefined ? null : <span key={key}>{label} ¥{formatCents(plan.prices[key] ?? 0)}</span>) : "未设置"}</div></td>
+            <td data-label="价格"><div className="plan-offer-prices">{periods.some(({ key }) => plan.prices[key] !== undefined) ? periods.map(({ key, label }) => plan.prices[key] === undefined ? null : <span key={key}>{label} {formatMoney(plan.prices[key] ?? 0)}</span>) : "未设置"}</div></td>
             <td data-label="容量">{plan.capacity_limit === null || plan.capacity_limit <= 0 ? "不限量" : `${plan.capacity_users_count}/${plan.capacity_limit}`}</td>
             <td data-label="状态"><div className="plan-state-list">
               <label><input type="checkbox" disabled={busyIDs.has(plan.id)} checked={plan.show} onChange={(event) => void updateState(plan, "show", event.target.checked)} />展示</label>
@@ -164,6 +166,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
 type PlanDraft = Omit<PlanInput, "prices" | "tags"> & { tagsText: string; prices: Record<PlanPeriod, string>; forceUpdate: boolean };
 
 function PlanEditor({ api, groups, plan, onClose, onSaved }: { api: PlansAPI; groups: ServerGroup[]; plan: Plan | null; onClose: () => void; onSaved: (plan: Plan) => void }) {
+  const { code: currency } = useCurrency();
   const title = plan === null ? "添加套餐" : "编辑套餐";
   const [draft, setDraft] = useState<PlanDraft>(() => planDraft(plan));
   const [saving, setSaving] = useState(false);
@@ -201,7 +204,7 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: { api: PlansAPI; gr
     <label>流量重置方式<select value={draft.reset_traffic_method ?? ""} onChange={(event) => update("reset_traffic_method", event.target.value === "" ? null : Number(event.target.value))}>
       <option value="">跟随系统</option><option value={0}>每月 1 日</option><option value={1}>按到期日每月</option><option value={2}>永不</option><option value={3}>每年 1 月 1 日</option><option value={4}>按到期月日每年</option>
     </select></label>
-    <fieldset className="settings-fieldset"><legend>周期价格</legend><div className="plan-price-grid">{periods.map((period) => <label key={period.key}>{period.label}<input type="number" min={0} step="0.01" inputMode="decimal" value={draft.prices[period.key]} onChange={(event) => update("prices", { ...draft.prices, [period.key]: event.target.value })} /></label>)}</div></fieldset>
+    <fieldset className="settings-fieldset"><legend>周期价格（{currency}）</legend><div className="plan-price-grid">{periods.map((period) => <label key={period.key}>{period.label}<input type="number" min={0} step="0.01" inputMode="decimal" value={draft.prices[period.key]} onChange={(event) => update("prices", { ...draft.prices, [period.key]: event.target.value })} /></label>)}</div></fieldset>
     <div className="form-stack"><div className="section-heading"><strong>套餐描述</strong><div className="row-actions">
       <button className="button secondary compact" type="button" onClick={() => update("content", planDescriptionTemplate)}>使用模板</button>
       <button className="button secondary compact" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "隐藏预览" : "显示预览"}</button>

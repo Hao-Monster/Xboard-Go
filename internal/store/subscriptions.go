@@ -287,7 +287,7 @@ func (s *Store) resetSubscriptionSecurity(ctx context.Context, userID int64, exp
 	defer tx.Rollback()
 	before, err := scanSubscriptionAccount(tx.QueryRowContext(ctx, `
 		SELECT id,email,uuid,group_id,plan_id,transfer_enable,traffic_u,traffic_d,expired_at,next_reset_at,speed_limit,device_limit,banned,subscription_token,created_at
-		FROM users WHERE id = ? AND account_kind = 'human'
+		FROM users WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active'
 	`, userID))
 	if err != nil {
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, err
@@ -299,7 +299,7 @@ func (s *Store) resetSubscriptionSecurity(ctx context.Context, userID int64, exp
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users
 		SET uuid = ?, subscription_token = ?, online_count = 0, admin_revision = admin_revision + 1, updated_at = ?
-		WHERE id = ? AND account_kind = 'human' AND (? IS NULL OR admin_revision = ?)
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active' AND (? IS NULL OR admin_revision = ?)
 	`, newUUID, newToken, now.Unix(), userID, revision, revision)
 	if err != nil {
 		return SubscriptionAccount{}, SubscriptionSecurityMutation{}, fmt.Errorf("reset subscription security: %w", err)
@@ -311,7 +311,7 @@ func (s *Store) resetSubscriptionSecurity(ctx context.Context, userID int64, exp
 	if changed != 1 {
 		if expectedRevision != nil {
 			var exists bool
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND account_kind='human')`, userID).Scan(&exists); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND account_kind='human' AND lifecycle_status='active')`, userID).Scan(&exists); err != nil {
 				return SubscriptionAccount{}, SubscriptionSecurityMutation{}, fmt.Errorf("inspect subscription security reset conflict: %w", err)
 			}
 			if exists {

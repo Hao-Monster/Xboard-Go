@@ -33,8 +33,8 @@ describe("CouponManagementPage", () => {
     await user.click(screen.getByRole("button", { name: "新增优惠券" }));
     await user.type(screen.getByLabelText("卷名称"), "新用户优惠");
     await user.type(screen.getByLabelText("卷码"), "SAVE500");
-    await user.clear(screen.getByLabelText("优惠金额（元）"));
-    await user.type(screen.getByLabelText("优惠金额（元）"), "5");
+    await user.clear(screen.getByLabelText("优惠金额（CNY）"));
+    await user.type(screen.getByLabelText("优惠金额（CNY）"), "5");
     await user.click(screen.getByRole("button", { name: "保存优惠券" }));
     await waitFor(() => expect(api.createCoupon).toHaveBeenCalledWith(expect.objectContaining({
       code: "SAVE500", name: "新用户优惠", type: 1, value: 500, show: true

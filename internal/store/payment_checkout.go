@@ -25,6 +25,10 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 		return PaymentCheckoutStart{}, fmt.Errorf("begin payment checkout: %w", err)
 	}
 	defer tx.Rollback()
+	var deploymentCurrency string
+	if err := tx.QueryRowContext(ctx, `SELECT currency FROM app_settings WHERE id=1`).Scan(&deploymentCurrency); err != nil {
+		return PaymentCheckoutStart{}, fmt.Errorf("read deployment currency: %w", err)
+	}
 	order, err := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE o.user_id = ? AND o.trade_no = ?`, input.UserID, input.TradeNo))
 	if err != nil {
 		return PaymentCheckoutStart{}, err
@@ -71,10 +75,10 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 		}
 		if !cached {
 			result, updateErr := tx.ExecContext(ctx, `
-			UPDATE payment_checkout_attempts SET expected_amount = ?, currency = 'CNY', status = 0,
+			UPDATE payment_checkout_attempts SET expected_amount = ?, currency = ?, status = 0,
 				external_id = NULL, response_type = NULL, response_data = NULL, error_code = NULL, updated_at = ?
 			WHERE id = ?
-		`, expectedAmount, now.Unix(), attempt.ID)
+		`, expectedAmount, deploymentCurrency, now.Unix(), attempt.ID)
 			if updateErr != nil {
 				return PaymentCheckoutStart{}, fmt.Errorf("restart payment checkout: %w", updateErr)
 			}
@@ -83,7 +87,7 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 				return PaymentCheckoutStart{}, fmt.Errorf("restart payment checkout: unexpected updated rows")
 			}
 			attempt.ExpectedAmount = expectedAmount
-			attempt.Currency = "CNY"
+			attempt.Currency = deploymentCurrency
 			attempt.Status = PaymentCheckoutCreating
 			attempt.ExternalID = ""
 			attempt.ResponseType = nil
@@ -101,8 +105,8 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 		result, insertErr := tx.ExecContext(ctx, `
 			INSERT INTO payment_checkout_attempts (
 				order_id, payment_id, idempotency_key, expected_amount, currency, status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, 'CNY', 0, ?, ?)
-		`, order.ID, method.ID, idempotencyKey, expectedAmount, now.Unix(), now.Unix())
+			) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+		`, order.ID, method.ID, idempotencyKey, expectedAmount, deploymentCurrency, now.Unix(), now.Unix())
 		if insertErr != nil {
 			return PaymentCheckoutStart{}, fmt.Errorf("create payment checkout: %w", insertErr)
 		}
@@ -112,7 +116,7 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 		}
 		attempt = PaymentCheckoutAttempt{
 			ID: attemptID, OrderID: order.ID, PaymentID: method.ID, IdempotencyKey: idempotencyKey,
-			ExpectedAmount: expectedAmount, Currency: "CNY", Status: PaymentCheckoutCreating,
+			ExpectedAmount: expectedAmount, Currency: deploymentCurrency, Status: PaymentCheckoutCreating,
 			CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 		}
 	}
@@ -250,9 +254,6 @@ func (s *Store) CompletePaymentWebhook(ctx context.Context, input CompletePaymen
 	order, err := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE o.trade_no = ?`, input.TradeNo))
 	if err != nil {
 		return Order{}, err
-	}
-	if input.Currency != "CNY" {
-		return Order{}, ErrPaymentMismatch
 	}
 	var expectedAmount int64
 	if err := tx.QueryRowContext(ctx, `

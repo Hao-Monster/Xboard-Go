@@ -59,7 +59,8 @@ func (s *Store) CreateAdminUserBulkJob(ctx context.Context, input CreateAdminUse
 func createAdminUserBulkJobTx(ctx context.Context, tx *sql.Tx, input CreateAdminUserBulkJobInput, scope AdminUserBulkScope, where string, arguments []any, digest string, now time.Time) (AdminUserBulkJob, error) {
 	var administratorEmail string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT email FROM users WHERE id = ? AND account_kind = 'human' AND is_admin = 1 AND banned = 0
+		SELECT email FROM users
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active' AND is_admin = 1 AND banned = 0
 	`, input.AdministratorID).Scan(&administratorEmail); errors.Is(err, sql.ErrNoRows) {
 		return AdminUserBulkJob{}, ErrNotFound
 	} else if err != nil {
@@ -67,6 +68,9 @@ func createAdminUserBulkJobTx(ctx context.Context, tx *sql.Tx, input CreateAdmin
 	}
 
 	from := adminUserBulkSnapshotFrom
+	if input.Kind == AdminUserBulkKindMail {
+		where += ` AND u.lifecycle_status = 'active'`
+	}
 	countArguments := append([]any(nil), arguments...)
 	countArguments = append(countArguments, maxAdminUserBulkTargets+1)
 	var total int

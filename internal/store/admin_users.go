@@ -117,8 +117,9 @@ const adminUserSelect = `
 	       u.group_id, g.name, u.plan_id, p.name, u.invite_user_id, inviter.email,
 	       u.transfer_enable, u.traffic_u, u.traffic_d, (u.traffic_u + u.traffic_d),
 	       u.expired_at, u.speed_limit, u.device_limit, u.online_count, u.last_online_at, u.last_login_at,
-	       u.balance, u.commission_type, u.commission_rate, u.commission_balance, u.discount,
+	       u.balance, u.commission_type, u.commission_rate, u.commission_balance, u.frozen_commission_balance, u.discount,
 	       u.next_reset_at, u.last_reset_at, u.reset_count, u.telegram_id, u.remind_expire, u.remind_traffic, u.remarks,
+	       u.lifecycle_status, u.deletion_requested_at, u.deletion_due_at, u.anonymized_at,
 	       u.admin_revision, u.created_at, u.updated_at`
 
 const adminUserFrom = `
@@ -623,6 +624,9 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if existing.Revision != input.Revision {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
 	}
+	if existing.LifecycleStatus != UserLifecycleActive {
+		return AdminUser{}, AdminUserMutation{}, ErrUserDeletionState
+	}
 	isAdmin := existing.IsAdmin
 	if input.IsAdmin != nil {
 		isAdmin = *input.IsAdmin
@@ -762,7 +766,7 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 			balance = ?, commission_type = ?, commission_rate = ?, commission_balance = ?, discount = ?, telegram_id = ?,
 			remind_expire = ?, remind_traffic = ?, remarks = ?, next_reset_at = ?,
 			admin_revision = admin_revision + 1, updated_at = ?
-		WHERE id = ? AND account_kind = 'human' AND admin_revision = ?
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active' AND admin_revision = ?
 	`, input.Email, passwordChanged, passwordHash, nullableInt64Value(groupID), nullableInt64Value(planID), nullableInt64Value(inviteUserID),
 		transferEnable, trafficUpload, trafficDownload, nullableTimeUnix(input.ExpiredAt), speedLimit, deviceLimit,
 		input.Banned, isAdmin, isStaff, isDistributor, nullableStringValue(distributorName), balance, commissionType,
@@ -843,7 +847,7 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users SET password_hash = ?, admin_revision = admin_revision + 1, updated_at = ?
-		WHERE id = ? AND account_kind = 'human' AND admin_revision = ?
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active' AND admin_revision = ?
 	`, passwordHash, now.Unix(), userID, revision)
 	if err != nil {
 		return AdminUser{}, fmt.Errorf("reset user password: %w", err)
@@ -853,8 +857,12 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 		return AdminUser{}, fmt.Errorf("count reset passwords: %w", err)
 	}
 	if changed == 0 {
-		if _, findErr := getAdminUserTx(ctx, tx, userID); errors.Is(findErr, ErrNotFound) {
+		existing, findErr := getAdminUserTx(ctx, tx, userID)
+		if errors.Is(findErr, ErrNotFound) {
 			return AdminUser{}, ErrNotFound
+		}
+		if findErr == nil && existing.LifecycleStatus != UserLifecycleActive {
+			return AdminUser{}, ErrUserDeletionState
 		}
 		return AdminUser{}, ErrConflict
 	}
@@ -913,14 +921,16 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 	var distributorName, groupName, planName, inviteUserEmail, remarks sql.NullString
 	var groupID, planID, inviteUserID, expiredAt, lastOnlineAt, lastLoginAt sql.NullInt64
 	var commissionRate, discount, nextResetAt, lastResetAt, telegramID sql.NullInt64
+	var deletionRequestedAt, deletionDueAt, anonymizedAt sql.NullInt64
 	var createdAt, updatedAt int64
 	if err := row.Scan(
 		&user.ID, &user.Email, &user.IsAdmin, &user.IsStaff, &user.IsDistributor, &distributorName, &user.Banned,
 		&groupID, &groupName, &planID, &planName, &inviteUserID, &inviteUserEmail,
 		&user.TransferEnable, &user.TrafficUpload, &user.TrafficDownload, &user.TrafficUsed,
 		&expiredAt, &user.SpeedLimit, &user.DeviceLimit, &user.OnlineCount, &lastOnlineAt, &lastLoginAt,
-		&user.Balance, &user.CommissionType, &commissionRate, &user.CommissionBalance, &discount,
+		&user.Balance, &user.CommissionType, &commissionRate, &user.CommissionBalance, &user.FrozenCommissionBalance, &discount,
 		&nextResetAt, &lastResetAt, &user.ResetCount, &telegramID, &user.RemindExpire, &user.RemindTraffic, &remarks,
+		&user.LifecycleStatus, &deletionRequestedAt, &deletionDueAt, &anonymizedAt,
 		&user.Revision, &createdAt, &updatedAt,
 	); err != nil {
 		return AdminUser{}, err
@@ -979,6 +989,18 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 	}
 	if remarks.Valid {
 		user.Remarks = &remarks.String
+	}
+	if deletionRequestedAt.Valid {
+		value := time.Unix(deletionRequestedAt.Int64, 0).UTC()
+		user.DeletionRequestedAt = &value
+	}
+	if deletionDueAt.Valid {
+		value := time.Unix(deletionDueAt.Int64, 0).UTC()
+		user.DeletionDueAt = &value
+	}
+	if anonymizedAt.Valid {
+		value := time.Unix(anonymizedAt.Int64, 0).UTC()
+		user.AnonymizedAt = &value
 	}
 	user.CreatedAt = time.Unix(createdAt, 0).UTC()
 	user.UpdatedAt = time.Unix(updatedAt, 0).UTC()

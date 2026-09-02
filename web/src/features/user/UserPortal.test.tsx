@@ -19,6 +19,7 @@ describe("UserPortal", () => {
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0 }), createInvitation: vi.fn(),
       listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), transferCommission: vi.fn(),
+      getCommissionWithdrawalPolicy: vi.fn().mockResolvedValue(emptyWithdrawalPolicy), listCommissionWithdrawals: vi.fn().mockResolvedValue(emptyWithdrawalPage), createCommissionWithdrawal: vi.fn(),
       listPlanOffers: vi.fn().mockResolvedValue([]),
       checkCoupon: vi.fn(), createOrder: vi.fn(), listOrders: vi.fn().mockResolvedValue([]), getOrder: vi.fn(), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(),
       getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
@@ -67,6 +68,7 @@ describe("UserPortal", () => {
       createTicket: vi.fn(), getTicket: vi.fn(), replyTicket: vi.fn(), closeTicket: vi.fn(),
       getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0 }), createInvitation: vi.fn(),
       listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), transferCommission: vi.fn(),
+      getCommissionWithdrawalPolicy: vi.fn().mockResolvedValue(emptyWithdrawalPolicy), listCommissionWithdrawals: vi.fn().mockResolvedValue(emptyWithdrawalPage), createCommissionWithdrawal: vi.fn(),
       listPlanOffers: vi.fn().mockResolvedValue([]),
       checkCoupon: vi.fn(), createOrder: vi.fn(), listOrders: vi.fn().mockResolvedValue([]), getOrder: vi.fn(), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(),
       getSubscription: vi.fn().mockResolvedValue({ plan_id: null, token: "1".repeat(32), expired_at: null, u: 0, d: 0, transfer_enable: 0, email: session.email, uuid: "11111111-1111-4111-8111-111111111111", device_limit: 0, speed_limit: 0, next_reset_at: null, plan: null, subscribe_url: "https://panel.example.test/s/token", reset_day: null, subscription_valid: false }),
@@ -83,3 +85,6 @@ describe("UserPortal", () => {
     expect(onSignedOut).not.toHaveBeenCalled();
   });
 });
+
+const emptyWithdrawalPolicy = { currency: "CNY", minimum_amount: 10_000, methods: ["USDT"], available_commission: 0, frozen_commission: 0, active: null };
+const emptyWithdrawalPage = { items: [], total: 0, page: 1, page_size: 20 };

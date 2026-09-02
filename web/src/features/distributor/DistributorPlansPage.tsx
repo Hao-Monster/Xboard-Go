@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 
 import { Modal } from "../../components/Overlay";
 import type { DistributorOrder, DistributorQR, PlanOffer, PlanPeriod } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 import { distributorCopy, distributorPeriodLabels, type DistributorCopy, type DistributorLocale } from "./locale";
 
 export interface DistributorPlansAPI {
@@ -14,6 +15,7 @@ export interface DistributorPlansAPI {
 type PlanFilter = "all" | "high-traffic" | "unlimited-speed" | "unlimited-devices";
 
 export function DistributorPlansPage({ api, locale = "zh-CN" }: { api: DistributorPlansAPI; locale?: DistributorLocale }) {
+  const { format: formatMoney } = useCurrency();
   const [plans, setPlans] = useState<PlanOffer[]>([]);
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [periods, setPeriods] = useState<Record<number, PlanPeriod>>({});
@@ -67,9 +69,9 @@ export function DistributorPlansPage({ api, locale = "zh-CN" }: { api: Distribut
       const cents = plan.prices[selected] ?? 0;
       return <article className={`site-settings-card distributor-plan-card ${index === 0 ? "featured" : ""}`} key={plan.id}>
         <div className="distributor-plan-tags">{index === 0 && <span className="count-pill">{copy.featured}</span>}{plan.transfer_enable >= 100 && <span>{copy.highTraffic}</span>}{unlimited(plan.speed_limit) && <span>{copy.unlimitedSpeed}</span>}{unlimited(plan.device_limit) && <span>{copy.unlimitedDevices}</span>}</div>
-        <div className="section-heading"><div><h2>{plan.name}</h2><p className="muted">{copy.independentDelivery}</p></div><strong className="distributor-plan-price">¥{formatCents(cents)}</strong></div>
+        <div className="section-heading"><div><h2>{plan.name}</h2><p className="muted">{copy.independentDelivery}</p></div><strong className="distributor-plan-price">{formatMoney(cents, locale)}</strong></div>
         <dl className="distributor-plan-specs"><div><dt>{copy.traffic}</dt><dd>{plan.transfer_enable} GB</dd></div><div><dt>{copy.speed}</dt><dd>{limit(plan.speed_limit, "Mbps", copy.unlimited)}</dd></div><div><dt>{copy.devices}</dt><dd>{limit(plan.device_limit, locale === "zh-CN" ? "台" : "devices", copy.unlimited)}</dd></div><div><dt>{copy.resetMethod}</dt><dd>{resetLabel(plan.reset_traffic_method, copy)}</dd></div></dl>
-        <fieldset className="distributor-period-options"><legend>{copy.period}</legend>{options.map(([period, price]) => <label key={period}><input type="radio" name={`period-${plan.id}`} checked={selected === period} onChange={() => setPeriods((current) => ({ ...current, [plan.id]: period }))} /><span>{periodLabels[period]}<strong>¥{formatCents(price)}</strong></span></label>)}</fieldset>
+        <fieldset className="distributor-period-options"><legend>{copy.period}</legend>{options.map(([period, price]) => <label key={period}><input type="radio" name={`period-${plan.id}`} checked={selected === period} onChange={() => setPeriods((current) => ({ ...current, [plan.id]: period }))} /><span>{periodLabels[period]}<strong>{formatMoney(price, locale)}</strong></span></label>)}</fieldset>
         {plan.content !== "" && <details><summary>{copy.planDetails}</summary><div className="markdown-body plan-content"><Markdown>{plan.content}</Markdown></div></details>}
         <button className="button primary distributor-buy-button" type="button" disabled={buying !== null || cents <= 0} onClick={() => void purchase(plan, selected)}>{buying === plan.id ? copy.ordering : copy.orderAction}</button>
       </article>;
@@ -114,6 +116,4 @@ function matches(plan: PlanOffer, filter: PlanFilter): boolean {
 function unlimited(value: number | null): boolean { return value === null || value === 0; }
 function limit(value: number | null, unit: string, unlimitedLabel: string): string { return unlimited(value) ? unlimitedLabel : `${value} ${unit}`; }
 function resetLabel(value: number | null, copy: DistributorCopy): string { return value === null ? copy.followSystem : [copy.firstDayMonth, copy.monthlyReset, copy.neverReset, copy.firstDayYear, copy.yearlyReset][value] ?? copy.followSystem; }
-export function formatDistributorCents(value: number): string { return formatCents(value); }
-function formatCents(value: number): string { return `${Math.trunc(value / 100)}.${String(Math.abs(value % 100)).padStart(2, "0")}`; }
 function messageOf(cause: unknown, locale: DistributorLocale): string { return cause instanceof Error ? cause.message : locale === "en-US" ? "Distributor order failed" : "分销下单失败"; }

@@ -82,6 +82,9 @@ var requiredSchemaTables = []struct {
 	{"theme_settings", 51},
 	{"trusted_plugins", 55},
 	{"telegram_message_outbox", 56},
+	{"commission_withdrawals", 60},
+	{"commission_withdrawal_events", 60},
+	{"user_lifecycle_events", 61},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -208,6 +211,17 @@ var requiredSchemaColumnsV56 = map[string][]string{
 
 var requiredSchemaColumnsV57 = map[string][]string{
 	"telegram_message_outbox": {"recipient_user_id"},
+}
+
+var requiredSchemaColumnsV60 = map[string][]string{
+	"users":                        {"frozen_commission_balance"},
+	"commission_withdrawals":       {"id", "user_id", "idempotency_key", "amount", "fee_basis_points", "fee_amount", "net_amount", "currency", "method", "account_cipher", "account_fingerprint", "account_masked", "status", "revision", "external_reference", "rejection_reason", "created_at", "updated_at", "approved_at", "paid_at", "rejected_at"},
+	"commission_withdrawal_events": {"id", "withdrawal_id", "actor_user_id", "kind", "from_status", "to_status", "amount", "currency", "revision", "created_at"},
+}
+
+var requiredSchemaColumnsV61 = map[string][]string{
+	"users":                 {"lifecycle_status", "deletion_requested_at", "deletion_due_at", "deletion_banned_snapshot", "anonymized_at"},
+	"user_lifecycle_events": {"id", "user_id", "actor_user_id", "kind", "from_status", "to_status", "revision", "created_at"},
 }
 
 type schemaQueryer interface {
@@ -385,6 +399,16 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	if schemaVersion >= 59 {
 		if err := validateUserTrafficTotalTriggers(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 60 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV60); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 61 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV61); err != nil {
+			return err
 		}
 	}
 	if schemaVersion >= 42 {

@@ -20,6 +20,14 @@ const initial: CommissionSettings = {
   updated_at: "2026-08-29T08:00:00Z"
 };
 
+function withdrawalAPI() {
+  return {
+    listAdminCommissionWithdrawals: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }),
+    getAdminCommissionWithdrawalAccount: vi.fn(), approveCommissionWithdrawal: vi.fn(),
+    rejectCommissionWithdrawal: vi.fn(), payCommissionWithdrawal: vi.fn()
+  };
+}
+
 describe("CommissionSettingsPage", () => {
   it("loads all eight settings, shows effective rates, and saves with the observed revision", async () => {
     const updated = {
@@ -34,6 +42,7 @@ describe("CommissionSettingsPage", () => {
       commission_distribution_l3: 25
     };
     const api = {
+      ...withdrawalAPI(),
       getCommissionSettings: vi.fn().mockResolvedValue(initial),
       updateCommissionSettings: vi.fn().mockResolvedValue(updated)
     };
@@ -85,6 +94,7 @@ describe("CommissionSettingsPage", () => {
   it("blocks unsafe totals locally, disables inactive levels, and supports conflict recovery", async () => {
     const inactive = { ...initial, commission_distribution_enable: false };
     const api = {
+      ...withdrawalAPI(),
       getCommissionSettings: vi.fn().mockResolvedValue(inactive),
       updateCommissionSettings: vi.fn().mockRejectedValue(new Error("设置已被其他管理员修改，请刷新后重试"))
     };

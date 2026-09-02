@@ -36,6 +36,14 @@ var (
 	ErrInvitationCodeLimit                    = errors.New("invitation code generation limit reached")
 	ErrInvitationCodeCollision                = fmt.Errorf("%w: invitation code collision", ErrConflict)
 	ErrInsufficientCommission                 = fmt.Errorf("%w: insufficient commission balance", ErrConflict)
+	ErrCommissionWithdrawalActive             = fmt.Errorf("%w: an active commission withdrawal already exists", ErrConflict)
+	ErrCommissionWithdrawalState              = fmt.Errorf("%w: invalid commission withdrawal state", ErrConflict)
+	ErrCommissionWithdrawalMethod             = fmt.Errorf("%w: commission withdrawal method is not allowed", ErrInvalidInput)
+	ErrCommissionWithdrawalLimit              = fmt.Errorf("%w: commission withdrawal is below the configured minimum", ErrConflict)
+	ErrCurrencyLocked                         = fmt.Errorf("%w: deployment currency is locked by financial facts", ErrConflict)
+	ErrUserDeletionSelf                       = fmt.Errorf("%w: administrator cannot delete the current account", ErrConflict)
+	ErrUserDeletionBlocked                    = fmt.Errorf("%w: user deletion is blocked by protected responsibilities", ErrConflict)
+	ErrUserDeletionState                      = fmt.Errorf("%w: invalid user deletion lifecycle state", ErrConflict)
 	ErrLoginLinkInvalid                       = errors.New("login link is invalid")
 	ErrMailLoginLimited                       = errors.New("mail login request is limited")
 	ErrMailLoginDisabled                      = errors.New("mail login is disabled")
@@ -471,6 +479,8 @@ type ClientAppRuntimeSettings struct {
 	TOSURL                      string
 	Currency                    string
 	CurrencySymbol              string
+	CommissionWithdrawLimit     CurrencyAmount
+	CommissionWithdrawMethods   []string
 	TelegramBotEnabled          bool
 	TicketMustWaitReply         bool
 	EmailVerificationEnabled    bool
@@ -583,6 +593,59 @@ type CommissionLogPage struct {
 type CommissionTransferResult struct {
 	CommissionBalance int64 `json:"commission_balance"`
 	Balance           int64 `json:"balance"`
+}
+
+const (
+	CommissionWithdrawalPending  = "pending"
+	CommissionWithdrawalApproved = "approved"
+	CommissionWithdrawalPaid     = "paid"
+	CommissionWithdrawalRejected = "rejected"
+)
+
+type CommissionWithdrawal struct {
+	ID                int64      `json:"id"`
+	UserID            int64      `json:"user_id"`
+	UserEmail         string     `json:"user_email,omitempty"`
+	Amount            int64      `json:"amount"`
+	FeeBasisPoints    int        `json:"fee_basis_points"`
+	FeeAmount         int64      `json:"fee_amount"`
+	NetAmount         int64      `json:"net_amount"`
+	Currency          string     `json:"currency"`
+	Method            string     `json:"method"`
+	AccountMasked     string     `json:"account_masked"`
+	Status            string     `json:"status"`
+	Revision          int64      `json:"revision"`
+	ExternalReference string     `json:"external_reference,omitempty"`
+	RejectionReason   string     `json:"rejection_reason,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	ApprovedAt        *time.Time `json:"approved_at"`
+	PaidAt            *time.Time `json:"paid_at"`
+	RejectedAt        *time.Time `json:"rejected_at"`
+}
+
+type CreateCommissionWithdrawalInput struct {
+	IdempotencyKey     string
+	Method             string
+	AccountCipher      []byte
+	AccountFingerprint []byte
+	AccountMasked      string
+}
+
+type CommissionWithdrawalPage struct {
+	Items    []CommissionWithdrawal `json:"items"`
+	Total    int64                  `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"page_size"`
+}
+
+type CommissionWithdrawalPolicy struct {
+	Currency            string                `json:"currency"`
+	MinimumAmount       int64                 `json:"minimum_amount"`
+	Methods             []string              `json:"methods"`
+	AvailableCommission int64                 `json:"available_commission"`
+	FrozenCommission    int64                 `json:"frozen_commission"`
+	Active              *CommissionWithdrawal `json:"active"`
 }
 
 type CommissionProcessingResult struct {
@@ -940,47 +1003,79 @@ func (account SubscriptionAccount) AvailableAt(now time.Time) bool {
 const (
 	AccountKindHuman                = "human"
 	AccountKindInternalSubscription = "internal_subscription"
+	UserLifecycleActive             = "active"
+	UserLifecyclePendingDeletion    = "pending_deletion"
+	UserLifecycleAnonymized         = "anonymized"
 )
 
 type AdminUser struct {
-	ID                int64      `json:"id"`
-	Email             string     `json:"email"`
-	IsAdmin           bool       `json:"is_admin"`
-	IsStaff           bool       `json:"is_staff"`
-	IsDistributor     bool       `json:"is_distributor"`
-	DistributorName   *string    `json:"distributor_name"`
-	Banned            bool       `json:"banned"`
-	GroupID           *int64     `json:"group_id"`
-	GroupName         *string    `json:"group_name"`
-	PlanID            *int64     `json:"plan_id"`
-	PlanName          *string    `json:"plan_name"`
-	InviteUserID      *int64     `json:"invite_user_id"`
-	InviteUserEmail   *string    `json:"invite_user_email"`
-	TransferEnable    int64      `json:"transfer_enable"`
-	TrafficUpload     int64      `json:"traffic_upload"`
-	TrafficDownload   int64      `json:"traffic_download"`
-	TrafficUsed       int64      `json:"traffic_used"`
-	ExpiredAt         *time.Time `json:"expired_at"`
-	SpeedLimit        int        `json:"speed_limit"`
-	DeviceLimit       int        `json:"device_limit"`
-	OnlineCount       int        `json:"online_count"`
-	LastOnlineAt      *time.Time `json:"last_online_at"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
-	Balance           int64      `json:"balance"`
-	CommissionType    int        `json:"commission_type"`
-	CommissionRate    *int       `json:"commission_rate"`
-	CommissionBalance int64      `json:"commission_balance"`
-	Discount          *int       `json:"discount"`
-	NextResetAt       *time.Time `json:"next_reset_at"`
-	LastResetAt       *time.Time `json:"last_reset_at"`
-	ResetCount        int        `json:"reset_count"`
-	TelegramID        *int64     `json:"telegram_id"`
-	RemindExpire      bool       `json:"remind_expire"`
-	RemindTraffic     bool       `json:"remind_traffic"`
-	Remarks           *string    `json:"remarks"`
-	Revision          int64      `json:"revision"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                      int64      `json:"id"`
+	Email                   string     `json:"email"`
+	IsAdmin                 bool       `json:"is_admin"`
+	IsStaff                 bool       `json:"is_staff"`
+	IsDistributor           bool       `json:"is_distributor"`
+	DistributorName         *string    `json:"distributor_name"`
+	Banned                  bool       `json:"banned"`
+	GroupID                 *int64     `json:"group_id"`
+	GroupName               *string    `json:"group_name"`
+	PlanID                  *int64     `json:"plan_id"`
+	PlanName                *string    `json:"plan_name"`
+	InviteUserID            *int64     `json:"invite_user_id"`
+	InviteUserEmail         *string    `json:"invite_user_email"`
+	TransferEnable          int64      `json:"transfer_enable"`
+	TrafficUpload           int64      `json:"traffic_upload"`
+	TrafficDownload         int64      `json:"traffic_download"`
+	TrafficUsed             int64      `json:"traffic_used"`
+	ExpiredAt               *time.Time `json:"expired_at"`
+	SpeedLimit              int        `json:"speed_limit"`
+	DeviceLimit             int        `json:"device_limit"`
+	OnlineCount             int        `json:"online_count"`
+	LastOnlineAt            *time.Time `json:"last_online_at"`
+	LastLoginAt             *time.Time `json:"last_login_at"`
+	Balance                 int64      `json:"balance"`
+	CommissionType          int        `json:"commission_type"`
+	CommissionRate          *int       `json:"commission_rate"`
+	CommissionBalance       int64      `json:"commission_balance"`
+	FrozenCommissionBalance int64      `json:"frozen_commission_balance"`
+	Discount                *int       `json:"discount"`
+	NextResetAt             *time.Time `json:"next_reset_at"`
+	LastResetAt             *time.Time `json:"last_reset_at"`
+	ResetCount              int        `json:"reset_count"`
+	TelegramID              *int64     `json:"telegram_id"`
+	RemindExpire            bool       `json:"remind_expire"`
+	RemindTraffic           bool       `json:"remind_traffic"`
+	Remarks                 *string    `json:"remarks"`
+	LifecycleStatus         string     `json:"lifecycle_status"`
+	DeletionRequestedAt     *time.Time `json:"deletion_requested_at"`
+	DeletionDueAt           *time.Time `json:"deletion_due_at"`
+	AnonymizedAt            *time.Time `json:"anonymized_at"`
+	Revision                int64      `json:"revision"`
+	CreatedAt               time.Time  `json:"created_at"`
+	UpdatedAt               time.Time  `json:"updated_at"`
+}
+
+type AdminUserDeletionImpact struct {
+	UserID                   int64    `json:"user_id"`
+	Revision                 int64    `json:"revision"`
+	LifecycleStatus          string   `json:"lifecycle_status"`
+	Allowed                  bool     `json:"allowed"`
+	Blockers                 []string `json:"blockers"`
+	Orders                   int64    `json:"orders"`
+	PaymentCheckouts         int64    `json:"payment_checkouts"`
+	CommissionWithdrawals    int64    `json:"commission_withdrawals"`
+	CommissionLogs           int64    `json:"commission_logs"`
+	DistributorSubscriptions int64    `json:"distributor_subscriptions"`
+	InvitationCodes          int64    `json:"invitation_codes"`
+	InvitedUsers             int64    `json:"invited_users"`
+	Tickets                  int64    `json:"tickets"`
+	TicketMessages           int64    `json:"ticket_messages"`
+	KnowledgeAttachments     int64    `json:"knowledge_attachments"`
+	AuditLogs                int64    `json:"audit_logs"`
+}
+
+type UserAnonymizationResult struct {
+	Processed int64 `json:"processed"`
+	Remaining int64 `json:"remaining"`
 }
 
 type AdminUserPage struct {

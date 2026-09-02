@@ -9,8 +9,8 @@
       {"id":"M0-G04","title":"M0 PR 合并后精确 main 的治理检查与全部必需检查通过","status":"pass"},
       {"id":"M0-G05","title":"v0.1.0-alpha.0 annotated Tag 和 GitHub Pre-release 已创建","status":"pass"}
     ]},
-    {"id":"M1","name":"Functional Parity","status":"blocked","gates":[
-      {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"blocked"},
+    {"id":"M1","name":"Functional Parity","status":"in_progress","gates":[
+      {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"pass"},
       {"id":"M1-G02","title":"FUNC-001 完成，FIN-001 具备资金守恒、事务、并发、幂等和权限验证","status":"blocked"},
       {"id":"M1-G03","title":"FUNC-002 完成，USER-001、USER-003 具备影响预检、事务、并发、权限和保留验证","status":"blocked"},
       {"id":"M1-G04","title":"M1 精确候选提交具备当前证据且无已知 Critical/High 功能完整性问题","status":"blocked"}

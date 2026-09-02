@@ -214,6 +214,53 @@ func TestWorkerThrottlesTrafficResetSweepToLegacyMinuteCadence(t *testing.T) {
 	}
 }
 
+func TestWorkerAnonymizesDueUsersExactlyOnceAtMinuteCadence(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-user-anonymization-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	administrator, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-deletion-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-deletion-user@example.test", PasswordHash: "hash",
+	}, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := database.RequestAdminUserDeletion(ctx, administrator.ID, target.ID, target.Revision, now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.processUserAnonymizations(ctx, now)
+	worker.processUserAnonymizations(ctx, now.Add(30*time.Second))
+	if !worker.lastUserAnonymizationSweep.Equal(now) {
+		t.Fatalf("sub-minute user anonymization sweep advanced to %s", worker.lastUserAnonymizationSweep)
+	}
+	anonymized, err := database.GetAdminUser(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anonymized.LifecycleStatus != store.UserLifecycleAnonymized || anonymized.Revision != pending.Revision+1 {
+		t.Fatalf("user after scheduler = %#v", anonymized)
+	}
+	worker.processUserAnonymizations(ctx, now.Add(time.Minute))
+	if result, err := database.ProcessDueUserAnonymizations(ctx, now.Add(time.Minute), 100); err != nil || result.Processed != 0 {
+		t.Fatalf("duplicate anonymization result = (%#v, %v)", result, err)
+	}
+}
+
 func TestWorkerCancelsOrdersAtLegacyTwoHourBoundaryAndThrottlesSweep(t *testing.T) {
 	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-order-%s?mode=memory&cache=shared", t.Name()))
 	if err != nil {

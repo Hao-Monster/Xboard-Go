@@ -399,8 +399,11 @@ func legacyAdminUserResponse(user store.AdminUser) map[string]any {
 		"online_count": user.OnlineCount, "last_online_at": legacyAdminUserUnix(user.LastOnlineAt), "last_login_at": legacyAdminUserUnix(user.LastLoginAt),
 		"balance": float64(user.Balance) / 100, "commission_type": user.CommissionType, "commission_rate": user.CommissionRate,
 		"commission_balance": float64(user.CommissionBalance) / 100, "discount": user.Discount,
-		"next_reset_at": legacyAdminUserUnix(user.NextResetAt), "last_reset_at": legacyAdminUserUnix(user.LastResetAt), "reset_count": user.ResetCount,
+		"frozen_commission_balance": float64(user.FrozenCommissionBalance) / 100,
+		"next_reset_at":             legacyAdminUserUnix(user.NextResetAt), "last_reset_at": legacyAdminUserUnix(user.LastResetAt), "reset_count": user.ResetCount,
 		"telegram_id": user.TelegramID, "remind_expire": user.RemindExpire, "remind_traffic": user.RemindTraffic, "remarks": user.Remarks,
+		"lifecycle_status": user.LifecycleStatus, "deletion_requested_at": legacyAdminUserUnix(user.DeletionRequestedAt),
+		"deletion_due_at": legacyAdminUserUnix(user.DeletionDueAt), "anonymized_at": legacyAdminUserUnix(user.AnonymizedAt),
 		"created_at": user.CreatedAt.Unix(), "updated_at": user.UpdatedAt.Unix(),
 	}
 	if user.GroupID != nil && user.GroupName != nil {

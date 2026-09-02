@@ -245,9 +245,9 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 			}
 			seen[inviterID] = struct{}{}
 			var parentID sql.NullInt64
-			var accountKind string
-			if err := tx.QueryRowContext(ctx, `SELECT invite_user_id, account_kind FROM users WHERE id = ?`, inviterID).
-				Scan(&parentID, &accountKind); errors.Is(err, sql.ErrNoRows) {
+			var accountKind, lifecycleStatus string
+			if err := tx.QueryRowContext(ctx, `SELECT invite_user_id, account_kind, lifecycle_status FROM users WHERE id = ?`, inviterID).
+				Scan(&parentID, &accountKind, &lifecycleStatus); errors.Is(err, sql.ErrNoRows) {
 				break
 			} else if err != nil {
 				return CommissionProcessingResult{}, fmt.Errorf("read commission recipient: %w", err)
@@ -255,13 +255,16 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 			if accountKind != AccountKindHuman {
 				break
 			}
-			share := commissionShare(order.commission, percentage)
+			share := int64(0)
+			if lifecycleStatus == UserLifecycleActive {
+				share = commissionShare(order.commission, percentage)
+			}
 			if share > 0 {
 				column := "commission_balance"
 				if withdrawClosed {
 					column = "balance"
 				}
-				updated, err := tx.ExecContext(ctx, `UPDATE users SET `+column+` = `+column+` + ?, updated_at = ? WHERE id = ? AND `+column+` <= ?`,
+				updated, err := tx.ExecContext(ctx, `UPDATE users SET `+column+` = `+column+` + ?, updated_at = ? WHERE id = ? AND lifecycle_status = 'active' AND `+column+` <= ?`,
 					share, now.Unix(), inviterID, maxOrderMoneyCents-share)
 				if err != nil {
 					return CommissionProcessingResult{}, fmt.Errorf("credit commission recipient: %w", err)

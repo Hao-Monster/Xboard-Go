@@ -8,39 +8,36 @@ Baseline: `M0` · as of 2026-09-02 · verification target `b151f914fbf90fe5d341c
 
 | Dimension | Status | Count |
 | --- | --- | ---: |
-| Scope | `decided` | 76 |
-| Scope | `blocked` | 4 |
-| Implementation | `implemented` | 76 |
-| Implementation | `partial` | 2 |
-| Implementation | `blocked` | 2 |
+| Scope | `decided` | 79 |
+| Scope | `blocked` | 1 |
+| Implementation | `implemented` | 79 |
+| Implementation | `partial` | 1 |
+| Implementation | `blocked` | 0 |
 | Implementation | `not_started` | 0 |
 | Verification | `current` | 0 |
 | Verification | `historical` | 76 |
-| Verification | `partial` | 2 |
-| Verification | `none` | 2 |
+| Verification | `partial` | 4 |
+| Verification | `none` | 0 |
 | Migration | `current` | 0 |
-| Migration | `historical` | 77 |
-| Migration | `partial` | 1 |
-| Migration | `not_assessed` | 1 |
-| Migration | `not_applicable` | 1 |
+| Migration | `historical` | 76 |
+| Migration | `partial` | 4 |
+| Migration | `not_assessed` | 0 |
+| Migration | `not_applicable` | 0 |
 | Acceptance | `accepted` | 0 |
 | Acceptance | `pending` | 80 |
 | Acceptance | `rejected` | 0 |
 
 ## Control summary
 
-- Decisions: 7 resolved, 11 pending (18 total).
-- Risks: 1 open Critical, 13 open High, 22 total.
-- Compatibility exceptions: 4 accepted, 1 proposed.
+- Decisions: 9 resolved, 9 pending (18 total).
+- Risks: 0 open Critical, 13 open High, 22 total.
+- Compatibility exceptions: 5 accepted, 1 proposed.
 - Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
 
 ## Blocked or partial requirements
 
 | ID | Milestone | Scope | Implementation | Verification | Decisions | Work items |
 | --- | --- | --- | --- | --- | --- | --- |
-| `USER-001` | M1 | blocked | partial | partial | `D-012` | `FUNC-002` |
-| `USER-003` | M1 | blocked | blocked | none | `D-012` | `FUNC-002` |
-| `FIN-001` | M1 | blocked | blocked | none | `D-011` | `FUNC-001` |
 | `OPS-002` | M2 | blocked | partial | partial | `D-012`, `D-013` | `OPS-001`, `OPS-002`, `MIG-001` |
 
 ## Work items
@@ -48,8 +45,8 @@ Baseline: `M0` · as of 2026-09-02 · verification target `b151f914fbf90fe5d341c
 | ID | Milestone | Status | Issue | Title |
 | --- | --- | --- | ---: | --- |
 | `GOV-001` | M0 | done | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
-| `FUNC-001` | M1 | blocked | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
-| `FUNC-002` | M1 | blocked | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
+| `FUNC-001` | M1 | in_progress | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
+| `FUNC-002` | M1 | in_progress | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
 | `OPS-001` | M2 | blocked | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
 | `OPS-002` | M2 | open | [#117](https://github.com/Hao-Monster/Xboard-Go/issues/117) | 完成备份、异地副本和恢复演练 |
 | `MIG-001` | M2 | open | [#118](https://github.com/Hao-Monster/Xboard-Go/issues/118) | 完成代表性旧数据迁移、对账和回滚证据 |
@@ -69,7 +66,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `b151f914fbf90fe5d341c
 | Milestone | Status | Passed | Blocked/failed | Not run |
 | --- | --- | ---: | ---: | ---: |
 | M0 — Project Governance Baseline | complete | 5 | 0 | 0 |
-| M1 — Functional Parity | blocked | 0 | 4 | 0 |
+| M1 — Functional Parity | in_progress | 1 | 3 | 0 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
 | M4 — Production Ready | blocked | 0 | 2 | 1 |

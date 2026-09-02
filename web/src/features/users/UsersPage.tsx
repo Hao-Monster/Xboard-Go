@@ -13,6 +13,7 @@ import {
   type AdminUserGenerateInput,
   type AdminUserGenerateMode,
   type AdminUser,
+  type AdminUserDeletionImpact,
   type AdminUserCreateInput,
   type AdminUserQuery,
   type AdminUserSort,
@@ -23,6 +24,7 @@ import {
   type Plan,
   type ServerGroup
 } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 import { secureRandomUUID } from "../../lib/random";
 import { AssignOrderDialog } from "../orders/OrderManagementPage";
 
@@ -33,6 +35,7 @@ type UsersAPI = Pick<AdminAPI,
 	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans" |
   "createAdminUserBulkMail" | "createAdminUserBulkCSV" | "banAdminUsers" | "listAdminUserBulkJobs" |
   "getAdminUserBulkJob" | "cancelAdminUserBulkJob" | "downloadAdminUserBulkCSV"
+  | "getAdminUserDeletionImpact" | "requestAdminUserDeletion" | "restoreAdminUser"
 >;
 
 type UserRelatedTab = "orders" | "invitations" | "traffic";
@@ -48,6 +51,7 @@ interface AdvancedFilterDraft {
 }
 
 export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID: number }) {
+  const { format: formatMoney } = useCurrency();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -71,6 +75,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 	const [assigning, setAssigning] = useState<AdminUser | null>(null);
 	const [related, setRelated] = useState<{ account: AdminUser; tab: UserRelatedTab } | null>(null);
 	const [trafficResetting, setTrafficResetting] = useState<AdminUser | null>(null);
+  const [deleting, setDeleting] = useState<AdminUser | null>(null);
   const [selectedUserIDs, setSelectedUserIDs] = useState<Set<number>>(() => new Set());
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [mailing, setMailing] = useState(false);
@@ -292,7 +297,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
             <td data-label="ID">#{account.id}</td>
             <td data-label="邮箱"><strong>{account.email}</strong><small className="muted">{roleSummary(account) || "普通用户"}</small>{account.is_distributor && account.distributor_name && <small>{account.distributor_name}</small>}</td>
             <td data-label="在线设备">{account.online_count} / {account.device_limit === 0 ? "∞" : account.device_limit}<small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
-            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.banned ? "已封禁" : "正常"}</span></td>
+            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{userLifecycleLabel(account)}</span></td>
             <td data-label="订阅">{account.plan_name ?? "无订阅"}</td>
             <td data-label="权限组">{account.group_name ?? (account.group_id === null ? "未分组" : groupNames.get(account.group_id) ?? `#${account.group_id}`)}</td>
             <td data-label="已用流量">{formatBytes(account.traffic_used ?? account.traffic_upload + account.traffic_download)}</td>
@@ -316,7 +321,8 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 			onPassword={() => { setResetting(operating); setOperating(null); }}
 			onSubscriptionReset={() => { setSubscriptionResetting(operating); setOperating(null); }}
 			onRelated={(tab) => { setRelated({ account: operating, tab }); setOperating(null); }}
-			onTrafficReset={() => { setTrafficResetting(operating); setOperating(null); }} />}
+			onTrafficReset={() => { setTrafficResetting(operating); setOperating(null); }}
+      onLifecycle={() => { setDeleting(operating); setOperating(null); }} lifecycleDisabled={operating.id === currentUserID} />}
 		{subscriptionResetting !== null && <SubscriptionSecurityReset api={api} account={subscriptionResetting}
 			onClose={() => setSubscriptionResetting(null)} onReset={() => void runQuery(appliedQuery)} />}
 		{assigning !== null && <AssignOrderDialog api={null} plans={plans} initialEmail={assigning.email}
@@ -325,6 +331,8 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 		{related !== null && <UserRelatedDialog api={api} account={related.account} initialTab={related.tab} onClose={() => setRelated(null)} />}
 		{trafficResetting !== null && <UserTrafficResetDialog api={api} account={trafficResetting} onClose={() => setTrafficResetting(null)}
 			onReset={() => void runQuery(appliedQuery)} />}
+    {deleting !== null && <UserDeletionDialog api={api} account={deleting} onClose={() => setDeleting(null)}
+      onSaved={() => { setDeleting(null); void runQuery(appliedQuery); }} />}
     {mailing && <AdminUserBulkMailDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} initialScope={activeBulkScope}
       onClose={() => setMailing(false)} onQueued={(job) => { setMailing(false); setBulkMessage(`邮件任务已创建，共 ${job.total_count} 项。`); setBulkJobsOpen(true); }} />}
     {banning && <AdminUserBulkBanDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} scope={activeBulkScope}
@@ -493,6 +501,7 @@ function SortableHeader({ label, field, query, onSort }: { label: string; field:
 }
 
 function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUser; onClose: () => void }) {
+	const { format: formatMoney } = useCurrency();
 	const [copyState, setCopyState] = useState<"" | "copying" | "copied" | "error">("");
 	const copySubscriptionURL = async () => {
 		setCopyState("copying");
@@ -508,7 +517,7 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
     <ModalHeader title="用户详情" onClose={onClose} />
     <div className="user-detail-grid">
       <DetailField label="ID" value={`#${account.id}`} /><DetailField label="邮箱" value={account.email} />
-      <DetailField label="角色" value={roleSummary(account) || "普通用户"} /><DetailField label="状态" value={account.banned ? "已封禁" : "正常"} />
+      <DetailField label="角色" value={roleSummary(account) || "普通用户"} /><DetailField label="状态" value={userLifecycleLabel(account)} />
       <DetailField label="套餐" value={account.plan_name ?? "无订阅"} /><DetailField label="权限组" value={account.group_name ?? "未分组"} />
       <DetailField label="邀请人" value={account.invite_user_email ?? "无"} /><DetailField label="Telegram" value={account.telegram_id === null ? "未绑定" : String(account.telegram_id)} />
       <DetailField label="备注" value={account.remarks ?? "无"} wide />
@@ -517,6 +526,7 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
       <DetailField label="速度 / 设备限制" value={`${account.speed_limit === 0 ? "不限速" : `${account.speed_limit} Mbps`} / ${account.device_limit === 0 ? "不限设备" : `${account.device_limit} 台`}`} />
       <DetailField label="上次 / 下次重置" value={`${formatTimestamp(account.last_reset_at)} / ${formatTimestamp(account.next_reset_at)}（${account.reset_count} 次）`} />
       <DetailField label="余额" value={formatMoney(account.balance)} /><DetailField label="佣金" value={`${formatMoney(account.commission_balance)} · ${commissionLabel(account)}`} />
+      <DetailField label="冻结佣金" value={formatMoney(account.frozen_commission_balance ?? 0)} /><DetailField label="删除到期" value={formatTimestamp(account.deletion_due_at ?? null)} />
       <DetailField label="专享折扣" value={account.discount === null ? "系统默认" : `${account.discount}%`} /><DetailField label="到期时间" value={account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)} />
       <DetailField label="提醒" value={`${account.remind_expire ? "到期提醒开启" : "到期提醒关闭"} · ${account.remind_traffic ? "流量提醒开启" : "流量提醒关闭"}`} />
       <DetailField label="最后登录 / 在线" value={`${formatTimestamp(account.last_login_at)} / ${formatTimestamp(account.last_online_at)}`} />
@@ -528,7 +538,7 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
   </Modal>;
 }
 
-function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscriptionReset, onRelated, onTrafficReset }: {
+function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscriptionReset, onRelated, onTrafficReset, onLifecycle, lifecycleDisabled }: {
 	account: AdminUser;
 	onClose: () => void;
 	onAssign: () => void;
@@ -536,11 +546,14 @@ function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscr
 	onSubscriptionReset: () => void;
 	onRelated: (tab: UserRelatedTab) => void;
 	onTrafficReset: () => void;
+	onLifecycle: () => void;
+	lifecycleDisabled: boolean;
 }) {
 	return <Modal title="用户操作" onClose={onClose}>
 		<ModalHeader title="用户操作" onClose={onClose} />
 		<p className="muted">当前用户：<strong>{account.email}</strong></p>
 		<div className="user-operation-grid">
+			{(account.lifecycle_status === undefined || account.lifecycle_status === "active") && <>
 			<button className="button secondary" type="button" onClick={onAssign}>分配订单</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("orders")}>TA 的订单</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("invitations")}>TA 的邀请</button>
@@ -548,9 +561,66 @@ function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscr
 			<button className="button secondary" type="button" onClick={onTrafficReset}>重置流量</button>
 			<button className="button secondary" type="button" onClick={onSubscriptionReset}>重置 UUID 与订阅地址</button>
 			<button className="button secondary" type="button" onClick={onPassword}>重置密码</button>
+			</>}
+			{account.lifecycle_status !== "anonymized" && <button className="button danger" type="button" disabled={lifecycleDisabled} onClick={onLifecycle}>{account.lifecycle_status === "pending_deletion" ? "恢复用户" : "申请删除用户"}</button>}
 		</div>
+		{lifecycleDisabled && <p className="muted small">当前管理员不能删除或恢复自己。</p>}
 		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button></div>
 	</Modal>;
+}
+
+function UserDeletionDialog({ api, account, onClose, onSaved }: { api: UsersAPI; account: AdminUser; onClose: () => void; onSaved: () => void }) {
+  const restoring = account.lifecycle_status === "pending_deletion";
+  const [impact, setImpact] = useState<AdminUserDeletionImpact | null>(null);
+  const [loading, setLoading] = useState(!restoring);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (restoring) return undefined;
+    let active = true;
+    void api.getAdminUserDeletionImpact(account.id).then((result) => {
+      if (active) setImpact(result);
+    }).catch((cause: unknown) => {
+      if (active) setError(errorMessage(cause));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [account.id, api, restoring]);
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      if (restoring) await api.restoreAdminUser(account.id, account.revision);
+      else if (impact !== null) await api.requestAdminUserDeletion(account.id, impact.revision);
+      else return;
+      onSaved();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <Modal title={restoring ? "恢复用户" : "删除用户影响确认"} role="alertdialog" onClose={onClose}>
+    <ModalHeader title={restoring ? "恢复用户" : "删除用户影响确认"} onClose={onClose} />
+    <p>目标用户：<strong>{account.email}</strong></p>
+    {restoring ? <div className="alert warning">恢复只重新启用账号状态；删除申请时已轮换的密码、会话、访问令牌、UUID 和订阅令牌不会恢复，必须重新设置凭据。</div> : <>
+      <div className="alert warning">确认后立即撤销访问并进入 30 天恢复期；到期由调度器不可逆匿名化。订单、财务、分销、工单和审计事实会保留。</div>
+      {loading && <div className="alert" role="status">正在计算删除影响…</div>}
+      {impact !== null && <div className="user-detail-grid">
+        <DetailField label="订单 / 支付尝试" value={`${impact.orders} / ${impact.payment_checkouts}`} /><DetailField label="提现" value={String(impact.commission_withdrawals)} />
+        <DetailField label="佣金记录" value={String(impact.commission_logs)} /><DetailField label="分销订阅" value={String(impact.distributor_subscriptions)} />
+        <DetailField label="邀请码 / 被邀请用户" value={`${impact.invitation_codes} / ${impact.invited_users}`} /><DetailField label="工单 / 消息" value={`${impact.tickets} / ${impact.ticket_messages}`} />
+        <DetailField label="知识库附件" value={String(impact.knowledge_attachments)} /><DetailField label="审计记录" value={String(impact.audit_logs)} />
+      </div>}
+      {impact !== null && !impact.allowed && <div className="alert error" role="alert">当前不可删除：{impact.blockers.map(deletionBlockerLabel).join("、")}</div>}
+    </>}
+    {error !== "" && <div className="alert error" role="alert">{error}</div>}
+    <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button danger" type="button" disabled={busy || (!restoring && (impact === null || !impact.allowed))} onClick={() => void submit()}>{busy ? "正在处理…" : restoring ? "确认恢复" : "确认申请删除"}</button></div>
+  </Modal>;
 }
 
 function SubscriptionSecurityReset({ api, account, onClose, onReset }: {
@@ -602,6 +672,7 @@ type UserRelatedResult =
 	| { tab: "traffic"; page: AdminUserTrafficStatPage };
 
 function UserRelatedDialog({ api, account, initialTab, onClose }: { api: UsersAPI; account: AdminUser; initialTab: UserRelatedTab; onClose: () => void }) {
+	const { format: formatMoney } = useCurrency();
 	const [tab, setTab] = useState<UserRelatedTab>(initialTab);
 	const [pageNumber, setPageNumber] = useState(1);
 	const [result, setResult] = useState<UserRelatedResult | null>(null);
@@ -790,6 +861,7 @@ function UserGenerator({ api, plans, onClose, onGenerated }: {
 function UserEditor({ api, groups, plans, account, currentUserID, onClose, onSaved }: {
   api: UsersAPI; groups: ServerGroup[]; plans: Plan[]; account?: AdminUser; currentUserID?: number; onClose: () => void; onSaved: (user: AdminUser) => void;
 }) {
+  const { code: currency } = useCurrency();
   const editing = account !== undefined;
   const [current, setCurrent] = useState(account);
   const [email, setEmail] = useState(account?.email ?? "");
@@ -921,7 +993,7 @@ function UserEditor({ api, groups, plans, account, currentUserID, onClose, onSav
 				<label>已用下行流量（GiB）<input type="number" min="0" step="any" value={trafficDownload} required onChange={(event) => setTrafficDownload(event.target.value)} /></label>
 			</div></fieldset>}
 			{editing && <fieldset className="settings-fieldset"><legend>财务与折扣</legend>
-				<div className="time-grid"><label>余额（元）<input type="text" inputMode="decimal" value={balance} required onChange={(event) => setBalance(event.target.value)} /></label><label>佣金余额（元）<input type="text" inputMode="decimal" value={commissionBalance} required onChange={(event) => setCommissionBalance(event.target.value)} /></label></div>
+				<div className="time-grid"><label>{`余额（${currency}）`}<input type="text" inputMode="decimal" value={balance} required onChange={(event) => setBalance(event.target.value)} /></label><label>{`佣金余额（${currency}）`}<input type="text" inputMode="decimal" value={commissionBalance} required onChange={(event) => setCommissionBalance(event.target.value)} /></label></div>
 				<div className="time-grid"><label>佣金类型<select value={commissionType} onChange={(event) => setCommissionType(event.target.value)}><option value="0">系统默认</option><option value="1">循环佣金</option><option value="2">首次佣金</option></select></label><label>佣金比例（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={commissionRate} onChange={(event) => setCommissionRate(event.target.value)} /></label></div>
 				<label>专享折扣（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={discount} onChange={(event) => setDiscount(event.target.value)} /></label>
 			</fieldset>}
@@ -1101,8 +1173,22 @@ function formatTimestamp(value: string | null): string {
   return value === null ? "从未" : userTimestampFormatter.format(new Date(value));
 }
 
-function formatMoney(cents: number): string {
-  return `¥${(cents / 100).toFixed(2)}`;
+function userLifecycleLabel(account: AdminUser): string {
+  if (account.lifecycle_status === "pending_deletion") return `待删除（${formatTimestamp(account.deletion_due_at ?? null)}到期）`;
+  if (account.lifecycle_status === "anonymized") return "已匿名化";
+  return account.banned ? "已封禁" : "正常";
+}
+
+function deletionBlockerLabel(blocker: string): string {
+  return {
+    internal_account: "系统内部账号",
+    lifecycle_not_active: "账号不处于正常生命周期",
+    unsettled_financial_balance: "仍有未结清的账户或佣金余额",
+    active_order: "仍有待处理订单或支付",
+    unsettled_commission: "仍有待确认或待结算的邀请佣金",
+    active_distributor_responsibility: "仍有未关闭的分销责任",
+    last_administrator: "系统最后一名有效管理员"
+  }[blocker] ?? blocker;
 }
 
 function commissionLabel(account: AdminUser): string {

@@ -13,7 +13,7 @@ func TestClientAppRuntimeSettingsProjectsOnlyPublicContractFields(t *testing.T) 
 		UPDATE app_settings SET
 			app_name='Runtime Board',app_description='Runtime description',app_url='https://runtime.example.test',
 			logo='https://runtime.example.test/logo.png',tos_url='https://runtime.example.test/terms',
-			currency='USD',currency_symbol='$',telegram_bot_enable=1,ticket_must_wait_reply=1,
+			currency='USD',currency_symbol='$',commission_withdraw_limit=25050,commission_withdraw_method='["USDT","Bank"]',telegram_bot_enable=1,ticket_must_wait_reply=1,
 			email_verify=1,invite_force=1,email_whitelist_enable=0,email_whitelist_suffix='example.test',
 			captcha_enable=1,captcha_type='turnstile',recaptcha_site_key='public-recaptcha',
 			recaptcha_secret_cipher=zeroblob(33),recaptcha_v3_site_key='public-v3',recaptcha_v3_score_threshold=0.7,
@@ -27,6 +27,7 @@ func TestClientAppRuntimeSettingsProjectsOnlyPublicContractFields(t *testing.T) 
 		t.Fatal(err)
 	}
 	if settings.AppName != "Runtime Board" || settings.Currency != "USD" || settings.CurrencySymbol != "$" ||
+		settings.CommissionWithdrawLimit != 25050 || strings.Join(settings.CommissionWithdrawMethods, ",") != "USDT,Bank" ||
 		!settings.TelegramBotEnabled || !settings.TicketMustWaitReply || !settings.EmailVerificationEnabled ||
 		!settings.InvitationForceEnabled || !settings.EmailWhitelistSuffixPresent || !settings.CaptchaEnabled ||
 		settings.CaptchaType != "turnstile" || settings.RecaptchaSiteKey != "public-recaptcha" ||

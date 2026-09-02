@@ -210,7 +210,7 @@ type legacyV2PaymentConfig struct {
 	Currency          string   `json:"currency"`
 	CurrencySymbol    string   `json:"currency_symbol"`
 	WithdrawMethods   []string `json:"withdraw_methods"`
-	MinWithdrawAmount int      `json:"min_withdraw_amount"`
+	MinWithdrawAmount float64  `json:"min_withdraw_amount"`
 	WithdrawFeeRate   float64  `json:"withdraw_fee_rate"`
 }
 
@@ -263,7 +263,11 @@ func newLegacyV2AppConfig(settings store.ClientAppRuntimeSettings, nowUnix int64
 			RecaptchaV3SiteKey: settings.RecaptchaV3SiteKey, RecaptchaV3ScoreThreshold: settings.RecaptchaV3ScoreThreshold,
 			TurnstileSiteKey: settings.TurnstileSiteKey,
 		},
-		PaymentConfig: legacyV2PaymentConfig{Currency: settings.Currency, CurrencySymbol: settings.CurrencySymbol, WithdrawMethods: []string{"alipay", "wechat", "bank"}, MinWithdrawAmount: 100, WithdrawFeeRate: 0.01},
+		PaymentConfig: legacyV2PaymentConfig{
+			Currency: settings.Currency, CurrencySymbol: settings.CurrencySymbol,
+			WithdrawMethods:   append([]string(nil), settings.CommissionWithdrawMethods...),
+			MinWithdrawAmount: float64(settings.CommissionWithdrawLimit) / 100, WithdrawFeeRate: 0,
+		},
 		NotificationConfig: legacyV2NotificationConfig{
 			EnablePushNotifications: true, EnableEmailNotifications: true, EnableSMSNotifications: false,
 			NotificationSchedule: legacyV2NotificationSchedule{TrafficWarning: true, SubscriptionExpiry: true, ServerMaintenance: true, PromotionalOffers: false},

@@ -333,6 +333,8 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/user/telegram/getBotInfo", api.requireLegacyBearer(http.HandlerFunc(api.legacyTelegramBotInfo)))
 	root.Handle("GET /api/v1/invitations", api.requireSession(http.HandlerFunc(api.getInvitations)))
 	root.Handle("GET /api/v1/invitations/commissions", api.requireSession(http.HandlerFunc(api.listCommissionLogs)))
+	root.Handle("GET /api/v1/commission-withdrawals/policy", api.requireSession(http.HandlerFunc(api.getCommissionWithdrawalPolicy)))
+	root.Handle("GET /api/v1/commission-withdrawals", api.requireSession(http.HandlerFunc(api.listCommissionWithdrawals)))
 	root.Handle("GET /api/v1/user/invite/fetch", api.requireSession(http.HandlerFunc(api.legacyGetInvitations)))
 	root.Handle("GET /api/v1/user/invite/details", api.requireSession(http.HandlerFunc(api.legacyListCommissionLogs)))
 	root.Handle("GET /api/v1/user/invite/save", api.requireSession(http.HandlerFunc(api.legacyCreateInvitation)))
@@ -377,6 +379,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("GET /api/v1/user/resetSecurity", api.requireLegacyBearer(api.requireNonDistributor(http.HandlerFunc(api.legacyResetUserSubscriptionSecurity))))
 	root.Handle("POST /api/v1/invitations", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createInvitation))))
 	root.Handle("POST /api/v1/invitations/transfer", api.requireSession(api.requireCSRF(http.HandlerFunc(api.transferCommission))))
+	root.Handle("POST /api/v1/commission-withdrawals", api.requireSession(api.requireCSRF(http.HandlerFunc(api.createCommissionWithdrawal))))
 	root.Handle("POST /api/v1/user/transfer", api.requireSession(api.requireCSRF(http.HandlerFunc(api.legacyTransferCommission))))
 	root.Handle("POST /api/v1/invitations/view", api.requireTrustedOrigin(http.HandlerFunc(api.recordInvitationView)))
 	root.Handle("POST /api/v1/passport/comm/pv", api.requireTrustedOrigin(http.HandlerFunc(api.legacyRecordInvitationView)))
@@ -659,6 +662,11 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/telegram-settings/webhook", api.provisionTelegramWebhook)
 	admin.HandleFunc("GET /api/v1/admin/commission-settings", api.getCommissionSettings)
 	admin.HandleFunc("PUT /api/v1/admin/commission-settings", api.updateCommissionSettings)
+	admin.HandleFunc("GET /api/v1/admin/commission-withdrawals", api.listAdminCommissionWithdrawals)
+	admin.HandleFunc("POST /api/v1/admin/commission-withdrawals/{withdrawalID}/account/reveal", api.revealAdminCommissionWithdrawalAccount)
+	admin.HandleFunc("POST /api/v1/admin/commission-withdrawals/{withdrawalID}/approve", api.approveCommissionWithdrawal)
+	admin.HandleFunc("POST /api/v1/admin/commission-withdrawals/{withdrawalID}/reject", api.rejectCommissionWithdrawal)
+	admin.HandleFunc("POST /api/v1/admin/commission-withdrawals/{withdrawalID}/pay", api.payCommissionWithdrawal)
 	admin.HandleFunc("GET /api/v1/admin/node-agent-settings", api.getNodeAgentSettings)
 	admin.HandleFunc("PUT /api/v1/admin/node-agent-settings", api.updateNodeAgentSettings)
 	admin.HandleFunc("GET /api/v1/admin/subscription-settings", api.getSubscriptionSettings)
@@ -680,6 +688,9 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/user-bulk-jobs/{jobID}/cancel", api.cancelAdminUserBulkJob)
 	admin.HandleFunc("GET /api/v1/admin/user-bulk-jobs/{jobID}/download", api.downloadAdminUserBulkCSV)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}", api.getAdminUser)
+	admin.HandleFunc("GET /api/v1/admin/users/{userID}/deletion-impact", api.getAdminUserDeletionImpact)
+	admin.HandleFunc("POST /api/v1/admin/users/{userID}/deletion", api.requestAdminUserDeletion)
+	admin.HandleFunc("POST /api/v1/admin/users/{userID}/deletion/restore", api.restoreAdminUser)
 	admin.HandleFunc("PATCH /api/v1/admin/users/{userID}", api.updateAdminUser)
 	admin.HandleFunc("PUT /api/v1/admin/users/{userID}/password", api.resetAdminUserPassword)
 	admin.HandleFunc("GET /api/v1/admin/users/{userID}/subscription-url", api.getAdminUserSubscriptionURL)
@@ -1232,6 +1243,8 @@ func handleStoreError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusConflict, "runtime_not_configured", "节点运行时配置尚未建立", nil)
 	case errors.Is(err, store.ErrRevisionConflict):
 		writeAPIError(w, http.StatusConflict, "revision_conflict", "资源已被其他管理员修改，请刷新后重试", nil)
+	case errors.Is(err, store.ErrCurrencyLocked):
+		writeAPIError(w, http.StatusConflict, "currency_locked", "已有财务事实，结算币种不可修改", nil)
 	case errors.Is(err, store.ErrConflict):
 		writeAPIError(w, http.StatusConflict, "conflict", "资源状态冲突", nil)
 	case errors.Is(err, store.ErrInvalidInput):

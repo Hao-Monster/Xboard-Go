@@ -483,10 +483,10 @@ describe("UsersPage", () => {
     await user.type(within(dialog).getByLabelText("已用上行流量（GiB）"), "1.5");
     await user.clear(within(dialog).getByLabelText("已用下行流量（GiB）"));
     await user.type(within(dialog).getByLabelText("已用下行流量（GiB）"), "2");
-    await user.clear(within(dialog).getByLabelText("余额（元）"));
-    await user.type(within(dialog).getByLabelText("余额（元）"), "45.67");
-    await user.clear(within(dialog).getByLabelText("佣金余额（元）"));
-    await user.type(within(dialog).getByLabelText("佣金余额（元）"), "8.09");
+    await user.clear(within(dialog).getByLabelText("余额（CNY）"));
+    await user.type(within(dialog).getByLabelText("余额（CNY）"), "45.67");
+    await user.clear(within(dialog).getByLabelText("佣金余额（CNY）"));
+    await user.type(within(dialog).getByLabelText("佣金余额（CNY）"), "8.09");
     await user.selectOptions(within(dialog).getByLabelText("佣金类型"), "1");
     await user.clear(within(dialog).getByLabelText("佣金比例（留空使用系统默认）"));
     await user.clear(within(dialog).getByLabelText("专享折扣（留空使用系统默认）"));
@@ -567,13 +567,35 @@ describe("UsersPage", () => {
     expect(within(dialog).getByLabelText("封禁用户")).toBeDisabled();
     expect(within(dialog).getByText(/不能在本页封禁或移除管理员角色/)).toBeVisible();
   });
+
+  it("previews retained facts before requesting user deletion", async () => {
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [{ ...account, lifecycle_status: "active" }], total: 1, page: 1, page_size: 20 });
+    api.getAdminUserDeletionImpact.mockResolvedValue({
+      user_id: account.id, revision: account.revision, lifecycle_status: "active", allowed: true, blockers: [],
+      orders: 3, payment_checkouts: 10, commission_withdrawals: 1, commission_logs: 2, distributor_subscriptions: 0,
+      invitation_codes: 4, invited_users: 5, tickets: 6, ticket_messages: 7, knowledge_attachments: 8, audit_logs: 9
+    });
+    api.requestAdminUserDeletion.mockResolvedValue({ ...account, lifecycle_status: "pending_deletion", banned: true, revision: 2 });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+
+    await user.click(await screen.findByRole("button", { name: `用户操作：${account.email}` }));
+    await user.click(screen.getByRole("button", { name: "申请删除用户" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "删除用户影响确认" });
+    expect(await within(dialog).findByText("3 / 10", { exact: true })).toBeVisible();
+    expect(within(dialog).getByText(/30 天恢复期/)).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "确认申请删除" }));
+    await waitFor(() => expect(api.requestAdminUserDeletion).toHaveBeenCalledWith(account.id, account.revision));
+  });
 });
 
 function baseAPI() {
   return {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
-		getAdminUserSubscriptionURL: vi.fn(), resetAdminUserSubscriptionSecurity: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
-		listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
+    getAdminUserSubscriptionURL: vi.fn(), resetAdminUserSubscriptionSecurity: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
+    listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
+    getAdminUserDeletionImpact: vi.fn(), requestAdminUserDeletion: vi.fn(), restoreAdminUser: vi.fn(),
     createAdminUserBulkMail: vi.fn(), createAdminUserBulkCSV: vi.fn(), banAdminUsers: vi.fn(),
     listAdminUserBulkJobs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), getAdminUserBulkJob: vi.fn(),
     cancelAdminUserBulkJob: vi.fn(), downloadAdminUserBulkCSV: vi.fn(),

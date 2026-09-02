@@ -182,6 +182,24 @@ func TestLegacyClientAppConfigV2ShapeSettingsAndPHPHash(t *testing.T) {
 	if updated.Code != http.StatusOK {
 		t.Fatalf("update site settings status=%d body=%s", updated.Code, updated.Body)
 	}
+	adminRecord, err := database.FindUserByEmail(t.Context(), "admin@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commissionSettings, err := database.GetCommissionSettings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withdrawLimit := store.CurrencyAmount(25050)
+	withdrawMethods := []string{"USDT", "Bank"}
+	if _, err := database.UpdateCommissionSettings(t.Context(), adminRecord.ID, commissionSettings.Revision, store.SaveCommissionSettingsInput{
+		InviteCommission: commissionSettings.InviteCommission, FirstTimeEnabled: commissionSettings.FirstTimeEnabled,
+		AutoCheckEnabled: commissionSettings.AutoCheckEnabled, WithdrawLimit: &withdrawLimit, WithdrawMethods: &withdrawMethods,
+		WithdrawClosed: commissionSettings.WithdrawClosed, DistributionEnabled: commissionSettings.DistributionEnabled,
+		DistributionL1: commissionSettings.DistributionL1, DistributionL2: commissionSettings.DistributionL2, DistributionL3: commissionSettings.DistributionL3,
+	}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	response := requestSubscription(api, "/api/v2/client/app/getConfig?token="+account.SubscriptionToken)
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/json" || response.Header().Get("Cache-Control") != "no-store, private" {
 		t.Fatalf("status=%d headers=%v body=%s", response.Code, response.Header(), response.Body)
@@ -210,6 +228,7 @@ func TestLegacyClientAppConfigV2ShapeSettingsAndPHPHash(t *testing.T) {
 	config := envelope.Data
 	if config.AppInfo.AppName != "Oracle Board" || config.AppInfo.AppDescription != "Oracle 描述" || config.AppInfo.Version != "1.0.0" ||
 		config.PaymentConfig.Currency != "USD" || config.PaymentConfig.CurrencySymbol != "$" ||
+		config.PaymentConfig.MinWithdrawAmount != 250.5 || config.PaymentConfig.WithdrawFeeRate != 0 || strings.Join(config.PaymentConfig.WithdrawMethods, ",") != "USDT,Bank" ||
 		config.SecurityConfig.EmailWhitelistSuffix != 1 || config.LastUpdated != fixedNow().Unix() || len(config.ConfigHash) != 32 {
 		t.Fatalf("V2 config=%#v", config)
 	}
@@ -243,12 +262,13 @@ func TestMarshalPHPJSONMatchesFixedPHPOracle(t *testing.T) {
 	}
 }
 
-func TestLegacyV2AppConfigHashMatchesFullDynamicPHPOracle(t *testing.T) {
+func TestLegacyV2AppConfigHashIsDeterministicWithM1WithdrawalPolicy(t *testing.T) {
 	oracleRecaptchaSiteKey := "6LeIxAcTAAAAA" + "JcZVRqyHh71UMIEGNQ_MXjiZKhI"
 	config := newLegacyV2AppConfig(store.ClientAppRuntimeSettings{
 		AppName: "XBoard", AppDescription: "XBoard is best!", AppURL: "https://app.example.com",
 		Logo: "https://example.com/logo.png", TOSURL: "https://example.com/tos",
-		Currency: "CNY", CurrencySymbol: "¥", EmailWhitelistSuffixPresent: true,
+		Currency: "CNY", CurrencySymbol: "¥", CommissionWithdrawLimit: 10000,
+		CommissionWithdrawMethods: []string{"支付宝", "USDT", "Paypal"}, EmailWhitelistSuffixPresent: true,
 		CaptchaType: "recaptcha", RecaptchaSiteKey: oracleRecaptchaSiteKey,
 		RecaptchaV3SiteKey:        oracleRecaptchaSiteKey,
 		RecaptchaV3ScoreThreshold: 0.5, TurnstileSiteKey: "0x4AAAAAAAABkMYinukE8nzUg",
@@ -258,8 +278,8 @@ func TestLegacyV2AppConfigHashMatchesFullDynamicPHPOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := md5.Sum(encoded)
-	if got := hex.EncodeToString(digest[:]); got != "61862aafb458a061738210ddda31a554" {
-		t.Fatalf("full PHP oracle hash=%s encoded=%s", got, encoded)
+	if got := hex.EncodeToString(digest[:]); got != "6d0342d76eb8a9432e6c4d455b8041d6" {
+		t.Fatalf("M1 client config hash=%s encoded=%s", got, encoded)
 	}
 }
 

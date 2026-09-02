@@ -23,6 +23,7 @@ type Worker struct {
 	lastTrafficResetSweep       time.Time
 	lastOrderSweep              time.Time
 	lastCommissionSweep         time.Time
+	lastUserAnonymizationSweep  time.Time
 	lastSubscriptionReminderDay string
 	tracker                     *operations.Tracker
 }
@@ -73,6 +74,7 @@ func (w *Worker) applyDue(ctx context.Context) {
 	w.resetDueTraffic(ctx, now)
 	w.processOrders(ctx, now)
 	w.processCommissions(ctx, now)
+	w.processUserAnonymizations(ctx, now)
 	w.scheduleSubscriptionReminders(ctx, now)
 	due, err := w.store.ListDueSchedules(ctx, now, 100)
 	if err != nil {
@@ -90,6 +92,23 @@ func (w *Worker) applyDue(ctx context.Context) {
 		if applied {
 			w.logger.Info("activation schedule applied", "node_id", item.NodeID, "revision", item.Revision)
 		}
+	}
+}
+
+func (w *Worker) processUserAnonymizations(ctx context.Context, now time.Time) {
+	if !w.lastUserAnonymizationSweep.IsZero() && now.Sub(w.lastUserAnonymizationSweep) < time.Minute {
+		return
+	}
+	w.lastUserAnonymizationSweep = now
+	result, err := w.store.ProcessDueUserAnonymizations(ctx, now, 100)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("process due user anonymizations", "error", err)
+		}
+		return
+	}
+	if result.Processed > 0 {
+		w.logger.Info("due users anonymized", "processed", result.Processed, "remaining", result.Remaining)
 	}
 }
 

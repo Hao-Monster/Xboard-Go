@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/url"
@@ -123,6 +124,9 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	}
 	normalized, err := normalizeSiteSettings(input)
 	if err != nil {
+		return SiteSettings{}, err
+	}
+	if err := ensureCurrencyChangeAllowed(ctx, tx, currentCurrency, *normalized.Currency); err != nil {
 		return SiteSettings{}, err
 	}
 	if *normalized.SecurePath != currentSecurePath && !validConfigurableSecurePath(*normalized.SecurePath) {
@@ -283,6 +287,7 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 	`).Scan(&revision, &appURL, &currency, &symbol, &safeModeEnabled, &securePath, &forceHTTPS, &subscribeURL); err != nil {
 		return SiteSettings{}, fmt.Errorf("read legacy site settings: %w", err)
 	}
+	currentCurrency := currency
 	if input.Currency != nil {
 		currency = strings.ToUpper(strings.TrimSpace(*input.Currency))
 	}
@@ -312,6 +317,9 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 	if !validCurrencyCode(currency) || !utf8.ValidString(symbol) || len(symbol) > maxCurrencySymbolBytes || strings.IndexFunc(symbol, unicode.IsControl) >= 0 ||
 		!validPersistedSecurePath(securePath) || (safeModeEnabled && (appURL == "" || !validHTTPURL(appURL))) {
 		return SiteSettings{}, fmt.Errorf("%w: invalid legacy site settings", ErrInvalidInput)
+	}
+	if err := ensureCurrencyChangeAllowed(ctx, tx, currentCurrency, currency); err != nil {
+		return SiteSettings{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
@@ -346,6 +354,28 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 		return SiteSettings{}, fmt.Errorf("commit legacy site settings update: %w", err)
 	}
 	return settings, nil
+}
+
+func ensureCurrencyChangeAllowed(ctx context.Context, tx *sql.Tx, current, next string) error {
+	if current == next {
+		return nil
+	}
+	var locked bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM orders)
+			OR EXISTS(SELECT 1 FROM payment_checkout_attempts)
+			OR EXISTS(SELECT 1 FROM commission_logs)
+			OR EXISTS(SELECT 1 FROM commission_withdrawals)
+			OR EXISTS(SELECT 1 FROM users WHERE balance<>0 OR commission_balance<>0 OR frozen_commission_balance<>0)
+			OR EXISTS(SELECT 1 FROM gift_card_templates)
+			OR EXISTS(SELECT 1 FROM gift_card_codes)
+	`).Scan(&locked); err != nil {
+		return fmt.Errorf("inspect deployment currency lock: %w", err)
+	}
+	if locked {
+		return ErrCurrencyLocked
+	}
+	return nil
 }
 
 func normalizeSiteSettings(input SaveSiteSettingsInput) (SaveSiteSettingsInput, error) {

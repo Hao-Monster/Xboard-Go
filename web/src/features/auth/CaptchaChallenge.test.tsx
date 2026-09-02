@@ -94,6 +94,7 @@ function Harness({ config }: { config: GuestConfig }) {
 function captchaConfig(overrides: Partial<GuestConfig>): GuestConfig {
   return {
     app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
+    currency: "CNY", currency_symbol: "¥",
     is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0,
     is_captcha: 1, captcha_type: "recaptcha", recaptcha_site_key: "v2-site",
     recaptcha_v3_site_key: "v3-site", recaptcha_v3_score_threshold: 0.5,

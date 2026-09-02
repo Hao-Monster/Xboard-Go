@@ -88,3 +88,23 @@ func TestCipherSeparatesSecretPurposesWithoutBreakingSMTPCompatibility(t *testin
 		t.Fatal("EncryptFor() accepted an unknown purpose")
 	}
 }
+
+func TestCipherFingerprintsAreStableKeyedAndPurposeBound(t *testing.T) {
+	box, err := NewCipher(bytes.Repeat([]byte{0x31}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := box.FingerprintFor(CommissionWithdrawalAccountPurpose, []byte("wallet-1234"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, _ := box.FingerprintFor(CommissionWithdrawalAccountPurpose, []byte("wallet-1234"))
+	differentValue, _ := box.FingerprintFor(CommissionWithdrawalAccountPurpose, []byte("other-1234"))
+	differentPurpose, _ := box.FingerprintFor(SMTPPasswordPurpose, []byte("wallet-1234"))
+	other, _ := NewCipher(bytes.Repeat([]byte{0x32}, 32))
+	differentKey, _ := other.FingerprintFor(CommissionWithdrawalAccountPurpose, []byte("wallet-1234"))
+	if len(first) != 32 || !bytes.Equal(first, repeated) || bytes.Equal(first, differentValue) ||
+		bytes.Equal(first, differentPurpose) || bytes.Equal(first, differentKey) || bytes.Contains(first, []byte("wallet-1234")) {
+		t.Fatal("secret fingerprint is not stable, keyed, purpose-bound, and opaque")
+	}
+}

@@ -208,6 +208,8 @@ type guestConfigContract struct {
 	AppURL               *string         `json:"app_url"`
 	TOSURL               *string         `json:"tos_url"`
 	Logo                 *string         `json:"logo"`
+	Currency             string          `json:"currency"`
+	CurrencySymbol       string          `json:"currency_symbol"`
 	IsEmailVerify        int             `json:"is_email_verify"`
 	IsInviteForce        int             `json:"is_invite_force"`
 	EnableCouponSystem   int             `json:"enable_coupon_system"`
@@ -263,7 +265,7 @@ func assertGuestConfigKeys(t *testing.T, response *httptest.ResponseRecorder) {
 	for _, key := range []string{
 		"tos_url", "is_email_verify", "is_invite_force", "email_whitelist_suffix", "is_captcha", "captcha_type",
 		"recaptcha_site_key", "recaptcha_v3_site_key", "recaptcha_v3_score_threshold", "turnstile_site_key",
-		"app_name", "app_description", "app_url", "logo", "is_recaptcha", "enable_coupon_system",
+		"app_name", "app_description", "app_url", "logo", "currency", "currency_symbol", "is_recaptcha", "enable_coupon_system",
 		"is_telegram", "telegram_discuss_link", "theme",
 	} {
 		if _, ok := envelope.Data[key]; !ok {

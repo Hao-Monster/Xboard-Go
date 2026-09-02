@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type { AdminOrderDetail, AdminOrderPage, AdminOrderQuery, AssignOrderInput, Order, OrderStatus, OrderType, Plan, PlanPeriod } from "../../lib/api";
-import { formatCents, formatDate, orderStatusLabel, orderTypeLabel, periodLabel } from "./UserOrdersPage";
+import { useCurrency } from "../../lib/currency";
+import { formatDate, orderStatusLabel, orderTypeLabel, periodLabel } from "./UserOrdersPage";
 
 export interface OrderManagementAPI {
   listAdminOrders: (query?: AdminOrderQuery) => Promise<AdminOrderPage>;
@@ -20,6 +21,7 @@ const typeOptions: Array<[OrderType, string]> = [[1, "新购"], [2, "续费"], [
 const commissionOptions: Array<[0 | 1 | 2 | 3, string]> = [[0, "待确认"], [1, "发放中"], [2, "有效"], [3, "无效"]];
 
 export function OrderManagementPage({ api }: { api: OrderManagementAPI }) {
+  const { format: formatMoney } = useCurrency();
   const [page, setPage] = useState<AdminOrderPage>({ items: [], total: 0, page: 1, page_size: 20 });
   const [plans, setPlans] = useState<Plan[]>([]);
   const [search, setSearch] = useState("");
@@ -114,7 +116,7 @@ export function OrderManagementPage({ api }: { api: OrderManagementAPI }) {
 		</form>
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void refreshCurrent()}>重试</button></div>}
     {detailLoading && <div className="alert" role="status">正在读取订单详情…</div>}
-    {loading && page.items.length === 0 ? <div className="empty-card">正在加载订单…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap"><table className="resource-table order-admin-table"><thead><tr><th>订单号</th><th>用户</th><th>套餐</th><th>类型 / 周期</th><SortableHeader label="订单金额" field="total_amount" applied={applied} onSort={sort} /><SortableHeader label="订单状态" field="status" applied={applied} onSort={sort} /><SortableHeader label="佣金金额" field="commission_balance" applied={applied} onSort={sort} /><SortableHeader label="佣金状态" field="commission_status" applied={applied} onSort={sort} /><SortableHeader label="创建时间" field="created_at" applied={applied} onSort={sort} /><th>操作</th></tr></thead><tbody>{page.items.map((order) => <tr key={order.id}><td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="用户">{order.user_email}</td><td data-label="套餐">{order.plan_name}</td><td data-label="类型 / 周期">{orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="订单金额">¥{formatCents(order.total_amount)}</td><td data-label="订单状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="佣金金额">¥{formatCents(order.commission_balance)}</td><td data-label="佣金状态"><span className={`commission-status commission-${order.commission_status ?? "none"}`}>{commissionStatusLabel(order.commission_status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td></tr>)}</tbody></table>
+    {loading && page.items.length === 0 ? <div className="empty-card">正在加载订单…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap"><table className="resource-table order-admin-table"><thead><tr><th>订单号</th><th>用户</th><th>套餐</th><th>类型 / 周期</th><SortableHeader label="订单金额" field="total_amount" applied={applied} onSort={sort} /><SortableHeader label="订单状态" field="status" applied={applied} onSort={sort} /><SortableHeader label="佣金金额" field="commission_balance" applied={applied} onSort={sort} /><SortableHeader label="佣金状态" field="commission_status" applied={applied} onSort={sort} /><SortableHeader label="创建时间" field="created_at" applied={applied} onSort={sort} /><th>操作</th></tr></thead><tbody>{page.items.map((order) => <tr key={order.id}><td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="用户">{order.user_email}</td><td data-label="套餐">{order.plan_name}</td><td data-label="类型 / 周期">{orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="订单金额">{formatMoney(order.total_amount)}</td><td data-label="订单状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="佣金金额">{formatMoney(order.commission_balance)}</td><td data-label="佣金状态"><span className={`commission-status commission-${order.commission_status ?? "none"}`}>{commissionStatusLabel(order.commission_status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td></tr>)}</tbody></table>
       {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>上一页</button><span>第 {page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>下一页</button></div>}
     </section>}
     {assigning && <AssignOrderDialog api={api} plans={plans} onClose={() => setAssigning(false)} onCreated={() => { setAssigning(false); void load({ page: 1, page_size: 20 }); }} />}
@@ -166,6 +168,7 @@ export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onC
 	onClose: () => void;
 	onCreated: () => void;
 }) {
+  const { code: currency } = useCurrency();
   const [email, setEmail] = useState(initialEmail);
   const [planID, setPlanID] = useState(plans[0]?.id ?? 0);
   const [period, setPeriod] = useState<PlanPeriod>("monthly");
@@ -181,7 +184,7 @@ export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onC
     setSaving(true);
     setError("");
     try {
-		const input = { plan_id: planID, period: effectivePeriod, total_amount: parseCNY(amount) };
+		const input = { plan_id: planID, period: effectivePeriod, total_amount: parseMoney(amount) };
 		if (onAssign === undefined) {
 			if (api === null) throw new Error("订单分配接口不可用");
 			await api.assignOrder({ email: email.trim(), ...input });
@@ -200,10 +203,11 @@ export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onC
     if (first !== undefined) setPeriod(first[0]);
   };
   const title = onAssign === undefined ? "添加订单" : "分配订单";
-  return <Modal title={title} onClose={onClose}><div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>用户邮箱<input type="email" required maxLength={254} readOnly={onAssign !== undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>订阅套餐<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>付款周期<select value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>支付金额（CNY）<input inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><p className="small muted">管理员分配订单沿用旧 Xboard 规则：金额由管理员明确指定，不自动使用套餐标价或用户余额。</p>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : "创建订单"}</button></div></form></Modal>;
+  return <Modal title={title} onClose={onClose}><div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>用户邮箱<input type="email" required maxLength={254} readOnly={onAssign !== undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>订阅套餐<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>付款周期<select value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>{`支付金额（${currency}）`}<input inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><p className="small muted">管理员分配订单沿用旧 Xboard 规则：金额由管理员明确指定，不自动使用套餐标价或用户余额。</p>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : "创建订单"}</button></div></form></Modal>;
 }
 
 function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: OrderManagementAPI; order: AdminOrderDetail; onClose: () => void; onUpdated: (order: AdminOrderDetail) => void }) {
+  const { format: formatMoney } = useCurrency();
   const [busy, setBusy] = useState<"paid" | "cancel" | "commission" | "">("");
   const [error, setError] = useState("");
   const act = async (action: "paid" | "cancel") => {
@@ -233,17 +237,17 @@ function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: Order
 			<div><span>套餐</span><strong>{order.plan_name}</strong></div>
 			<div><span>类型 / 周期</span><strong>{orderTypeLabel(order.type)} · {periodLabel(order.period)}</strong></div>
 			<div><span>订单状态</span><strong>{orderStatusLabel(order.status)}</strong></div>
-			<div><span>套餐原价</span><strong>¥{formatCents(order.original_amount)}</strong></div>
-			<div><span>支付金额</span><strong>¥{formatCents(order.total_amount)}</strong></div>
-			<div><span>支付手续费</span><strong>{order.handling_amount === null ? "—" : `¥${formatCents(order.handling_amount)}`}</strong></div>
-			<div><span>余额支付</span><strong>¥{formatCents(order.balance_amount)}</strong></div>
-			<div><span>优惠金额</span><strong>¥{formatCents(order.discount_amount)}</strong></div>
-			<div><span>旧订阅折抵</span><strong>¥{formatCents(order.surplus_amount)}</strong></div>
-			<div><span>折抵返还余额</span><strong>¥{formatCents(order.surplus_credit)}</strong></div>
+			<div><span>套餐原价</span><strong>{formatMoney(order.original_amount)}</strong></div>
+			<div><span>支付金额</span><strong>{formatMoney(order.total_amount)}</strong></div>
+			<div><span>支付手续费</span><strong>{order.handling_amount === null ? "—" : formatMoney(order.handling_amount)}</strong></div>
+			<div><span>余额支付</span><strong>{formatMoney(order.balance_amount)}</strong></div>
+			<div><span>优惠金额</span><strong>{formatMoney(order.discount_amount)}</strong></div>
+			<div><span>旧订阅折抵</span><strong>{formatMoney(order.surplus_amount)}</strong></div>
+			<div><span>折抵返还余额</span><strong>{formatMoney(order.surplus_credit)}</strong></div>
 			<div><span>支付回调号</span><strong className="monospace">{order.callback_no ?? "—"}</strong></div>
 			<div><span>邀请人</span><strong>{order.invite_user?.email ?? "—"}</strong></div>
-			<div><span>预计佣金</span><strong>¥{formatCents(order.commission_balance)}</strong></div>
-			<div><span>实际佣金</span><strong>{order.actual_commission_balance === null ? "—" : `¥${formatCents(order.actual_commission_balance)}`}</strong></div>
+			<div><span>预计佣金</span><strong>{formatMoney(order.commission_balance)}</strong></div>
+			<div><span>实际佣金</span><strong>{order.actual_commission_balance === null ? "—" : formatMoney(order.actual_commission_balance)}</strong></div>
 			<div><span>佣金状态</span><strong>{commissionStatusLabel(order.commission_status)}</strong></div>
 			<div><span>创建时间</span><strong>{formatDate(order.created_at)}</strong></div>
 			<div><span>更新时间</span><strong>{formatDate(order.updated_at)}</strong></div>
@@ -251,7 +255,7 @@ function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: Order
 		</div>
 		<section className="commission-log-section" aria-label="佣金发放记录">
 			<h3>佣金发放记录</h3>
-			{order.commission_log.length === 0 ? <p className="muted">暂无佣金发放记录。</p> : <ul>{order.commission_log.map((item) => <li key={item.id}><span>{item.trade_no}</span><strong>¥{formatCents(item.get_amount)}</strong><time>{formatDate(item.created_at)}</time></li>)}</ul>}
+			{order.commission_log.length === 0 ? <p className="muted">暂无佣金发放记录。</p> : <ul>{order.commission_log.map((item) => <li key={item.id}><span>{item.trade_no}</span><strong>{formatMoney(item.get_amount)}</strong><time>{formatDate(item.created_at)}</time></li>)}</ul>}
 		</section>
 		{order.commission_status === 2 && <div className="alert success" role="status">佣金已发放，出于资金安全不可回退或重复发放。</div>}
 		{commissionEditable && <div className="commission-actions" aria-label="修改佣金状态">
@@ -265,7 +269,7 @@ function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: Order
 	</Modal>;
 }
 
-function parseCNY(value: string): number {
+function parseMoney(value: string): number {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value.trim());
   if (match === null || match[1] === undefined) throw new Error("支付金额格式无效");
   const cents = BigInt(match[1]) * 100n + BigInt((match[2] ?? "").padEnd(2, "0") || "0");

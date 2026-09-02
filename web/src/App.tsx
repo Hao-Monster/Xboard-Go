@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "rea
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
+import { CurrencyProvider } from "./lib/currency";
 
 const api = new APIClient();
 const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
@@ -41,6 +42,7 @@ const defaultThemeAppearance: ThemeAppearance = {
 };
 const defaultGuestConfig: GuestConfig = {
   app_name: "Xboard-Go", app_description: null, app_url: null, tos_url: null, logo: null,
+  currency: "CNY", currency_symbol: "¥",
   is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
   captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0, theme: defaultThemeAppearance
@@ -176,6 +178,7 @@ export function App() {
     setGuestConfig((current) => ({
       ...current, app_name: settings.app_name, app_description: settings.app_description || null,
       app_url: settings.app_url || null, tos_url: settings.tos_url || null, logo: settings.logo || null,
+      currency: settings.currency, currency_symbol: settings.currency_symbol,
       is_email_verify: settings.email_verify ? 1 : 0,
       is_invite_force: settings.invite_force ? 1 : 0,
       enable_coupon_system: settings.coupon_enabled ? 1 : 0,
@@ -212,11 +215,12 @@ export function App() {
   }
   if (!session.is_admin) {
     if (session.is_distributor) {
-      return <Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+      return <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}><Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense></CurrencyProvider>;
     }
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}><Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense></CurrencyProvider>;
   }
   return (
+    <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}>
     <div className="app-frame">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
@@ -288,6 +292,7 @@ export function App() {
         </div>
       </div>
     </div>
+    </CurrencyProvider>
   );
 }
 

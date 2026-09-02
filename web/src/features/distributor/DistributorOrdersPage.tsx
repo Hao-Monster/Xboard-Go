@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 
 import { Modal } from "../../components/Overlay";
 import type { DistributorEntitlement, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, DistributorSettlementStatus, PlanOffer, PlanPeriod } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 import { secureRandomUUID } from "../../lib/random";
-import { formatDistributorCents } from "./DistributorPlansPage";
 import { distributorCloseLabel, distributorCopy, distributorPeriodLabels, type DistributorCopy, type DistributorLocale } from "./locale";
 
 export interface DistributorOrdersAPI {
@@ -88,6 +88,7 @@ export function DistributorOrdersPage({ api, locale = "zh-CN" }: { api: Distribu
 }
 
 function OrderRows({ item, expanded, qrLoading, locale, onToggle, onQR, onRenew }: { item: DistributorOrder; expanded: boolean; qrLoading: string | null; locale: DistributorLocale; onToggle: () => void; onQR: (tradeNo: string) => Promise<void>; onRenew: () => void }) {
+  const { format: formatMoney } = useCurrency();
   const rootTradeNo = item.subscription.trade_no;
   const copy = distributorCopy[locale];
   const periodLabels = distributorPeriodLabels(locale);
@@ -97,7 +98,7 @@ function OrderRows({ item, expanded, qrLoading, locale, onToggle, onQR, onRenew 
       <td data-label={copy.created}>{formatDate(item.order.created_at, locale)}</td>
       <td data-label={copy.customerName}>{item.subscription.customer_name ?? "-"}</td>
       <td data-label={copy.planPeriod}><strong>{item.plan_name}</strong><small className="muted">{periodLabels[item.order.period] ?? item.order.period}</small></td>
-      <td data-label={copy.amount}>¥{formatDistributorCents(item.order.total_amount)}</td>
+      <td data-label={copy.amount}>{formatMoney(item.order.total_amount, locale)}</td>
       <td data-label={copy.settlement}><span className={`status-badge ${item.settlement_status === 1 ? "enabled" : "warning"}`}>{item.settlement_status === 1 ? copy.settled : copy.unsettled}</span></td>
       <td data-label={copy.remark}><span className="distributor-order-remark">{item.subscription.remark ?? "—"}</span></td>
       <td data-label={copy.actions}><div className="row-actions">{item.can_view_subscription_qr && <button className="button ghost compact" disabled={qrLoading !== null} onClick={() => void onQR(rootTradeNo)}>{qrLoading === rootTradeNo ? copy.reading : copy.subscriptionQR}</button>}{item.is_subscription_origin && <button className="button ghost compact" aria-expanded={expanded} onClick={onToggle}>{expanded ? copy.hideEntitlement : copy.viewEntitlement}</button>}{item.can_renew && <button className="button primary compact" onClick={onRenew}>{copy.renew}</button>}</div></td>
@@ -121,6 +122,7 @@ function SubscriptionQRDialog({ qr, locale, onClose }: { qr: DistributorQR; loca
 }
 
 function RenewDialog({ api, order, locale, onClose, onRenewed }: { api: DistributorOrdersAPI; order: DistributorOrder; locale: DistributorLocale; onClose: () => void; onRenewed: (value: DistributorOrder) => void }) {
+  const { format: formatMoney } = useCurrency();
   const [plan, setPlan] = useState<PlanOffer | null>(null);
   const [period, setPeriod] = useState<PlanPeriod>(order.order.period);
   const [loading, setLoading] = useState(true);
@@ -147,7 +149,7 @@ function RenewDialog({ api, order, locale, onClose, onRenewed }: { api: Distribu
     try { onRenewed(await api.renewDistributorOrder(order.order.trade_no, period, idempotencyKey.current)); }
     catch (cause) { setError(messageOf(cause, locale)); setBusy(false); }
   };
-  return <Modal title={copy.renewTitle} onClose={onClose}><div className="modal-header"><h2>{copy.renewTitle}</h2><button className="icon-button" aria-label={distributorCloseLabel(locale, copy.renewTitle)} onClick={onClose}>×</button></div><p className="muted">{copy.renewHint}</p>{loading ? <div className="alert" role="status">{copy.loadingRenewal}</div> : <form className="form-stack" onSubmit={(event) => void submit(event)}><div className="detail-list"><div><span>{copy.originalOrder}</span><strong className="monospace">{order.subscription.trade_no}</strong></div><div><span>{copy.renewCurrentExpiry}</span><strong>{order.subscription_entitlement.expired_at === null ? copy.permanent : formatDate(order.subscription_entitlement.expired_at, locale)}</strong></div></div><label>{copy.renewPeriod}<select aria-label={copy.renewPeriod} value={period} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{options.map(([key, cents]) => <option key={key} value={key}>{periodLabels[key] ?? key} · ¥{formatDistributorCents(cents)}</option>)}</select></label>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{copy.cancel}</button><button className="button primary" type="submit" disabled={busy || options.length === 0}>{busy ? copy.renewing : copy.renewConfirm}</button></div></form>}</Modal>;
+  return <Modal title={copy.renewTitle} onClose={onClose}><div className="modal-header"><h2>{copy.renewTitle}</h2><button className="icon-button" aria-label={distributorCloseLabel(locale, copy.renewTitle)} onClick={onClose}>×</button></div><p className="muted">{copy.renewHint}</p>{loading ? <div className="alert" role="status">{copy.loadingRenewal}</div> : <form className="form-stack" onSubmit={(event) => void submit(event)}><div className="detail-list"><div><span>{copy.originalOrder}</span><strong className="monospace">{order.subscription.trade_no}</strong></div><div><span>{copy.renewCurrentExpiry}</span><strong>{order.subscription_entitlement.expired_at === null ? copy.permanent : formatDate(order.subscription_entitlement.expired_at, locale)}</strong></div></div><label>{copy.renewPeriod}<select aria-label={copy.renewPeriod} value={period} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{options.map(([key, cents]) => <option key={key} value={key}>{periodLabels[key] ?? key} · {formatMoney(cents, locale)}</option>)}</select></label>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{copy.cancel}</button><button className="button primary" type="submit" disabled={busy || options.length === 0}>{busy ? copy.renewing : copy.renewConfirm}</button></div></form>}</Modal>;
 }
 
 function renewalPeriods(plan: PlanOffer): Array<[PlanPeriod, number]> { return Object.entries(plan.prices).filter((entry): entry is [PlanPeriod, number] => entry[1] !== undefined && entry[1] > 0 && !["onetime", "reset_traffic"].includes(entry[0])); }

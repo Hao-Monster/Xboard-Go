@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { BrandMark } from "../../components/BrandMark";
-import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, PlanOffer, PlanPeriod, UserSession } from "../../lib/api";
+import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, CommissionWithdrawal, CommissionWithdrawalPage, CommissionWithdrawalPolicy, DistributorOrder, DistributorOrderPage, DistributorOrderQuery, DistributorQR, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, PlanOffer, PlanPeriod, UserSession } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
@@ -20,6 +20,9 @@ interface DistributorPortalAPI {
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
   transferCommission: (amount: number) => Promise<CommissionTransferResult>;
+  getCommissionWithdrawalPolicy: () => Promise<CommissionWithdrawalPolicy>;
+  listCommissionWithdrawals: (page?: number, pageSize?: number) => Promise<CommissionWithdrawalPage>;
+  createCommissionWithdrawal: (idempotencyKey: string, method: string, account: string) => Promise<CommissionWithdrawal>;
   listKnowledge: (language: KnowledgeLanguage, keyword?: string) => Promise<KnowledgeArticle[]>;
   getKnowledge: (id: number) => Promise<KnowledgeArticle>;
   listClientCatalog: () => Promise<ClientCatalogEntry[]>;

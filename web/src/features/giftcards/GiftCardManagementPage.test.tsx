@@ -30,9 +30,9 @@ describe("GiftCardManagementPage", () => {
     expect(await screen.findByText("新人礼品卡")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "添加模板" }));
     const dialog = screen.getByRole("dialog", { name: "添加礼品卡模板" });
-    for (const field of ["模板名称", "礼品卡类型", "模板描述", "余额（元）", "流量（GB）", "有效期（天）", "设备数", "每用户最多使用次数", "冷却时间（小时）", "邀请奖励比例", "节日奖励倍率", "活动开始时间", "活动结束时间", "图标", "背景图片", "主题色"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
+    for (const field of ["模板名称", "礼品卡类型", "模板描述", "余额（CNY）", "流量（GB）", "有效期（天）", "设备数", "每用户最多使用次数", "冷却时间（小时）", "邀请奖励比例", "节日奖励倍率", "活动开始时间", "活动结束时间", "图标", "背景图片", "主题色"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
     await user.type(within(dialog).getByLabelText("模板名称"), "精准奖励");
-    await user.clear(within(dialog).getByLabelText("余额（元）")); await user.type(within(dialog).getByLabelText("余额（元）"), "12.34");
+    await user.clear(within(dialog).getByLabelText("余额（CNY）")); await user.type(within(dialog).getByLabelText("余额（CNY）"), "12.34");
     await user.clear(within(dialog).getByLabelText("流量（GB）")); await user.type(within(dialog).getByLabelText("流量（GB）"), "2.5");
     await user.click(within(dialog).getByRole("button", { name: "保存模板" }));
     await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: "精准奖励", rewards: expect.objectContaining({ balance: 1234, transfer_enable: 2_684_354_560 }) })));

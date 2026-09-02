@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -93,6 +94,41 @@ func TestCheckoutBuildsAllLockedCoreProviderContracts(t *testing.T) {
 				t.Fatalf("Checkout() = (%#v, %v)", result, err)
 			}
 		})
+	}
+}
+
+func TestCheckoutUsesDeploymentCurrencyOrRejectsIncompatibleProvider(t *testing.T) {
+	service := NewService(Options{HTTPClient: HTTPDoerFunc(func(request *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), `"currency":"USD"`) {
+			t.Fatalf("BTCPay request did not preserve deployment currency: %s", body)
+		}
+		return jsonResponse(`{"id":"invoice-usd","checkoutLink":"https://checkout.example.test/invoice-usd"}`), nil
+	})})
+	base := CheckoutRequest{
+		TradeNo: "2026082612000000000000001", Amount: 102_623, Currency: "USD",
+		NotifyURL: "https://panel.example.test/api/v1/guest/payment/notify/provider/uuid",
+		ReturnURL: "https://panel.example.test/#/order/2026082612000000000000001", IdempotencyKey: strings.Repeat("a", 64),
+	}
+	btcpay := base
+	btcpay.Provider = store.PaymentProviderBTCPay
+	btcpay.Config = map[string]string{"btcpay_url": "https://btcpay.example.test", "btcpay_storeId": "store-one", "btcpay_api_key": "api", "btcpay_webhook_key": "webhook"}
+	if result, err := service.Checkout(t.Context(), btcpay); err != nil || result.ExternalID != "invoice-usd" {
+		t.Fatalf("USD BTCPay checkout = (%#v, %v)", result, err)
+	}
+	for _, incompatible := range []CheckoutRequest{
+		{Provider: store.PaymentProviderAlipayF2F, Config: map[string]string{"app_id": "app", "private_key": "key", "public_key": "key"}},
+		{Provider: store.PaymentProviderCoinPayments, Config: map[string]string{"coinpayments_merchant_id": "merchant", "coinpayments_ipn_secret": "secret", "coinpayments_currency": "CNY"}},
+		{Provider: store.PaymentProviderMGate, Config: map[string]string{"mgate_url": "https://mgate.example.test", "mgate_app_id": "app", "mgate_app_secret": "secret", "mgate_source_currency": "CNY"}},
+	} {
+		incompatible.TradeNo, incompatible.Amount, incompatible.Currency = base.TradeNo, base.Amount, base.Currency
+		incompatible.NotifyURL, incompatible.ReturnURL, incompatible.IdempotencyKey = base.NotifyURL, base.ReturnURL, base.IdempotencyKey
+		if _, err := service.Checkout(t.Context(), incompatible); !errors.Is(err, ErrInvalidGatewayRequest) {
+			t.Fatalf("incompatible %s checkout error = %v", incompatible.Provider, err)
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CouponQuote, Order, PlanOffer } from "../../lib/api";
+import { CurrencyProvider } from "../../lib/currency";
 import { PlanCatalogPage } from "./PlanCatalogPage";
 
 const plan: PlanOffer = {
@@ -23,6 +24,17 @@ const quote: CouponQuote = {
 const order = { id: 11, trade_no: "202608260001" } as Order;
 
 describe("PlanCatalogPage coupons", () => {
+  it("uses the deployment currency for catalog and checkout amounts", async () => {
+    const api = { listPlanOffers: vi.fn().mockResolvedValue([plan]), checkCoupon: vi.fn(), createOrder: vi.fn() };
+    const user = userEvent.setup();
+    render(<CurrencyProvider code="USD" symbol="$"><PlanCatalogPage api={api} couponEnabled={false} /></CurrencyProvider>);
+
+    expect(await screen.findByText("月付 $1,000.00")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "立即订阅" }));
+    expect(screen.getAllByText("$1,000.00").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/¥/)).not.toBeInTheDocument();
+  });
+
   it("verifies the coupon, shows the exact discount, and submits only the verified code", async () => {
     const api = {
       listPlanOffers: vi.fn().mockResolvedValue([plan]),

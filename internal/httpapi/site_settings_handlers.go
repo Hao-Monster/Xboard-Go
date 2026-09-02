@@ -26,6 +26,8 @@ type guestConfigResponse struct {
 	AppDescription            *string               `json:"app_description"`
 	AppURL                    *string               `json:"app_url"`
 	Logo                      *string               `json:"logo"`
+	Currency                  string                `json:"currency"`
+	CurrencySymbol            string                `json:"currency_symbol"`
 	IsRecaptcha               int                   `json:"is_recaptcha"`
 	IsTelegram                int                   `json:"is_telegram"`
 	TelegramDiscussLink       *string               `json:"telegram_discuss_link"`
@@ -65,12 +67,13 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		RecaptchaV3ScoreThreshold: settings.RecaptchaV3ScoreThreshold,
 		TurnstileSiteKey:          nullablePublicString(settings.TurnstileSiteKey), AppName: settings.AppName,
 		AppDescription: nullablePublicString(settings.AppDescription), AppURL: nullablePublicString(settings.AppURL),
-		Logo: nullablePublicString(settings.Logo), EmailWhitelistSuffix: emailWhitelistSuffix,
-		IsInviteForce:       boolToInt(settings.InvitationForceEnabled),
-		EnableCouponSystem:  boolToInt(settings.CouponEnabled),
-		IsTelegram:          boolToInt(telegramSettings.BotEnabled),
-		TelegramDiscussLink: nullablePublicString(telegramSettings.DiscussLink),
-		Theme:               themeAppearance,
+		Logo: nullablePublicString(settings.Logo), Currency: settings.Currency, CurrencySymbol: settings.CurrencySymbol,
+		EmailWhitelistSuffix: emailWhitelistSuffix,
+		IsInviteForce:        boolToInt(settings.InvitationForceEnabled),
+		EnableCouponSystem:   boolToInt(settings.CouponEnabled),
+		IsTelegram:           boolToInt(telegramSettings.BotEnabled),
+		TelegramDiscussLink:  nullablePublicString(telegramSettings.DiscussLink),
+		Theme:                themeAppearance,
 	})
 }
 

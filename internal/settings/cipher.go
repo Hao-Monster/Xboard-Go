@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -19,13 +21,14 @@ const maxPlaintextBytes = 4 << 10
 type SecretPurpose string
 
 const (
-	SMTPPasswordPurpose      SecretPurpose = "smtp-password"
-	RecaptchaSecretPurpose   SecretPurpose = "recaptcha-secret"
-	RecaptchaV3SecretPurpose SecretPurpose = "recaptcha-v3-secret"
-	TurnstileSecretPurpose   SecretPurpose = "turnstile-secret"
-	PaymentConfigPurpose     SecretPurpose = "payment-config"
-	TelegramBotTokenPurpose  SecretPurpose = "telegram-bot-token"
-	TelegramWebhookPurpose   SecretPurpose = "telegram-webhook-secret"
+	SMTPPasswordPurpose                SecretPurpose = "smtp-password"
+	RecaptchaSecretPurpose             SecretPurpose = "recaptcha-secret"
+	RecaptchaV3SecretPurpose           SecretPurpose = "recaptcha-v3-secret"
+	TurnstileSecretPurpose             SecretPurpose = "turnstile-secret"
+	PaymentConfigPurpose               SecretPurpose = "payment-config"
+	TelegramBotTokenPurpose            SecretPurpose = "telegram-bot-token"
+	TelegramWebhookPurpose             SecretPurpose = "telegram-webhook-secret"
+	CommissionWithdrawalAccountPurpose SecretPurpose = "commission-withdrawal-account"
 )
 
 const settingsAADPrefix = "xboard-go:app-settings:"
@@ -33,7 +36,8 @@ const settingsAADPrefix = "xboard-go:app-settings:"
 // Cipher protects application-setting secrets at rest with authenticated
 // encryption. The key must be supplied independently of the database.
 type Cipher struct {
-	aead cipher.AEAD
+	aead           cipher.AEAD
+	fingerprintKey [sha256.Size]byte
 }
 
 func NewCipher(key []byte) (*Cipher, error) {
@@ -41,6 +45,10 @@ func NewCipher(key []byte) (*Cipher, error) {
 		return nil, errors.New("settings encryption key must be exactly 32 bytes")
 	}
 	keyCopy := append([]byte(nil), key...)
+	fingerprintKey := hmac.New(sha256.New, keyCopy)
+	_, _ = fingerprintKey.Write([]byte("xboard-go:secret-fingerprint-key:v1"))
+	var fingerprintKeyBytes [sha256.Size]byte
+	copy(fingerprintKeyBytes[:], fingerprintKey.Sum(nil))
 	block, err := aes.NewCipher(keyCopy)
 	for index := range keyCopy {
 		keyCopy[index] = 0
@@ -52,7 +60,7 @@ func NewCipher(key []byte) (*Cipher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create settings authenticated cipher: %w", err)
 	}
-	return &Cipher{aead: aead}, nil
+	return &Cipher{aead: aead, fingerprintKey: fingerprintKeyBytes}, nil
 }
 
 func (box *Cipher) Encrypt(plaintext []byte) ([]byte, error) {
@@ -108,6 +116,26 @@ func (box *Cipher) DecryptFor(purpose SecretPurpose, payload []byte) ([]byte, er
 	return plaintext, nil
 }
 
+// FingerprintFor creates a purpose-bound, keyed identifier for comparing
+// encrypted inputs without storing plaintext or a dictionary-attackable hash.
+func (box *Cipher) FingerprintFor(purpose SecretPurpose, plaintext []byte) ([]byte, error) {
+	if box == nil || box.aead == nil {
+		return nil, errors.New("settings cipher is unavailable")
+	}
+	aad, err := purposeAAD(purpose)
+	if err != nil {
+		return nil, err
+	}
+	if len(plaintext) == 0 || len(plaintext) > maxPlaintextBytes {
+		return nil, errors.New("settings secret must contain between 1 and 4096 bytes")
+	}
+	digest := hmac.New(sha256.New, box.fingerprintKey[:])
+	_, _ = digest.Write(aad)
+	_, _ = digest.Write([]byte{0})
+	_, _ = digest.Write(plaintext)
+	return digest.Sum(nil), nil
+}
+
 func purposeAAD(purpose SecretPurpose) ([]byte, error) {
 	suffix := ""
 	switch purpose {
@@ -126,6 +154,8 @@ func purposeAAD(purpose SecretPurpose) ([]byte, error) {
 		suffix = "telegram-bot-token:v1"
 	case TelegramWebhookPurpose:
 		suffix = "telegram-webhook-secret:v1"
+	case CommissionWithdrawalAccountPurpose:
+		suffix = "commission-withdrawal-account:v1"
 	default:
 		return nil, errors.New("settings secret purpose is invalid")
 	}

@@ -6,7 +6,7 @@
     {"id":"R-002","severity":"high","status":"controlled","milestone":"M0","title":"完全一致被解释为复制缺陷或顺手重做业务","mitigation":"D-001 与兼容性例外登记；所有差异有批准记录。"},
     {"id":"R-003","severity":"high","status":"open","milestone":"M0","title":"过时文档看似权威并污染当前需求","mitigation":"版本化事实源、证据等级、冲突记录和生成校验。"},
     {"id":"R-004","severity":"high","status":"open","milestone":"M2","title":"缺少真实 schema、脱敏数据和容量导致迁移失真","mitigation":"高风险迁移前取得只读 schema、脱敏副本和指标。"},
-    {"id":"R-005","severity":"critical","status":"open","milestone":"M1","title":"支付、结算、余额、佣金或续费发生重复、丢失或币种错配","mitigation":"锁定单币种与整数分不变量；使用追加式账本、数据库约束、事务、幂等、差分、并发和资金守恒测试。"},
+    {"id":"R-005","severity":"critical","status":"controlled","milestone":"M1","title":"支付、结算、余额、佣金或续费发生重复、丢失或币种错配","mitigation":"已在 M1 候选实现中锁定单币种与整数分不变量，并使用追加式账本、数据库约束、事务、幂等、权限、并发和资金守恒测试；精确提交的隔离 CI 当前证据仍由 M1-G04 门禁。"},
     {"id":"R-006","severity":"high","status":"open","milestone":"M3","title":"分销内部订阅凭据经 API、日志、导出或 trace 泄漏","mitigation":"显式 DTO、递归脱敏、敏感字段扫描和授权测试。"},
     {"id":"R-007","severity":"high","status":"open","milestone":"M3","title":"节点重复或乱序上报造成流量与状态错误","mitigation":"report receipt、所有权 fencing、批量原子更新和故障测试。"},
     {"id":"R-008","severity":"high","status":"controlled","milestone":"M3","title":"任意插件或主题上传形成 RCE 和供应链风险","mitigation":"D-003、签名/来源/压缩安全、隔离与最小权限。"},

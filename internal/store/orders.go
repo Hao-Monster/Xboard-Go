@@ -585,9 +585,9 @@ func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now tim
 	var userID int64
 	var row *sql.Row
 	if hasUserID {
-		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ? AND account_kind = 'human'`, *input.UserID)
+		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active'`, *input.UserID)
 	} else {
-		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ? AND account_kind = 'human'`, input.Email)
+		row = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ? AND account_kind = 'human' AND lifecycle_status = 'active'`, input.Email)
 	}
 	if err := row.Scan(&userID); errors.Is(err, sql.ErrNoRows) {
 		return Order{}, ErrNotFound
@@ -1225,7 +1225,8 @@ func setOrderCommission(ctx context.Context, tx *sql.Tx, user orderUserState, se
 	var commissionType int
 	var commissionRate sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT commission_type, commission_rate FROM users WHERE id = ? AND account_kind = 'human'
+		SELECT commission_type, commission_rate FROM users
+		WHERE id = ? AND account_kind = 'human' AND lifecycle_status = 'active'
 	`, user.inviteUserID.Int64).Scan(&commissionType, &commissionRate); errors.Is(err, sql.ErrNoRows) {
 		return nil
 	} else if err != nil {

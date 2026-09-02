@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type { Coupon, CouponInput, CouponPage, CouponQuery, CouponType, Plan, PlanPeriod } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 
 export interface CouponManagementAPI {
   listCoupons: (query?: CouponQuery) => Promise<CouponPage>;
@@ -21,6 +22,7 @@ const defaultCouponStartedAt = new Date().toISOString();
 const defaultCouponEndedAt = new Date(new Date(defaultCouponStartedAt).getTime() + 365 * 86_400_000).toISOString();
 
 export function CouponManagementPage({ api }: { api: CouponManagementAPI }) {
+  const { format: formatMoney } = useCurrency();
   const [page, setPage] = useState<CouponPage>({ items: [], total: 0, page: 1, page_size: 20 });
   const [plans, setPlans] = useState<Plan[]>([]);
   const [query, setQuery] = useState("");
@@ -89,7 +91,7 @@ export function CouponManagementPage({ api }: { api: CouponManagementAPI }) {
     <header className="page-header"><div><p className="eyebrow">Finance</p><h1>优惠券管理</h1><p className="muted">创建、批量生成和限制优惠券适用的套餐与付款周期。</p></div><button className="button primary" onClick={() => setEditing("new")}>新增优惠券</button></header>
     <form className="ticket-filter-bar" onSubmit={search}><label className="search-field">搜索优惠券<input type="search" placeholder="搜索名称或券码" value={query} maxLength={200} onChange={(event) => setQuery(event.target.value)} /></label><label>类型<select value={type} onChange={(event) => setType(event.target.value === "" ? "" : Number(event.target.value) as CouponType)}><option value="">全部</option><option value="1">固定金额</option><option value="2">百分比</option></select></label><button className="button secondary" type="submit" disabled={loading}>搜索</button></form>
     {error !== "" && <div className="alert error resource-alert" role="alert">{error}</div>}
-    {loading && page.items.length === 0 ? <div className="empty-card">正在加载优惠券…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的优惠券。</div> : <section className="resource-table-wrap" aria-label="优惠券列表"><table className="resource-table"><thead><tr><th>ID / 状态</th><th>卷名称</th><th>类型</th><th>卷码</th><th>剩余次数</th><th>每用户次数</th><th>有效期</th><th>操作</th></tr></thead><tbody>{page.items.map((coupon) => <tr key={coupon.id}><td data-label="ID / 状态"><strong>#{coupon.id}</strong><small className="muted">{coupon.show ? "已启用" : "已禁用"}</small></td><td data-label="卷名称">{coupon.name}</td><td data-label="类型">{coupon.type === 1 ? `¥${formatCents(coupon.value)}` : `${coupon.value}%`}</td><td data-label="卷码"><strong className="monospace">{coupon.code}</strong></td><td data-label="剩余次数">{coupon.limit_use ?? "不限"}</td><td data-label="每用户次数">{coupon.limit_use_with_user ?? "不限"}</td><td data-label="有效期"><small>{formatDate(coupon.started_at)}<br />至 {formatDate(coupon.ended_at)}</small></td><td data-label="操作"><div className="table-actions"><button className="button secondary compact" aria-label={`${coupon.show ? "禁用" : "启用"} ${coupon.code}`} onClick={() => void toggle(coupon)}>{coupon.show ? "禁用" : "启用"}</button><button className="button ghost compact" onClick={() => setEditing(coupon)}>编辑</button><button className="button danger compact" onClick={() => void remove(coupon)}>删除</button></div></td></tr>)}</tbody></table>
+    {loading && page.items.length === 0 ? <div className="empty-card">正在加载优惠券…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的优惠券。</div> : <section className="resource-table-wrap" aria-label="优惠券列表"><table className="resource-table"><thead><tr><th>ID / 状态</th><th>卷名称</th><th>类型</th><th>卷码</th><th>剩余次数</th><th>每用户次数</th><th>有效期</th><th>操作</th></tr></thead><tbody>{page.items.map((coupon) => <tr key={coupon.id}><td data-label="ID / 状态"><strong>#{coupon.id}</strong><small className="muted">{coupon.show ? "已启用" : "已禁用"}</small></td><td data-label="卷名称">{coupon.name}</td><td data-label="类型">{coupon.type === 1 ? formatMoney(coupon.value) : `${coupon.value}%`}</td><td data-label="卷码"><strong className="monospace">{coupon.code}</strong></td><td data-label="剩余次数">{coupon.limit_use ?? "不限"}</td><td data-label="每用户次数">{coupon.limit_use_with_user ?? "不限"}</td><td data-label="有效期"><small>{formatDate(coupon.started_at)}<br />至 {formatDate(coupon.ended_at)}</small></td><td data-label="操作"><div className="table-actions"><button className="button secondary compact" aria-label={`${coupon.show ? "禁用" : "启用"} ${coupon.code}`} onClick={() => void toggle(coupon)}>{coupon.show ? "禁用" : "启用"}</button><button className="button ghost compact" onClick={() => setEditing(coupon)}>编辑</button><button className="button danger compact" onClick={() => void remove(coupon)}>删除</button></div></td></tr>)}</tbody></table>
       {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>上一页</button><span>第 {page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>下一页</button></div>}
     </section>}
     {editing !== null && <CouponEditor api={api} plans={plans} coupon={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(applied); }} />}
@@ -97,6 +99,7 @@ export function CouponManagementPage({ api }: { api: CouponManagementAPI }) {
 }
 
 function CouponEditor({ api, plans, coupon, onClose, onSaved }: { api: CouponManagementAPI; plans: Plan[]; coupon: Coupon | null; onClose: () => void; onSaved: () => void }) {
+  const { code: currency } = useCurrency();
   const [name, setName] = useState(coupon?.name ?? "");
   const [code, setCode] = useState(coupon?.code ?? "");
   const [type, setType] = useState<CouponType>(coupon?.type ?? 1);
@@ -146,7 +149,7 @@ function CouponEditor({ api, plans, coupon, onClose, onSaved }: { api: CouponMan
   return <Modal title={coupon === null ? "新增优惠券" : "编辑优惠券"} onClose={onClose}><div className="modal-header"><h2>{coupon === null ? "新增优惠券" : "编辑优惠券"}</h2><button className="icon-button" aria-label="关闭优惠券编辑" onClick={onClose}>×</button></div><form className="form-stack coupon-form" onSubmit={(event) => void submit(event)}>
     <div className="form-grid"><label>卷名称<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} /></label><label>卷码<input required={count === 1} disabled={count > 1} maxLength={64} value={count > 1 ? "自动生成" : code} onChange={(event) => setCode(event.target.value)} /></label></div>
     {coupon === null && <label>批量数量<input type="number" min={1} max={500} value={count} onChange={(event) => setCount(Number(event.target.value))} /></label>}
-    <div className="form-grid"><label>优惠类型<select value={type} onChange={(event) => setType(Number(event.target.value) as CouponType)}><option value="1">固定金额</option><option value="2">百分比</option></select></label><label>{type === 1 ? "优惠金额（元）" : "优惠比例（%）"}<input inputMode="decimal" required value={value} onChange={(event) => setValue(event.target.value)} /></label></div>
+    <div className="form-grid"><label>优惠类型<select value={type} onChange={(event) => setType(Number(event.target.value) as CouponType)}><option value="1">固定金额</option><option value="2">百分比</option></select></label><label>{type === 1 ? `优惠金额（${currency}）` : "优惠比例（%）"}<input inputMode="decimal" required value={value} onChange={(event) => setValue(event.target.value)} /></label></div>
     <div className="form-grid"><label>开始时间<input type="datetime-local" required value={startedAt} onChange={(event) => setStartedAt(event.target.value)} /></label><label>结束时间<input type="datetime-local" required value={endedAt} onChange={(event) => setEndedAt(event.target.value)} /></label></div>
     <div className="form-grid"><label>可用总次数<input type="number" min={0} placeholder="不限制" value={limitUse} onChange={(event) => setLimitUse(event.target.value)} /></label><label>每用户可用次数<input type="number" min={1} placeholder="不限制" value={limitUser} onChange={(event) => setLimitUser(event.target.value)} /></label></div>
     <label className="switch-label"><input type="checkbox" checked={show} onChange={(event) => setShow(event.target.checked)} />启用优惠券</label>
