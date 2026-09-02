@@ -220,9 +220,7 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if s.hub != nil {
-		s.hub.NotifyDeviceStates(r.Context(), result.DeviceUserIDs)
-	}
+	s.notifyNodeReportResult(r.Context(), result)
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }
 
@@ -319,10 +317,16 @@ func (s *server) applyNodeReportResponse(w http.ResponseWriter, r *http.Request,
 		handleStoreError(w, err)
 		return
 	}
-	if s.hub != nil {
-		s.hub.NotifyDeviceStates(r.Context(), result.DeviceUserIDs)
-	}
+	s.notifyNodeReportResult(r.Context(), result)
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
+}
+
+func (s *server) notifyNodeReportResult(ctx context.Context, result store.NodeReportResult) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.NotifyTrafficExceeded(ctx, result.ExceededUsers)
+	s.hub.NotifyDeviceStates(ctx, result.DeviceUserIDs)
 }
 
 func (s *server) applyNodeReport(ctx context.Context, report store.NodeReportInput) (store.NodeReportResult, error) {

@@ -49,6 +49,10 @@ type wsNodeSnapshot struct {
 	timestamp int64
 }
 
+type removedRuntimeUser struct {
+	ID int64 `json:"id"`
+}
+
 type wsHub struct {
 	mu             sync.RWMutex
 	machines       map[int64]*wsConnection
@@ -995,6 +999,16 @@ func userDeltaEnvelope(nodeID int64, action string, users []store.RuntimeUser, t
 	}}
 }
 
+func trafficExceededDeltaEnvelope(nodeID int64, userIDs []int64, timestamp int64) wsEnvelope {
+	users := make([]removedRuntimeUser, len(userIDs))
+	for index, userID := range userIDs {
+		users[index] = removedRuntimeUser{ID: userID}
+	}
+	return wsEnvelope{Event: "sync.user.delta", Data: map[string]any{
+		"node_id": nodeID, "action": "remove", "users": users, "timestamp": timestamp,
+	}}
+}
+
 func devicesSyncEnvelope(snapshot wsNodeSnapshot) wsEnvelope {
 	return wsEnvelope{Event: "sync.devices", Data: map[string]any{
 		"node_id": snapshot.summary.ID, "users": snapshot.devices, "timestamp": snapshot.timestamp,
@@ -1492,6 +1506,56 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 			nodeIDs = append(nodeIDs, target.NodeID)
 		}
 		h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
+	}
+}
+
+// NotifyTrafficExceeded immediately removes newly ineligible users from every
+// connected runtime node in their group. Replayed report receipts intentionally
+// emit the delta again so a lost post-commit notification can self-heal.
+func (h *wsHub) NotifyTrafficExceeded(ctx context.Context, users []store.TrafficExceededUser) {
+	if len(users) == 0 {
+		return
+	}
+	byGroup := make(map[int64][]int64)
+	groupIDs := make([]int64, 0)
+	seenGroups := make(map[int64]struct{})
+	for _, user := range users {
+		if user.UserID < 1 || user.GroupID < 1 {
+			continue
+		}
+		byGroup[user.GroupID] = append(byGroup[user.GroupID], user.UserID)
+		if _, seen := seenGroups[user.GroupID]; !seen {
+			seenGroups[user.GroupID] = struct{}{}
+			groupIDs = append(groupIDs, user.GroupID)
+		}
+	}
+	if len(groupIDs) == 0 {
+		return
+	}
+	defer h.publishCoordination(ctx, nodecoord.Event{
+		Kind: nodecoord.EventRefreshGroups, GroupIDs: uniquePositiveIDs(groupIDs),
+	})
+	targets, err := h.store.ListRuntimeNodeGroupTargetsForGroups(ctx, groupIDs)
+	if err != nil {
+		h.logger.Warn("resolve traffic-exceeded websocket targets", "error", err)
+		return
+	}
+	byNode := make(map[int64][]int64)
+	for _, target := range targets {
+		byNode[target.NodeID] = append(byNode[target.NodeID], byGroup[target.GroupID]...)
+	}
+	timestamp := h.now().Unix()
+	for nodeID, userIDs := range byNode {
+		h.mu.RLock()
+		connection := h.nodes[nodeID]
+		h.mu.RUnlock()
+		if connection == nil || !connection.hasNode(nodeID) {
+			continue
+		}
+		for start := 0; start < len(userIDs); start += 500 {
+			end := min(start+500, len(userIDs))
+			connection.enqueue(trafficExceededDeltaEnvelope(nodeID, userIDs[start:end], timestamp))
+		}
 	}
 }
 

@@ -8,12 +8,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -544,6 +547,139 @@ func TestBulkBanPublishesBoundedRuntimeRemovalDelta(t *testing.T) {
 	}
 	if devices := readWSEvent(t, connection); devices.Event != "sync.devices" {
 		t.Fatalf("bulk ban device event = %q, want sync.devices", devices.Event)
+	}
+}
+
+func TestNODE007TrafficReportPublishesReplayableExceededUserRemoval(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	machine, node := createWebSocketReportingNode(t, database, now)
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "traffic-exceeded-ws-user@example.test", PasswordHash: "hash",
+		UUID: "f72c9919-9554-4d89-8f63-5ca869a7e687", GroupID: 7, TransferEnable: 100,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment, err := database.CreateEnrollment(ctx, machine.ID, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
+
+	reportBody := fmt.Sprintf(`{
+		"machine_id":%d,"node_id":%d,
+		"report_id":"2ad55447-6b9b-4df0-a1d1-a74980393796",
+		"traffic":{"%d":[40,60]}
+	}`, machine.ID, node.ID, user.ID)
+	for attempt := 1; attempt <= 2; attempt++ {
+		response := agentRequest(api, http.MethodPost, "/api/v2/server/report", credential.Token, reportBody)
+		if response.Code != http.StatusOK {
+			t.Fatalf("report attempt %d status=%d body=%s", attempt, response.Code, response.Body)
+		}
+		delta := readWSEvent(t, connection)
+		if delta.Event != "sync.user.delta" {
+			t.Fatalf("report attempt %d event=%q, want sync.user.delta", attempt, delta.Event)
+		}
+		var data struct {
+			NodeID int64                        `json:"node_id"`
+			Action string                       `json:"action"`
+			Users  []map[string]json.RawMessage `json:"users"`
+		}
+		decodeWSData(t, delta.Data, &data)
+		var removedID int64
+		if len(data.Users) == 1 {
+			if rawID, exists := data.Users[0]["id"]; exists {
+				if err := json.Unmarshal(rawID, &removedID); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if data.NodeID != node.ID || data.Action != "remove" || len(data.Users) != 1 || len(data.Users[0]) != 1 || removedID != user.ID {
+			t.Fatalf("report attempt %d removal delta=%#v", attempt, data)
+		}
+	}
+	traffic, err := database.GetRuntimeUserTraffic(ctx, user.ID)
+	if err != nil || traffic.Upload != 40 || traffic.Download != 60 {
+		t.Fatalf("idempotent exceeded traffic=%#v error=%v", traffic, err)
+	}
+}
+
+func TestNODE007TrafficExceededRemovalIsBoundedAt501Users(t *testing.T) {
+	api, database, cancel := newWebSocketTestAPI(t)
+	defer cancel()
+	server := httptest.NewServer(api)
+	defer server.Close()
+	ctx := context.Background()
+	now := fixedNow()
+	machine, node := createWebSocketReportingNode(t, database, now)
+	traffic := make(map[string][2]int64, 501)
+	userIDs := make(map[int64]struct{}, 501)
+	for index := 0; index < 501; index++ {
+		user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+			Email: fmt.Sprintf("traffic-exceeded-batch-%03d@example.test", index), PasswordHash: "hash",
+			UUID: uuid.NewString(), GroupID: 7, TransferEnable: 1,
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		traffic[strconv.FormatInt(user.ID, 10)] = [2]int64{1, 0}
+		userIDs[user.ID] = struct{}{}
+	}
+	enrollment, err := database.CreateEnrollment(ctx, machine.ID, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	for _, event := range []string{"auth.success", "sync.config", "sync.users", "sync.devices"} {
+		if actual := readWSEvent(t, connection); actual.Event != event {
+			t.Fatalf("initial event=%q, want %q", actual.Event, event)
+		}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"machine_id": machine.ID, "node_id": node.ID,
+		"report_id": "b2c11b72-506a-4619-8996-4b29aaff2399", "traffic": traffic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := agentRequest(api, http.MethodPost, "/api/v2/server/report", credential.Token, string(payload))
+	if response.Code != http.StatusOK {
+		t.Fatalf("batched report status=%d body=%s", response.Code, response.Body)
+	}
+	removed := make(map[int64]struct{}, 501)
+	for eventIndex, wantCount := range []int{500, 1} {
+		delta := readWSEvent(t, connection)
+		var data struct {
+			NodeID int64                `json:"node_id"`
+			Action string               `json:"action"`
+			Users  []removedRuntimeUser `json:"users"`
+		}
+		decodeWSData(t, delta.Data, &data)
+		if delta.Event != "sync.user.delta" || data.NodeID != node.ID || data.Action != "remove" || len(data.Users) != wantCount {
+			t.Fatalf("removal event %d=%q %#v, want %d users", eventIndex, delta.Event, data, wantCount)
+		}
+		for _, user := range data.Users {
+			removed[user.ID] = struct{}{}
+		}
+	}
+	if !reflect.DeepEqual(removed, userIDs) {
+		t.Fatalf("bounded removal users=%d, want %d exact users", len(removed), len(userIDs))
 	}
 }
 

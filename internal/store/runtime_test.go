@@ -208,6 +208,112 @@ func TestNodeReportTrafficIsAtomicAndIdempotentAcrossConcurrency(t *testing.T) {
 	}
 }
 
+func TestNODE007TrafficExceededSelectionIsExactAndReplayable(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	exceeded := createRuntimeUser(t, database, now, "traffic-exceeded", 7, 100, 90, 0, nil, false)
+	unlimited := createRuntimeUser(t, database, now, "traffic-unlimited", 7, 0, 0, 0, nil, false)
+	banned := createRuntimeUser(t, database, now, "traffic-banned", 7, 1, 0, 0, nil, true)
+	available := createRuntimeUser(t, database, now, "traffic-available", 7, 1_000, 0, 0, nil, false)
+	input := NodeReportInput{
+		MachineID: machine.ID, NodeID: node.ID, ReportID: "a257466c-8a31-4e45-82d2-3b59bc604988", Now: now,
+		Traffic: map[int64]TrafficUsage{
+			exceeded.ID: {Upload: 4, Download: 4}, unlimited.ID: {Upload: 4, Download: 4},
+			banned.ID: {Upload: 4, Download: 4}, available.ID: {Upload: 4, Download: 4},
+		},
+	}
+	want := []TrafficExceededUser{{UserID: exceeded.ID, GroupID: 7}}
+	first, err := database.ApplyNodeReport(ctx, input)
+	if err != nil || first.DuplicateTraffic || !reflect.DeepEqual(first.ExceededUsers, want) {
+		t.Fatalf("ApplyNodeReport(first) = (%#v, %v), want exceeded %#v", first, err, want)
+	}
+	replay, err := database.ApplyNodeReport(ctx, input)
+	if err != nil || !replay.DuplicateTraffic || !reflect.DeepEqual(replay.ExceededUsers, want) {
+		t.Fatalf("ApplyNodeReport(replay) = (%#v, %v), want replayable exceeded %#v", replay, err, want)
+	}
+	for _, user := range []RuntimeUser{exceeded, unlimited, banned, available} {
+		traffic, err := database.GetRuntimeUserTraffic(ctx, user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantUpload := int64(6)
+		if user.ID == exceeded.ID {
+			wantUpload = 96
+		}
+		if traffic.Upload != wantUpload || traffic.Download != 6 {
+			t.Fatalf("user %d replayed traffic = %#v, want %d/6", user.ID, traffic, wantUpload)
+		}
+	}
+}
+
+func TestNODE007TrafficReportCrossesLegacyChunkBoundaryAtomically(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	machine, node := createReportingNode(t, database, now)
+	const users = 1_001
+	tx, err := database.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statement, err := tx.PrepareContext(ctx, `
+		INSERT INTO users (email, password_hash, banned, uuid, group_id, transfer_enable, subscription_token, created_at, updated_at)
+		VALUES (?, 'test-password-hash', 0, ?, 7, 1000000, ?, ?, ?)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	traffic := make(map[int64]TrafficUsage, users)
+	userIDs := make([]int64, 0, users)
+	for index := 1; index <= users; index++ {
+		result, err := statement.ExecContext(ctx, fmt.Sprintf("traffic-batch-%d@example.test", index), uuid.NewString(), testSubscriptionToken(t), now.Unix(), now.Unix())
+		if err != nil {
+			t.Fatal(err)
+		}
+		userID, err := result.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		userIDs = append(userIDs, userID)
+		traffic[userID] = TrafficUsage{Upload: 1, Download: 2}
+	}
+	if err := statement.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	input := NodeReportInput{
+		MachineID: machine.ID, NodeID: node.ID, ReportID: "02783909-319d-4ded-a709-2e366a8e2236", Traffic: traffic, Now: now,
+	}
+	first, err := database.ApplyNodeReport(ctx, input)
+	if err != nil || first.DuplicateTraffic || len(first.ExceededUsers) != 0 {
+		t.Fatalf("ApplyNodeReport(batch) = (%#v, %v)", first, err)
+	}
+	for _, userID := range []int64{userIDs[0], userIDs[len(userIDs)-1]} {
+		usage, err := database.GetRuntimeUserTraffic(ctx, userID)
+		if err != nil || usage.Upload != 1 || usage.Download != 3 {
+			t.Fatalf("batched user %d traffic = (%#v, %v), want 1/3", userID, usage, err)
+		}
+	}
+	if duplicate, err := database.ApplyNodeReport(ctx, input); err != nil || !duplicate.DuplicateTraffic {
+		t.Fatalf("ApplyNodeReport(batch replay) = (%#v, %v)", duplicate, err)
+	}
+	var userStats, staged int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_traffic_stats`).Scan(&userStats); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_report_traffic_stage`).Scan(&staged); err != nil {
+		t.Fatal(err)
+	}
+	nodeAfter, err := database.GetNode(ctx, node.ID)
+	if err != nil || userStats != users || staged != 0 || nodeAfter.TrafficUpload != users || nodeAfter.TrafficDownload != users*2 {
+		t.Fatalf("batched totals node=%#v stats=%d staged=%d error=%v", nodeAfter, userStats, staged, err)
+	}
+}
+
 func TestNodeReportCombinedUserTrafficInt64BoundaryIsAtomic(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

@@ -332,6 +332,102 @@ func TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInsta
 	}
 }
 
+func TestINTNODE007TrafficExceededRefreshesRemoteReplicaAndReplays(t *testing.T) {
+	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
+	if redisURL == "" {
+		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
+	}
+	database := cloneHTTPAPITestDatabase(t)
+	prefix := "xboard-go-httpapi-traffic:" + uuid.NewString() + ":"
+	reportCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "traffic-report")
+	remoteCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "traffic-remote")
+	reportAPI, reportCancel := newCoordinatedWebSocketAPI(t, database, reportCoordinator)
+	defer reportCancel()
+	remoteAPI, remoteCancel := newCoordinatedWebSocketAPI(t, database, remoteCoordinator)
+	defer remoteCancel()
+	remoteServer := httptest.NewServer(remoteAPI)
+	defer remoteServer.Close()
+
+	ctx := context.Background()
+	now := fixedNow()
+	reportMachine, reportEnrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "traffic-report-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteMachine, remoteEnrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "traffic-remote-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "traffic-report-node", Type: "vless", Host: "traffic-report.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &reportMachine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "traffic-remote-node", Type: "vless", Host: "traffic-remote.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &remoteMachine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, nodeID := range []int64{reportNode.ID, remoteNode.ID} {
+		if _, err := database.SaveNodeRuntime(ctx, nodeID, store.SaveNodeRuntimeInput{
+			RateMicros: 1_000_000, GroupIDs: []int64{7},
+			Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+		}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	user, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "traffic-cross-replica@example.test", PasswordHash: "test-password-hash",
+		UUID: "dfc95347-13fc-43e1-950b-135e1dfb20d1", GroupID: 7, TransferEnable: 100,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportCredential, err := database.ExchangeEnrollment(ctx, reportMachine.ID, reportEnrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteCredential, err := database.ExchangeEnrollment(ctx, remoteMachine.ID, remoteEnrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, remoteServer.URL, remoteMachine.ID, remoteCredential.Token, "")
+	defer connection.Close()
+	assertInitialMachineSync(t, connection, remoteMachine.ID, remoteNode.ID, user.ID)
+
+	reportBody := fmt.Sprintf(`{
+		"machine_id":%d,"node_id":%d,
+		"report_id":"5e53e0ae-651b-45f2-a347-fb11a78019c4",
+		"traffic":{"%d":[40,60]}
+	}`, reportMachine.ID, reportNode.ID, user.ID)
+	for attempt := 1; attempt <= 2; attempt++ {
+		response := agentRequest(reportAPI, http.MethodPost, "/api/v2/server/report", reportCredential.Token, reportBody)
+		if response.Code != http.StatusOK {
+			t.Fatalf("cross-replica report attempt %d status=%d body=%s", attempt, response.Code, response.Body)
+		}
+		event := readWSEvent(t, connection)
+		if event.Event != "sync.users" {
+			t.Fatalf("cross-replica report attempt %d event=%q, want sync.users", attempt, event.Event)
+		}
+		var snapshot struct {
+			NodeID int64               `json:"node_id"`
+			Users  []store.RuntimeUser `json:"users"`
+		}
+		decodeWSData(t, event.Data, &snapshot)
+		if snapshot.NodeID != remoteNode.ID || runtimeUsersContain(snapshot.Users, user.ID) {
+			t.Fatalf("cross-replica report attempt %d snapshot=%#v", attempt, snapshot)
+		}
+	}
+	traffic, err := database.GetRuntimeUserTraffic(ctx, user.ID)
+	if err != nil || traffic.Upload != 40 || traffic.Download != 60 {
+		t.Fatalf("cross-replica idempotent traffic=%#v error=%v", traffic, err)
+	}
+}
+
 func runtimeUsersContain(users []store.RuntimeUser, userID int64) bool {
 	for _, user := range users {
 		if user.ID == userID {
