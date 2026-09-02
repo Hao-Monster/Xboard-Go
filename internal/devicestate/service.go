@@ -36,17 +36,19 @@ var safePrefixRE = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 
 const replaceNodeDevicesScript = `
 local removed = 0
-for _, field in ipairs(redis.call('HKEYS', KEYS[1])) do
-  if string.sub(field, 1, string.len(ARGV[1])) == ARGV[1] then
-    removed = removed + redis.call('HDEL', KEYS[1], field)
-  end
+for _, field in ipairs(redis.call('SMEMBERS', KEYS[4])) do
+  removed = removed + redis.call('HDEL', KEYS[1], field)
 end
+redis.call('DEL', KEYS[4])
 
 if #ARGV > 5 then
   for index = 6, #ARGV do
-    redis.call('HSET', KEYS[1], ARGV[1] .. ARGV[index], ARGV[2])
+    local field = ARGV[1] .. ARGV[index]
+    redis.call('HSET', KEYS[1], field, ARGV[2])
+    redis.call('SADD', KEYS[4], field)
   end
   redis.call('EXPIRE', KEYS[1], ARGV[3])
+  redis.call('EXPIRE', KEYS[4], ARGV[3])
   redis.call('SADD', KEYS[2], ARGV[4])
   redis.call('EXPIRE', KEYS[2], ARGV[5])
   redis.call('SADD', KEYS[3], ARGV[1])
@@ -339,6 +341,7 @@ func (service *RedisService) ClearUserDevices(ctx context.Context, userIDs []int
 					nodeID, parseErr := strconv.ParseInt(rawNodeID, 10, 64)
 					if parseErr == nil && nodeID > 0 {
 						pipe.SRem(ctx, service.nodeUsersKey(nodeID), userID)
+						pipe.Del(ctx, service.userNodeFieldsKey(userID, nodeID))
 					}
 				}
 				pipe.Del(ctx, service.userDevicesKey(userID), service.userNodesKey(userID))
@@ -432,7 +435,7 @@ func (service *RedisService) replaceNodeUser(pipe redis.Pipeliner, ctx context.C
 		args = append(args, ip)
 	}
 	return pipe.Eval(ctx, replaceNodeDevicesScript, []string{
-		service.userDevicesKey(userID), service.nodeUsersKey(nodeID), service.userNodesKey(userID),
+		service.userDevicesKey(userID), service.nodeUsersKey(nodeID), service.userNodesKey(userID), service.userNodeFieldsKey(userID, nodeID),
 	}, args...)
 }
 
@@ -511,12 +514,20 @@ func (service *RedisService) schedulePending(ctx context.Context, userIDs []int6
 func (service *RedisService) cleanupStaleFields(ctx context.Context, userID int64, stale []string, seenNodes, activeNodes map[int64]struct{}) error {
 	_, err := service.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.HDel(ctx, service.userDevicesKey(userID), stale...)
+		for _, field := range stale {
+			rawNodeID, _, valid := strings.Cut(field, ":")
+			nodeID, parseErr := strconv.ParseInt(rawNodeID, 10, 64)
+			if valid && parseErr == nil && nodeID > 0 {
+				pipe.SRem(ctx, service.userNodeFieldsKey(userID, nodeID), field)
+			}
+		}
 		for nodeID := range seenNodes {
 			if _, active := activeNodes[nodeID]; active {
 				continue
 			}
 			pipe.SRem(ctx, service.nodeUsersKey(nodeID), userID)
 			pipe.SRem(ctx, service.userNodesKey(userID), strconv.FormatInt(nodeID, 10)+":")
+			pipe.Del(ctx, service.userNodeFieldsKey(userID, nodeID))
 		}
 		return nil
 	})
@@ -622,6 +633,10 @@ func (service *RedisService) userDevicesKey(userID int64) string {
 
 func (service *RedisService) userNodesKey(userID int64) string {
 	return service.prefix + "device:user-nodes:" + strconv.FormatInt(userID, 10)
+}
+
+func (service *RedisService) userNodeFieldsKey(userID, nodeID int64) string {
+	return service.prefix + "device:user-node-fields:" + strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(nodeID, 10)
 }
 
 func (service *RedisService) nodeUsersKey(nodeID int64) string {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -285,5 +286,14 @@ func TestTIMENODE006ConstantsMatchTheFixedContract(t *testing.T) {
 	if OnlineWindow != 300*time.Second || DatabaseThrottle != 10*time.Second || DefaultFlushInterval != 5*time.Second ||
 		DefaultFlushLimit != 500 || MaximumFlushLimit != 5_000 || MaximumDevicesPerUser != 64 {
 		t.Fatalf("device-state constants drifted: window=%s throttle=%s interval=%s values=%v", OnlineWindow, DatabaseThrottle, DefaultFlushInterval, values)
+	}
+}
+
+func TestTIMENODE006RedisScriptsAvoidUnboundedKeyAndHashScans(t *testing.T) {
+	upper := strings.ToUpper(replaceNodeDevicesScript)
+	for _, forbidden := range []string{"REDIS.CALL('KEYS'", "REDIS.CALL('HKEYS'"} {
+		if strings.Contains(upper, forbidden) {
+			t.Fatalf("device replacement script contains unbounded command %s", forbidden)
+		}
 	}
 }
