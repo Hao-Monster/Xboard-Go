@@ -380,6 +380,74 @@ func TestSECNODE005RuntimeHTTPBodyBoundaries(t *testing.T) {
 	}
 }
 
+func TestSECNODE005RuntimeRateGroupBoundaries(t *testing.T) {
+	type fixture struct {
+		api        http.Handler
+		machineID  int64
+		nodeID     int64
+		credential string
+	}
+	setup := func(t *testing.T) fixture {
+		t.Helper()
+		api, database := newTestAPI(t)
+		now := fixedNow()
+		machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
+			Name: "node-security-rate", IsActive: true,
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		node, err := database.CreateNode(context.Background(), store.CreateNodeInput{
+			Name: "node-security-rate-node", Type: "vless", Host: "rate.example.test", Port: "443",
+			Show: true, Enabled: true, MachineID: &machine.ID,
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.SaveNodeRuntime(context.Background(), node.ID, store.SaveNodeRuntimeInput{
+			RateMicros: 1_000_000, GroupIDs: []int64{7}, Config: []byte(`{"protocol":"vless","server_port":443}`),
+		}, now); err != nil {
+			t.Fatal(err)
+		}
+		credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fixture{api: api, machineID: machine.ID, nodeID: node.ID, credential: credential.Token}
+	}
+
+	for _, test := range []struct {
+		name   string
+		limit  int
+		method string
+		path   func(fixture) string
+		body   func(fixture) string
+	}{
+		{name: "machine", limit: 240, method: http.MethodPost, path: func(fixture) string { return "/api/v2/server/machine/nodes" }, body: func(value fixture) string { return fmt.Sprintf(`{"machine_id":%d}`, value.machineID) }},
+		{name: "pull", limit: 600, method: http.MethodGet, path: func(value fixture) string {
+			return fmt.Sprintf("/api/v2/server/config?machine_id=%d&node_id=%d", value.machineID, value.nodeID)
+		}, body: func(fixture) string { return "" }},
+		{name: "report", limit: 240, method: http.MethodPost, path: func(value fixture) string {
+			return fmt.Sprintf("/api/v2/server/push?machine_id=%d&node_id=%d", value.machineID, value.nodeID)
+		}, body: func(fixture) string { return `{}` }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := setup(t)
+			for attempt := 1; attempt <= test.limit; attempt++ {
+				response := agentRequest(value.api, test.method, test.path(value), value.credential, test.body(value))
+				if response.Code != http.StatusOK {
+					t.Fatalf("attempt %d status=%d, want %d; body=%s", attempt, response.Code, http.StatusOK, response.Body)
+				}
+			}
+			limited := agentRequest(value.api, test.method, test.path(value), value.credential, test.body(value))
+			expectAPIError(t, limited, http.StatusTooManyRequests, "server_rate_limited")
+			if limited.Header().Get("Retry-After") != "60" {
+				t.Fatalf("Retry-After=%q, want 60", limited.Header().Get("Retry-After"))
+			}
+		})
+	}
+}
+
 func paddedNodeSecurityJSON(t *testing.T, base string, size int) string {
 	t.Helper()
 	if len(base) > size {
