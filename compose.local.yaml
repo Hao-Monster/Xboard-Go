@@ -14,6 +14,7 @@ services:
       XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_LEGACY_ADMIN_PATH:-admin}
       XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
       XBOARD_ALLOWED_ORIGINS: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
+      XBOARD_TRUSTED_PROXY_CIDRS: ${XBOARD_TRUSTED_PROXY_CIDRS:-}
       XBOARD_BOOTSTRAP_ADMIN_EMAIL: ${XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL:-admin@xboard-go.local}
       XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
       XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key

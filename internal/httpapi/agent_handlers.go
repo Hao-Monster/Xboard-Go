@@ -202,7 +202,8 @@ func (s *server) requestWebSocketURL(_ *http.Request, configuredURL string) stri
 }
 
 func (s *server) authenticateLegacyNode(w http.ResponseWriter, r *http.Request, nodeID int64) bool {
-	attemptKey := requestIP(r) + ":legacy"
+	client, _ := nodeRequestAddresses(r, s.trustedProxyPrefixes)
+	attemptKey := client + ":legacy"
 	if !s.legacyNodeAuthFailures.allowed(attemptKey, s.now()) {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "node_auth_rate_limited", "节点认证失败次数过多，请稍后重试", nil)
@@ -321,7 +322,8 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 }
 
 func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, machineID int64) bool {
-	attemptKey := requestIP(r) + ":" + strconv.FormatInt(machineID, 10)
+	client, _ := nodeRequestAddresses(r, s.trustedProxyPrefixes)
+	attemptKey := client + ":" + strconv.FormatInt(machineID, 10)
 	if !s.machineAuthFailures.allowed(attemptKey, s.now()) {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, http.StatusTooManyRequests, "machine_auth_rate_limited", "机器认证失败次数过多，请稍后重试", nil)

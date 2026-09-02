@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ type Dependencies struct {
 	NodeRelease                string
 	CookieSecure               bool
 	AllowedOrigins             []string
+	TrustedProxyPrefixes       []netip.Prefix
 	Logger                     *slog.Logger
 	WebSocketEnabled           bool
 	WebSocketURL               string
@@ -89,6 +91,7 @@ type server struct {
 	nodeRelease                string
 	cookieSecure               bool
 	allowedOrigins             map[string]struct{}
+	trustedProxyPrefixes       []netip.Prefix
 	logger                     *slog.Logger
 	loginAttempts              *attemptLimiter
 	registrationRequests       *requestLimiter
@@ -105,10 +108,10 @@ type server struct {
 	enrollAttempts             *attemptLimiter
 	machineAuthFailures        *attemptLimiter
 	legacyNodeAuthFailures     *attemptLimiter
-	handshakeRequests          *requestLimitGroup
-	pullRequests               *requestLimitGroup
-	reportRequests             *requestLimitGroup
-	machineRequests            *requestLimitGroup
+	handshakeRequests          *nodeRequestLimitGroup
+	pullRequests               *nodeRequestLimitGroup
+	reportRequests             *nodeRequestLimitGroup
+	machineRequests            *nodeRequestLimitGroup
 	ticketRequests             *requestLimitGroup
 	orderRequests              *requestLimitGroup
 	paymentWebhookRequests     *requestLimiter
@@ -210,6 +213,13 @@ func New(dependencies Dependencies) http.Handler {
 	for _, origin := range dependencies.AllowedOrigins {
 		allowedOrigins[strings.TrimRight(origin, "/")] = struct{}{}
 	}
+	trustedProxyPrefixes := make([]netip.Prefix, 0, len(dependencies.TrustedProxyPrefixes))
+	for _, prefix := range dependencies.TrustedProxyPrefixes {
+		if !prefix.IsValid() || prefix.Addr().Is4In6() {
+			panic("httpapi: TrustedProxyPrefixes contains an invalid prefix")
+		}
+		trustedProxyPrefixes = append(trustedProxyPrefixes, prefix.Masked())
+	}
 	panelHostname := ""
 	if parsed, err := url.Parse(dependencies.PanelURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
 		allowedOrigins[parsed.Scheme+"://"+parsed.Host] = struct{}{}
@@ -226,6 +236,7 @@ func New(dependencies Dependencies) http.Handler {
 		nodeRelease:                dependencies.NodeRelease,
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,
+		trustedProxyPrefixes:       trustedProxyPrefixes,
 		logger:                     dependencies.Logger,
 		loginAttempts:              newAttemptLimiter(100, time.Minute),
 		registrationRequests:       newRequestLimiter(20, 15*time.Minute),
@@ -242,10 +253,10 @@ func New(dependencies Dependencies) http.Handler {
 		enrollAttempts:             newAttemptLimiter(20, 15*time.Minute),
 		machineAuthFailures:        newAttemptLimiter(60, time.Minute),
 		legacyNodeAuthFailures:     newAttemptLimiter(60, time.Minute),
-		handshakeRequests:          newRequestLimitGroup(60, 20),
-		pullRequests:               newRequestLimitGroup(2_400, 600),
-		reportRequests:             newRequestLimitGroup(1_200, 240),
-		machineRequests:            newRequestLimitGroup(1_200, 240),
+		handshakeRequests:          newNodeRequestLimitGroup(60, 600, 20, trustedProxyPrefixes),
+		pullRequests:               newNodeRequestLimitGroup(2_400, 10_000, 600, trustedProxyPrefixes),
+		reportRequests:             newNodeRequestLimitGroup(1_200, 10_000, 240, trustedProxyPrefixes),
+		machineRequests:            newNodeRequestLimitGroup(1_200, 5_000, 240, trustedProxyPrefixes),
 		ticketRequests:             newRequestLimitGroup(240, 60),
 		orderRequests:              newRequestLimitGroup(240, 60),
 		paymentWebhookRequests:     newRequestLimiter(600, time.Minute),
@@ -1031,7 +1042,7 @@ func (w *responseStatusRecorder) statusCode() int {
 	return w.status
 }
 
-func (s *server) allowServerRequest(w http.ResponseWriter, r *http.Request, limiter *requestLimitGroup, machineID int64) bool {
+func (s *server) allowServerRequest(w http.ResponseWriter, r *http.Request, limiter *nodeRequestLimitGroup, machineID int64) bool {
 	if limiter.allow(r, machineID, s.now()) {
 		return true
 	}
