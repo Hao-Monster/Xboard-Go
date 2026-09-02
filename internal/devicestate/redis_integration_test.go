@@ -17,11 +17,12 @@ import (
 )
 
 type recordingSummaryWriter struct {
-	mu        sync.Mutex
-	attempts  int
-	successes int
-	fail      bool
-	summaries map[int64]Summary
+	mu         sync.Mutex
+	attempts   int
+	successes  int
+	fail       bool
+	summaries  map[int64]Summary
+	afterWrite func()
 }
 
 func (writer *recordingSummaryWriter) write(_ context.Context, summaries []Summary) error {
@@ -38,6 +39,9 @@ func (writer *recordingSummaryWriter) write(_ context.Context, summaries []Summa
 		writer.summaries[summary.UserID] = summary
 	}
 	writer.successes++
+	if writer.afterWrite != nil {
+		writer.afterWrite()
+	}
 	return nil
 }
 
@@ -278,6 +282,59 @@ func TestTIMENODE006RedisReplaceAllAndClearMaintainIndexes(t *testing.T) {
 	if err != nil || len(affected) != 0 {
 		t.Fatalf("stale node index remained after user clear: (%v, %v)", affected, err)
 	}
+}
+
+func TestTIMENODE006PendingAcknowledgementPreservesANewerVersion(t *testing.T) {
+	writer := &recordingSummaryWriter{}
+	throttle := 40 * time.Millisecond
+	service := newTIMENODE006RedisService(t, writer, throttle)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if _, err := service.ReplaceNodeDevices(ctx, 51, map[int64][]string{13: {"192.0.2.13"}}, false, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReplaceNodeDevices(ctx, 51, map[int64][]string{13: {"192.0.2.14"}}, false, now.Add(time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		exists, err := service.client.Exists(ctx, service.throttleKey(13)).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("device summary throttle did not expire")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	var newerScore int64
+	var hookErr error
+	writer.mu.Lock()
+	writer.afterWrite = func() {
+		newerScore = time.Now().Add(throttle).UnixMilli()
+		hookErr = service.client.ZAdd(ctx, service.pendingKey(), redis.Z{
+			Score: float64(newerScore), Member: "13",
+		}).Err()
+	}
+	writer.mu.Unlock()
+	dueAt := time.Now().UTC()
+	if _, err := service.FlushPending(ctx, dueAt, DefaultFlushLimit); err != nil {
+		t.Fatal(err)
+	}
+	if hookErr != nil {
+		t.Fatal(hookErr)
+	}
+	score, err := service.client.ZScore(ctx, service.pendingKey(), "13").Result()
+	if err != nil || int64(score) != newerScore || int64(score) <= dueAt.UnixMilli() {
+		t.Fatalf("newer pending version = (%v, %v), want %d", score, err, newerScore)
+	}
+	writer.mu.Lock()
+	writer.afterWrite = nil
+	writer.mu.Unlock()
 }
 
 func TestTIMENODE006ConstantsMatchTheFixedContract(t *testing.T) {
