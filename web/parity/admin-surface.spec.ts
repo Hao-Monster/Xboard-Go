@@ -2601,38 +2601,60 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
     const legacyBalanceBefore = Number(legacyTinker(`$email=base64_decode("${encodedLegacyEmail}"); echo App\\Models\\User::where("email",$email)->value("commission_balance");`));
     const goBalanceBefore = Number(readProperty(goFunded, "commission_balance"));
 
-    const exerciseWithdrawal = async (page: Page, baseURL: string, email: string) => {
-      const login = await page.request.post(new URL("/api/v1/passport/auth/login", baseURL).toString(), { data: { email, password } });
+    const exerciseWithdrawal = async (baseURL: string, email: string, legacy: boolean) => {
+      const userAPI = await playwrightRequest.newContext({ baseURL, extraHTTPHeaders: { "Accept-Language": "zh-CN" } });
+      const login = await userAPI.post("/api/v1/passport/auth/login", { data: { email, password } });
       expect(login.status(), await login.text()).toBe(200);
       const authorization = readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data");
       if (!authorization) throw new Error("withdrawal parity user authorization is missing");
-      const headers = { authorization };
-      const withdrawn = await page.request.post(new URL("/api/v1/user/ticket/withdraw", baseURL).toString(), {
-        headers, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
-      });
-      expect(withdrawn.status(), await withdrawn.text()).toBe(200);
-      const list = await page.request.get(new URL("/api/v1/user/ticket/fetch", baseURL).toString(), { headers });
-      expect(list.status(), await list.text()).toBe(200);
-      const tickets = readProperty(await list.json() as unknown, "data");
-      if (!Array.isArray(tickets)) throw new Error("withdrawal parity ticket list is invalid");
-      const ticketItems: unknown[] = tickets;
-      const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === "[提现申请] 本工单由系统发出");
-      const ticketID = Number(readProperty(item, "id"));
-      expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
-      const detail = await page.request.get(new URL(`/api/v1/user/ticket/fetch?id=${ticketID}`, baseURL).toString(), { headers });
-      expect(detail.status(), await detail.text()).toBe(200);
-      const ticket = readProperty(await detail.json() as unknown, "data");
-      const messages = readProperty(ticket, "message");
-      if (!Array.isArray(messages) || messages.length !== 1) throw new Error("withdrawal parity ticket messages are invalid");
-      const ticketMessages: unknown[] = messages;
-      return {
-        subject: readStringProperty(ticket, "subject"), level: Number(readProperty(ticket, "level")),
-        status: Number(readProperty(ticket, "status")), message: readStringProperty(ticketMessages[0], "message")
-      };
+      try {
+        let listPath: string;
+        let detailPath: (ticketID: number) => string;
+        if (legacy) {
+          const withdrawn = await userAPI.post("/api/v1/user/ticket/withdraw", {
+            headers: { authorization }, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+          });
+          expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+          listPath = "/api/v1/user/ticket/fetch";
+          detailPath = (ticketID) => `/api/v1/user/ticket/fetch?id=${ticketID}`;
+        } else {
+          const state = await userAPI.storageState();
+          const csrf = state.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? "";
+          expect(csrf).not.toBe("");
+          const withdrawn = await userAPI.post("/api/v1/tickets/withdraw", {
+            headers: { "X-CSRF-Token": decodeURIComponent(csrf) },
+            data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+          });
+          expect(withdrawn.status(), await withdrawn.text()).toBe(201);
+          listPath = "/api/v1/tickets";
+          detailPath = (ticketID) => `/api/v1/tickets/${ticketID}`;
+        }
+        const list = await userAPI.get(listPath, legacy ? { headers: { authorization } } : undefined);
+        expect(list.status(), await list.text()).toBe(200);
+        const listData = readProperty(await list.json() as unknown, "data");
+        const tickets = legacy ? listData : readProperty(listData, "items");
+        if (!Array.isArray(tickets)) throw new Error("withdrawal parity ticket list is invalid");
+        const ticketItems: unknown[] = tickets;
+        const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === "[提现申请] 本工单由系统发出");
+        const ticketID = Number(readProperty(item, "id"));
+        expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
+        const detail = await userAPI.get(detailPath(ticketID), legacy ? { headers: { authorization } } : undefined);
+        expect(detail.status(), await detail.text()).toBe(200);
+        const ticket = readProperty(await detail.json() as unknown, "data");
+        const messages = readProperty(ticket, legacy ? "message" : "messages");
+        if (!Array.isArray(messages) || messages.length !== 1) throw new Error("withdrawal parity ticket messages are invalid");
+        const ticketMessages: unknown[] = messages;
+        return {
+          subject: readStringProperty(ticket, "subject"), level: Number(readProperty(ticket, "level")),
+          status: Number(readProperty(ticket, "status")), message: readStringProperty(ticketMessages[0], "message")
+        };
+      } finally {
+        await userAPI.dispose();
+      }
     };
 
-    const legacyResult = await exerciseWithdrawal(legacyPage, legacyURL, legacyUserEmail);
-    const goResult = await exerciseWithdrawal(goPage, goURL, goUserEmail);
+    const legacyResult = await exerciseWithdrawal(legacyURL, legacyUserEmail, true);
+    const goResult = await exerciseWithdrawal(goURL, goUserEmail, false);
     expect(goResult).toEqual(legacyResult);
     expect(goResult).toEqual({
       subject: "[提现申请] 本工单由系统发出", level: 2, status: 0,
