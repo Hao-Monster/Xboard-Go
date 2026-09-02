@@ -644,7 +644,7 @@ func RenderStatus(state State) (string, error) {
 	}
 
 	fmt.Fprintf(&out, "\n## Interpretation\n\n")
-	fmt.Fprintf(&out, "The repository has broad historical implementation coverage, but it is not release-ready: current-head verification and formal acceptance are still 0/80. M0 establishes the control plane; M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.\n")
+	fmt.Fprintf(&out, "Current-head verification is %d/80 and formal acceptance is %d/80. Release readiness still depends on the milestone gates above; M0 establishes the control plane, and M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.\n", countRequirementStatus(state.Requirements.Requirements, "verification", "current"), countRequirementStatus(state.Requirements.Requirements, "acceptance", "accepted"))
 	return out.String(), nil
 }
 
