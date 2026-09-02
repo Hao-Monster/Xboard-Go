@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"sync"
@@ -54,6 +55,8 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 		}
 		deviceState = service
 		dependencies.DeviceState = service
+		dependencies.WebSocketEnabled = true
+		dependencies.AllowedOrigins = []string{"https://panel.example.test"}
 	})
 	t.Cleanup(func() {
 		_ = deviceState.Close()
@@ -162,6 +165,49 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	if err != nil || traffic.Upload != 10 || traffic.Download != 20 {
 		t.Fatalf("retried report traffic = (%#v, %v), want exactly once", traffic, err)
 	}
+	account, err = database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := loginAdmin(t, api)
+	reset := admin.request(t, api, http.MethodPost,
+		fmt.Sprintf("/api/v1/admin/users/%d/subscription-security/reset", user.ID),
+		fmt.Sprintf(`{"revision":%d}`, account.Revision))
+	if reset.Code != http.StatusOK {
+		t.Fatalf("subscription-security reset status=%d body=%s", reset.Code, reset.Body)
+	}
+	devices, err = deviceState.ListUserDevices(ctx, []int64{user.ID}, now())
+	if err != nil || len(devices[user.ID]) != 0 {
+		t.Fatalf("access mutation retained Redis device state: (%#v, %v)", devices, err)
+	}
+
+	server := httptest.NewServer(api)
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
+	if err := connection.WriteJSON(map[string]any{
+		"event": "report.devices",
+		"data": map[string]any{
+			"node_id": node.ID,
+			"devices": map[string]any{fmt.Sprint(user.ID): []string{"203.0.113.70:443"}},
+		},
+	}); err != nil {
+		t.Fatalf("write WebSocket device report: %v", err)
+	}
+	if event := readWSEvent(t, connection); event.Event != "sync.devices" {
+		t.Fatalf("WebSocket device report event=%q, want sync.devices", event.Event)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		currentDevices, listErr := deviceState.ListUserDevices(ctx, []int64{user.ID}, now())
+		return listErr == nil && reflect.DeepEqual(currentDevices[user.ID], []string{"203.0.113.70"})
+	})
+	if err := connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		currentDevices, listErr := deviceState.ListUserDevices(ctx, []int64{user.ID}, now())
+		return listErr == nil && len(currentDevices[user.ID]) == 0
+	})
+	server.Close()
 
 	if err := deviceState.Close(); err != nil {
 		t.Fatal(err)
