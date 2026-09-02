@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,6 +280,104 @@ func TestSECNODE005TrustedProxyIsAppliedAtNodeAuthenticationEntry(t *testing.T) 
 	}
 	limited := request(untrustedAPI, "192.0.2.10:8080", "203.0.113.200")
 	expectAPIError(t, limited, http.StatusTooManyRequests, "machine_auth_rate_limited")
+}
+
+func TestSECNODE005RequestLimiterWindowOverflowAndConcurrency(t *testing.T) {
+	now := fixedNow()
+	window := newRequestLimiter(2, time.Minute)
+	if !window.take("client", now) || !window.take("client", now) || window.take("client", now) {
+		t.Fatal("fixed-window limiter did not enforce its exact request boundary")
+	}
+	if window.take("client", now.Add(time.Minute-time.Nanosecond)) || !window.take("client", now.Add(time.Minute)) {
+		t.Fatal("fixed-window limiter did not reset at the exact window boundary")
+	}
+
+	overflow := newRequestLimiter(2, time.Minute)
+	for index := 0; index < 4096; index++ {
+		if !overflow.take(fmt.Sprintf("client-%d", index), now) {
+			t.Fatalf("tracked client %d was unexpectedly limited", index)
+		}
+	}
+	if !overflow.take("overflow-a", now) || !overflow.take("overflow-b", now) || overflow.take("overflow-c", now) {
+		t.Fatal("overflow clients did not share a fail-closed bounded bucket")
+	}
+	if got := len(overflow.entries); got != 4097 {
+		t.Fatalf("tracked limiter entries=%d, want 4096 keys plus one overflow bucket", got)
+	}
+
+	concurrent := newRequestLimiter(50, time.Minute)
+	var accepted atomic.Int64
+	var wait sync.WaitGroup
+	for range 100 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			if concurrent.take("shared", now) {
+				accepted.Add(1)
+			}
+		}()
+	}
+	wait.Wait()
+	if got := accepted.Load(); got != 50 {
+		t.Fatalf("concurrent accepted requests=%d, want 50", got)
+	}
+}
+
+func TestSECNODE005RuntimeHTTPBodyBoundaries(t *testing.T) {
+	api, database := newTestAPI(t)
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
+		Name: "node-security-http-bodies", IsActive: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(context.Background(), store.CreateNodeInput{
+		Name: "node-security-http-node", Type: "vless", Host: "security.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(context.Background(), node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7}, Config: []byte(`{"protocol":"vless","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		controlBodyLimit = 1 << 20
+		reportBodyLimit  = 8 << 20
+		statusBodyLimit  = 64 << 10
+	)
+	status := `{"cpu":1,"mem":{"total":1,"used":0},"swap":{"total":0,"used":0},"disk":{"total":1,"used":0}}`
+	cases := []struct {
+		name  string
+		path  string
+		body  string
+		limit int
+	}{
+		{name: "machine nodes", path: "/api/v2/server/machine/nodes", body: fmt.Sprintf(`{"machine_id":%d}`, machine.ID), limit: controlBodyLimit},
+		{name: "machine status", path: "/api/v2/server/machine/status", body: fmt.Sprintf(`{"machine_id":%d,"cpu":1,"mem":{"total":1,"used":0}}`, machine.ID), limit: controlBodyLimit},
+		{name: "aggregate report", path: "/api/v2/server/report", body: fmt.Sprintf(`{"machine_id":%d,"node_id":%d}`, machine.ID, node.ID), limit: reportBodyLimit},
+		{name: "traffic push", path: fmt.Sprintf("/api/v2/server/push?machine_id=%d&node_id=%d", machine.ID, node.ID), body: `{}`, limit: reportBodyLimit},
+		{name: "device alive", path: fmt.Sprintf("/api/v2/server/alive?machine_id=%d&node_id=%d", machine.ID, node.ID), body: `{}`, limit: reportBodyLimit},
+		{name: "node status", path: fmt.Sprintf("/api/v2/server/status?machine_id=%d&node_id=%d", machine.ID, node.ID), body: status, limit: statusBodyLimit},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			atLimit := agentRequest(api, http.MethodPost, test.path, credential.Token, paddedNodeSecurityJSON(t, test.body, test.limit))
+			if atLimit.Code != http.StatusOK {
+				t.Fatalf("body at %d-byte limit status=%d, want %d; body=%s", test.limit, atLimit.Code, http.StatusOK, atLimit.Body)
+			}
+			overLimit := agentRequest(api, http.MethodPost, test.path, credential.Token, paddedNodeSecurityJSON(t, test.body, test.limit+1))
+			expectAPIError(t, overLimit, http.StatusRequestEntityTooLarge, "request_too_large")
+		})
+	}
 }
 
 func paddedNodeSecurityJSON(t *testing.T, base string, size int) string {
