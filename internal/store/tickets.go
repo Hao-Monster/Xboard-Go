@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,11 +13,13 @@ import (
 )
 
 const (
-	defaultTicketPageSize = 20
-	maxTicketPageSize     = 100
-	maxTicketMessageBytes = 64 << 10
-	maxTicketMessages     = 1_000
-	maxTicketCloseBatch   = 1_000
+	defaultTicketPageSize       = 20
+	maxTicketPageSize           = 100
+	maxTicketMessageBytes       = 64 << 10
+	maxTicketMessages           = 1_000
+	maxTicketCloseBatch         = 1_000
+	maxWithdrawalAccountBytes   = 512
+	commissionWithdrawalSubject = "[提现申请] 本工单由系统发出"
 )
 
 func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicketInput, now time.Time) (Ticket, error) {
@@ -33,6 +36,84 @@ func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicket
 		return Ticket{}, fmt.Errorf("begin create ticket: %w", err)
 	}
 	defer tx.Rollback()
+	ticket, err := createTicketTx(ctx, tx, userID, input, now)
+	if err != nil {
+		return Ticket{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Ticket{}, fmt.Errorf("commit create ticket: %w", err)
+	}
+	return ticket, nil
+}
+
+func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int64, input CommissionWithdrawalInput, now time.Time) (Ticket, error) {
+	input.Method = strings.TrimSpace(input.Method)
+	input.Account = strings.TrimSpace(input.Account)
+	location, validLocation := normalizeTelegramNotificationLocation(input.NotificationLocation)
+	if userID < 1 || now.Unix() < 0 || !validWithdrawalField(input.Method, 64) ||
+		!validWithdrawalField(input.Account, maxWithdrawalAccountBytes) || !validLocation {
+		return Ticket{}, fmt.Errorf("%w: invalid commission withdrawal", ErrInvalidInput)
+	}
+	input.NotificationLocation = location
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Ticket{}, fmt.Errorf("begin commission withdrawal: %w", err)
+	}
+	defer tx.Rollback()
+	var balance int64
+	var limit CurrencyAmount
+	var methodsJSON string
+	var disabled bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT u.commission_balance, s.commission_withdraw_limit,
+		       s.commission_withdraw_method, s.withdraw_close_enable
+		FROM users u CROSS JOIN app_settings s
+		WHERE u.id = ? AND u.account_kind = 'human' AND s.id = 1
+	`, userID).Scan(&balance, &limit, &methodsJSON, &disabled); errors.Is(err, sql.ErrNoRows) {
+		return Ticket{}, ErrNotFound
+	} else if err != nil {
+		return Ticket{}, fmt.Errorf("read commission withdrawal policy: %w", err)
+	}
+	if disabled {
+		return Ticket{}, ErrCommissionWithdrawalDisabled
+	}
+	var methods []string
+	if err := json.Unmarshal([]byte(methodsJSON), &methods); err != nil {
+		return Ticket{}, fmt.Errorf("decode stored commission withdrawal methods: %w", err)
+	}
+	if !validCommissionWithdrawMethods(methods) {
+		return Ticket{}, errors.New("stored commission withdrawal methods are invalid")
+	}
+	supported := false
+	for _, method := range methods {
+		if method == input.Method {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		return Ticket{}, ErrCommissionWithdrawalMethodUnsupported
+	}
+	if balance < int64(limit) {
+		return Ticket{}, CommissionWithdrawalLimitError{Limit: limit}
+	}
+	ticket, err := createTicketTx(ctx, tx, userID, SaveTicketInput{
+		Subject:              commissionWithdrawalSubject,
+		Level:                TicketLevelHigh,
+		Message:              "提现方式：" + input.Method + "\r\n提现账号：" + input.Account,
+		NotificationLocation: input.NotificationLocation,
+	}, now)
+	if err != nil {
+		return Ticket{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Ticket{}, fmt.Errorf("commit commission withdrawal: %w", err)
+	}
+	return ticket, nil
+}
+
+func createTicketTx(ctx context.Context, tx *sql.Tx, userID int64, input SaveTicketInput, now time.Time) (Ticket, error) {
 
 	var exists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE user_id = ? AND status = 0)`, userID).Scan(&exists); err != nil {
@@ -73,10 +154,11 @@ func (s *Store) CreateTicket(ctx context.Context, userID int64, input SaveTicket
 	if err := enqueueTelegramTicketNotificationTx(ctx, tx, userID, ticketID, messageID, input.Subject, input.Message, input.NotificationLocation, now); err != nil {
 		return Ticket{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return Ticket{}, fmt.Errorf("commit create ticket: %w", err)
-	}
 	return ticket, nil
+}
+
+func validWithdrawalField(value string, maximumBytes int) bool {
+	return value != "" && len(value) <= maximumBytes && !containsUnsafeTicketControl(value, false)
 }
 
 func (s *Store) ListUserTickets(ctx context.Context, userID int64, page, pageSize int) (TicketPage, error) {

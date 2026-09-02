@@ -27,6 +27,7 @@ interface UserPortalAPI {
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
   transferCommission: (amount: number) => Promise<CommissionTransferResult>;
+  requestCommissionWithdrawal: (withdrawMethod: string, withdrawAccount: string) => Promise<Ticket>;
   listPlanOffers: () => Promise<PlanOffer[]>;
   checkCoupon: (code: string, planID: number, period: PlanPeriod) => Promise<CouponQuote>;
   createOrder: (planID: number, period: PlanPeriod, couponCode?: string) => Promise<Order>;

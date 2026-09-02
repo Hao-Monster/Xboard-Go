@@ -879,6 +879,8 @@ docker compose -f compose.local.yaml up -d --wait xboard-go
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow; commission withdrawal settlement
-and other remaining legacy domains still require separate mappings and
-migration evidence.
+This remains a local/isolated-test workflow. The commission withdrawal request
+flow matches the legacy behavior by creating a high-priority ticket without
+debiting the commission balance; administrators still perform the external
+payout and settlement. Other remaining legacy domains require separate
+mappings and migration evidence.

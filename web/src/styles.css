@@ -82,7 +82,7 @@ h3 { margin-bottom: 12px; }
 .overview-metric.danger strong { color: #ffaaa7; }
 .system-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; margin-top: 32px; }
 .system-section { margin-top: 40px; }
-.invitation-action-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 18px; }
+.invitation-action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 18px; }
 .invitation-panel { min-width: 0; padding: 20px; border: 1px solid #292e3a; border-radius: 16px; background: rgb(17 20 27 / 84%); }
 .invitation-panel .resource-table-wrap { margin-top: 18px; }
 .invitation-transfer-form { display: grid; gap: 14px; margin-top: 26px; }

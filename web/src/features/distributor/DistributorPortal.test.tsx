@@ -49,6 +49,7 @@ describe("Distributor portal", () => {
     expect(await screen.findByRole("heading", { name: "My Invitations" })).toBeVisible();
     expect(screen.getAllByText("Valid commission", { exact: true })[0]).toBeVisible();
     expect(screen.getByRole("button", { name: "Transfer commission" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Withdraw commission" })).not.toBeInTheDocument();
   });
 
   it("creates an independent order and immediately presents a repeatable QR delivery", async () => {
@@ -127,8 +128,8 @@ function portalAPI() {
     listPlanOffers: vi.fn().mockResolvedValue([plan]), createDistributorOrder: vi.fn(),
     listDistributorOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
     getDistributorOrderQR: vi.fn(), renewDistributorOrder: vi.fn(), exportDistributorOrders: vi.fn(),
-    getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0 }), createInvitation: vi.fn(),
-    listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), transferCommission: vi.fn(),
+    getInvitations: vi.fn().mockResolvedValue({ codes: [], invited_count: 0, valid_commission: 0, pending_commission: 0, commission_rate: 10, commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 0, withdraw_enabled: false, withdraw_limit: 100, withdraw_methods: [] }), createInvitation: vi.fn(),
+    listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }), transferCommission: vi.fn(), requestCommissionWithdrawal: vi.fn(),
     listKnowledge: vi.fn().mockResolvedValue([]), getKnowledge: vi.fn(), listClientCatalog: vi.fn().mockResolvedValue([]), clientCatalogQR: vi.fn(), logout: vi.fn()
   };
 }

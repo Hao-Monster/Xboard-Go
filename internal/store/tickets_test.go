@@ -129,6 +129,65 @@ func TestOnlyOneOpenTicketCanBeCreatedConcurrently(t *testing.T) {
 	}
 }
 
+func TestCommissionWithdrawalEnforcesPolicyAtomicallyAndPreservesBalance(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	user := createTicketTestUser(t, database, "withdrawal@example.test", now)
+	if _, err := database.db.ExecContext(ctx, `
+		UPDATE app_settings SET commission_withdraw_limit = 10000,
+			commission_withdraw_method = '["USDT","银行转账"]', withdraw_close_enable = 0
+		WHERE id = 1
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_balance = 9999 WHERE id = ?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	input := CommissionWithdrawalInput{Method: "USDT", Account: "wallet-42"}
+	_, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now)
+	var limitError CommissionWithdrawalLimitError
+	if !errors.As(err, &limitError) || limitError.Limit != 10000 {
+		t.Fatalf("below-limit error=%v limit=%v", err, limitError.Limit)
+	}
+	if _, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, CommissionWithdrawalInput{Method: "cash", Account: "wallet-42"}, now); !errors.Is(err, ErrCommissionWithdrawalMethodUnsupported) {
+		t.Fatalf("unsupported method error=%v", err)
+	}
+	if _, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, CommissionWithdrawalInput{Method: "USDT", Account: "bad\naccount"}, now); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unsafe account error=%v", err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_balance = 10000 WHERE id = ?`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now)
+	if err != nil {
+		t.Fatalf("CreateCommissionWithdrawalTicket() error=%v", err)
+	}
+	if ticket.Subject != commissionWithdrawalSubject || ticket.Level != TicketLevelHigh || ticket.Status != TicketStatusOpen {
+		t.Fatalf("withdrawal ticket=%#v", ticket)
+	}
+	detail, err := database.GetUserTicket(ctx, user.ID, ticket.ID)
+	if err != nil || len(detail.Messages) != 1 || detail.Messages[0].Message != "提现方式：USDT\r\n提现账号：wallet-42" {
+		t.Fatalf("withdrawal detail=%#v error=%v", detail, err)
+	}
+	var balance int64
+	if err := database.db.QueryRowContext(ctx, `SELECT commission_balance FROM users WHERE id = ?`, user.ID).Scan(&balance); err != nil || balance != 10000 {
+		t.Fatalf("commission balance=%d error=%v", balance, err)
+	}
+	if _, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now); !errors.Is(err, ErrOpenTicketExists) {
+		t.Fatalf("duplicate withdrawal error=%v", err)
+	}
+	if _, err := database.CloseTicketAsUser(ctx, user.ID, ticket.ID, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE app_settings SET withdraw_close_enable = 1 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now.Add(2*time.Minute)); !errors.Is(err, ErrCommissionWithdrawalDisabled) {
+		t.Fatalf("disabled withdrawal error=%v", err)
+	}
+}
+
 func TestTicketValidationAndAutomaticClosureAreBounded(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

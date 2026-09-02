@@ -47,6 +47,52 @@ func (s *server) createTicket(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusCreated, ticket)
 }
 
+func (s *server) createCommissionWithdrawalTicket(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Method  string `json:"withdraw_method"`
+		Account string `json:"withdraw_account"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, _ := sessionFromContext(r.Context())
+	if !s.allowTicketMutation(w, r, session.UserID) {
+		return
+	}
+	ticket, err := s.store.CreateCommissionWithdrawalTicket(r.Context(), session.UserID, store.CommissionWithdrawalInput{
+		Method: input.Method, Account: input.Account,
+		NotificationLocation: s.ticketNotificationLocation(r),
+	}, s.now())
+	if err != nil {
+		handleCommissionWithdrawalError(w, err, false)
+		return
+	}
+	writeSuccess(w, http.StatusCreated, ticket)
+}
+
+func (s *server) legacyCommissionWithdrawalTicket(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Method  string `json:"withdraw_method"`
+		Account string `json:"withdraw_account"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, _ := sessionFromContext(r.Context())
+	if !s.allowTicketMutation(w, r, session.UserID) {
+		return
+	}
+	_, err := s.store.CreateCommissionWithdrawalTicket(r.Context(), session.UserID, store.CommissionWithdrawalInput{
+		Method: input.Method, Account: input.Account,
+		NotificationLocation: s.ticketNotificationLocation(r),
+	}, s.now())
+	if err != nil {
+		handleCommissionWithdrawalError(w, err, true)
+		return
+	}
+	writeLegacySuccess(w, http.StatusOK, true)
+}
+
 func (s *server) getUserTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID, ok := pathID(w, r, "ticketID")
 	if !ok {
@@ -295,4 +341,41 @@ func handleTicketError(w http.ResponseWriter, err error) {
 	default:
 		handleStoreError(w, err)
 	}
+}
+
+func handleCommissionWithdrawalError(w http.ResponseWriter, err error, legacy bool) {
+	status := http.StatusUnprocessableEntity
+	code := "validation_failed"
+	message := "提现参数无效"
+	switch {
+	case errors.Is(err, store.ErrCommissionWithdrawalDisabled):
+		status, code, message = http.StatusConflict, "commission_withdrawal_disabled", "当前不支持佣金提现"
+	case errors.Is(err, store.ErrCommissionWithdrawalMethodUnsupported):
+		code, message = "unsupported_withdrawal_method", "不支持的提现方式"
+	case errors.Is(err, store.ErrCommissionWithdrawalBelowLimit):
+		var limitError store.CommissionWithdrawalLimitError
+		if errors.As(err, &limitError) {
+			message = "当前系统要求的最低提现佣金为：¥" + limitError.Limit.String()
+		}
+		code = "commission_withdrawal_below_limit"
+	case errors.Is(err, store.ErrOpenTicketExists):
+		status, code, message = http.StatusConflict, "open_ticket_exists", "存在未关闭的工单"
+	case errors.Is(err, store.ErrInvalidInput):
+		// Defaults describe bounded or malformed user input without returning internals.
+	default:
+		if legacy {
+			writeLegacyInviteFailure(w, http.StatusBadRequest, "提现申请失败")
+			return
+		}
+		handleStoreError(w, err)
+		return
+	}
+	if legacy {
+		if status == http.StatusConflict {
+			status = http.StatusBadRequest
+		}
+		writeLegacyInviteFailure(w, status, message)
+		return
+	}
+	writeAPIError(w, status, code, message, nil)
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -25,16 +26,21 @@ func populateInvitationCommissionSummary(ctx context.Context, database commissio
 	var commissionRate sql.NullInt64
 	var globalRate int
 	var distributionEnabled bool
+	var withdrawClosed bool
+	var withdrawMethodsJSON string
 	var levelOne, levelTwo, levelThree int
 	if err := database.QueryRowContext(ctx, `
 		SELECT u.commission_balance, u.commission_rate, s.invite_commission,
 		       s.commission_distribution_enable, s.commission_distribution_l1,
-		       s.commission_distribution_l2, s.commission_distribution_l3
+		       s.commission_distribution_l2, s.commission_distribution_l3,
+		       s.withdraw_close_enable, s.commission_withdraw_limit,
+		       s.commission_withdraw_method
 		FROM users u CROSS JOIN app_settings s
 		WHERE u.id = ? AND u.account_kind = 'human' AND s.id = 1
 	`, ownerID).Scan(
 		&summary.AvailableCommission, &commissionRate, &globalRate, &distributionEnabled,
-		&levelOne, &levelTwo, &levelThree,
+		&levelOne, &levelTwo, &levelThree, &withdrawClosed,
+		&summary.CommissionWithdrawalLimit, &withdrawMethodsJSON,
 	); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
@@ -46,6 +52,14 @@ func populateInvitationCommissionSummary(ctx context.Context, database commissio
 		summary.CommissionRate = globalRate
 	}
 	summary.CommissionDistributionEnabled = distributionEnabled
+	if err := json.Unmarshal([]byte(withdrawMethodsJSON), &summary.CommissionWithdrawalMethods); err != nil {
+		return fmt.Errorf("decode stored commission withdrawal methods: %w", err)
+	}
+	if !validCommissionWithdrawMethods(summary.CommissionWithdrawalMethods) {
+		return errors.New("stored commission withdrawal methods are invalid")
+	}
+	summary.CommissionWithdrawalMethods = append([]string(nil), summary.CommissionWithdrawalMethods...)
+	summary.CommissionWithdrawalEnabled = !withdrawClosed
 	summary.CommissionDistributionRates = make([]int, 0)
 	if distributionEnabled {
 		summary.CommissionDistributionRates = []int{

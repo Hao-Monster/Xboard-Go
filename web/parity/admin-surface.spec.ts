@@ -2525,6 +2525,198 @@ test("legacy ticket API preserves role, ownership, close, and reply state semant
   }
 });
 
+test("legacy and Go commission withdrawal APIs create the same high-priority ticket without debiting commission", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const unique = Date.now();
+  const legacyEmailPrefix = `withdraw-${unique}`;
+  const legacyUserEmail = `${legacyEmailPrefix}@legacy.local`;
+  const goUserEmail = `withdraw-${unique}@example.test`;
+  const password = `withdraw-password-${unique}`;
+  const withdrawalAccount = `wallet-${unique}`;
+  let legacyAuthorization = "";
+  let legacyOriginal: Record<string, unknown> | null = null;
+  let goOriginal: Record<string, unknown> | null = null;
+  let goCreated: Record<string, unknown> | null = null;
+
+  try {
+    await loginLegacy(legacyPage);
+    const legacyConfigResponse = legacyPage.waitForResponse((response) => response.url().includes("/config/fetch"));
+    await legacyPage.locator('a[href="#/config/system"]').click();
+    legacyAuthorization = (await legacyConfigResponse).request().headers().authorization ?? "";
+    expect(legacyAuthorization).not.toBe("");
+    const legacyBeforeResponse = await legacyPage.request.get(legacyAdminAPI("/config/fetch?key=invite"), {
+      headers: { authorization: legacyAuthorization }
+    });
+    expect(legacyBeforeResponse.status(), await legacyBeforeResponse.text()).toBe(200);
+    legacyOriginal = readObjectProperty(readProperty(await legacyBeforeResponse.json() as unknown, "data"), "invite");
+    const legacyConfigured = await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+      headers: { authorization: legacyAuthorization },
+      data: { withdraw_close_enable: 0, commission_withdraw_limit: 250.5, commission_withdraw_method: ["USDT", "银行转账"] }
+    });
+    expect(legacyConfigured.status(), await legacyConfigured.text()).toBe(200);
+    const legacyGenerated = await legacyPage.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization: legacyAuthorization },
+      data: { email_prefix: legacyEmailPrefix, email_suffix: "legacy.local", password }
+    });
+    expect(legacyGenerated.status(), await legacyGenerated.text()).toBe(200);
+    const encodedLegacyEmail = Buffer.from(legacyUserEmail, "utf8").toString("base64");
+    legacyTinker(`$email=base64_decode("${encodedLegacyEmail}"); $u=App\\Models\\User::where("email",$email)->firstOrFail(); $u->commission_balance=25050; $u->save();`);
+
+    await loginGo(goPage);
+    const goBeforeResponse = await goAdminRequest(goPage, "/api/v1/admin/commission-settings", "GET");
+    expect(goBeforeResponse.status, goBeforeResponse.body).toBe(200);
+    goOriginal = readObjectProperty(JSON.parse(goBeforeResponse.body) as unknown, "data");
+    const goConfigured = await goAdminRequest(goPage, "/api/v1/admin/commission-settings", "PUT", {
+      revision: Number(readProperty(goOriginal, "revision")),
+      invite_commission: readProperty(goOriginal, "invite_commission"),
+      commission_first_time_enable: readProperty(goOriginal, "commission_first_time_enable"),
+      commission_auto_check_enable: readProperty(goOriginal, "commission_auto_check_enable"),
+      commission_withdraw_limit: 250.5,
+      commission_withdraw_method: ["USDT", "银行转账"],
+      withdraw_close_enable: false,
+      commission_distribution_enable: readProperty(goOriginal, "commission_distribution_enable"),
+      commission_distribution_l1: readProperty(goOriginal, "commission_distribution_l1"),
+      commission_distribution_l2: readProperty(goOriginal, "commission_distribution_l2"),
+      commission_distribution_l3: readProperty(goOriginal, "commission_distribution_l3")
+    });
+    expect(goConfigured.status, goConfigured.body).toBe(200);
+    const goCreatedResponse = await goAdminRequest(goPage, "/api/v1/admin/users", "POST", {
+      email: goUserEmail, password, group_id: null, transfer_enable: 0, expired_at: null,
+      speed_limit: 0, device_limit: 0, banned: false
+    });
+    expect(goCreatedResponse.status, goCreatedResponse.body).toBe(201);
+    goCreated = readObjectProperty(JSON.parse(goCreatedResponse.body) as unknown, "data");
+    const goFundedResponse = await goAdminRequest(goPage, `/api/v1/admin/users/${Number(readProperty(goCreated, "id"))}`, "PATCH", {
+      revision: Number(readProperty(goCreated, "revision")), email: goUserEmail,
+      group_id: readProperty(goCreated, "group_id"), transfer_enable: Number(readProperty(goCreated, "transfer_enable")),
+      expired_at: readProperty(goCreated, "expired_at"), speed_limit: Number(readProperty(goCreated, "speed_limit")),
+      device_limit: Number(readProperty(goCreated, "device_limit")), banned: false, commission_balance: 25_050
+    });
+    expect(goFundedResponse.status, goFundedResponse.body).toBe(200);
+    const goFunded = readObjectProperty(JSON.parse(goFundedResponse.body) as unknown, "data");
+    const legacyBalanceBefore = legacyUserCommissionBalance(legacyUserEmail);
+    const goBalanceBefore = Number(readProperty(goFunded, "commission_balance"));
+
+    const exerciseWithdrawal = async (baseURL: string, email: string, legacy: boolean) => {
+      const userAPI = await playwrightRequest.newContext({ baseURL, extraHTTPHeaders: { "Accept-Language": "zh-CN" } });
+      const login = await userAPI.post(legacy ? "/api/v1/passport/auth/login" : "/api/v1/auth/login", { data: { email, password } });
+      expect(login.status(), await login.text()).toBe(200);
+      const authorization = legacy ? readStringProperty(readProperty(await login.json() as unknown, "data"), "auth_data") : null;
+      if (legacy && !authorization) throw new Error("withdrawal parity user authorization is missing");
+      try {
+        let listPath: string;
+        let detailPath: (ticketID: number) => string;
+        if (legacy) {
+          const withdrawn = await userAPI.post("/api/v1/user/ticket/withdraw", {
+            headers: { authorization: authorization ?? "" }, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+          });
+          expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+          listPath = "/api/v1/user/ticket/fetch";
+          detailPath = (ticketID) => `/api/v1/user/ticket/fetch?id=${ticketID}`;
+        } else {
+          const state = await userAPI.storageState();
+          const csrf = state.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? "";
+          expect(csrf).not.toBe("");
+          const withdrawn = await userAPI.post("/api/v1/tickets/withdraw", {
+            headers: { "X-CSRF-Token": decodeURIComponent(csrf) },
+            data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+          });
+          expect(withdrawn.status(), await withdrawn.text()).toBe(201);
+          listPath = "/api/v1/tickets";
+          detailPath = (ticketID) => `/api/v1/tickets/${ticketID}`;
+        }
+        const list = await userAPI.get(listPath, legacy ? { headers: { authorization: authorization ?? "" } } : undefined);
+        expect(list.status(), await list.text()).toBe(200);
+        const listData = readProperty(await list.json() as unknown, "data");
+        const tickets = legacy ? listData : readProperty(listData, "items");
+        if (!Array.isArray(tickets)) throw new Error("withdrawal parity ticket list is invalid");
+        const ticketItems: unknown[] = tickets;
+        const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === "[提现申请] 本工单由系统发出");
+        const ticketID = Number(readProperty(item, "id"));
+        expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
+        const detail = await userAPI.get(detailPath(ticketID), legacy ? { headers: { authorization: authorization ?? "" } } : undefined);
+        expect(detail.status(), await detail.text()).toBe(200);
+        const ticket = readProperty(await detail.json() as unknown, "data");
+        const messages = readProperty(ticket, legacy ? "message" : "messages");
+        if (!Array.isArray(messages) || messages.length !== 1) throw new Error("withdrawal parity ticket messages are invalid");
+        const ticketMessages: unknown[] = messages;
+        return {
+          subject: readStringProperty(ticket, "subject"), level: Number(readProperty(ticket, "level")),
+          status: Number(readProperty(ticket, "status")), message: readStringProperty(ticketMessages[0], "message")
+        };
+      } finally {
+        await userAPI.dispose();
+      }
+    };
+
+    const legacyResult = await exerciseWithdrawal(legacyURL, legacyUserEmail, true);
+    const goResult = await exerciseWithdrawal(goURL, goUserEmail, false);
+    expect(goResult).toEqual(legacyResult);
+    expect(goResult).toEqual({
+      subject: "[提现申请] 本工单由系统发出", level: 2, status: 0,
+      message: `提现方式：USDT\r\n提现账号：${withdrawalAccount}`
+    });
+    const legacyBalanceAfter = legacyUserCommissionBalance(legacyUserEmail);
+    const goAfterResponse = await goAdminRequest(goPage, `/api/v1/admin/users/${Number(readProperty(goCreated, "id"))}`, "GET");
+    expect(goAfterResponse.status, goAfterResponse.body).toBe(200);
+    const goAfter = readObjectProperty(JSON.parse(goAfterResponse.body) as unknown, "data");
+    const goBalanceAfter = Number(readProperty(goAfter, "commission_balance"));
+    expect({ legacyBalanceBefore, legacyBalanceAfter, goBalanceBefore, goBalanceAfter }).toEqual({
+      legacyBalanceBefore: 25_050, legacyBalanceAfter: 25_050, goBalanceBefore: 25_050, goBalanceAfter: 25_050
+    });
+  } finally {
+    if (legacyOriginal !== null && legacyAuthorization !== "") {
+      await legacyPage.request.post(legacyAdminAPI("/config/save"), {
+        headers: { authorization: legacyAuthorization },
+        data: {
+          withdraw_close_enable: readProperty(legacyOriginal, "withdraw_close_enable"),
+          commission_withdraw_limit: readProperty(legacyOriginal, "commission_withdraw_limit"),
+          commission_withdraw_method: readProperty(legacyOriginal, "commission_withdraw_method")
+        }
+      }).catch(() => undefined);
+    }
+    const encodedCleanupEmail = Buffer.from(legacyUserEmail, "utf8").toString("base64");
+    legacyTinker(`$email=base64_decode("${encodedCleanupEmail}"); $u=App\\Models\\User::where("email",$email)->first(); if($u){$ids=App\\Models\\Ticket::where("user_id",$u->id)->pluck("id"); App\\Models\\TicketMessage::whereIn("ticket_id",$ids)->delete(); App\\Models\\Ticket::whereIn("id",$ids)->delete(); $u->delete();}`);
+    if (goOriginal !== null) {
+      const latestResponse = await goAdminRequest(goPage, "/api/v1/admin/commission-settings", "GET").catch(() => null);
+      if (latestResponse?.status === 200) {
+        const latest = readObjectProperty(JSON.parse(latestResponse.body) as unknown, "data");
+        await goAdminRequest(goPage, "/api/v1/admin/commission-settings", "PUT", {
+          revision: Number(readProperty(latest, "revision")),
+          invite_commission: readProperty(goOriginal, "invite_commission"),
+          commission_first_time_enable: readProperty(goOriginal, "commission_first_time_enable"),
+          commission_auto_check_enable: readProperty(goOriginal, "commission_auto_check_enable"),
+          commission_withdraw_limit: readProperty(goOriginal, "commission_withdraw_limit"),
+          commission_withdraw_method: readProperty(goOriginal, "commission_withdraw_method"),
+          withdraw_close_enable: readProperty(goOriginal, "withdraw_close_enable"),
+          commission_distribution_enable: readProperty(goOriginal, "commission_distribution_enable"),
+          commission_distribution_l1: readProperty(goOriginal, "commission_distribution_l1"),
+          commission_distribution_l2: readProperty(goOriginal, "commission_distribution_l2"),
+          commission_distribution_l3: readProperty(goOriginal, "commission_distribution_l3")
+        }).catch(() => undefined);
+      }
+    }
+    if (goCreated !== null) {
+      const current = await goAdminRequest(goPage, `/api/v1/admin/users/${Number(readProperty(goCreated, "id"))}`, "GET").catch(() => null);
+      if (current?.status === 200) {
+        const user = readObjectProperty(JSON.parse(current.body) as unknown, "data");
+        await goAdminRequest(goPage, `/api/v1/admin/users/${Number(readProperty(user, "id"))}`, "PATCH", {
+          revision: Number(readProperty(user, "revision")), email: readStringProperty(user, "email"),
+          group_id: readProperty(user, "group_id"), transfer_enable: Number(readProperty(user, "transfer_enable")),
+          expired_at: readProperty(user, "expired_at"), speed_limit: Number(readProperty(user, "speed_limit")),
+          device_limit: Number(readProperty(user, "device_limit")), banned: true
+        }).catch(() => undefined);
+      }
+    }
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy ticket wait setting blocks consecutive user replies until an administrator answers", async ({ page }) => {
   await loginLegacy(page);
   const ticketResponse = page.waitForResponse((response) => response.url().includes("/ticket/fetch"));
@@ -3318,6 +3510,17 @@ function legacyTinker(statement: string): string {
     ["exec", legacyDockerContainer, "php", "artisan", "tinker", "--quiet", "--no-interaction", `--execute=${statement}`],
     { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }
   ).trim();
+}
+
+function legacyUserCommissionBalance(email: string): number {
+  const encodedEmail = Buffer.from(email, "utf8").toString("base64");
+  const script = `require "/www/vendor/autoload.php"; $app=require "/www/bootstrap/app.php"; $app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $email=base64_decode("${encodedEmail}"); echo (int) \\App\\Models\\User::where("email",$email)->value("commission_balance");`;
+  const value = execFileSync("docker", ["exec", legacyDockerContainer, "php", "-r", script], {
+    stdio: ["ignore", "pipe", "pipe"], encoding: "utf8"
+  }).trim();
+  const balance = Number(value);
+  if (!Number.isSafeInteger(balance) || balance < 0) throw new Error("legacy commission balance is invalid");
+  return balance;
 }
 
 function hashSearchParams(address: string): URLSearchParams {
