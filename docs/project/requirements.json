@@ -1412,14 +1412,34 @@
       "domain": "配置、扩展与运维",
       "title": "管理员可配置站点、订阅、安全、注册、邀请、节点、邮件、Telegram、主题和模板。",
       "scope_status": "decided",
-      "implementation_status": "implemented",
+      "implementation_status": "partial",
       "verification_status": "historical",
       "migration_status": "historical",
       "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
+        "FUNC-003",
         "VER-005"
+      ],
+      "status_reason": "站点安全配置已具备基础存储和旧版 V2 动态路由，但 Go 重构尚未把 secure_path 绑定到管理前端和 V1 管理 API；FUNC-003 完成并取得当前提交的路由、权限、迁移和浏览器证据后解除该缺口。",
+      "acceptance_criteria": [
+        {
+          "id": "CFG-001-AC1",
+          "title": "公共根路径只呈现用户或分销界面，管理界面只在当前 secure_path 对应入口呈现，错误、旧或任意前端路径返回 404。"
+        },
+        {
+          "id": "CFG-001-AC2",
+          "title": "V1 与 V2 管理接口只在当前 secure_path 下可达，固定 V1 管理路径不能绕过路径、会话、管理员角色、CSRF 或审计边界。"
+        },
+        {
+          "id": "CFG-001-AC3",
+          "title": "管理员轮换 secure_path 后新入口立即生效且旧入口失效，既有会话不被无故撤销，路径不进入访客配置、日志或审计详情。"
+        },
+        {
+          "id": "CFG-001-AC4",
+          "title": "旧 PHP 数据迁移保留合规 secure_path；全新安装持久化高熵随机路径或合规显式配置，重启后保持不变。"
+        }
       ],
       "evidence": []
     },

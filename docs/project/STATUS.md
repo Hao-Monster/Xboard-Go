@@ -10,8 +10,8 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 | --- | --- | ---: |
 | Scope | `decided` | 79 |
 | Scope | `blocked` | 1 |
-| Implementation | `implemented` | 79 |
-| Implementation | `partial` | 1 |
+| Implementation | `implemented` | 78 |
+| Implementation | `partial` | 2 |
 | Implementation | `blocked` | 0 |
 | Implementation | `not_started` | 0 |
 | Verification | `current` | 0 |
@@ -30,7 +30,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 ## Control summary
 
 - Decisions: 9 resolved, 9 pending (18 total).
-- Risks: 0 open Critical, 13 open High, 22 total.
+- Risks: 0 open Critical, 14 open High, 23 total.
 - Compatibility exceptions: 5 accepted, 1 proposed.
 - Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
 
@@ -110,7 +110,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 | `CLIENT-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
 | `TICKET-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
 | `NOTICE-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-004` |
-| `CFG-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
+| `CFG-001` | M3 | decided | partial | historical | historical | pending | 站点安全配置已具备基础存储和旧版 V2 动态路由，但 Go 重构尚未把 secure_path 绑定到管理前端和 V1 管理 API；FUNC-003 完成并取得当前提交的路由、权限、迁移和浏览器证据后解除该缺口。 | — | — | `FUNC-003`, `VER-005` |
 | `CFG-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
 | `PLUG-001` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
 | `PLUG-002` | M3 | decided | implemented | historical | historical | pending |  | — | — | `VER-005` |
@@ -126,6 +126,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 | `GOV-001` | M0 | done | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
 | `FUNC-001` | M1 | in_progress | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
 | `FUNC-002` | M1 | in_progress | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
+| `FUNC-003` | M1 | in_progress | [#145](https://github.com/Hao-Monster/Xboard-Go/issues/145) | 恢复管理员安全路径完整语义 |
 | `OPS-001` | M2 | blocked | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
 | `OPS-002` | M2 | open | [#117](https://github.com/Hao-Monster/Xboard-Go/issues/117) | 完成备份、异地副本和恢复演练 |
 | `MIG-001` | M2 | open | [#118](https://github.com/Hao-Monster/Xboard-Go/issues/118) | 完成代表性旧数据迁移、对账和回滚证据 |
@@ -157,7 +158,7 @@ Baseline: `M0` · as of 2026-09-02 · verification target `f2006f57f4a5f80de252c
 | Milestone | Status | Passed | Blocked/failed | Not run |
 | --- | --- | ---: | ---: | ---: |
 | M0 — Project Governance Baseline | complete | 5 | 0 | 0 |
-| M1 — Functional Parity | in_progress | 1 | 3 | 0 |
+| M1 — Functional Parity | in_progress | 1 | 4 | 0 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
 | M4 — Production Ready | blocked | 0 | 2 | 1 |
