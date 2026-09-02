@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-02",
+  "as_of": "2026-09-03",
   "risks": [
     {"id":"R-001","severity":"high","status":"open","milestone":"M3","title":"旧前端源码缺失导致漏页面、漏状态或误判行为","mitigation":"多证据取证、网络清单、黄金主和逐需求验收。"},
     {"id":"R-002","severity":"high","status":"controlled","milestone":"M0","title":"完全一致被解释为复制缺陷或顺手重做业务","mitigation":"D-001 与兼容性例外登记；所有差异有批准记录。"},
@@ -21,7 +21,7 @@
     {"id":"R-017","severity":"high","status":"open","milestone":"M0","title":"需求与决策只存在于被忽略的 docs-dev，缺少版本历史","mitigation":"重新打开风险；以 docs/project 为版本化事实源并由 CI 防漂移。"},
     {"id":"R-018","severity":"medium","status":"open","milestone":"M3","title":"仅本地通过与隔离环境或真实客户端存在差异","mitigation":"可重复容器、当前提交证据和 NOT RUN 披露。"},
     {"id":"R-019","severity":"high","status":"open","milestone":"M3","title":"历史测试被误标为当前验收造成虚假完成度","mitigation":"五维状态、精确提交证据和 acceptance 不变量。"},
-    {"id":"R-020","severity":"high","status":"open","milestone":"M3","title":"GitHub Actions 使用可变主版本标签且未强制 SHA 固定","mitigation":"固定 action SHA、最小权限、依赖审查、SBOM 和制品来源证明。"},
+    {"id":"R-020","severity":"high","status":"controlled","milestone":"M3","title":"GitHub Actions 使用可变主版本标签且未强制 SHA 固定","mitigation":"projectctl 强制所有远程 action 使用 40 位提交哈希；CI 执行最小权限依赖审查、全量 Go/Web 许可证门禁并生成固定 Syft 版本的 SPDX SBOM。"},
     {"id":"R-021","severity":"medium","status":"open","milestone":"M0","title":"并发任务修改共享文件导致覆盖、重复和状态漂移","mitigation":"单一集成责任人、共享面清单、独立 PR 与重放验证。"},
     {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"}
   ]

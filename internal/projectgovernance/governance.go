@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const statusPath = "docs/project/STATUS.md"
@@ -208,6 +210,9 @@ func Check(root string) error {
 	if err := validateEvidenceTarget(root, state); err != nil {
 		return err
 	}
+	if err := validateWorkflowActionPins(root); err != nil {
+		return err
+	}
 	want, err := RenderStatus(state)
 	if err != nil {
 		return err
@@ -220,6 +225,68 @@ func Check(root string) error {
 		return errors.New("docs/project/STATUS.md is stale; run `go run ./cmd/projectctl generate`")
 	}
 	return nil
+}
+
+var (
+	actionCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	imageDigestPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
+
+func validateWorkflowActionPins(root string) error {
+	workflowDirectory := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(workflowDirectory)
+	if err != nil {
+		return fmt.Errorf("read GitHub workflow directory: %w", err)
+	}
+	var problems []string
+	for _, entry := range entries {
+		if entry.IsDir() || (filepath.Ext(entry.Name()) != ".yml" && filepath.Ext(entry.Name()) != ".yaml") {
+			continue
+		}
+		path := filepath.Join(workflowDirectory, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read GitHub workflow %s: %w", entry.Name(), err)
+		}
+		var document yaml.Node
+		if err := yaml.Unmarshal(data, &document); err != nil {
+			return fmt.Errorf("parse GitHub workflow %s: %w", entry.Name(), err)
+		}
+		collectUnpinnedActions(entry.Name(), &document, &problems)
+	}
+	if len(problems) != 0 {
+		sort.Strings(problems)
+		return fmt.Errorf("GitHub Actions must use immutable 40-character commit or sha256 image pins:\n- %s", strings.Join(problems, "\n- "))
+	}
+	return nil
+}
+
+func collectUnpinnedActions(workflow string, node *yaml.Node, problems *[]string) {
+	if node == nil {
+		return
+	}
+	if node.Kind == yaml.MappingNode {
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key, value := node.Content[index], node.Content[index+1]
+			if key.Value == "uses" && value.Kind == yaml.ScalarNode {
+				action := strings.TrimSpace(value.Value)
+				if strings.HasPrefix(action, "./") {
+					continue
+				}
+				separator := strings.LastIndexByte(action, '@')
+				pinned := separator > 0 && actionCommitPattern.MatchString(action[separator+1:])
+				if strings.HasPrefix(action, "docker://") {
+					pinned = separator > len("docker://") && imageDigestPattern.MatchString(action[separator+1:])
+				}
+				if !pinned {
+					*problems = append(*problems, fmt.Sprintf("%s:%d uses %q", workflow, value.Line, action))
+				}
+			}
+		}
+	}
+	for _, child := range node.Content {
+		collectUnpinnedActions(workflow, child, problems)
+	}
 }
 
 func Generate(root string) error {
