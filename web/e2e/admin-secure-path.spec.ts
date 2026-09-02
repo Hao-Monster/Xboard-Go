@@ -52,7 +52,7 @@ function adminAPIPath(securePath: string, suffix: string): string {
 }
 
 function writableSiteSettings(settings: SiteSettings, securePath: string): Record<string, unknown> {
-  const input = { ...settings, secure_path: securePath };
+  const input: Record<string, unknown> = { ...settings, secure_path: securePath };
   delete input.updated_at;
   delete input.recaptcha_secret_configured;
   delete input.recaptcha_v3_secret_configured;
