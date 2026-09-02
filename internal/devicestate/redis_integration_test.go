@@ -97,6 +97,24 @@ func newTIMENODE006RedisService(t *testing.T, writer *recordingSummaryWriter, th
 	return service
 }
 
+func waitTIMENODE006Throttle(t *testing.T, service *RedisService, userID int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		exists, err := service.client.Exists(context.Background(), service.throttleKey(userID)).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("device summary throttle did not expire")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestTIMENODE006RedisWindowNormalizationDeduplicationAndCapacity(t *testing.T) {
 	writer := &recordingSummaryWriter{}
 	service := newTIMENODE006RedisService(t, writer, 100*time.Millisecond)
@@ -205,7 +223,7 @@ func TestTIMENODE006RedisDatabaseThrottleAndTrailingFlush(t *testing.T) {
 
 func TestTIMENODE006RedisDatabaseSummaryExpiresWithoutAnotherNodeReport(t *testing.T) {
 	writer := &recordingSummaryWriter{}
-	service := newTIMENODE006RedisService(t, writer, 100*time.Millisecond)
+	service := newTIMENODE006RedisService(t, writer, 10*time.Millisecond)
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
 
@@ -218,6 +236,7 @@ func TestTIMENODE006RedisDatabaseSummaryExpiresWithoutAnotherNodeReport(t *testi
 	if initial.OnlineCount != 1 {
 		t.Fatalf("initial database summary = %d, want 1", initial.OnlineCount)
 	}
+	waitTIMENODE006Throttle(t, service, 19)
 	if flushed, err := service.FlushPending(ctx, base.Add(299*time.Second), DefaultFlushLimit); err != nil || flushed != 0 {
 		t.Fatalf("299-second FlushPending() = (%d, %v), want (0, nil)", flushed, err)
 	}
@@ -232,6 +251,45 @@ func TestTIMENODE006RedisDatabaseSummaryExpiresWithoutAnotherNodeReport(t *testi
 	}
 	if flushed, err := service.FlushPending(ctx, base.Add(301*time.Second), DefaultFlushLimit); err != nil || flushed != 0 {
 		t.Fatalf("301-second FlushPending() = (%d, %v), want (0, nil)", flushed, err)
+	}
+}
+
+func TestTIMENODE006RedisDatabaseSummaryReschedulesStaggeredExpiries(t *testing.T) {
+	writer := &recordingSummaryWriter{}
+	service := newTIMENODE006RedisService(t, writer, 10*time.Millisecond)
+	ctx := context.Background()
+	base := time.Now().UTC().Truncate(time.Second)
+
+	if _, err := service.ReplaceNodeDevices(ctx, 22, map[int64][]string{20: {"192.0.2.20"}}, false, base); err != nil {
+		t.Fatal(err)
+	}
+	waitTIMENODE006Throttle(t, service, 20)
+	if _, err := service.ReplaceNodeDevices(ctx, 23, map[int64][]string{20: {"198.51.100.20"}}, false, base.Add(100*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	waitTIMENODE006Throttle(t, service, 20)
+
+	if flushed, err := service.FlushPending(ctx, base.Add(300*time.Second), DefaultFlushLimit); err != nil || flushed != 1 {
+		t.Fatalf("first expiry FlushPending() = (%d, %v), want (1, nil)", flushed, err)
+	}
+	writer.mu.Lock()
+	firstExpiry := writer.summaries[20]
+	writer.mu.Unlock()
+	if firstExpiry.OnlineCount != 1 || !firstExpiry.ObservedAt.Equal(base.Add(300*time.Second)) {
+		t.Fatalf("first expiry database summary = %#v, want one device", firstExpiry)
+	}
+	waitTIMENODE006Throttle(t, service, 20)
+	if flushed, err := service.FlushPending(ctx, base.Add(399*time.Second), DefaultFlushLimit); err != nil || flushed != 0 {
+		t.Fatalf("early second expiry FlushPending() = (%d, %v), want (0, nil)", flushed, err)
+	}
+	if flushed, err := service.FlushPending(ctx, base.Add(400*time.Second), DefaultFlushLimit); err != nil || flushed != 1 {
+		t.Fatalf("second expiry FlushPending() = (%d, %v), want (1, nil)", flushed, err)
+	}
+	writer.mu.Lock()
+	secondExpiry := writer.summaries[20]
+	writer.mu.Unlock()
+	if secondExpiry.OnlineCount != 0 || !secondExpiry.ObservedAt.Equal(base.Add(400*time.Second)) {
+		t.Fatalf("second expiry database summary = %#v, want zero devices", secondExpiry)
 	}
 }
 
@@ -399,6 +457,41 @@ func TestTIMENODE006PendingAcknowledgementPreservesANewerVersion(t *testing.T) {
 	writer.mu.Lock()
 	writer.afterWrite = nil
 	writer.mu.Unlock()
+}
+
+func TestTIMENODE006PendingAndExpiryFlushIsDeduplicatedAndGloballyBounded(t *testing.T) {
+	writer := &recordingSummaryWriter{}
+	service := newTIMENODE006RedisService(t, writer, time.Minute)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := service.client.ZAdd(ctx, service.pendingKey(),
+		redis.Z{Score: float64(now.Add(-3 * time.Second).UnixMilli()), Member: "1"},
+		redis.Z{Score: float64(now.Add(-time.Second).UnixMilli()), Member: "2"},
+	).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.client.ZAdd(ctx, service.expiryKey(),
+		redis.Z{Score: float64(now.Add(-2 * time.Second).UnixMilli()), Member: "1"},
+		redis.Z{Score: float64(now.Add(-4 * time.Second).UnixMilli()), Member: "3"},
+	).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	flushed, err := service.FlushPending(ctx, now, 2)
+	if err != nil || flushed != 2 {
+		t.Fatalf("bounded FlushPending() = (%d, %v), want (2, nil)", flushed, err)
+	}
+	writer.mu.Lock()
+	_, first := writer.summaries[1]
+	_, second := writer.summaries[2]
+	_, third := writer.summaries[3]
+	writer.mu.Unlock()
+	if !first || second || !third {
+		t.Fatalf("first globally bounded flush users = (1:%t, 2:%t, 3:%t), want (true, false, true)", first, second, third)
+	}
+	if flushed, err = service.FlushPending(ctx, now, MaximumFlushLimit); err != nil || flushed != 1 {
+		t.Fatalf("remainder FlushPending() = (%d, %v), want (1, nil)", flushed, err)
+	}
 }
 
 func TestTIMENODE006PendingFlushIsBoundedAndDrainsTheRemainder(t *testing.T) {

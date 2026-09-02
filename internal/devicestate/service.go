@@ -89,6 +89,13 @@ type Summary struct {
 
 type SummaryWriter func(context.Context, []Summary) error
 
+type dueSummary struct {
+	userID  int64
+	score   float64
+	pending bool
+	expiry  bool
+}
+
 type Options struct {
 	URL              string
 	Prefix           string
@@ -229,11 +236,20 @@ func (service *RedisService) ReplaceNodeDevices(ctx context.Context, nodeID int6
 }
 
 func (service *RedisService) ListUserDevices(ctx context.Context, userIDs []int64, now time.Time) (map[int64][]string, error) {
+	devices, _, err := service.listUserDevices(ctx, userIDs, now, false)
+	return devices, err
+}
+
+func (service *RedisService) listUserDevices(ctx context.Context, userIDs []int64, now time.Time, trackExpiries bool) (map[int64][]string, map[int64]time.Time, error) {
 	ids, err := normalizeIDs(userIDs)
 	if err != nil || now.Unix() < 0 {
-		return nil, errors.New("invalid device-state query")
+		return nil, nil, errors.New("invalid device-state query")
 	}
 	result := make(map[int64][]string)
+	var nextExpiries map[int64]time.Time
+	if trackExpiries {
+		nextExpiries = make(map[int64]time.Time)
+	}
 	cutoff := now.Add(-OnlineWindow).Unix()
 	for start := 0; start < len(ids); start += redisOperationBatch {
 		end := min(start+redisOperationBatch, len(ids))
@@ -245,18 +261,19 @@ func (service *RedisService) ListUserDevices(ctx context.Context, userIDs []int6
 			return nil
 		})
 		if pipelineErr != nil {
-			return nil, fmt.Errorf("read user device states: %w", pipelineErr)
+			return nil, nil, fmt.Errorf("read user device states: %w", pipelineErr)
 		}
 		for index, command := range commands {
 			userID := ids[start+index]
 			fields, commandErr := command.Result()
 			if commandErr != nil {
-				return nil, fmt.Errorf("read user %d device state: %w", userID, commandErr)
+				return nil, nil, fmt.Errorf("read user %d device state: %w", userID, commandErr)
 			}
 			ips := make(map[string]struct{}, len(fields))
 			staleFields := make([]string, 0)
 			activeNodes := make(map[int64]struct{})
 			seenNodes := make(map[int64]struct{})
+			var nextExpiryUnix int64
 			for field, rawTimestamp := range fields {
 				rawNodeID, rawIP, valid := strings.Cut(field, ":")
 				nodeID, nodeErr := strconv.ParseInt(rawNodeID, 10, 64)
@@ -272,11 +289,20 @@ func (service *RedisService) ListUserDevices(ctx context.Context, userIDs []int6
 				seenNodes[nodeID] = struct{}{}
 				activeNodes[nodeID] = struct{}{}
 				ips[ip] = struct{}{}
+				if trackExpiries {
+					expiresAt := timestamp + int64(OnlineWindow/time.Second)
+					if nextExpiryUnix == 0 || expiresAt < nextExpiryUnix {
+						nextExpiryUnix = expiresAt
+					}
+				}
 			}
 			if len(staleFields) > 0 {
 				if err := service.cleanupStaleFields(ctx, userID, staleFields, seenNodes, activeNodes); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
+			}
+			if trackExpiries && nextExpiryUnix > 0 {
+				nextExpiries[userID] = time.Unix(nextExpiryUnix, 0).UTC()
 			}
 			if len(ips) > 0 {
 				values := make([]string, 0, len(ips))
@@ -288,7 +314,7 @@ func (service *RedisService) ListUserDevices(ctx context.Context, userIDs []int6
 			}
 		}
 	}
-	return result, nil
+	return result, nextExpiries, nil
 }
 
 func (service *RedisService) ClearNodeDevices(ctx context.Context, nodeIDs []int64, now time.Time) ([]int64, error) {
@@ -402,36 +428,29 @@ func (service *RedisService) FlushPending(ctx context.Context, now time.Time, li
 	}
 	limit = max(1, min(limit, MaximumFlushLimit))
 	dueAt := now.UnixMilli()
-	rawIDs, err := service.client.ZRangeByScore(ctx, service.pendingKey(), &redis.ZRangeBy{
-		Min: "-inf", Max: strconv.FormatInt(dueAt, 10), Offset: 0, Count: int64(limit),
-	}).Result()
+	due, err := service.listDueSummaries(ctx, dueAt, limit)
 	if err != nil {
-		return 0, fmt.Errorf("list pending device summaries: %w", err)
+		return 0, err
 	}
-	userIDs := make([]int64, 0, len(rawIDs))
-	invalid := make([]any, 0)
-	for _, rawID := range rawIDs {
-		userID, parseErr := strconv.ParseInt(rawID, 10, 64)
-		if parseErr != nil || userID < 1 {
-			invalid = append(invalid, rawID)
-			continue
-		}
-		userIDs = append(userIDs, userID)
-	}
-	if len(invalid) > 0 {
-		if err := service.client.ZRem(ctx, service.pendingKey(), invalid...).Err(); err != nil {
-			return 0, fmt.Errorf("remove invalid pending device summaries: %w", err)
-		}
-	}
-	if len(userIDs) == 0 {
+	if len(due) == 0 {
 		return 0, nil
+	}
+	userIDs := make([]int64, len(due))
+	for index, summary := range due {
+		userIDs[index] = summary.userID
 	}
 	if err := service.notifyUsers(ctx, userIDs, now); err != nil {
 		return 0, fmt.Errorf("flush pending device summaries: %w", err)
 	}
 	_, err = service.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		for _, userID := range userIDs {
-			pipe.Eval(ctx, removeDuePendingScript, []string{service.pendingKey()}, strconv.FormatInt(userID, 10), dueAt)
+		for _, summary := range due {
+			member := strconv.FormatInt(summary.userID, 10)
+			if summary.pending {
+				pipe.Eval(ctx, removeDuePendingScript, []string{service.pendingKey()}, member, dueAt)
+			}
+			if summary.expiry {
+				pipe.Eval(ctx, removeDuePendingScript, []string{service.expiryKey()}, member, dueAt)
+			}
 		}
 		return nil
 	})
@@ -439,6 +458,73 @@ func (service *RedisService) FlushPending(ctx context.Context, now time.Time, li
 		return 0, fmt.Errorf("acknowledge pending device summaries: %w", err)
 	}
 	return len(userIDs), nil
+}
+
+func (service *RedisService) listDueSummaries(ctx context.Context, dueAt int64, limit int) ([]dueSummary, error) {
+	keys := []string{service.pendingKey(), service.expiryKey()}
+	commands := make([]*redis.ZSliceCmd, len(keys))
+	_, err := service.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for index, key := range keys {
+			commands[index] = pipe.ZRangeByScoreWithScores(ctx, key, &redis.ZRangeBy{
+				Min: "-inf", Max: strconv.FormatInt(dueAt, 10), Offset: 0, Count: int64(limit),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list pending device summaries: %w", err)
+	}
+
+	byUser := make(map[int64]*dueSummary, limit)
+	invalid := make([][]any, len(keys))
+	for keyIndex, command := range commands {
+		values, commandErr := command.Result()
+		if commandErr != nil {
+			return nil, fmt.Errorf("read pending device summaries: %w", commandErr)
+		}
+		for _, value := range values {
+			rawID, valid := value.Member.(string)
+			userID, parseErr := strconv.ParseInt(rawID, 10, 64)
+			if !valid || parseErr != nil || userID < 1 {
+				invalid[keyIndex] = append(invalid[keyIndex], value.Member)
+				continue
+			}
+			summary := byUser[userID]
+			if summary == nil {
+				summary = &dueSummary{userID: userID, score: value.Score}
+				byUser[userID] = summary
+			} else if value.Score < summary.score {
+				summary.score = value.Score
+			}
+			if keyIndex == 0 {
+				summary.pending = true
+			} else {
+				summary.expiry = true
+			}
+		}
+	}
+	for index, members := range invalid {
+		if len(members) > 0 {
+			if err := service.client.ZRem(ctx, keys[index], members...).Err(); err != nil {
+				return nil, fmt.Errorf("remove invalid pending device summaries: %w", err)
+			}
+		}
+	}
+
+	result := make([]dueSummary, 0, len(byUser))
+	for _, summary := range byUser {
+		result = append(result, *summary)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].score == result[j].score {
+			return result[i].userID < result[j].userID
+		}
+		return result[i].score < result[j].score
+	})
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
 }
 
 func (service *RedisService) Run(ctx context.Context) {
@@ -521,8 +607,12 @@ func (service *RedisService) notifyUsers(ctx context.Context, userIDs []int64, n
 		if len(immediate) == 0 {
 			continue
 		}
-		devices, err := service.ListUserDevices(ctx, immediate, now)
+		devices, expiries, err := service.listUserDevices(ctx, immediate, now, true)
 		if err != nil {
+			_ = service.schedulePending(ctx, immediate, now.Add(service.databaseThrottle))
+			return err
+		}
+		if err := service.scheduleExpiries(ctx, expiries); err != nil {
 			_ = service.schedulePending(ctx, immediate, now.Add(service.databaseThrottle))
 			return err
 		}
@@ -533,6 +623,50 @@ func (service *RedisService) notifyUsers(ctx context.Context, userIDs []int64, n
 		if err := service.writeSummaries(ctx, summaries); err != nil {
 			pendingErr := service.schedulePending(ctx, immediate, now.Add(service.databaseThrottle))
 			return errors.Join(err, pendingErr)
+		}
+		if err := service.clearInactiveExpiries(ctx, immediate, expiries); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (service *RedisService) scheduleExpiries(ctx context.Context, expiries map[int64]time.Time) error {
+	values := make([]redis.Z, 0, min(len(expiries), redisOperationBatch))
+	for userID, expiry := range expiries {
+		values = append(values, redis.Z{Score: float64(expiry.UnixMilli()), Member: strconv.FormatInt(userID, 10)})
+		if len(values) == redisOperationBatch {
+			if err := service.client.ZAdd(ctx, service.expiryKey(), values...).Err(); err != nil {
+				return fmt.Errorf("schedule device summary expiries: %w", err)
+			}
+			values = values[:0]
+		}
+	}
+	if len(values) > 0 {
+		if err := service.client.ZAdd(ctx, service.expiryKey(), values...).Err(); err != nil {
+			return fmt.Errorf("schedule device summary expiries: %w", err)
+		}
+	}
+	return nil
+}
+
+func (service *RedisService) clearInactiveExpiries(ctx context.Context, userIDs []int64, expiries map[int64]time.Time) error {
+	members := make([]any, 0, redisOperationBatch)
+	for _, userID := range userIDs {
+		if _, active := expiries[userID]; active {
+			continue
+		}
+		members = append(members, strconv.FormatInt(userID, 10))
+		if len(members) == redisOperationBatch {
+			if err := service.client.ZRem(ctx, service.expiryKey(), members...).Err(); err != nil {
+				return fmt.Errorf("clear inactive device summary expiries: %w", err)
+			}
+			members = members[:0]
+		}
+	}
+	if len(members) > 0 {
+		if err := service.client.ZRem(ctx, service.expiryKey(), members...).Err(); err != nil {
+			return fmt.Errorf("clear inactive device summary expiries: %w", err)
 		}
 	}
 	return nil
@@ -694,4 +828,8 @@ func (service *RedisService) throttleKey(userID int64) string {
 
 func (service *RedisService) pendingKey() string {
 	return service.prefix + "device:db-pending"
+}
+
+func (service *RedisService) expiryKey() string {
+	return service.prefix + "device:db-expiry"
 }
