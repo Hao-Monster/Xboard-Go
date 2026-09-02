@@ -191,8 +191,8 @@ export function InvitationPage({ api, locale = "zh-CN", allowWithdrawal = true }
         <div className="section-heading"><div><h2 id="commission-withdraw-heading">{labels.withdraw}</h2><p className="muted">{labels.withdrawHint}</p></div></div>
         {loading ? <div className="empty-card compact-empty">{labels.loadingCodes}</div> : !summary.withdraw_enabled ? <p className="alert warning">{labels.withdrawDisabled}</p> : summary.withdraw_methods.length === 0 ? <p className="alert warning">{labels.withdrawUnavailable}</p> : <form className="invitation-transfer-form" onSubmit={(event) => void withdraw(event)}>
           <p className="small muted">{labels.availableCommission}: {formatCents(summary.available_commission)} · {labels.withdraw}: ≥ {formatMajorAmount(summary.withdraw_limit)}</p>
-          <label>{labels.withdrawMethod}<select value={summary.withdraw_methods.includes(withdrawMethod) ? withdrawMethod : summary.withdraw_methods[0]} onChange={(event) => setWithdrawMethod(event.target.value)}>{summary.withdraw_methods.map((method) => <option key={method} value={method}>{method}</option>)}</select></label>
-          <label>{labels.withdrawAccount}<input autoComplete="off" maxLength={512} value={withdrawAccount} onChange={(event) => setWithdrawAccount(event.target.value)} /></label>
+          <label>{labels.withdrawMethod}<select aria-label={labels.withdrawMethod} value={summary.withdraw_methods.includes(withdrawMethod) ? withdrawMethod : summary.withdraw_methods[0]} onChange={(event) => setWithdrawMethod(event.target.value)}>{summary.withdraw_methods.map((method) => <option key={method} value={method}>{method}</option>)}</select></label>
+          <label>{labels.withdrawAccount}<input aria-label={labels.withdrawAccount} autoComplete="off" maxLength={512} value={withdrawAccount} onChange={(event) => setWithdrawAccount(event.target.value)} /></label>
           <button className="button primary" type="submit" disabled={busy !== ""}>{busy === "withdraw" ? "…" : labels.withdraw}</button>
         </form>}
       </section>}
