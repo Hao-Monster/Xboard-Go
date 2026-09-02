@@ -258,6 +258,25 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	}
 }
 
+func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
+	for _, path := range []string{
+		"docs/project/requirements.json",
+		".github/workflows/ci.yml",
+		".github/scripts/check-production-licenses.mjs",
+		"cmd/projectctl/main.go",
+		"internal/projectgovernance/governance.go",
+	} {
+		if !isEvidenceMetadataPath(path) {
+			t.Errorf("expected %s to be governance metadata", path)
+		}
+	}
+	for _, path := range []string{"cmd/xboard/main.go", "internal/store/sqlite.go", "web/src/App.tsx", "web/scripts/check-entry-budget.mjs"} {
+		if isEvidenceMetadataPath(path) {
+			t.Errorf("expected %s to invalidate product evidence", path)
+		}
+	}
+}
+
 // retargetCurrentEvidence keeps these tests independent from whichever
 // requirements happen to be current in the repository fixture. A baseline
 // change is valid only when every current evidence record follows it.

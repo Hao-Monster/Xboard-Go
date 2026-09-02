@@ -65,8 +65,8 @@ jobs:
       - name: Check web production dependency licenses
         run: |
           pnpm --dir web licenses list --prod --json > artifacts/web-production-licenses.json
-          node web/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
-          node --test web/scripts/check-production-licenses.test.mjs
+          node .github/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
+          node --test .github/scripts/check-production-licenses.test.mjs
       - name: Generate source SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:

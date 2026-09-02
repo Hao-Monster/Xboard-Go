@@ -639,11 +639,20 @@ func validateEvidenceTarget(root string, state State) error {
 	}
 	for _, path := range strings.Fields(string(output)) {
 		path = filepath.ToSlash(path)
-		if !strings.HasPrefix(path, "docs/project/") {
+		if !isEvidenceMetadataPath(path) {
 			return fmt.Errorf("current evidence target %s is stale because %s changed afterwards", commit, path)
 		}
 	}
 	return nil
+}
+
+func isEvidenceMetadataPath(path string) bool {
+	// These paths control project governance and CI but are excluded from the
+	// packaged application by the Dockerfile and the cmd/xboard dependency graph.
+	return strings.HasPrefix(path, "docs/project/") ||
+		strings.HasPrefix(path, ".github/") ||
+		strings.HasPrefix(path, "cmd/projectctl/") ||
+		strings.HasPrefix(path, "internal/projectgovernance/")
 }
 
 func RenderStatus(state State) (string, error) {
