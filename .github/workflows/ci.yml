@@ -67,7 +67,7 @@ jobs:
       - name: Inject Redis failure and verify recovery
         env:
           XBOARD_TEST_REDIS_FAILURES: "true"
-        run: go test -race -timeout=5m ./internal/httpapi -run TestRedisCoordinationFailureClosesBeforeWriteAndRecovers -count=1
+        run: go test -race -timeout=5m ./internal/httpapi -run TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers -count=1
       - name: Vet
         run: go vet ./...
       - name: Vulnerability scan

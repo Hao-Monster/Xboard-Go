@@ -797,7 +797,7 @@
       "id": "MACH-002",
       "level": "V",
       "domain": "服务器、节点和实时系统",
-      "title": "创建机器后生成凭据；管理员可查看受控令牌、轮换令牌和生成含一次性注册能力的安装命令；旧令牌轮换后立即失效。",
+      "title": "创建机器后仅向管理员展示一次性接入码和安装命令；机器兑换接入码时仅返回一次长期凭据；接入码和凭据只存摘要，管理员不能回读长期凭据；生成替换接入码不提前中断当前凭据，兑换成功后旧凭据立即失效。",
       "scope_status": "decided",
       "implementation_status": "implemented",
       "verification_status": "historical",

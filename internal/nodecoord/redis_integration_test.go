@@ -11,7 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func TestRedisCoordinatorClaimsFencesRenewsAndConditionallyReleases(t *testing.T) {
+func TestINTNODE003RedisCoordinatorClaimsFencesRenewsAndConditionallyReleases(t *testing.T) {
 	prefix := testPrefix()
 	first := newTestCoordinatorAt(t, "first", prefix)
 	second := newTestCoordinatorAt(t, "second", prefix)
@@ -60,7 +60,7 @@ func TestRedisCoordinatorClaimsFencesRenewsAndConditionallyReleases(t *testing.T
 	}
 }
 
-func TestRedisCoordinatorClaimsAndFencesLegacyNodeLease(t *testing.T) {
+func TestINTNODE003RedisCoordinatorClaimsAndFencesLegacyNodeLease(t *testing.T) {
 	prefix := testPrefix()
 	first := newTestCoordinatorAt(t, "legacy-first", prefix)
 	second := newTestCoordinatorAt(t, "legacy-second", prefix)
@@ -88,7 +88,7 @@ func TestRedisCoordinatorClaimsAndFencesLegacyNodeLease(t *testing.T) {
 	}
 }
 
-func TestRedisCoordinatorFencesMachineMembershipChanges(t *testing.T) {
+func TestINTNODE003RedisCoordinatorFencesMachineMembershipChanges(t *testing.T) {
 	prefix := testPrefix()
 	first := newTestCoordinatorAt(t, "membership-first", prefix)
 	second := newTestCoordinatorAt(t, "membership-second", prefix)
@@ -115,7 +115,7 @@ func TestRedisCoordinatorFencesMachineMembershipChanges(t *testing.T) {
 	}
 }
 
-func TestRedisCoordinatorPublishesReplacementAndBoundedCommands(t *testing.T) {
+func TestINTNODE003RedisCoordinatorPublishesReplacementAndBoundedCommands(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	prefix := testPrefix()
@@ -150,7 +150,7 @@ func TestRedisCoordinatorPublishesReplacementAndBoundedCommands(t *testing.T) {
 	}
 }
 
-func TestRedisCoordinatorRevokesMachineBeforePublishingDisconnect(t *testing.T) {
+func TestINTNODE003RedisCoordinatorRevokesMachineBeforePublishingDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	prefix := testPrefix()
@@ -177,7 +177,7 @@ func TestRedisCoordinatorRevokesMachineBeforePublishingDisconnect(t *testing.T) 
 	}
 }
 
-func TestRedisCoordinatorRejectsInvalidOptionsAndInputs(t *testing.T) {
+func TestINTNODE003RedisCoordinatorRejectsInvalidOptionsAndInputs(t *testing.T) {
 	ctx := context.Background()
 	if _, err := NewRedis(ctx, Options{URL: "http://127.0.0.1:6379", Prefix: "test:", Revision: "revision"}); err == nil {
 		t.Fatal("NewRedis() accepted a non-Redis URL")
@@ -194,6 +194,48 @@ func TestRedisCoordinatorRejectsInvalidOptionsAndInputs(t *testing.T) {
 	}
 	if owned, err := coordinator.OwnsMachineAndNodes(ctx, 1, nil, mustConnectionID(t, coordinator)); err != nil || owned {
 		t.Fatalf("OwnsMachineAndNodes() empty nodes = (%v, %v), want (false, nil)", owned, err)
+	}
+}
+
+func TestINTNODE003RedisCoordinatorExpiresUnrenewedLeaseAndAllowsReconnect(t *testing.T) {
+	prefix := testPrefix()
+	stale := newTestCoordinatorAt(t, "expiry-stale", prefix)
+	current := newTestCoordinatorAt(t, "expiry-current", prefix)
+	ctx := context.Background()
+	staleID := mustConnectionID(t, stale)
+	currentID := mustConnectionID(t, current)
+
+	if err := stale.ClaimMachine(ctx, 29, []int64{51, 52}, staleID); err != nil {
+		t.Fatalf("stale ClaimMachine() error = %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		owned, err := stale.OwnsMachineAndNodes(ctx, 29, []int64{51, 52}, staleID)
+		if err != nil {
+			t.Fatalf("stale OwnsMachineAndNodes() error = %v", err)
+		}
+		if !owned {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("unrenewed machine lease remained owned after its three-second expiry")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	if err := current.ClaimMachine(ctx, 29, []int64{51, 52}, currentID); err != nil {
+		t.Fatalf("reconnect ClaimMachine() error = %v", err)
+	}
+	if released, err := stale.ReleaseMachineIfOwned(ctx, 29, staleID); err != nil || released {
+		t.Fatalf("expired owner ReleaseMachineIfOwned() = (%v, %v), want (false, nil)", released, err)
+	}
+	for _, nodeID := range []int64{51, 52} {
+		if released, err := stale.ReleaseNodeIfOwned(ctx, nodeID, staleID); err != nil || released {
+			t.Fatalf("expired owner ReleaseNodeIfOwned(%d) = (%v, %v), want (false, nil)", nodeID, released, err)
+		}
+	}
+	if owned, err := current.OwnsMachineAndNodes(ctx, 29, []int64{51, 52}, currentID); err != nil || !owned {
+		t.Fatalf("reconnected OwnsMachineAndNodes() = (%v, %v), want (true, nil)", owned, err)
 	}
 }
 
@@ -251,7 +293,7 @@ func waitEvent(t *testing.T, events <-chan Event) Event {
 	}
 }
 
-func TestRedisURLIsIsolated(t *testing.T) {
+func TestINTNODE003RedisURLIsIsolated(t *testing.T) {
 	value := testRedisURL(t)
 	options, err := redis.ParseURL(value)
 	if err != nil {
