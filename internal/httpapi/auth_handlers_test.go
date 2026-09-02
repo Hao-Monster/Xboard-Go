@@ -31,7 +31,7 @@ func TestNativeLegacyBcryptLoginIsAtomicallyUpgradedAndRecordsLastLogin(t *testi
 		t.Fatalf("ChangePassword(legacy) error = %v", err)
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
@@ -53,7 +53,7 @@ func TestNativeLegacyBcryptLoginIsAtomicallyUpgradedAndRecordsLastLogin(t *testi
 		t.Fatalf("last_login_at = %v, want %v", detail.LastLoginAt, fixedNow().UTC())
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
+	request = newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"legacy-password-123"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
 	api.ServeHTTP(response, request)
@@ -209,7 +209,7 @@ func TestNativeAccessTokenManagementIsExplicitAndCSRFProtected(t *testing.T) {
 		t.Fatalf("listed access tokens = %#v", listedPayload.Data)
 	}
 
-	missingCSRF := httptest.NewRequest(http.MethodPost, "/api/v1/auth/access-tokens", strings.NewReader(`{"name":"denied"}`))
+	missingCSRF := newTestRequest(http.MethodPost, "/api/v1/auth/access-tokens", strings.NewReader(`{"name":"denied"}`))
 	missingCSRF.Header.Set("Content-Type", "application/json")
 	client.addCookies(missingCSRF)
 	missingCSRFResponse := httptest.NewRecorder()
@@ -272,7 +272,7 @@ func TestAccessTokenAuthorizationAndOwnershipBoundaries(t *testing.T) {
 		t.Fatalf("explicit bearer write status = %d, want 201; body=%s", createdByBearer.Code, createdByBearer.Body)
 	}
 
-	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	malformed := newTestRequest(http.MethodGet, "/api/v1/auth/session", nil)
 	malformed.Header.Set("Authorization", "Bearer invalid")
 	admin.addCookies(malformed)
 	malformedResponse := httptest.NewRecorder()
@@ -350,7 +350,7 @@ func loginLegacyBearer(t *testing.T, api http.Handler, email, password string) l
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/passport/auth/login", strings.NewReader(string(body)))
+	request := newTestRequest(http.MethodPost, "/api/v1/passport/auth/login", strings.NewReader(string(body)))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
@@ -370,7 +370,8 @@ func loginLegacyBearer(t *testing.T, api http.Handler, email, password string) l
 }
 
 func bearerRequest(api http.Handler, method, path, authorization, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	path = adminAPIPath(path)
+	request := newTestRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -542,7 +543,7 @@ func TestChangePasswordValidatesAndRevokesEverySession(t *testing.T) {
 func TestAccountSecurityWritesRequireCSRF(t *testing.T) {
 	api, _ := newTestAPI(t)
 	client := loginAdmin(t, api)
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/auth/password", strings.NewReader(`{"old_password":"admin-password-123","new_password":"replacement-password-456"}`))
+	request := newTestRequest(http.MethodPut, "/api/v1/auth/password", strings.NewReader(`{"old_password":"admin-password-123","new_password":"replacement-password-456"}`))
 	request.Header.Set("Content-Type", "application/json")
 	client.addCookies(request)
 	response := httptest.NewRecorder()
@@ -554,7 +555,7 @@ func TestAccountSecurityWritesRequireCSRF(t *testing.T) {
 
 func loginWithPassword(t *testing.T, api http.Handler, password string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"`+password+`"}`))
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.test","password":"`+password+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
@@ -563,7 +564,7 @@ func loginWithPassword(t *testing.T, api http.Handler, password string) *httptes
 
 func loginAccount(t *testing.T, api http.Handler, email, password string) testClient {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

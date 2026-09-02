@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { adminEmail, adminPassword, createAdminUserFixture } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, createAdminUserFixture } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -142,7 +142,7 @@ test("administrator bulk mail, filtered CSV, and ban match the legacy user workf
 });
 
 async function loginAdministrator(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录", exact: true }).click();
@@ -156,8 +156,8 @@ async function queryByEmailPrefix(page: Page, value: string) {
     page.waitForResponse((candidate) => {
       const path = new URL(candidate.url()).pathname;
       const method = candidate.request().method();
-      return (path === "/api/v1/admin/users" && method === "GET") ||
-        (path === "/api/v1/admin/users/query" && method === "POST");
+      return (path === adminAPIPath("/api/v1/admin/users") && method === "GET") ||
+        (path === adminAPIPath("/api/v1/admin/users/query") && method === "POST");
     }),
     page.getByRole("button", { name: "查询用户", exact: true }).click()
   ]);
@@ -206,7 +206,7 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }
 
 async function waitForCapturedMail(request: APIRequestContext, recipient: string, subject: string): Promise<string> {

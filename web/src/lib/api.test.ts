@@ -58,7 +58,7 @@ describe("APIClient Telegram settings contracts", () => {
       });
       return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
     }));
-    const api = new APIClient();
+    const api = new APIClient("secure-admin-01");
     const input = {
       revision: 7, telegram_bot_enable: true,
       telegram_bot_token: "123456789:abcdefghijklmnopqrstuvwxyzABCDE",
@@ -70,9 +70,9 @@ describe("APIClient Telegram settings contracts", () => {
     await api.provisionTelegramWebhook(8);
 
     expect(requests).toEqual([
-      { path: "/api/v1/admin/telegram-settings", method: "GET", body: undefined, csrf: null },
-      { path: "/api/v1/admin/telegram-settings", method: "PUT", body: input, csrf: "telegram-csrf" },
-      { path: "/api/v1/admin/telegram-settings/webhook", method: "POST", body: { revision: 8 }, csrf: "telegram-csrf" }
+      { path: "/api/v1/admin/secure-admin-01/telegram-settings", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/secure-admin-01/telegram-settings", method: "PUT", body: input, csrf: "telegram-csrf" },
+      { path: "/api/v1/admin/secure-admin-01/telegram-settings/webhook", method: "POST", body: { revision: 8 }, csrf: "telegram-csrf" }
     ]);
   });
 });

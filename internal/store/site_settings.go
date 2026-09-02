@@ -562,7 +562,7 @@ func validConfigurableSecurePath(value string) bool {
 		return false
 	}
 	switch strings.ToLower(value) {
-	case "client", "passport", "server":
+	case "admin", "api", "assets", "client", "client-download", "client-link", "guide", "guide-attachments", "healthz", "knowledge-attachments", "passport", "server", "ws":
 		return false
 	default:
 		return true

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage } from "./support";
 
 const testBotToken = "123456789:abcdefghijklmnopqrstuvwxyzABCDE";
 
@@ -40,7 +40,7 @@ test("Telegram settings are complete, write-only, persistent, and safe before pr
     await page.getByLabel("群组链接", { exact: true }).fill("https://t.me/xboard_group");
     await expect(provisionButton, "an unsaved token must not enable provisioning").toBeDisabled();
 
-    const saveResponsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/admin/telegram-settings") && response.request().method() === "PUT");
+    const saveResponsePromise = page.waitForResponse((response) => response.url().includes(adminAPIPath("/api/v1/admin/telegram-settings")) && response.request().method() === "PUT");
     await page.getByRole("button", { name: "保存 Telegram 设置", exact: true }).click();
     const saveResponse = await saveResponsePromise;
     expect(saveResponse.status()).toBe(200);
@@ -81,7 +81,7 @@ test("Telegram settings are complete, write-only, persistent, and safe before pr
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(adminEmail);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
@@ -116,5 +116,5 @@ async function adminRequest(page: Page, path: string, method: "GET" | "PUT", bod
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: adminAPIPath(path), requestMethod: method, requestBody: body });
 }

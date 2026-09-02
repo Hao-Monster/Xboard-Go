@@ -65,7 +65,7 @@ func TestLegacyClientAppConfigInvalidTokenLimiterIsSharedAcrossVersions(t *testi
 		subscriptionFailures: newAttemptLimiter(2, time.Minute),
 	}
 	request := func(path string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r := newTestRequest(http.MethodGet, path, nil)
 		r.RemoteAddr = "192.0.2.80:23456"
 		w := httptest.NewRecorder()
 		if strings.HasPrefix(path, "/api/v1/") {

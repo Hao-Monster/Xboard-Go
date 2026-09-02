@@ -113,7 +113,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.T) {
 	api, _ := newTestAPI(t)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/notices", nil)
+	request := newTestRequest(http.MethodGet, "/api/v1/notices", nil)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
@@ -152,7 +152,7 @@ func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.
 		})
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/notices", strings.NewReader(`{"title":"title","content":"body","image_url":"","tags":[],"show":true}`))
+	request = newTestRequest(http.MethodPost, "/api/v1/admin/notices", strings.NewReader(`{"title":"title","content":"body","image_url":"","tags":[],"show":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	admin.addCookies(request)
 	response = httptest.NewRecorder()

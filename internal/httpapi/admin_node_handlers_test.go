@@ -43,7 +43,7 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 
 	updatePath := fmt.Sprintf("/api/v1/admin/nodes/%d", node.ID)
 	updateBody := fmt.Sprintf(`{"revision":%d,"name":"API updated","host":"updated.example.test","port":"8443","show":true,"enabled":true,"sort":20,"machine_id":null}`, node.Revision)
-	missingCSRFRequest := httptest.NewRequest(http.MethodPatch, updatePath, strings.NewReader(updateBody))
+	missingCSRFRequest := newTestRequest(http.MethodPatch, updatePath, strings.NewReader(updateBody))
 	missingCSRFRequest.Header.Set("Content-Type", "application/json")
 	admin.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -24,10 +25,26 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/telegrambot"
 )
 
+const testAdminPath = "secure-admin-01"
+
+func adminAPIPath(path string) string {
+	if strings.HasPrefix(path, "/api/v1/admin/") && !strings.HasPrefix(path, "/api/v1/admin/"+testAdminPath+"/") {
+		return "/api/v1/admin/" + testAdminPath + "/" + strings.TrimPrefix(path, "/api/v1/admin/")
+	}
+	if strings.HasPrefix(path, "/api/v2/admin/") {
+		return "/api/v2/" + testAdminPath + "/" + strings.TrimPrefix(path, "/api/v2/admin/")
+	}
+	return path
+}
+
+func newTestRequest(method, path string, body io.Reader) *http.Request {
+	return httptest.NewRequest(method, adminAPIPath(path), body)
+}
+
 func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	api, _ := newTestAPI(t)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/machines", nil)
+	request := httptest.NewRequest(http.MethodGet, adminAPIPath("/api/v1/admin/machines"), nil)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
@@ -35,7 +52,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	}
 
 	client := loginAdmin(t, api)
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, adminAPIPath("/api/v1/admin/machines"), strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	client.addCookies(request)
 	response = httptest.NewRecorder()
@@ -44,7 +61,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 		t.Fatalf("missing CSRF status = %d, want %d; body=%s", response.Code, http.StatusForbidden, response.Body)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, adminAPIPath("/api/v1/admin/machines"), strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "https://attacker.example.test")
 	client.addCookies(request)
@@ -55,7 +72,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 		t.Fatalf("untrusted origin status = %d, want %d; body=%s", response.Code, http.StatusForbidden, response.Body)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, adminAPIPath("/api/v1/admin/machines"), strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	client.addCookies(request)
 	request.Header.Set("X-CSRF-Token", client.csrf)
@@ -558,6 +575,12 @@ func (c testClient) addCookies(request *http.Request) {
 
 func (c testClient) request(t *testing.T, api http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	path = adminAPIPath(path)
+	return c.rawRequest(t, api, method, path, body)
+}
+
+func (c testClient) rawRequest(t *testing.T, api http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
@@ -704,6 +727,7 @@ func newTestAPIWithAllOptions(t *testing.T, function func(*http.Request) (*http.
 		PasswordHasher:             hasher,
 		Now:                        fixedNow,
 		PanelURL:                   "https://panel.example.test",
+		LegacyAdminPath:            testAdminPath,
 		NodeRelease:                "v1.14.3",
 		CookieSecure:               false,
 		CatalogHTTPClient:          catalogHTTPClient,

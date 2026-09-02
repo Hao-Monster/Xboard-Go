@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 test("administrator inspects worker health, failed mail, and body-free mutation audit", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -10,7 +10,7 @@ test("administrator inspects worker health, failed mail, and body-free mutation 
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -59,7 +59,7 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }
 
 function readNoticeIdentity(body: string): number | null {

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 interface CommissionSettings {
   revision: number;
@@ -143,7 +143,7 @@ test("administrator commission rules drive the invited order, history, and posit
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);
@@ -218,5 +218,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }

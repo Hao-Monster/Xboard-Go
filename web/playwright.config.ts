@@ -8,6 +8,7 @@ const backendPort = process.env.XBOARD_E2E_BACKEND_PORT ?? "8080";
 const backendURL = `http://127.0.0.1:${backendPort}`;
 const attachmentRoot = join(tmpdir(), `xboard-go-e2e-attachments-${process.pid}`);
 const browserChannel = process.env.XBOARD_E2E_BROWSER_CHANNEL?.trim();
+const adminSecurePath = process.env.XBOARD_E2E_ADMIN_PATH?.trim() || "e2e-admin-secure";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -51,6 +52,7 @@ export default defineConfig({
         XBOARD_PANEL_URL: baseURL,
         XBOARD_ALLOWED_ORIGINS: baseURL,
         XBOARD_COOKIE_SECURE: "false",
+        XBOARD_LEGACY_ADMIN_PATH: adminSecurePath,
         XBOARD_BOOTSTRAP_ADMIN_EMAIL: "admin@e2e.test",
         XBOARD_BOOTSTRAP_ADMIN_PASSWORD: "e2e-admin-password-123",
         XBOARD_SETTINGS_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",

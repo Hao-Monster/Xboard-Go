@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -216,7 +216,7 @@ async function waitForLoginURL(request: APIRequestContext, recipient: string, su
 }
 
 async function login(page: Page, email: string, password: string, administrator: boolean) {
-  await page.goto("/#/login");
+  await page.goto(administrator ? `${adminEntryPath}#/login` : "/#/login");
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
@@ -309,5 +309,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: adminAPIPath(path), requestMethod: method, requestBody: body });
 }

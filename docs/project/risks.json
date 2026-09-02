@@ -23,6 +23,7 @@
     {"id":"R-019","severity":"high","status":"open","milestone":"M3","title":"历史测试被误标为当前验收造成虚假完成度","mitigation":"五维状态、精确提交证据和 acceptance 不变量。"},
     {"id":"R-020","severity":"high","status":"open","milestone":"M3","title":"GitHub Actions 使用可变主版本标签且未强制 SHA 固定","mitigation":"固定 action SHA、最小权限、依赖审查、SBOM 和制品来源证明。"},
     {"id":"R-021","severity":"medium","status":"open","milestone":"M0","title":"并发任务修改共享文件导致覆盖、重复和状态漂移","mitigation":"单一集成责任人、共享面清单、独立 PR 与重放验证。"},
-    {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"}
+    {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"},
+    {"id":"R-023","severity":"high","status":"open","milestone":"M1","title":"管理前端或 API 绕过 secure_path 暴露攻击入口或泄漏路径","mitigation":"前后端共用数据库中的当前路径、错误路径失败关闭、固定 V1 路径不可达、路径不进入访客配置/日志/审计，并以集成、浏览器、迁移和轮换测试锁定。"}
   ]
 }

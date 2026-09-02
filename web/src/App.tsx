@@ -1,11 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 import { CurrencyProvider } from "./lib/currency";
 
-const api = new APIClient();
 const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
 const RoutingRulesPage = lazy(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
 const ServerGroupsPage = lazy(async () => import("./features/admin/ServerGroupsPage").then((module) => ({ default: module.ServerGroupsPage })));
@@ -50,14 +49,25 @@ const defaultGuestConfig: GuestConfig = {
 type AuthMode = "login" | "register" | "recover";
 type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
-export function App() {
+export type AppSurface = { kind: "public" } | { kind: "admin"; path: string };
+
+export function surfaceFromPathname(pathname = window.location.pathname): AppSurface {
+  if (pathname === "/" || pathname === "/index.html") return { kind: "public" };
+  const match = pathname.match(/^\/([0-9A-Za-z_-]{1,64})\/?$/);
+  return match === null ? { kind: "public" } : { kind: "admin", path: match[1]! };
+}
+
+export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface } = {}) {
+  const adminPath = surface.kind === "admin" ? surface.path : undefined;
+  const api = useMemo(() => new APIClient(adminPath), [adminPath]);
   const [session, setSession] = useState<UserSession | null>(null);
   const [guestConfig, setGuestConfig] = useState<GuestConfig>(defaultGuestConfig);
   const [loading, setLoading] = useState(true);
   const [bootstrapAuthError, setBootstrapAuthError] = useState("");
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
-  const authMode = authModeFromHash(authLocation);
+  const requestedAuthMode = authModeFromHash(authLocation);
+  const authMode = surface.kind === "admin" && requestedAuthMode === "register" ? "login" : requestedAuthMode;
   const [page, setPage] = useState<AdminPage>("servers");
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
@@ -93,7 +103,7 @@ export function App() {
       if (active && sequence === authenticationSequence.current) setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     const authTitle = authMode === "register" ? "注册" : authMode === "recover" ? "重置密码" : "登录";
@@ -158,9 +168,10 @@ export function App() {
       active = false;
       window.removeEventListener("hashchange", followHash);
     };
-  }, []);
+  }, [api]);
 
   const switchAuthMode = (mode: AuthMode) => {
+    if (surface.kind === "admin" && mode === "register") return;
     setBootstrapAuthError("");
     window.history.replaceState(null, "", mode === "register" ? "#/register" : mode === "recover" ? "#/forgetpassword" : "#/login");
     setAuthLocation(window.location.hash);
@@ -211,13 +222,16 @@ export function App() {
     return <div className="app-loading">正在加载 {guestConfig.app_name}…</div>;
   }
   if (session === null) {
-    return <AuthPage config={guestConfig} mode={authMode} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
+    return <AuthPage api={api} config={guestConfig} mode={authMode} allowRegistration={surface.kind === "public"} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
   }
-  if (!session.is_admin) {
+  if (surface.kind === "public") {
     if (session.is_distributor) {
       return <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}><Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense></CurrencyProvider>;
     }
     return <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}><Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense></CurrencyProvider>;
+  }
+  if (!session.is_admin) {
+    return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>退出登录</button></section></main>;
   }
   return (
     <CurrencyProvider code={guestConfig.currency} symbol={guestConfig.currency_symbol}>
@@ -263,7 +277,7 @@ export function App() {
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
         {page === "system" && <SystemOperationsPage api={api} />}
-        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} />}
+        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
         {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
         {page === "mail" && <EmailSettingsPage api={api} />}
         {page === "telegram" && <TelegramSettingsPage api={api} />}
@@ -296,9 +310,11 @@ export function App() {
   );
 }
 
-function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }: {
+function AuthPage({ api, config, mode, allowRegistration, initialError, onAuthenticated, onModeChange }: {
+  api: APIClient;
   config: GuestConfig;
   mode: AuthMode;
+  allowRegistration: boolean;
   initialError: string;
   onAuthenticated: (session: UserSession) => void;
   onModeChange: (mode: AuthMode) => void;
@@ -412,7 +428,7 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
         {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
           setError(""); setMessage(""); setEmailCode(""); setInvitationCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");
         }}>忘记密码</button>}
-        <button className="button ghost full auth-mode-switch" type="button" disabled={submitting || sendingCode} onClick={() => {
+        {(allowRegistration || mode !== "login") && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting || sendingCode} onClick={() => {
           setError("");
           setMessage("");
           setEmailCode("");
@@ -420,7 +436,7 @@ function AuthPage({ config, mode, initialError, onAuthenticated, onModeChange }:
           setCooldown(0);
           setResetComplete(false);
           onModeChange(mode === "login" ? "register" : "login");
-        }}>{mode === "login" ? "注册账号" : "返回登入"}</button>
+        }}>{mode === "login" ? "注册账号" : "返回登入"}</button>}
         {config.tos_url !== null && <p className="login-terms"><a href={config.tos_url} target="_blank" rel="noreferrer noopener">用户条款</a></p>}
       </section>
     </main>

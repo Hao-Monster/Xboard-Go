@@ -491,7 +491,7 @@ func createHTTPDistributorFixture(t *testing.T, database *store.Store) (store.Pl
 }
 
 func httptestRequest(api http.Handler, method, path string, headers map[string]string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, path, nil)
+	request := newTestRequest(method, path, nil)
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}

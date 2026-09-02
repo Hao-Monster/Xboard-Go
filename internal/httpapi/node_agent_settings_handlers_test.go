@@ -67,7 +67,7 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 		t.Fatal(err)
 	}
 	handshake := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v2/server/handshake?node_id=%d", node.ID), nil)
+	request := newTestRequest(http.MethodGet, fmt.Sprintf("/api/v2/server/handshake?node_id=%d", node.ID), nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	api.ServeHTTP(handshake, request)
 	if handshake.Code != http.StatusOK {

@@ -123,7 +123,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 	if unknown.Code != http.StatusBadRequest {
 		t.Fatalf("unknown mail setting status=%d body=%s", unknown.Code, unknown.Body)
 	}
-	missingCSRFRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/mail-settings/test", nil)
+	missingCSRFRequest := newTestRequest(http.MethodPost, "/api/v1/admin/mail-settings/test", nil)
 	administrator.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()
 	api.ServeHTTP(missingCSRF, missingCSRFRequest)
@@ -207,6 +207,6 @@ func newMailSettingsTestAPI(t *testing.T, sender mailer.Sender, loggers ...*slog
 	}
 	return New(Dependencies{
 		Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
-		PanelURL: "https://panel.example.test", SettingsCipher: cipherBox, MailSender: sender, Logger: logger,
+		PanelURL: "https://panel.example.test", LegacyAdminPath: testAdminPath, SettingsCipher: cipherBox, MailSender: sender, Logger: logger,
 	}), database
 }

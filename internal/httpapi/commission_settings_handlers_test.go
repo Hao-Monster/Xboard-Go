@@ -85,7 +85,7 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 		"commission_distribution_l2":0,"commission_distribution_l3":0
 	}`)
 	expectAPIError(t, csrfRejected, http.StatusForbidden, "csrf_failed")
-	wrongMediaTypeRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/commission-settings", strings.NewReader(`{}`))
+	wrongMediaTypeRequest := newTestRequest(http.MethodPut, "/api/v1/admin/commission-settings", strings.NewReader(`{}`))
 	administrator.addCookies(wrongMediaTypeRequest)
 	wrongMediaTypeRequest.Header.Set("X-CSRF-Token", administrator.csrf)
 	wrongMediaTypeRequest.Header.Set("Content-Type", "text/plain")

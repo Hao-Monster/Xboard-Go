@@ -15,7 +15,7 @@ import (
 
 var (
 	immutableNodeReleaseRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
-	legacyAdminPathRE      = regexp.MustCompile(`^[0-9A-Za-z_-]{1,64}$`)
+	legacyAdminPathRE      = regexp.MustCompile(`^[0-9A-Za-z_-]{8,64}$`)
 	redisKeyPrefixRE       = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 )
 
@@ -157,7 +157,7 @@ func Load() (Config, error) {
 		Address:                    envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:                DatabaseDSN(),
 		PanelURL:                   panelURL,
-		LegacyAdminPath:            envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
+		LegacyAdminPath:            strings.TrimSpace(os.Getenv("XBOARD_LEGACY_ADMIN_PATH")),
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
 		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
@@ -260,8 +260,8 @@ func Load() (Config, error) {
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
 		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.3")
 	}
-	if !legacyAdminPathRE.MatchString(config.LegacyAdminPath) {
-		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one URL-safe path segment of 1 to 64 characters")
+	if config.LegacyAdminPath != "" && (!legacyAdminPathRE.MatchString(config.LegacyAdminPath) || reservedAdminPath(config.LegacyAdminPath)) {
+		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one unreserved URL-safe path segment of 8 to 64 characters")
 	}
 	parsedPanelURL, err := url.Parse(config.PanelURL)
 	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {
@@ -311,6 +311,15 @@ func Load() (Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func reservedAdminPath(value string) bool {
+	switch strings.ToLower(value) {
+	case "admin", "api", "assets", "client", "client-download", "client-link", "guide", "guide-attachments", "healthz", "knowledge-attachments", "passport", "server", "ws":
+		return true
+	default:
+		return false
+	}
 }
 
 func pathsOverlap(left, right string) bool {

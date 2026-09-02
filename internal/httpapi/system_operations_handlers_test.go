@@ -14,7 +14,7 @@ import (
 func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	csrfAttempt := httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"blocked"}`))
+	csrfAttempt := newTestRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"blocked"}`))
 	csrfAttempt.Header.Set("Content-Type", "application/json")
 	admin.addCookies(csrfAttempt)
 	csrfResponse := httptest.NewRecorder()

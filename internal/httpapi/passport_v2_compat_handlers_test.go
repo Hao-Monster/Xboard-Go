@@ -160,7 +160,7 @@ func TestPassportV1V2MutatingPostRoutesRejectUntrustedOrigins(t *testing.T) {
 			"passport/auth/login", "passport/auth/register", "passport/auth/loginWithMailLink",
 			"passport/auth/getQuickLoginUrl", "passport/comm/pv",
 		} {
-			request := httptest.NewRequest(http.MethodPost, "/api/"+version+"/"+path, strings.NewReader(`{}`))
+			request := newTestRequest(http.MethodPost, "/api/"+version+"/"+path, strings.NewReader(`{}`))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Origin", "https://attacker.example.test")
 			response := httptest.NewRecorder()

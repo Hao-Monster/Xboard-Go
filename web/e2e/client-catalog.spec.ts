@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator configures client actions and a user browses secure platform downloads", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -53,7 +53,7 @@ test("administrator configures client actions and a user browses secure platform
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);

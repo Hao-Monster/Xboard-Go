@@ -73,7 +73,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	}
 	initial := decodeSiteSettingsEnvelope(t, initialResponse)
 	if initial.Revision != 1 || initial.AppName != "Xboard-Go" || !initial.CouponEnabled || !initial.PasswordLimitEnabled ||
-		initial.PasswordLimitCount != 5 || initial.PasswordLimitMinutes != 60 || initial.SafeModeEnabled || initial.SecurePath != "admin" ||
+		initial.PasswordLimitCount != 5 || initial.PasswordLimitMinutes != 60 || initial.SafeModeEnabled || initial.SecurePath != testAdminPath ||
 		initial.ForceHTTPS || initial.SubscribeURL != "" {
 		t.Fatalf("initial admin site settings = %#v", initial)
 	}
@@ -93,7 +93,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
-		"safe_mode_enable":false,"secure_path":"admin",
+		"safe_mode_enable":false,"secure_path":"secure-admin-01",
 		"force_https":true,"subscribe_url":" https://subscribe-a.example.test/, https://subscribe-b.example.test/root ",
 		"logo":"https://images.example.test/brand.svg","currency":" usd ","currency_symbol":" $ ","stop_register":true,
 		"email_whitelist_enable":true,"email_whitelist_suffix":[" Allowed.Test ","allowed.test","GMAIL.COM"],
@@ -113,7 +113,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		!updated.GmailAliasLimitEnabled || !updated.RegistrationIPLimitEnabled || updated.RegistrationIPLimitCount != 2 ||
 		updated.RegistrationIPLimitMinutes != 30 || !updated.PasswordLimitEnabled || updated.PasswordLimitCount != 2 ||
 		updated.PasswordLimitMinutes != 30 || updated.CouponEnabled || !updated.ForceHTTPS ||
-		updated.SubscribeURL != "https://subscribe-a.example.test,https://subscribe-b.example.test/root" || updated.SafeModeEnabled || updated.SecurePath != "admin" {
+		updated.SubscribeURL != "https://subscribe-a.example.test,https://subscribe-b.example.test/root" || updated.SafeModeEnabled || updated.SecurePath != testAdminPath {
 		t.Fatalf("updated admin settings = %#v", updated)
 	}
 
@@ -146,7 +146,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		len(preserved.EmailWhitelistSuffixes) != 2 || !preserved.GmailAliasLimitEnabled || !preserved.RegistrationIPLimitEnabled ||
 		preserved.RegistrationIPLimitCount != 2 || preserved.RegistrationIPLimitMinutes != 30 ||
 		!preserved.PasswordLimitEnabled || preserved.PasswordLimitCount != 2 || preserved.PasswordLimitMinutes != 30 || preserved.CouponEnabled ||
-		!preserved.ForceHTTPS || preserved.SubscribeURL != updated.SubscribeURL || preserved.SafeModeEnabled || preserved.SecurePath != "admin" {
+		!preserved.ForceHTTPS || preserved.SubscribeURL != updated.SubscribeURL || preserved.SafeModeEnabled || preserved.SecurePath != testAdminPath {
 		t.Fatalf("legacy-shape settings update lost registration policy fields: %#v", preserved)
 	}
 

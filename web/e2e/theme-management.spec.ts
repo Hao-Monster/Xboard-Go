@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage } from "./support";
 
 interface ThemeCatalog {
   active_theme: string;
@@ -45,7 +45,7 @@ test("administrator safely uploads, previews, configures, activates and deletes 
     await expect(xboardSettingsButton).toBeFocused();
 
     const archive = themeArchive(name);
-    const uploadResponse = page.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes") && response.request().method() === "POST");
+    const uploadResponse = page.waitForResponse((response) => response.url().endsWith(adminAPIPath("/api/v1/admin/themes")) && response.request().method() === "POST");
     await page.getByLabel("上传主题包").setInputFiles({ name: `${name}.zip`, mimeType: "application/zip", buffer: archive });
     expect((await uploadResponse).status()).toBe(201);
     const card = page.locator(".theme-card").filter({ hasText: name });
@@ -116,7 +116,7 @@ test("administrator safely uploads, previews, configures, activates and deletes 
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(adminEmail);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
@@ -140,7 +140,7 @@ async function adminJSON(page: Page, path: string, method: "GET" | "POST" | "PUT
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: adminAPIPath(path), requestMethod: method, requestBody: body });
 }
 
 function themeArchive(name: string): Buffer {

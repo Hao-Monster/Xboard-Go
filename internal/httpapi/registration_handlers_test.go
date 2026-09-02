@@ -203,7 +203,7 @@ func TestRegistrationPolicyRejectionSkipsPasswordHash(t *testing.T) {
 		store: database, passwordHasher: hasher, now: fixedNow,
 		registrationRequests: newRequestLimiter(20, 15*time.Minute), passwordHashSlots: make(chan struct{}, 2),
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
 		"email":"precheck-third@example.test","password":"password-123","password_confirmation":"password-123"
 	}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -226,7 +226,7 @@ func (*countingRegistrationHasher) Verify(string, string) bool { return false }
 
 func TestRegistrationRejectsUntrustedOriginAndExcessiveRequests(t *testing.T) {
 	api, _ := newTestAPI(t)
-	originRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
+	originRequest := newTestRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
 		"email":"origin@example.test","password":"password-123","password_confirmation":"password-123"
 	}`))
 	originRequest.Header.Set("Content-Type", "application/json")
@@ -253,7 +253,7 @@ func TestRegistrationRejectsUntrustedOriginAndExcessiveRequests(t *testing.T) {
 }
 
 func TestRequestIPCanonicalizesPeerAndIgnoresUntrustedForwardingHeaders(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := newTestRequest(http.MethodGet, "/", nil)
 	request.RemoteAddr = "[2001:0db8:0000:0000:0000:0000:0000:0001]:4321"
 	request.Header.Set("X-Forwarded-For", "198.51.100.25")
 	request.Header.Set("X-Real-IP", "198.51.100.26")
@@ -291,7 +291,7 @@ func TestRegistrationRechecksClosureAfterPasswordHash(t *testing.T) {
 		store: database, passwordHasher: hasher, now: fixedNow,
 		registrationRequests: newRequestLimiter(20, 15*time.Minute), passwordHashSlots: make(chan struct{}, 2),
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{
 		"email":"closure-race@example.test","password":"password-123","password_confirmation":"password-123"
 	}`))
 	request.Header.Set("Content-Type", "application/json")

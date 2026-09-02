@@ -425,7 +425,7 @@ func TestAdminUserGenerationRejectsConcurrentMemoryIntensiveBatches(t *testing.T
 		store: database, passwordHasher: hasher, now: fixedNow, panelURL: "https://panel.example.test",
 		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
 	}
-	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	firstRequest := newTestRequest(http.MethodPost, "/api/v1/admin/users/generate",
 		strings.NewReader(`{"mode":"single","email":"concurrency-first@example.test"}`))
 	firstRequest.Header.Set("Content-Type", "application/json")
 	firstResponse := httptest.NewRecorder()
@@ -436,7 +436,7 @@ func TestAdminUserGenerationRejectsConcurrentMemoryIntensiveBatches(t *testing.T
 	}()
 	<-hasher.started
 
-	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	secondRequest := newTestRequest(http.MethodPost, "/api/v1/admin/users/generate",
 		strings.NewReader(`{"mode":"single","email":"concurrency-second@example.test"}`))
 	secondRequest.Header.Set("Content-Type", "application/json")
 	secondResponse := httptest.NewRecorder()
@@ -463,7 +463,7 @@ func TestAdminUserGenerationLogsInternalFailureWithoutCredentials(t *testing.T) 
 		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
 	}
 	email, password := "must-not-log@example.test", "must-not-log-password-123"
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/users/generate",
 		strings.NewReader(fmt.Sprintf(`{"mode":"single","email":%q,"password":%q}`, email, password)))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -483,7 +483,7 @@ func (h failingAdminUserHasher) Hash(string) (string, error) { return "", h.err 
 func (failingAdminUserHasher) Verify(string, string) bool    { return false }
 
 func loginAccountResponse(api http.Handler, email, password string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)))
+	request := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
@@ -654,7 +654,7 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 	if reset.Code != http.StatusOK || strings.Contains(reset.Body.String(), "another-secure-password-123") {
 		t.Fatalf("reset status = %d; body=%s", reset.Code, reset.Body)
 	}
-	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"renamed@example.test","password":"another-secure-password-123"}`))
+	login := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"renamed@example.test","password":"another-secure-password-123"}`))
 	login.Header.Set("Content-Type", "application/json")
 	loginResponse := httptest.NewRecorder()
 	api.ServeHTTP(loginResponse, login)
@@ -812,7 +812,7 @@ func TestRoleCombinationAuthorizationMatrix(t *testing.T) {
 		{path: "/api/v1/distributor/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusOK, administrator: http.StatusForbidden, hybrid: http.StatusOK},
 		{path: "/api/v1/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusOK, staff: http.StatusOK, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusForbidden},
 	} {
-		visitorRequest := httptest.NewRequest(http.MethodGet, expectation.path, nil)
+		visitorRequest := newTestRequest(http.MethodGet, expectation.path, nil)
 		visitorResponse := httptest.NewRecorder()
 		api.ServeHTTP(visitorResponse, visitorRequest)
 		if visitorResponse.Code != expectation.visitor {
@@ -873,7 +873,7 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"internal-login@example.test","password":"internal-password-123"}`))
+	login := newTestRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"internal-login@example.test","password":"internal-password-123"}`))
 	login.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, login)
@@ -887,7 +887,7 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	if err := database.CreateSession(ctx, internal.ID, staleSessionToken.Digest, "internal-csrf-digest", fixedNow().Add(time.Hour), fixedNow()); err != nil {
 		t.Fatal(err)
 	}
-	staleSessionRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	staleSessionRequest := newTestRequest(http.MethodGet, "/api/v1/auth/session", nil)
 	staleSessionRequest.AddCookie(&http.Cookie{Name: SessionCookieName, Value: staleSessionToken.Plaintext})
 	staleSession := httptest.NewRecorder()
 	api.ServeHTTP(staleSession, staleSessionRequest)
@@ -990,7 +990,7 @@ func TestAdminUserPasswordResetRevokesExistingLogin(t *testing.T) {
 	if reset.Code != http.StatusOK {
 		t.Fatalf("reset status = %d body=%s", reset.Code, reset.Body)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request := newTestRequest(http.MethodGet, "/api/v1/auth/session", nil)
 	userClient.addCookies(request)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

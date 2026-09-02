@@ -107,7 +107,7 @@ func TestAdminMailTemplateRoutesEnforceAuthorizationCSRFAndInputBounds(t *testin
 	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/mail-templates", ""), http.StatusForbidden, "forbidden")
 
 	administrator := loginAdmin(t, api)
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/mail-templates/notify", strings.NewReader(`{"revision":1,"subject":"s","content":"{{content}}"}`))
+	request := newTestRequest(http.MethodPut, "/api/v1/admin/mail-templates/notify", strings.NewReader(`{"revision":1,"subject":"s","content":"{{content}}"}`))
 	request.Header.Set("Content-Type", "application/json")
 	administrator.addCookies(request)
 	response := httptest.NewRecorder()

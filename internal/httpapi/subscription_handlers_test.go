@@ -45,7 +45,7 @@ func TestClientSubscriptionMatchesLegacyTokenMethodEligibilityAndRouteContracts(
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(test.method, test.path, nil)
+			request := newTestRequest(test.method, test.path, nil)
 			for name, value := range test.headers {
 				request.Header.Set(name, value)
 			}
@@ -88,7 +88,7 @@ func TestValidSubscriptionDoesNotEraseFailedTokenRateLimit(t *testing.T) {
 		subscriptionFailures: newAttemptLimiter(2, time.Minute),
 	}
 	request := func(token string) int {
-		r := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscribe?token="+token, nil)
+		r := newTestRequest(http.MethodGet, "/api/v1/client/subscribe?token="+token, nil)
 		r.RemoteAddr = "192.0.2.44:12345"
 		w := httptest.NewRecorder()
 		api.clientSubscription(w, r)
@@ -230,7 +230,7 @@ func TestUserSubscriptionOverviewAndSecurityResetPreserveLegacyBusinessFlow(t *t
 		t.Fatalf("subscription QR status=%d body=%s", qr.Code, qr.Body)
 	}
 
-	withoutCSRF := httptest.NewRequest(http.MethodPost, "/api/v1/subscription/security/reset", strings.NewReader(`{}`))
+	withoutCSRF := newTestRequest(http.MethodPost, "/api/v1/subscription/security/reset", strings.NewReader(`{}`))
 	withoutCSRF.Header.Set("Content-Type", "application/json")
 	client.addCookies(withoutCSRF)
 	rejected := httptest.NewRecorder()
@@ -356,7 +356,7 @@ func replaceSubscriptionTemplateHTTP(source map[string]string, name, content str
 }
 
 func requestSubscription(api http.Handler, path string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request := newTestRequest(http.MethodGet, path, nil)
 	request.RemoteAddr = "192.0.2.10:12345"
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)

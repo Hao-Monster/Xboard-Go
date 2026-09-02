@@ -51,7 +51,7 @@ func TestInvitationHTTPGenerationPVRegistrationAndPrivacy(t *testing.T) {
 	if unknown.Code != http.StatusOK || unknown.Body.String() != viewed.Body.String() {
 		t.Fatalf("unknown view leaked existence: known=%s unknown=%s", viewed.Body, unknown.Body)
 	}
-	crossOriginRequest := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/view", strings.NewReader(string(viewBody)))
+	crossOriginRequest := newTestRequest(http.MethodPost, "/api/v1/invitations/view", strings.NewReader(string(viewBody)))
 	crossOriginRequest.Header.Set("Content-Type", "application/json")
 	crossOriginRequest.Header.Set("Origin", "https://attacker.example")
 	crossOrigin := httptest.NewRecorder()
@@ -215,7 +215,7 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	if wrongMediaType.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("JSON legacy transfer status=%d body=%s", wrongMediaType.Code, wrongMediaType.Body)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
+	request := newTestRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
 	request.Header.Set("Authorization", authorization)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "划转必须提供有效的幂等键") {
 		t.Fatalf("unkeyed legacy transfer status=%d body=%s", response.Code, response.Body)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-form-0001"))
+	request = newTestRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-form-0001"))
 	request.Header.Set("Authorization", authorization)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Idempotency-Key", "legacy-transfer-header-0001")
@@ -232,7 +232,7 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "幂等键参数冲突") {
 		t.Fatalf("conflicting legacy transfer key status=%d body=%s", response.Code, response.Body)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
+	request = newTestRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1"))
 	request.Header.Set("Authorization", authorization)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Idempotency-Key", "legacy-transfer-test-0001")
@@ -241,7 +241,7 @@ func TestLegacyInvitationMutationRequiresBearerAndStrictTransferForm(t *testing.
 	if response.Code != http.StatusOK || !containsAll(response.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("keyed legacy transfer status=%d body=%s", response.Code, response.Body)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-test-0001"))
+	request = newTestRequest(http.MethodPost, "/api/v1/user/transfer", strings.NewReader("transfer_amount=1&idempotency_key=legacy-transfer-test-0001"))
 	request.Header.Set("Authorization", authorization)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response = httptest.NewRecorder()
@@ -271,7 +271,7 @@ func TestInvitationViewRateLimitAndStrictInput(t *testing.T) {
 		t.Fatalf("view Retry-After=%q", limited.Header().Get("Retry-After"))
 	}
 
-	unknownFieldRequest := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/view", strings.NewReader(`{"invite_code":"Badc1234","unexpected":true}`))
+	unknownFieldRequest := newTestRequest(http.MethodPost, "/api/v1/invitations/view", strings.NewReader(`{"invite_code":"Badc1234","unexpected":true}`))
 	unknownFieldRequest.Header.Set("Content-Type", "application/json")
 	unknownFieldRequest.RemoteAddr = "198.51.100.8:1234"
 	unknownField := httptest.NewRecorder()
@@ -347,7 +347,8 @@ func assertAPIError(t *testing.T, response *httptest.ResponseRecorder, status in
 }
 
 func plainAPIRequest(api http.Handler, method, path, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	path = adminAPIPath(path)
+	request := newTestRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}

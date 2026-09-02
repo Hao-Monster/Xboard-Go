@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 // This flow handles one-time enrollment and machine credentials. Failure artifacts
 // must not persist request bodies, DOM snapshots, screenshots, or video containing them.
@@ -20,7 +20,8 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   page.on("response", (response) => {
     if (response.status() < 500) return;
     const path = new URL(response.url()).pathname;
-    if (response.status() === 503 && /^\/api\/v1\/admin\/machines\/\d+$/.test(path)) {
+    const machinePrefix = adminAPIPath("/api/v1/admin/machines/");
+    if (response.status() === 503 && path.startsWith(machinePrefix) && /^\d+$/.test(path.slice(machinePrefix.length))) {
       expectedFailureResponses += 1;
       return;
     }
@@ -39,7 +40,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await createDialog.getByLabel("服务器名称").fill(machineName);
   await createDialog.getByLabel("备注").fill("机器管理浏览器验收夹具");
   const createResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/admin/machines"
+    response.request().method() === "POST" && new URL(response.url()).pathname === adminAPIPath("/api/v1/admin/machines")
   );
   await createDialog.getByRole("button", { name: "创建服务器" }).click();
   const created = await createResponse;
@@ -113,7 +114,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   const rotateButton = drawer.getByRole("button", { name: "生成新的接入命令" });
   const rotationResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}/enrollments`
+    new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/enrollments`)
   );
   await rotateButton.click();
   const rotationResponse = await rotationResponsePromise;
@@ -149,7 +150,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await drawer.getByLabel("待关联节点").selectOption(String(node.id));
   const assignResponse = page.waitForResponse((response) =>
     response.request().method() === "PUT" &&
-    new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}/nodes/${node.id}`
+    new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${node.id}`)
   );
   await drawer.getByRole("button", { name: "关联", exact: true }).click();
   expect((await assignResponse).status()).toBe(204);
@@ -161,7 +162,8 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await editDialog.getByLabel("备注").fill("失败后保留，再成功提交");
   await editDialog.getByLabel("允许机器接入").uncheck();
   let rejectUpdate = true;
-  await page.route(`**/api/v1/admin/machines/${machineID}`, async (route) => {
+  const machinePath = adminAPIPath(`/api/v1/admin/machines/${machineID}`);
+  await page.route(`**${machinePath}`, async (route) => {
     if (route.request().method() === "PATCH" && rejectUpdate) {
       rejectUpdate = false;
       await route.fulfill({
@@ -178,10 +180,10 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await expect(editDialog.getByLabel("服务器名称")).toHaveValue(renamedMachine);
   await expect(editDialog.getByLabel("备注")).toHaveValue("失败后保留，再成功提交");
   await expect(editDialog).toBeVisible();
-  await page.unroute(`**/api/v1/admin/machines/${machineID}`);
+  await page.unroute(`**${machinePath}`);
 
   const updateResponse = page.waitForResponse((response) =>
-    response.request().method() === "PATCH" && new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}`
+    response.request().method() === "PATCH" && new URL(response.url()).pathname === machinePath
   );
   await editDialog.getByRole("button", { name: "保存修改" }).click();
   expect((await updateResponse).status()).toBe(200);
@@ -201,7 +203,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await expect(drawer.getByRole("button", { name: `定时设置：${nodeName}` })).toBeVisible();
   const unassignResponse = page.waitForResponse((response) =>
     response.request().method() === "DELETE" &&
-    new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}/nodes/${node.id}`
+    new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${node.id}`)
   );
   await drawer.getByRole("button", { name: "解除关联" }).click();
   expect((await unassignResponse).status()).toBe(204);
@@ -213,7 +215,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await drawer.getByLabel("待关联节点").selectOption(String(node.id));
   const reassignResponse = page.waitForResponse((response) =>
     response.request().method() === "PUT" &&
-    new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}/nodes/${node.id}`
+    new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${node.id}`)
   );
   await drawer.getByRole("button", { name: "关联", exact: true }).click();
   expect((await reassignResponse).status()).toBe(204);
@@ -222,7 +224,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await drawer.getByRole("button", { name: "删除服务器" }).click();
   const deleteDialog = page.getByRole("dialog", { name: "删除服务器" });
   let rejectDelete = true;
-  await page.route(`**/api/v1/admin/machines/${machineID}`, async (route) => {
+  await page.route(`**${machinePath}`, async (route) => {
     if (route.request().method() === "DELETE" && rejectDelete) {
       rejectDelete = false;
       await route.fulfill({
@@ -237,10 +239,10 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await deleteDialog.getByRole("button", { name: "确认删除" }).click();
   await expect(deleteDialog.getByRole("alert")).toHaveText("模拟服务器删除失败");
   await expect(deleteDialog).toBeVisible();
-  await page.unroute(`**/api/v1/admin/machines/${machineID}`);
+  await page.unroute(`**${machinePath}`);
 
   const deleteResponse = page.waitForResponse((response) =>
-    response.request().method() === "DELETE" && new URL(response.url()).pathname === `/api/v1/admin/machines/${machineID}`
+    response.request().method() === "DELETE" && new URL(response.url()).pathname === machinePath
   );
   await deleteDialog.getByRole("button", { name: "确认删除" }).click();
   expect((await deleteResponse).status()).toBe(204);
@@ -263,7 +265,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -319,7 +321,7 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: adminAPIPath(path), requestMethod: method, requestBody: body });
 }
 
 function readData(body: string): object {

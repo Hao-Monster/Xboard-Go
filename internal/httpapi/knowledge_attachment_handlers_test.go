@@ -76,7 +76,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rangeRequest := httptest.NewRequest(http.MethodGet, parsedURL.RequestURI(), nil)
+	rangeRequest := newTestRequest(http.MethodGet, parsedURL.RequestURI(), nil)
 	rangeRequest.Header.Set("Range", "bytes=2-5")
 	rangeResponse := httptest.NewRecorder()
 	api.ServeHTTP(rangeResponse, rangeRequest)
@@ -88,7 +88,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 	query.Set("disposition", "inline")
 	tampered.RawQuery = query.Encode()
 	tamperedResponse := httptest.NewRecorder()
-	api.ServeHTTP(tamperedResponse, httptest.NewRequest(http.MethodGet, tampered.RequestURI(), nil))
+	api.ServeHTTP(tamperedResponse, newTestRequest(http.MethodGet, tampered.RequestURI(), nil))
 	if tamperedResponse.Code != http.StatusForbidden {
 		t.Fatalf("tampered status=%d body=%s", tamperedResponse.Code, tamperedResponse.Body)
 	}
@@ -97,7 +97,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 	extraQuery.Set("tracking", "not-signed")
 	extra.RawQuery = extraQuery.Encode()
 	extraResponse := httptest.NewRecorder()
-	api.ServeHTTP(extraResponse, httptest.NewRequest(http.MethodGet, extra.RequestURI(), nil))
+	api.ServeHTTP(extraResponse, newTestRequest(http.MethodGet, extra.RequestURI(), nil))
 	if extraResponse.Code != http.StatusForbidden {
 		t.Fatalf("unsigned query status=%d body=%s", extraResponse.Code, extraResponse.Body)
 	}
@@ -148,12 +148,12 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 		t.Fatalf("QR status=%d body=%s", qrCode.Code, qrCode.Body)
 	}
 	publicResponse := httptest.NewRecorder()
-	api.ServeHTTP(publicResponse, httptest.NewRequest(http.MethodGet, "/guide-attachments/"+uploadUUID, nil))
+	api.ServeHTTP(publicResponse, newTestRequest(http.MethodGet, "/guide-attachments/"+uploadUUID, nil))
 	if publicResponse.Code != http.StatusOK || publicResponse.Body.String() != string(content) {
 		t.Fatalf("public attachment status=%d body=%q", publicResponse.Code, publicResponse.Body.String())
 	}
 	publicArticle := httptest.NewRecorder()
-	api.ServeHTTP(publicArticle, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/guide/%d/article", articleResult.Data.ID), nil))
+	api.ServeHTTP(publicArticle, newTestRequest(http.MethodGet, fmt.Sprintf("/guide/%d/article", articleResult.Data.ID), nil))
 	if publicArticle.Code != http.StatusOK || !strings.Contains(publicArticle.Body.String(), "/guide-attachments/"+uploadUUID) ||
 		strings.Contains(publicArticle.Body.String(), "knowledge-attachment://") {
 		t.Fatalf("public article must contain the stable public attachment URL: status=%d body=%s", publicArticle.Code, publicArticle.Body)
@@ -239,7 +239,7 @@ func attachmentChunkRequest(t *testing.T, client testClient, api http.Handler, u
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads/"+uploadUUID+"/chunks", &body)
+	request := newTestRequest(http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads/"+uploadUUID+"/chunks", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("X-CSRF-Token", client.csrf)
 	client.addCookies(request)

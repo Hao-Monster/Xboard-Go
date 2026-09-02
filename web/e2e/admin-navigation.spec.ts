@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminEntryPath, adminEmail, adminPassword } from "./support";
 
 test("administrator navigation stays in a vertical left sidebar on desktop", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop shell layout regression");
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -50,7 +50,7 @@ test("administrator navigation stays in a vertical left sidebar on desktop", asy
 test("administrator navigation stays in a vertical left sidebar on mobile", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-chromium", "Mobile shell layout regression");
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -86,7 +86,7 @@ test("administrator sidebar leaves the management surface usable at tablet width
   test.skip(testInfo.project.name !== "chromium", "Tablet shell layout regression");
   await page.setViewportSize({ width: 900, height: 800 });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();

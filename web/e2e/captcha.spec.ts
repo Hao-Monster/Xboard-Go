@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, logoutAndWait } from "./support";
 
 test("all legacy CAPTCHA providers protect registration and admin secrets never reappear", async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
@@ -26,7 +26,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
         await page.getByLabel("验证码类型").selectOption(provider.type);
         await page.getByLabel("reCAPTCHA v2 站点密钥").fill(provider.site);
         await page.getByLabel("reCAPTCHA v2 服务端密钥").fill(provider.secret);
-        const updateResponse = page.waitForResponse((response) => response.url().endsWith("/api/v1/admin/site-settings") && response.request().method() === "PUT");
+        const updateResponse = page.waitForResponse((response) => response.url().endsWith(adminAPIPath("/api/v1/admin/site-settings")) && response.request().method() === "PUT");
         await page.getByRole("button", { name: "保存站点设置" }).click();
         const update = await updateResponse;
         expect(update.status()).toBe(200);
@@ -137,7 +137,7 @@ async function completeInteractiveCaptcha(page: Page) {
 }
 
 async function loginAdmin(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -168,5 +168,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: adminAPIPath(path), requestMethod: method, requestBody: body });
 }

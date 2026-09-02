@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword } from "./support";
 
 interface SiteAccessSettings {
   revision: number;
@@ -13,13 +13,13 @@ interface SiteAccessSettings {
   logo: string;
 }
 
-test("packaged frontend safe mode protects every SPA entry and leaves API and assets reachable", { tag: "@fresh-server" }, async ({ page, request, baseURL }) => {
+test("packaged frontend safe mode protects valid entries, rejects unknown routes, and leaves API and assets reachable", { tag: "@fresh-server" }, async ({ page, request, baseURL }) => {
   test.skip(process.env.XBOARD_E2E_EXTERNAL_SERVER !== "true", "safe mode is enforced by the packaged Go frontend server");
   if (baseURL === undefined) throw new Error("packaged base URL is required");
 
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -44,7 +44,7 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
     const deniedRoot = await request.get("/", { headers: { Host: "attacker.example.test" } });
     expect(deniedRoot.status()).toBe(403);
     const deniedRoute = await request.get("/account/security", { headers: { Host: "attacker.example.test" } });
-    expect(deniedRoute.status()).toBe(403);
+    expect(deniedRoute.status()).toBe(404);
     const publicAsset = await request.get("/xboard-logo.svg", { headers: { Host: "attacker.example.test" } });
     expect(publicAsset.status()).toBe(200);
     const publicAPI = await request.get("/api/v1/guest/comm/config", { headers: { Host: "attacker.example.test" } });
@@ -54,7 +54,7 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
     await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).toBeChecked();
-    await expect(page.getByLabel("后台路径")).toHaveValue(original.secure_path);
+    await expect(page.getByLabel("管理员安全路径")).toHaveValue(original.secure_path);
   } finally {
     const current = await getSiteAccessSettings(page);
     const restored = await adminRequest(page, {
@@ -73,10 +73,10 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
 });
 
 async function getSiteAccessSettings(page: Page): Promise<SiteAccessSettings> {
-  const response = await page.evaluate(async () => {
-    const result = await fetch("/api/v1/admin/site-settings", { credentials: "same-origin" });
+  const response = await page.evaluate(async (path) => {
+    const result = await fetch(path, { credentials: "same-origin" });
     return { status: result.status, body: await result.text() };
-  });
+  }, adminAPIPath("/api/v1/admin/site-settings"));
   expect(response.status, response.body).toBe(200);
   const payload: unknown = JSON.parse(response.body);
   const data: unknown = typeof payload === "object" && payload !== null ? Reflect.get(payload, "data") : null;
@@ -85,15 +85,15 @@ async function getSiteAccessSettings(page: Page): Promise<SiteAccessSettings> {
 }
 
 async function adminRequest(page: Page, body: SiteAccessSettings) {
-  return page.evaluate(async (requestBody) => {
+  return page.evaluate(async ({ requestBody, path }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const response = await fetch("/api/v1/admin/site-settings", {
+    const response = await fetch(path, {
       method: "PUT",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
       body: JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, body);
+  }, { requestBody: body, path: adminAPIPath("/api/v1/admin/site-settings") });
 }

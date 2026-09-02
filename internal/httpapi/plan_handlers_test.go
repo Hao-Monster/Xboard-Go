@@ -111,7 +111,7 @@ func TestPlanWritesRequireAdministratorCSRFAndRejectUnknownFields(t *testing.T) 
 }
 
 func plainRequest(api http.Handler, method, path, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	request := newTestRequest(method, path, bytes.NewBufferString(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}

@@ -173,7 +173,7 @@ func TestPassportEmailCompatibilityRejectsUntrustedOrigins(t *testing.T) {
 		"/api/v1/passport/comm/sendEmailVerify", "/api/v2/passport/comm/sendEmailVerify",
 		"/api/v1/passport/auth/forget", "/api/v2/passport/auth/forget",
 	} {
-		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"email":"admin@example.test"}`))
+		request := newTestRequest(http.MethodPost, path, strings.NewReader(`{"email":"admin@example.test"}`))
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Origin", "https://attacker.example.test")
 		response := httptest.NewRecorder()

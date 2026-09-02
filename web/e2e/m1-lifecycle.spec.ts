@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
 interface CommissionSettings {
   revision: number;
@@ -46,7 +46,11 @@ test("M1 commission withdrawal freezes, reveals, approves, and pays through the 
     await page.getByRole("button", { name: `编辑用户：${email}` }).click();
     const editor = page.getByRole("dialog", { name: "编辑用户" });
     await editor.getByLabel("佣金余额（CNY）", { exact: true }).fill("20.00");
-    const updateResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && /\/api\/v1\/admin\/users\/\d+$/.test(new URL(response.url()).pathname));
+    const updateResponsePromise = page.waitForResponse((response) => {
+      const pathname = new URL(response.url()).pathname;
+      const prefix = adminAPIPath("/api/v1/admin/users/");
+      return response.request().method() === "PATCH" && pathname.startsWith(prefix) && /^\d+$/.test(pathname.slice(prefix.length));
+    });
     await editor.getByRole("button", { name: "保存", exact: true }).click();
     const updateResponse = await updateResponsePromise;
     expect(updateResponse.status(), await updateResponse.text()).toBe(200);
@@ -142,7 +146,7 @@ test("M1 user deletion preflight disables access and recovery keeps old credenti
 
 async function login(page: Page, email: string, password: string) {
   if (await page.getByRole("button", { name: "退出", exact: true }).count() === 0) {
-    await page.goto("/");
+    await page.goto(email === adminEmail ? adminEntryPath : "/");
     await expectLoginPage(page);
   }
   await page.getByLabel("邮箱", { exact: true }).fill(email);
@@ -209,5 +213,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: adminAPIPath(path), method, body });
 }
