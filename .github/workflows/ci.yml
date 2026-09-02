@@ -91,8 +91,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  go:
+  go-race:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [store, xboard, services-a, services-b, remainder]
     env:
       XBOARD_TEST_REDIS_URL: redis://127.0.0.1:6379/15
     services:
@@ -111,7 +115,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Test Go package partitioner
+        if: matrix.group == 'store'
+        run: node --test .github/scripts/go-test-groups.test.mjs
       - name: Fetch pinned legacy Ip2Region test fixture
+        if: matrix.group == 'remainder'
         run: |
           fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
           curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
@@ -121,18 +132,70 @@ jobs:
             '5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469' \
             "$fixture" | sha256sum --check --strict
           printf 'XBOARD_TEST_LEGACY_IP2REGION_XDB=%s\n' "$fixture" >> "$GITHUB_ENV"
-      - name: Test with race detector and coverage
-        run: go test -race -timeout=30m -coverprofile=coverage.out ./...
-      - name: Inject Redis failure and verify recovery
+      - name: Test package group with race detector and coverage
+        env:
+          GO_TEST_GROUP: ${{ matrix.group }}
+        run: |
+          mapfile -t packages < <(node .github/scripts/go-test-groups.mjs "$GO_TEST_GROUP")
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "Go test group is empty: $GO_TEST_GROUP" >&2
+            exit 1
+          fi
+          go test -race -timeout=30m \
+            -coverprofile="coverage-${GO_TEST_GROUP}.out" \
+            "${packages[@]}"
+      - name: Inject Redis failure and verify device-state recovery
+        if: matrix.group == 'remainder'
         env:
           XBOARD_TEST_REDIS_FAILURES: "true"
-        run: |
-          go test -race -timeout=5m ./internal/devicestate -run TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState -count=1
-          go test -race -timeout=5m ./internal/httpapi -run TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers -count=1
+        run: >-
+          go test -race -timeout=5m ./internal/devicestate
+          -run TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState
+          -count=1
+      - name: Inject Redis failure and verify HTTP recovery
+        if: matrix.group == 'services-a'
+        env:
+          XBOARD_TEST_REDIS_FAILURES: "true"
+        run: >-
+          go test -race -timeout=5m ./internal/httpapi
+          -run TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers
+          -count=1
+      - name: Upload grouped Go coverage
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: go-coverage-${{ matrix.group }}-${{ github.sha }}
+          path: coverage-${{ matrix.group }}.out
+          if-no-files-found: warn
+          retention-days: 14
+
+  go-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Vet
         run: go vet ./...
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  go:
+    needs: [go-race, go-static]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Go verification job
+        env:
+          GO_RACE_RESULT: ${{ needs.go-race.result }}
+          GO_STATIC_RESULT: ${{ needs.go-static.result }}
+        run: |
+          if [ "$GO_RACE_RESULT" != "success" ] || [ "$GO_STATIC_RESULT" != "success" ]; then
+            echo "Go verification failed: race=$GO_RACE_RESULT static=$GO_STATIC_RESULT" >&2
+            exit 1
+          fi
 
   web:
     runs-on: ubuntu-latest
