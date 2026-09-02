@@ -20,10 +20,12 @@ import (
 )
 
 const (
-	maxWebSocketMessage = 10 << 20
-	webSocketWriteWait  = 10 * time.Second
-	webSocketReadWait   = 90 * time.Second
-	webSocketPingPeriod = 30 * time.Second
+	maxWebSocketMessage               = 10 << 20
+	maxWebSocketMessagesPerConnection = 10_000
+	maxWebSocketMessagesPerNode       = 240
+	webSocketWriteWait                = 10 * time.Second
+	webSocketReadWait                 = 90 * time.Second
+	webSocketPingPeriod               = 30 * time.Second
 )
 
 type wsEnvelope struct {
@@ -70,6 +72,8 @@ type wsConnection struct {
 	closeOnce              sync.Once
 	nodesMu                sync.RWMutex
 	nodeIDs                map[int64]struct{}
+	messageRequests        *requestLimiter
+	nodeMessageRequests    *requestLimiter
 }
 
 func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, allowedOrigins map[string]struct{}, coordinator nodecoord.Coordinator) *wsHub {
@@ -264,6 +268,8 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		id: connectionID, machineID: machineID, legacy: legacy, legacySettingsRevision: settings.Revision,
 		conn: connection, hub: s.hub, writeCh: make(chan wsEnvelope, max(64, len(snapshots)*3+4)),
 		done: make(chan struct{}), nodeIDs: nodeIDs,
+		messageRequests:     newRequestLimiter(maxWebSocketMessagesPerConnection, time.Minute),
+		nodeMessageRequests: newRequestLimiter(maxWebSocketMessagesPerNode, time.Minute),
 	}
 	registrationID := machineID
 	if legacy {
@@ -678,6 +684,11 @@ func (c *wsConnection) readLoop() {
 		if !c.hub.owns(c) {
 			return
 		}
+		if !c.allowIncomingMessage(message) {
+			c.hub.logger.Warn("rate limit node websocket message", "machine_id", c.machineID, "event", message.Event)
+			c.close(websocket.ClosePolicyViolation, "rate limit exceeded")
+			return
+		}
 		if c.hub.coordinator != nil {
 			owned, err := c.ownsIncomingMessage(message)
 			if err != nil {
@@ -696,6 +707,36 @@ func (c *wsConnection) readLoop() {
 			return
 		}
 	}
+}
+
+func (c *wsConnection) allowIncomingMessage(message wsIncomingEnvelope) bool {
+	now := c.hub.now()
+	connectionAllowed := c.messageRequests.take("connection", now)
+	nodeAllowed := true
+	if nodeID, scoped := c.incomingMessageNodeID(message); scoped {
+		nodeAllowed = c.nodeMessageRequests.take(strconv.FormatInt(nodeID, 10), now)
+	}
+	return connectionAllowed && nodeAllowed
+}
+
+func (c *wsConnection) incomingMessageNodeID(message wsIncomingEnvelope) (int64, bool) {
+	if message.Event != "node.status" && message.Event != "report.devices" {
+		return 0, false
+	}
+	if c.legacy {
+		nodeIDs := c.nodeIDList()
+		if len(nodeIDs) == 1 {
+			return nodeIDs[0], true
+		}
+		return 0, false
+	}
+	var identity struct {
+		NodeID int64 `json:"node_id"`
+	}
+	if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID < 1 || !c.hasNode(identity.NodeID) {
+		return 0, false
+	}
+	return identity.NodeID, true
 }
 
 func (c *wsConnection) ownsIncomingMessage(message wsIncomingEnvelope) (bool, error) {
