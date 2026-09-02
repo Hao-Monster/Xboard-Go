@@ -450,6 +450,20 @@ func TestSECNODE005RequestLimiterWindowOverflowAndConcurrency(t *testing.T) {
 	if resetAttempts.allowed("later", now.Add(90*time.Second-time.Nanosecond)) || !resetAttempts.allowed("later", now.Add(90*time.Second)) {
 		t.Fatal("resetting the earliest key changed a later key's exact expiry boundary")
 	}
+
+	sharedOverflow := newAttemptLimiter(2, time.Minute)
+	for index := 0; index < 4096; index++ {
+		sharedOverflow.failed(fmt.Sprintf("tracked-%d", index), now)
+	}
+	sharedOverflow.failed("overflow-attacker-a", now)
+	sharedOverflow.failed("overflow-attacker-b", now)
+	if sharedOverflow.allowed("overflow-attacker-c", now) {
+		t.Fatal("shared overflow bucket did not reach its failure boundary")
+	}
+	sharedOverflow.reset("successful-client-without-a-tracked-failure")
+	if sharedOverflow.allowed("overflow-attacker-c", now) {
+		t.Fatal("one successful client cleared the shared overflow failure bucket")
+	}
 }
 
 func TestSECNODE005RuntimeHTTPBodyBoundaries(t *testing.T) {
