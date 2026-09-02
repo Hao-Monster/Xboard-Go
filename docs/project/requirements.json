@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-02",
-  "baseline_commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
+  "baseline_commit": "c2eddff6cdc932f417dd8cef1dc8459af2b0509a",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -958,9 +958,9 @@
             "TIME-NODE-006-DISCONNECT",
             "TIME-NODE-006-CAPACITY"
           ],
-          "artifact": "bingo-dev:sha256:d525a098fee6cdfdc65aa77834be80a21d8f270e9970c624f21ef8039d5c40d7",
-          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
-          "observed_at": "2026-09-02T04:33:52Z",
+          "artifact": "bingo-dev:sha256:bca2598669ad2f8d87d4251c23e2f2e23f98ea49fa9406a8bfdf41f8e0b8112f",
+          "commit": "c2eddff6cdc932f417dd8cef1dc8459af2b0509a",
+          "observed_at": "2026-09-02T05:11:23Z",
           "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 go test -race -count=1 -timeout=4m ./internal/devicestate ./internal/store ./internal/httpapi -run TestTIMENODE006",
           "result": "pass"
         },
@@ -971,9 +971,9 @@
           "case_ids": [
             "TIME-NODE-006-REDIS-OUTAGE"
           ],
-          "artifact": "bingo-dev:sha256:8997f97b331261a38ed6a80794613cf2f142137d1d5660f7f271f5c065fe5813",
-          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
-          "observed_at": "2026-09-02T04:33:52Z",
+          "artifact": "bingo-dev:sha256:518f7f429d2048b1f550db744154ae3503962c4c69fb26b828bf9c2cc66db06c",
+          "commit": "c2eddff6cdc932f417dd8cef1dc8459af2b0509a",
+          "observed_at": "2026-09-02T05:11:23Z",
           "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 XBOARD_TEST_REDIS_FAILURES=true go test -race -timeout=5m ./internal/devicestate -run TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState -count=1",
           "result": "pass"
         },
@@ -984,9 +984,9 @@
           "case_ids": [
             "TIME-NODE-006-CAPACITY"
           ],
-          "artifact": "bingo-dev:sha256:a113f96712e6fa6ac6d9bc84048178f88b092eb43f54e862091099adc8eefdb5",
-          "commit": "2da95ab96b67cfa2470a707d81bb15b2ddda3d1b",
-          "observed_at": "2026-09-02T04:33:52Z",
+          "artifact": "bingo-dev:sha256:9220f901eec3c8406f7aa122b4641ff243e00df635224936c80b0929d9bd1e02",
+          "commit": "c2eddff6cdc932f417dd8cef1dc8459af2b0509a",
+          "observed_at": "2026-09-02T05:11:23Z",
           "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/15 go test -run ^$ -bench BenchmarkTIMENODE006 -benchmem -benchtime=10x -count=3 ./internal/devicestate",
           "result": "pass"
         }
