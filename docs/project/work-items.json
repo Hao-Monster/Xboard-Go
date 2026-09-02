@@ -18,5 +18,14 @@
     {"id":"DEP-001","title":"分类并处理现有 Dependabot 更新积压","status":"done","milestone":"M0","issue_number":129,"requirement_ids":[],"decision_ids":[]},
     {"id":"PERF-001","title":"建立代表性容量基线并确认 SLO","status":"blocked","milestone":"M4","issue_number":130,"requirement_ids":[],"decision_ids":["D-015"]},
     {"id":"REL-001","title":"完成生产切换、回滚和事故响应运行手册","status":"blocked","milestone":"M4","issue_number":131,"requirement_ids":[],"decision_ids":["D-016","D-018"]}
+  ],
+  "tracks": [
+    {"id":"FIN-A","title":"财务 schema、追加账本与状态机","status":"done","milestone":"M1","work_item_ids":["FUNC-001"],"depends_on":[],"completion_gate":"资金守恒、幂等、并发、迁移与不可变事件测试通过"},
+    {"id":"FIN-B","title":"财务 API、授权、审计与敏感字段边界","status":"done","milestone":"M1","work_item_ids":["FUNC-001"],"depends_on":["FIN-A"],"completion_gate":"API 契约、权限、失败关闭和审计关联测试通过"},
+    {"id":"FIN-C","title":"用户申请与管理员处理界面","status":"done","milestone":"M1","work_item_ids":["FUNC-001"],"depends_on":["FIN-B"],"completion_gate":"组件、桌面和移动端关键提现流程通过"},
+    {"id":"USER-A","title":"删除生命周期、预检、恢复与匿名化事务","status":"done","milestone":"M1","work_item_ids":["FUNC-002"],"depends_on":[],"completion_gate":"CAS、凭据撤销、重入、外键和保留矩阵测试通过"},
+    {"id":"USER-B","title":"用户生命周期管理 API 与授权边界","status":"done","milestone":"M1","work_item_ids":["FUNC-002"],"depends_on":["USER-A"],"completion_gate":"权限、会话、订阅和不可枚举失败契约测试通过"},
+    {"id":"USER-C","title":"删除影响、二次确认与恢复界面","status":"done","milestone":"M1","work_item_ids":["FUNC-002"],"depends_on":["USER-B"],"completion_gate":"组件、键盘、桌面和移动端生命周期流程通过"},
+    {"id":"QA","title":"独立资金、权限和数据保留缺口审查","status":"blocked","milestone":"M1","work_item_ids":["FUNC-001","FUNC-002"],"depends_on":["FIN-C","USER-C"],"completion_gate":"无已知 Critical/High，且精确候选提交取得隔离 CI 证据"}
   ]
 }

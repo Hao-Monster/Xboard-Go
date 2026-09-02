@@ -9,7 +9,7 @@
 
 ## 1. 结论
 
-M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地候选实现已完成，当前仍需精确候选提交的隔离 CI 证据才能把 `verification_status` 提升为 `current`、把工作项标记为 `done` 并通过 M1-G02～G04。
+M1 的两个高影响业务门禁已经解决。精确候选提交为 `f2006f57f4a5f80de252c66f92341da1b45785c0`；FIN-A/B/C 与 USER-A/B/C 本地门禁均已完成，QA 轨道仍被隔离 CI 证据阻塞。当前仍需精确候选提交的远端可核对证据，才能把 `verification_status` 提升为 `current`、把父工作项标记为 `done` 并通过 M1-G02～G04。
 
 审查发现原 D-011 的一句推荐语遗漏了币种、舍入、税费、退款、冲正和财务保留；原 D-012 的一句推荐语遗漏了封禁与删除的状态隔离、凭据撤销、关联数据处理、恢复权限和并发语义。用户已明确采用补全后的 1-5 项方案，`decisions.json` 现记录为已解决决策。
 
@@ -21,13 +21,13 @@ M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地�
 | --- | --- | --- |
 | 金额与舍入 | 既有金额使用整数分，但规则没有形成 M1 决策 | 沿用整数分、拒绝超过两位小数；手续费半入舍入、佣金向下取整保持现有契约 |
 | 币种 | 站点显示币种可修改，而 checkout/webhook 固定 `CNY` | checkout 和 webhook 使用并核对部署币种快照；网关按能力拒绝不兼容币种；出现任何财务事实后锁定部署币种；Web 金额统一读取站点币种 |
-| 佣金提现 | 只有直接余额划转和旧版工单流程，没有冻结账本 | schema V60 增加冻结余额、提现与追加式事件表；事务、活动申请唯一索引、幂等键、revision CAS 和唯一外部参考号共同保护状态机 |
+| 佣金提现 | 只有直接余额划转和旧版工单流程，没有冻结账本 | schema V60 增加冻结余额、提现与追加式事件表，V62 为余额划转和管理员余额调整补充不可变事件；事务、唯一索引、幂等键、revision CAS 和唯一外部参考号共同保护状态机 |
 | 提现账户 | 旧流程不能满足敏感账户保密和精确幂等重放 | 收款账户按用途加密；用途绑定的 keyed HMAC 指纹校验幂等重放；列表和审计只存脱敏值；明文查看使用 CSRF 保护的 POST、禁止缓存并写管理员审计 |
 | 税费、退款、冲正与保留 | 没有税务、已支付退款、chargeback/冲正模型或正式保留期 | 按确认范围不新增税费和已支付退款入口；不回改财务事实；正式期限决定前不自动删除财务账本 |
 | 用户生命周期 | `banned` 不能表达删除、恢复和不可逆匿名化 | schema V61 增加 `active -> pending_deletion -> anonymized`、30 天期限和追加式生命周期事件 |
 | 删除影响与阻塞 | 没有预检，硬删会破坏 `RESTRICT` 保护的业务事实 | 发起时在同一事务重算影响并使用 revision CAS；阻止自删、内部账号、非活动状态、未结清余额/邀请佣金、活动订单/支付、最后管理员和活动分销责任 |
 | 凭据与运行态 | 删除没有统一撤销边界 | 进入待删除立即撤销会话、访问/订阅凭据、验证挑战、登录链接、Telegram、在线设备与待发通知；恢复不复活旧凭据 |
-| 匿名化与保留 | 没有恢复期限、墓碑或幂等后台任务 | 有界调度任务到期匿名化且可重入；保留稳定用户 ID 和业务事实，替换用户主表及结构化展示快照，非结构化正文仍由 D-013/OPS-002 管理 |
+| 匿名化与保留 | 没有恢复期限、墓碑或幂等后台任务 | 有界调度任务到期匿名化且可重入；墓碑身份随机生成并在事务内查重；保留稳定用户 ID 和业务事实，替换用户主表及结构化展示快照，非结构化正文仍由 D-013/OPS-002 管理 |
 
 ## 3. D-011 建议决策
 
@@ -70,6 +70,8 @@ M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地�
 
 ### 3.4 D-011 验收标准
 
+以下文字是便于审阅的摘要；稳定 ID 和机器可审计正文以 `requirements.json` 的 `FIN-001.acceptance_criteria` 为准。
+
 1. Given 同一用户并发或重复提交提现，When 请求使用相同或不同幂等键到达，Then 只冻结一次且最多存在一个活动申请。
 2. Given 可用佣金为 X，When 申请成功，Then 可用佣金减少 X、冻结佣金增加 X、总额守恒。
 3. Given `pending` 或 `approved` 申请，When 管理员拒绝，Then 冻结金额只退回一次；重试不重复入账。
@@ -108,6 +110,8 @@ M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地�
 
 ### 4.3 D-012 验收标准
 
+以下文字是便于审阅的摘要；稳定 ID 和机器可审计正文以 `requirements.json` 的 `USER-001`、`USER-003.acceptance_criteria` 为准。
+
 1. Given 有受保护业务数据的用户，When 管理员发起删除，Then 影响预检准确展示关联数量且不硬删业务事实。
 2. Given revision 已过期、当前管理员自身、内部账号或活动分销责任，When 发起删除，Then 失败关闭且无部分状态变化。
 3. Given 删除已确认，When 事务提交，Then 账号立即不可登录/订阅，全部凭据与运行态被撤销，业务事实仍完整。
@@ -117,7 +121,7 @@ M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地�
 
 ## 5. 已采用的最快可控执行拆分
 
-决策确认是唯一串行门禁。确认后，FUNC-001 与 FUNC-002 按下列轨道推进；共享 schema 和最终集成由单一责任面串行收口，避免并发覆盖。
+决策确认是唯一串行门禁。确认后，FUNC-001 与 FUNC-002 按下列轨道推进；共享 schema 和最终集成由单一责任面串行收口，避免并发覆盖。轨道的当前状态、依赖和完成门禁以 `work-items.json.tracks` 为权威事实源。
 
 | 轨道 | 产物 | 依赖 | 主要文件所有权 | 完成门禁 |
 | --- | --- | --- | --- | --- |
@@ -143,12 +147,13 @@ M1 的两个高影响业务门禁已经解决。FUNC-001 与 FUNC-002 的本地�
 
 ## 7. 主要证据锚点
 
-- `internal/store/sqlite.go`、`internal/store/schema_validation.go`：schema V60/V61、约束、索引和启动时结构校验。
+- `internal/store/sqlite.go`、`internal/store/schema_validation.go`：schema V60～V62、约束、索引和启动时结构校验。
 - `internal/store/commission_withdrawals.go`、`internal/settings/cipher.go`：资金冻结/结算状态机、追加式事件、账户加密和用途绑定指纹。
 - `internal/httpapi/commission_withdrawal_handlers.go`、`web/src/features/settings/CommissionSettingsPage.tsx`、`web/src/features/invitations/InvitationPage.tsx`：用户申请、管理员处理、显式确认和敏感账户查看边界。
 - `internal/store/user_deletion.go`、`internal/httpapi/user_deletion_handlers.go`、`internal/scheduler/worker.go`、`web/src/features/users/UsersPage.tsx`：影响预检、发起、恢复、到期匿名化和管理界面。
 - `internal/store/payment_checkout.go`、`internal/payment/gateway.go`、`internal/store/site_settings.go`：支付币种快照、网关能力校验和财务事实后的币种锁。
 - `web/src/lib/currency.tsx`、`web/src/App.tsx`：站点币种上下文及各金额界面的统一格式化入口。
-- `internal/store/commission_withdrawals_test.go`、`internal/store/user_deletion_test.go`、`internal/httpapi/m1_financial_user_lifecycle_handlers_test.go`、`internal/scheduler/worker_test.go`：本地事务、并发、幂等、权限、迁移和调度回归证据。
+- `internal/store/commission_withdrawals_test.go`、`internal/store/financial_events_v62_test.go`、`internal/store/user_deletion_test.go`、`internal/httpapi/m1_financial_user_lifecycle_handlers_test.go`、`internal/scheduler/worker_test.go`：本地事务、并发、幂等、权限、迁移和调度回归证据。
+- `web/e2e/m1-lifecycle.spec.ts`、`web/e2e/commissions.spec.ts`、`web/e2e/users.spec.ts`：桌面端和移动端的提现、划转、删除/恢复与用户资料关键流程。
 
 本地测试结果只能支持 `partial`。在精确候选提交产生 GitHub Actions 或 `bingo-dev:sha256` 可核对产物前，不得把上述锚点提升为 `current` 或 `accepted`，也不得将 M1-G02～G04 标记为通过。

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-02",
-  "baseline_commit": "b151f914fbf90fe5d341c5fd7caea7983799a66f",
+  "baseline_commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -175,6 +175,39 @@
       "work_item_ids": [
         "FUNC-002"
       ],
+      "status_reason": "候选提交 f2006f5 的 USER-A/B/C 本地门禁、桌面端和移动端流程均已通过；仍缺精确候选提交的隔离 CI 与代表性旧数据迁移/回滚证据。",
+      "acceptance_criteria": [
+        {
+          "id": "USER-001-AC1",
+          "title": "管理员可读取删除影响、用最新 revision 发起删除，并在 30 天窗口内恢复非受保护用户。"
+        },
+        {
+          "id": "USER-001-AC2",
+          "title": "删除或恢复失败时返回稳定错误且不产生部分状态、凭据或业务数据变化。"
+        }
+      ],
+      "progress_evidence": [
+        {
+          "id": "PE-M1-USER-001-GO",
+          "kind": "integration",
+          "environment": "local",
+          "case_ids": ["USER-001-AC1", "USER-001-AC2"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "go test ./... -count=1",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-USER-001-BROWSER",
+          "kind": "browser",
+          "environment": "local",
+          "case_ids": ["USER-001-AC1", "USER-001-AC2"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web exec playwright test e2e/commissions.spec.ts e2e/users.spec.ts e2e/m1-lifecycle.spec.ts --project chromium --project mobile-chromium",
+          "result": "pass"
+        }
+      ],
       "evidence": []
     },
     {
@@ -210,6 +243,65 @@
       ],
       "work_item_ids": [
         "FUNC-002"
+      ],
+      "status_reason": "候选提交 f2006f5 的删除预检、30 天恢复、到期匿名化、财务保留和 USER-A/B/C 本地门禁均已通过；仍缺隔离 CI 与代表性旧数据迁移/回滚证据。",
+      "acceptance_criteria": [
+        {
+          "id": "USER-003-AC1",
+          "title": "受保护业务数据的用户在删除前准确展示关联影响，且不硬删业务事实。"
+        },
+        {
+          "id": "USER-003-AC2",
+          "title": "过期 revision、当前管理员自身、内部账号或活动分销责任导致删除失败关闭且无部分变化。"
+        },
+        {
+          "id": "USER-003-AC3",
+          "title": "删除申请提交后账号立即不可登录或订阅，全部凭据与运行态撤销，业务事实保持完整。"
+        },
+        {
+          "id": "USER-003-AC4",
+          "title": "30 天窗口内用当前 revision 恢复后账号 active，旧凭据仍无效并产生审计记录。"
+        },
+        {
+          "id": "USER-003-AC5",
+          "title": "到期任务并发或重复执行只匿名化一次，并保持唯一约束、外键和财务守恒。"
+        },
+        {
+          "id": "USER-003-AC6",
+          "title": "匿名化后业务事实仍指向稳定墓碑 ID，普通界面与 API 不泄露原身份或可恢复的收款账户。"
+        }
+      ],
+      "progress_evidence": [
+        {
+          "id": "PE-M1-USER-003-GO",
+          "kind": "integration",
+          "environment": "local",
+          "case_ids": ["USER-003-AC1", "USER-003-AC2", "USER-003-AC3", "USER-003-AC4", "USER-003-AC5", "USER-003-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "go test ./... -count=1",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-USER-003-BROWSER",
+          "kind": "browser",
+          "environment": "local",
+          "case_ids": ["USER-003-AC1", "USER-003-AC3", "USER-003-AC4"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web exec playwright test e2e/commissions.spec.ts e2e/users.spec.ts e2e/m1-lifecycle.spec.ts --project chromium --project mobile-chromium",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-USER-003-WEB",
+          "kind": "unit",
+          "environment": "local",
+          "case_ids": ["USER-003-AC1", "USER-003-AC4"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web test:coverage",
+          "result": "pass"
+        }
       ],
       "evidence": []
     },
@@ -535,6 +627,85 @@
       ],
       "work_item_ids": [
         "FUNC-001"
+      ],
+      "status_reason": "候选提交 f2006f5 的 FIN-A/B/C、本地 V61→V62 迁移、桌面端和移动端资金流程均已通过；仍缺隔离 CI 与代表性财务旧数据迁移/回滚证据。",
+      "acceptance_criteria": [
+        {
+          "id": "FIN-001-AC1",
+          "title": "同一用户并发或重复提现只冻结一次，且最多存在一个活动申请。"
+        },
+        {
+          "id": "FIN-001-AC2",
+          "title": "申请成功后可用与冻结佣金按相同金额反向变化并保持总额守恒。"
+        },
+        {
+          "id": "FIN-001-AC3",
+          "title": "pending 或 approved 提现被拒绝时冻结金额只退回一次，重试不重复入账。"
+        },
+        {
+          "id": "FIN-001-AC4",
+          "title": "approved 提现仅能用唯一外部参考号进入 paid，后续拒绝或回退失败关闭。"
+        },
+        {
+          "id": "FIN-001-AC5",
+          "title": "支付币种与部署币种不一致时 checkout 或 webhook 失败，订单、余额和账本均不改变。"
+        },
+        {
+          "id": "FIN-001-AC6",
+          "title": "财务变更可审计金额、币种、操作者、时间、幂等或 revision 令牌、前后状态和关联事件，且敏感账户不进入日志。"
+        }
+      ],
+      "progress_evidence": [
+        {
+          "id": "PE-M1-FIN-001-GO",
+          "kind": "integration",
+          "environment": "local",
+          "case_ids": ["FIN-001-AC1", "FIN-001-AC2", "FIN-001-AC3", "FIN-001-AC4", "FIN-001-AC5", "FIN-001-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "go test ./... -count=1",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-FIN-001-BROWSER",
+          "kind": "browser",
+          "environment": "local",
+          "case_ids": ["FIN-001-AC1", "FIN-001-AC2", "FIN-001-AC3", "FIN-001-AC4", "FIN-001-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web exec playwright test e2e/commissions.spec.ts e2e/users.spec.ts e2e/m1-lifecycle.spec.ts --project chromium --project mobile-chromium",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-FIN-001-WEB",
+          "kind": "unit",
+          "environment": "local",
+          "case_ids": ["FIN-001-AC1", "FIN-001-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web test:coverage",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-FIN-001-SECURITY",
+          "kind": "security",
+          "environment": "local",
+          "case_ids": ["FIN-001-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+          "result": "pass"
+        },
+        {
+          "id": "PE-M1-FIN-001-DEPENDENCY-AUDIT",
+          "kind": "security",
+          "environment": "local",
+          "case_ids": ["FIN-001-AC6"],
+          "commit": "f2006f57f4a5f80de252c66f92341da1b45785c0",
+          "observed_at": "2026-09-02T06:40:52Z",
+          "command": "pnpm --dir web audit --audit-level high",
+          "result": "pass"
+        }
       ],
       "evidence": []
     },
@@ -1357,6 +1528,7 @@
         "OPS-002",
         "MIG-001"
       ],
+      "status_reason": "安装、升级、健康检查和部分清理能力已存在；D-013 保留策略、代表性旧数据、异地备份、恢复演练和回滚证据仍缺失，因此 M2 保持阻塞。",
       "evidence": []
     },
     {
