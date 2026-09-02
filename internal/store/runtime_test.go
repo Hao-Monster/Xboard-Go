@@ -883,7 +883,7 @@ func createReportingNode(t testing.TB, database *Store, now time.Time) (Machine,
 	return machine, node
 }
 
-func createRuntimeUser(t *testing.T, database *Store, now time.Time, name string, groupID, transferEnable, upload, download int64, expiredAt *time.Time, banned bool) RuntimeUser {
+func createRuntimeUser(t testing.TB, database *Store, now time.Time, name string, groupID, transferEnable, upload, download int64, expiredAt *time.Time, banned bool) RuntimeUser {
 	t.Helper()
 	ensureTestServerGroups(t, database, now, groupID)
 	user, err := database.CreateRuntimeUser(context.Background(), CreateRuntimeUserInput{
