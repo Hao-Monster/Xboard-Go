@@ -279,6 +279,13 @@ func TestSECNODE005NodeRateLimitUsesClientPeerAndCredentialBuckets(t *testing.T)
 		credentialLimited.allow(request("198.51.100.3", "credential-a"), 1, now) {
 		t.Fatal("credential bucket did not enforce its independent limit")
 	}
+	normalizedCredential := newNodeRequestLimitGroup(10, 10, 1, trusted)
+	canonical := request("198.51.100.1", "credential-a")
+	variant := request("198.51.100.2", "credential-a")
+	variant.Header.Set("Authorization", "  bearer\tcredential-a  ")
+	if !normalizedCredential.allow(canonical, 1, now) || normalizedCredential.allow(variant, 1, now) {
+		t.Fatal("equivalent Bearer header formatting bypassed the credential bucket")
+	}
 }
 
 func TestSECNODE005TrustedProxyIsAppliedAtNodeAuthenticationEntry(t *testing.T) {
@@ -313,6 +320,30 @@ func TestSECNODE005TrustedProxyIsAppliedAtNodeAuthenticationEntry(t *testing.T) 
 		}
 	}
 	limited := request(untrustedAPI, "192.0.2.10:8080", "203.0.113.200")
+	expectAPIError(t, limited, http.StatusTooManyRequests, "machine_auth_rate_limited")
+}
+
+func TestSECNODE005MachineAuthenticationLimitCannotBeBypassedWithMachineIDs(t *testing.T) {
+	api, database := newTestAPI(t)
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
+		Name: "node-security-auth-machine", IsActive: true,
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 60; attempt++ {
+		response := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", "invalid-machine-credential",
+			fmt.Sprintf(`{"machine_id":%d}`, 10_000+attempt))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("invalid machine attempt %d status=%d, want %d; body=%s", attempt+1, response.Code, http.StatusUnauthorized, response.Body)
+		}
+	}
+	limited := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", credential.Token,
+		fmt.Sprintf(`{"machine_id":%d}`, machine.ID))
 	expectAPIError(t, limited, http.StatusTooManyRequests, "machine_auth_rate_limited")
 }
 
