@@ -17,6 +17,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// The race detector can take more than two seconds to drain a full inbound
+// WebSocket budget on constrained runners. This remains an upper bound for the
+// required protocol close, not a timing assertion on message processing.
+const webSocketSecurityCloseTimeout = 10 * time.Second
+
 func TestSECNODE005HandshakeBodyBoundary(t *testing.T) {
 	api, database := newTestAPI(t)
 	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{
@@ -83,7 +88,7 @@ func TestSECNODE005WebSocketNodeMessageRateBoundary(t *testing.T) {
 			break
 		}
 	}
-	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = connection.SetReadDeadline(time.Now().Add(webSocketSecurityCloseTimeout))
 	if _, _, err := connection.ReadMessage(); !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
 		t.Fatalf("message above per-node limit error=%v, want policy-violation close", err)
 	}
@@ -181,7 +186,7 @@ func TestSECNODE005WebSocketMessageSizeBoundary(t *testing.T) {
 	if err := connection.WriteMessage(websocket.TextMessage, oversized); err != nil {
 		t.Fatalf("write oversized message: %v", err)
 	}
-	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = connection.SetReadDeadline(time.Now().Add(webSocketSecurityCloseTimeout))
 	if _, _, err := connection.ReadMessage(); !websocket.IsCloseError(err, websocket.CloseMessageTooBig) {
 		t.Fatalf("oversized message error=%v, want message-too-big close", err)
 	}
