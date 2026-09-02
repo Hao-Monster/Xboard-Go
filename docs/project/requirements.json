@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-02",
-  "baseline_commit": "c90e54a2f0013112a61899678ff4caade2e34443",
+  "baseline_commit": "ea55ce3c071770b838f280a8db99aefe53f84d9f",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -792,8 +792,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-001"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-MACH-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -812,8 +812,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-002-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["API-MACH-002"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(APIMACH002|MachineAgentEnrollmentNodesAndStatus|MachineNodesAndDailyScheduleAPI) -count=1","result":"pass"},
-        {"id":"EV-MACH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-002"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-MACH-002-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["API-MACH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(APIMACH002|MachineAgentEnrollmentNodesAndStatus|MachineNodesAndDailyScheduleAPI) -count=1","result":"pass"},
+        {"id":"EV-MACH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -832,8 +832,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-003-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-003"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-003"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-MACH-003-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-MACH-003"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -852,9 +852,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-MACH-004-SYSTEM","kind":"integration","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(DeletingMachineUnlinksNodesWithoutDeletingThem|MachineNodesAndDailyScheduleAPI|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"},
-        {"id":"EV-MACH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-MACH-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-004"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-MACH-004-SYSTEM","kind":"integration","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/httpapi ./internal/scheduler -run Test(DeletingMachineUnlinksNodesWithoutDeletingThem|MachineNodesAndDailyScheduleAPI|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"},
+        {"id":"EV-MACH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["SYS-MACH-004"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-MACH-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-MACH-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -873,9 +873,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-001-CONTRACT","kind":"contract","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/httpapi -run Test(AdminNode|BasicAdminNode|SchemaV4[02].*Node|CurrentSchemaIncludesLosslessNodeProtocol|HydrateLegacyNodeDefinition|ValidateSchemaV42|NodePortPreservesDynamicRanges|ListSubscriptionNodesUsesLegacyVisibilityGroupAndCapacityRules|XboardNodeRuntimeConfigContract|XboardNodeRuntimeEndpoints) -count=1","result":"pass"},
-        {"id":"EV-NODE-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-NODE-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-001"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|SchemaV24ThroughV26) -count=1","result":"pass"}
+        {"id":"EV-NODE-001-CONTRACT","kind":"contract","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:905cf1377bcd39063a8936683b81c7360886b690b2d852daba6903899d5e38a4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:06Z","command":"go test -race ./internal/store ./internal/httpapi -run Test(AdminNode|BasicAdminNode|SchemaV4[02].*Node|CurrentSchemaIncludesLosslessNodeProtocol|HydrateLegacyNodeDefinition|ValidateSchemaV42|NodePortPreservesDynamicRanges|ListSubscriptionNodesUsesLegacyVisibilityGroupAndCapacityRules|XboardNodeRuntimeConfigContract|XboardNodeRuntimeEndpoints) -count=1","result":"pass"},
+        {"id":"EV-NODE-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["CONTRACT-NODE-001"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-NODE-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|SchemaV24ThroughV26) -count=1","result":"pass"}
       ]
     },
     {
@@ -894,9 +894,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-002-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-NODE-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-NODE-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-002"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-NODE-002-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:b3b1a72ea0b0caae71b9fd45f2a8d4ab8324ea78e2eea98f2447935fa5cdc737","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:18:01Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
+        {"id":"EV-NODE-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["DIFF-NODE-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-NODE-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -915,8 +915,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-003-REDIS","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(INTNODE003|TIMENODE006|NODE007|INTNODE007|DIFFNODE004|NodeReport|XboardNodeRuntime|ValidateNodeReport|MachineWebSocket|LegacyNode) -count=1","result":"pass"},
-        {"id":"EV-NODE-003-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:48a386b2c2fbea85b8cec71d96867b9c5b904481af2f0ffd77c6604422b6b643","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:02:46Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/nodecoord ./internal/devicestate -run ^$ -bench Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines) -benchmem -count=3","result":"pass"}
+        {"id":"EV-NODE-003-REDIS","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(INTNODE003|TIMENODE006|NODE007|INTNODE007|DIFFNODE004|NodeReport|XboardNodeRuntime|ValidateNodeReport|MachineWebSocket|LegacyNode) -count=1","result":"pass"},
+        {"id":"EV-NODE-003-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-003"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/nodecoord ./internal/devicestate -run ^$ -bench Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines) -benchmem -count=3","result":"pass"}
       ]
     },
     {
@@ -937,9 +937,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-004-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-004"],"artifact":"bingo-dev:sha256:80262ffdd8990a4c36efadf19b76f1f60b16377b20792b2fa6d2e58fb87baf67","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:21:57Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts node-dual-auth.spec.ts","result":"pass"},
-        {"id":"EV-NODE-004-REAL-CLIENT","kind":"integration","environment":"bingo-dev","case_ids":["REAL-NODE-CLIENT-SMOKE"],"artifact":"bingo-dev:sha256:eae9d900c88f9a531d0838e60311a7714bec3ced6f0a42bd6f381ad281b14cfd","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:22:14Z","command":"bash /home/bingo/apps/xboard-go-test-results/ver004-c90e54a/run-ver003-real-node-smoke-c90.sh","result":"pass"},
-        {"id":"EV-NODE-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-004"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodeAgentSettingsSnapshot|ImportLegacyNodeAgentSettings|LegacyNodeAgentSettings) -count=1","result":"pass"}
+        {"id":"EV-NODE-004-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NODE-004"],"artifact":"bingo-dev:sha256:abbcb661bb751894d4121b7501dc09a0fadc73dcf29907c2e5a27c066bca96ba","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:56:14Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts node-dual-auth.spec.ts","result":"pass"},
+        {"id":"EV-NODE-004-REAL-CLIENT","kind":"integration","environment":"bingo-dev","case_ids":["REAL-NODE-CLIENT-SMOKE"],"artifact":"bingo-dev:sha256:46f8f300120b569afed8d58f5c124975dd66647596c4ff5886b090172150daa4","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:07:23Z","command":"bash /home/bingo/apps/xboard-go-test-results/run-ver003-real-node-smoke-bingo.sh","result":"pass"},
+        {"id":"EV-NODE-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-004"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodeAgentSettingsSnapshot|ImportLegacyNodeAgentSettings|LegacyNodeAgentSettings) -count=1","result":"pass"}
       ]
     },
     {
@@ -958,7 +958,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-005-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-NODE-005"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/config ./internal/httpapi -run TestSECNODE005 -count=5","result":"pass"}
+        {"id":"EV-NODE-005-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-NODE-005"],"artifact":"bingo-dev:sha256:294f182818f3a922e76b30e0e757ac3f0e3df0bdfe4a1ba182fd08aa89e73059","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:45:44Z","command":"go test -race ./internal/config ./internal/httpapi -run TestSECNODE005 -count=5","result":"pass"},
+        {"id":"EV-NODE-005-CI","kind":"security","environment":"github-actions","case_ids":["SEC-NODE-005"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949180","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T09:10:35Z","command":"go test -race -timeout=30m -coverprofile=coverage.out ./...; Redis failure tests; go vet ./...; govulncheck ./...","result":"pass"}
       ]
     },
     {
@@ -977,8 +978,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-006-TIME","kind":"integration","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(TIMENODE006|MachineWebSocket|NodeReport) -count=1","result":"pass"},
-        {"id":"EV-NODE-006-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:48a386b2c2fbea85b8cec71d96867b9c5b904481af2f0ffd77c6604422b6b643","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:02:46Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/devicestate -run ^$ -bench BenchmarkTIMENODE006 -benchmem -count=3","result":"pass"}
+        {"id":"EV-NODE-006-TIME","kind":"integration","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(TIMENODE006|MachineWebSocket|NodeReport) -count=1","result":"pass"},
+        {"id":"EV-NODE-006-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["TIME-NODE-006"],"artifact":"bingo-dev:sha256:93806fb9f45f261f3f385d80d9d1d46f77834e3ea88f7c46c2287434d1936adf","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:49:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 GOMAXPROCS=4 go test ./internal/devicestate -run ^$ -bench BenchmarkTIMENODE006 -benchmem -count=3","result":"pass"}
       ]
     },
     {
@@ -997,9 +998,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-NODE-007-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(NODE007|INTNODE007|NodeReport|ValidateNodeReport) -count=1","result":"pass"},
-        {"id":"EV-NODE-007-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:48a386b2c2fbea85b8cec71d96867b9c5b904481af2f0ffd77c6604422b6b643","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:02:46Z","command":"GOMAXPROCS=4 go test ./internal/store -run ^$ -bench BenchmarkApplyNodeReport -benchmem -count=3","result":"pass"},
-        {"id":"EV-NODE-007-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-007"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-NODE-007-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:add6a8e921be24c5013d72eb1a91dc85af0c997443ba77eb888163181de2a3ac","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:42:45Z","command":"XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16380/0 XBOARD_TEST_REDIS_FAILURES=true go test -race ./internal/nodecoord ./internal/devicestate ./internal/httpapi ./internal/store -run Test(NODE007|INTNODE007|NodeReport|ValidateNodeReport) -count=1","result":"pass"},
+        {"id":"EV-NODE-007-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["INT-NODE-007"],"artifact":"bingo-dev:sha256:514060e37420e6d81cc268f007892073bd60b9e941e1c7cf55630628dcc3be6f","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:48:58Z","command":"GOMAXPROCS=4 go test ./internal/store -run ^$ -bench BenchmarkApplyNodeReport -benchmem -count=3","result":"pass"},
+        {"id":"EV-NODE-007-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NODE-007"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -1018,8 +1019,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|LegacyOnceSchedule) -count=1","result":"pass"},
-        {"id":"EV-SCH-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/schedule ./internal/scheduler -run Test(DailySchedule|DailyWindow|LegacyOnceSchedule|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"}
+        {"id":"EV-SCH-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes|LegacyOnceSchedule) -count=1","result":"pass"},
+        {"id":"EV-SCH-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["DIFF-SCH-001"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule ./internal/scheduler -run Test(DailySchedule|DailyWindow|LegacyOnceSchedule|WorkerAppliesPersistedDueSchedule) -count=1","result":"pass"}
       ]
     },
     {
@@ -1038,9 +1039,9 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-002-TIME","kind":"unit","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/schedule -run Test(DailySchedule|DailyWindow|ScheduleRequires) -count=1","result":"pass"},
-        {"id":"EV-SCH-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-SCH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-002"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-SCH-002-TIME","kind":"unit","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/schedule -run Test(DailySchedule|DailyWindow|ScheduleRequires) -count=1","result":"pass"},
+        {"id":"EV-SCH-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["TIME-SCH-002"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-SCH-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-002"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -1059,8 +1060,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-003-TRANSACTION","kind":"integration","environment":"bingo-dev","case_ids":["TX-SCH-003"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/store ./internal/scheduler -run Test(TXSCH003|DueSchedule|WorkerAppliesPersistedDueSchedule|DeletingSchedule) -count=1","result":"pass"},
-        {"id":"EV-SCH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-003"],"artifact":"bingo-dev:sha256:ac793679654eb431ae8ae1ebfe229253872334012d57e73f1760686f5e28bb8f","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:01:19Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
+        {"id":"EV-SCH-003-TRANSACTION","kind":"integration","environment":"bingo-dev","case_ids":["TX-SCH-003"],"artifact":"bingo-dev:sha256:cbf520bce6e5bcba2f2ad79d6f36a2f1ea7c5dca5cca885e61588eb1d5be7375","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:40:38Z","command":"go test -race ./internal/store ./internal/scheduler -run Test(TXSCH003|DueSchedule|WorkerAppliesPersistedDueSchedule|DeletingSchedule) -count=1","result":"pass"},
+        {"id":"EV-SCH-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-SCH-003"],"artifact":"bingo-dev:sha256:9cb84ed71facb4eb3fd6466f0e1b883f281733dc96d254d38c0215904cd97d9c","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:41:50Z","command":"go test -race ./internal/legacymigration ./internal/store -run Test(ReadNodesSnapshot|ImportLegacyNodes) -count=1","result":"pass"}
       ]
     },
     {
@@ -1079,7 +1080,8 @@
         "VER-003"
       ],
       "evidence": [
-        {"id":"EV-SCH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"}
+        {"id":"EV-SCH-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"bingo-dev:sha256:ba30789f029f89a93fc6cfa4e5bbc7fcff07809fd7595db4ffcf3bce98d86acd","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:54:42Z","command":"pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
+        {"id":"EV-SCH-004-CI","kind":"browser","environment":"github-actions","case_ids":["FE-SCH-001","FE-SCH-002","FE-SCH-003","FE-SCH-004","FE-SCH-005","FE-SCH-006","FE-SCH-007","FE-SCH-008"],"artifact":"https://github.com/Hao-Monster/Xboard-Go/actions/runs/33609781163/job/100181949331","commit":"ea55ce3c071770b838f280a8db99aefe53f84d9f","observed_at":"2026-09-02T08:46:28Z","command":"pnpm test:e2e","result":"pass"}
       ]
     },
     {
@@ -1089,19 +1091,15 @@
       "title": "管理员可创建、编辑、显隐、排序和删除公告与知识；知识有分类和订阅条件。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-CONT-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-CONT-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-CONT-001-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-CONT-001"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-CONT-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-CONT-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "CONT-002",
@@ -1110,19 +1108,15 @@
       "title": "用户按订阅条件访问知识库；正文中的站点名和订阅地址占位符按当前用户替换。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-CONT-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-CONT-002"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-CONT-002-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-CONT-002"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-CONT-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-CONT-002"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "CONT-003",
@@ -1131,20 +1125,15 @@
       "title": "知识可生成公开分享页；公开页不泄漏用户订阅变量；公开附件有独立受限读取入口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-CONT-003-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-CONT-003"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-CONT-003-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-CONT-003"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-CONT-003-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-CONT-003"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-CONT-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-CONT-003"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "ATT-001",
@@ -1153,19 +1142,15 @@
       "title": "附件使用私有存储，支持初始化、分片、状态、完成、取消、列表、删除、克隆和 QR；不直接暴露存储路径。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-ATT-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-ATT-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-ATT-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-ATT-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/httpapi -run Test(Knowledge|PublicKnowledge|ClientCatalog|Ticket|AdminTicket|LegacyTicket|Notice) -count=1","result":"pass"},
-        {"id":"EV-ATT-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-ATT-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "ATT-002",
@@ -1174,20 +1159,15 @@
       "title": "校验文件名、大小、分片编号/数量、哈希、MIME、路径和配额；完成操作并发幂等，失败清理临时资源。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-ATT-002-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-ATT-002"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-ATT-002-SYMLINK","kind":"security","environment":"bingo-dev","case_ids":["SEC-ATT-002-SYMLINK"],"artifact":"bingo-dev:sha256:4705e4f92a872f84917da0c2e2e4c1b0ab92e5b8d51eab434402c07417f46074","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:53:45Z","command":"go test -race ./internal/attachments -run Test(StorageRootRejectsFilesystemRootAndSymlinks|SafePathRejectsTraversalAndNestedSymlinks) -count=3 -v","result":"pass"},
-        {"id":"EV-ATT-002-LARGE-FILE","kind":"integration","environment":"bingo-dev","case_ids":["LOAD-ATT-002"],"artifact":"bingo-dev:sha256:4705e4f92a872f84917da0c2e2e4c1b0ab92e5b8d51eab434402c07417f46074","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:53:45Z","command":"XBOARD_RUN_LARGE_ATTACHMENT_TEST=1 go test -race ./internal/attachments -run TestOneGiBAttachmentCompletesWithChunkBoundedMemory -count=1 -v","result":"pass"},
-        {"id":"EV-ATT-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-ATT-002"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "ATT-003",
@@ -1196,18 +1176,15 @@
       "title": "附件状态包含隔离、就绪、拒绝；上传状态包含初始化、上传、合并、完成、失败、过期；草稿和软删除有清理窗口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-ATT-003-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["STATE-ATT-003"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1","result":"pass"},
-        {"id":"EV-ATT-003-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-ATT-003"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "ATT-004",
@@ -1216,19 +1193,15 @@
       "title": "图片/安全视频可内联，其他文件强制下载；签名短时有效，Range、nosniff、安全 Content-Disposition 正确。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-ATT-004-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-ATT-004"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-ATT-004-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-ATT-004"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-ATT-004-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-ATT-004"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "ATT-005",
@@ -1237,21 +1210,15 @@
       "title": "管理编辑器数据库保存 Markdown；粘贴 HTML 使用白名单；跨文章复制产生新附件 UUID 和物理副本，同文复制不克隆。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-ATT-005-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["INT-ATT-005"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/httpapi -run Test(Knowledge|PublicKnowledge|ClientCatalog|Ticket|AdminTicket|LegacyTicket|Notice) -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1","result":"pass"},
-        {"id":"EV-ATT-005-WEB","kind":"unit","environment":"bingo-dev","case_ids":["FE-ATT-005"],"artifact":"bingo-dev:sha256:491d37b1003bb8f09c4237161b3e2927b6e8d280bb0e3e3ebb461700f96754bb","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:06:59Z","command":"pnpm typecheck; pnpm lint; pnpm test:coverage; pnpm build; pnpm audit --audit-level high","result":"pass"},
-        {"id":"EV-ATT-005-SAME-ARTICLE","kind":"browser","environment":"bingo-dev","case_ids":["FE-ATT-005-SAME-ARTICLE"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/ver004-same-article.audit.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-ATT-005-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-ATT-005"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"},
-        {"id":"EV-ATT-005-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["PERF-ATT-005"],"artifact":"bingo-dev:sha256:c127801c3daabb2aee7cf7b669858e9423aff2258551e8f3566bfe6348498593","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:56:19Z","command":"GOMAXPROCS=4 go test ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/store ./internal/legacymigration -run ^$ -bench Benchmark(RenderKnowledgeBody100Attachments|RenderPublicArticle|UserCatalogCachedConfig|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|TicketDetailFiveHundredMessages|ListVisibleNotices10000|ReadKnowledgeSnapshotTenThousandRows|ImportLegacyKnowledgeTenThousandRows) -benchmem -count=3","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "CLIENT-001",
@@ -1260,19 +1227,15 @@
       "title": "客户端目录按 Android/iOS/Windows/macOS/Linux 筛选，提供直接、二维码、网盘和教程入口。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-CLIENT-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-CLIENT-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-CLIENT-001-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-CLIENT-001"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-CLIENT-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-CLIENT-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "CLIENT-002",
@@ -1281,19 +1244,15 @@
       "title": "下载/跳转地址服务端白名单校验；未知客户端、平台或危险重定向被拒绝；外链使用安全打开属性。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-CLIENT-002-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-CLIENT-002"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-CLIENT-002-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-CLIENT-002"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-CLIENT-002-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-CLIENT-002"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog -count=1; go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "TICKET-001",
@@ -1302,23 +1261,15 @@
       "title": "用户可创建、查看、回复和关闭自己的工单，同一时间至多一个未关闭工单；用户关闭后不可再回复。管理员可搜索、筛选、查看、回复和关闭全部工单；管理员可回复已关闭工单且不会重开。管理员最后回复超过 24 小时的未关闭工单自动关闭。佣金 `withdraw` 是提现自动建单，不是撤回工单。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-TICKET-001-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-TICKET-001","DIFF-TICKET-WITHDRAW"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-TICKET-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-TICKET-001","FE-TICKET-WITHDRAW"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/machine-management.spec.ts e2e/nodes.spec.ts e2e/server-schedule.spec.ts e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/commissions.spec.ts e2e/notices.spec.ts e2e/ver004-same-article.audit.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-TICKET-001-WITHDRAWAL-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-TICKET-WITHDRAW"],"artifact":"bingo-dev:sha256:ca5a69e4118a55fd39a86d40d96866da3f81fbc0a22279ce32b0ed3066c110bd","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:39:26Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/commissions.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-TICKET-001-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-TICKET-001","SEC-TICKET-WITHDRAW"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints|CommissionWithdrawal|DistributorAccess) -count=5","result":"pass"},
-        {"id":"EV-TICKET-001-INTEGRATION","kind":"integration","environment":"bingo-dev","case_ids":["API-TICKET-WITHDRAW"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/store ./internal/httpapi -run TestCommissionWithdrawal -count=1","result":"pass"},
-        {"id":"EV-TICKET-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-TICKET-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7|CommissionWithdrawal) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"},
-        {"id":"EV-TICKET-001-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["PERF-TICKET-001"],"artifact":"bingo-dev:sha256:c127801c3daabb2aee7cf7b669858e9423aff2258551e8f3566bfe6348498593","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:56:19Z","command":"GOMAXPROCS=4 go test ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/store ./internal/legacymigration -run ^$ -bench Benchmark(RenderKnowledgeBody100Attachments|RenderPublicArticle|UserCatalogCachedConfig|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|TicketDetailFiveHundredMessages|ListVisibleNotices10000|ReadKnowledgeSnapshotTenThousandRows|ImportLegacyKnowledgeTenThousandRows) -benchmem -count=3","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "NOTICE-001",
@@ -1327,21 +1278,15 @@
       "title": "用户读取可见公告；管理员管理显隐和排序。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
-      "migration_status": "current",
-      "acceptance_status": "accepted",
+      "verification_status": "historical",
+      "migration_status": "historical",
+      "acceptance_status": "pending",
       "milestone": "M3",
       "decision_ids": [],
       "work_item_ids": [
         "VER-004"
       ],
-      "evidence": [
-        {"id":"EV-NOTICE-001-BROWSER","kind":"browser","environment":"bingo-dev","case_ids":["FE-NOTICE-001"],"artifact":"bingo-dev:sha256:e8ed18f3204f8271ae96ea34f2ea181fc2d19d0921f5bd8e5e3dae81935a3a8e","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T13:19:49Z","command":"XBOARD_E2E_BROWSER_CHANNEL=chrome pnpm --dir web exec playwright test e2e/knowledge.spec.ts e2e/knowledge-attachments.spec.ts e2e/client-catalog.spec.ts e2e/tickets.spec.ts e2e/notices.spec.ts --project chromium --project mobile-chromium --repeat-each=3","result":"pass"},
-        {"id":"EV-NOTICE-001-DIFFERENTIAL","kind":"differential","environment":"bingo-dev","case_ids":["DIFF-NOTICE-001"],"artifact":"bingo-dev:sha256:3d8cdd2c2da0b5a0399e8970f6cd3c52fb54d566571f8ce489ce3ad603e9811b","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:33:41Z","command":"pnpm --dir web exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts","result":"pass"},
-        {"id":"EV-NOTICE-001-SECURITY","kind":"security","environment":"bingo-dev","case_ids":["SEC-NOTICE-001"],"artifact":"bingo-dev:sha256:f917ab02b9b6caad617dc856bf6eed45ec26a1ae8d239ed13682651bbdf69de3","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:52:15Z","command":"go test -race ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/httpapi -run Test(SignedAttachmentAccess|StorageRootRejects|SafePathRejects|UploadRejectsUnsafe|KnowledgeReferenceParserRejects|CloneRejectsQuota|ConcurrentQuota|PublicContentNever|RenderPublicSanitizes|RenderPublicPolicy|GitHubAssetValidation|ServiceValidatesOverrides|ClientCatalogRejects|ClientCatalogGitHub|KnowledgeAttachmentHTTP|PublicKnowledge|TicketHTTPWorkflow|AdminTicketHTTP|TicketMutations|NoticeEndpoints) -count=5","result":"pass"},
-        {"id":"EV-NOTICE-001-MIGRATION","kind":"migration","environment":"bingo-dev","case_ids":["MIG-NOTICE-001"],"artifact":"bingo-dev:sha256:b17fcda394b86282e534fbea84d1c1193c7cb1c9b2a92bf9a1e1f7c0bb4785d4","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:45:01Z","command":"go test -race ./internal/store -run Test(Knowledge|SchemaV35|ClientCatalog|Ticket|OnlyOneOpenTicket|AdministratorTicket|DisablingSMTP|DisabledEmail|Notice|ImportLegacyKnowledge|LegacyKnowledge|ConcurrentLegacyKnowledge|ImportLegacyTickets|MigrationFromV7) -count=1; go test -race ./internal/legacymigration -run Test(ReadKnowledge|ReadTickets|TicketMessage|ReadContentSnapshot) -count=1","result":"pass"},
-        {"id":"EV-NOTICE-001-PERFORMANCE","kind":"performance","environment":"bingo-dev","case_ids":["PERF-NOTICE-001"],"artifact":"bingo-dev:sha256:c127801c3daabb2aee7cf7b669858e9423aff2258551e8f3566bfe6348498593","commit":"c90e54a2f0013112a61899678ff4caade2e34443","observed_at":"2026-09-02T12:56:19Z","command":"GOMAXPROCS=4 go test ./internal/attachments ./internal/knowledge ./internal/clientcatalog ./internal/store ./internal/legacymigration -run ^$ -bench Benchmark(RenderKnowledgeBody100Attachments|RenderPublicArticle|UserCatalogCachedConfig|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|TicketDetailFiveHundredMessages|ListVisibleNotices10000|ReadKnowledgeSnapshotTenThousandRows|ImportLegacyKnowledgeTenThousandRows) -benchmem -count=3","result":"pass"}
-      ]
+      "evidence": []
     },
     {
       "id": "CFG-001",
