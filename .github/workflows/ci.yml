@@ -255,9 +255,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       XBOARD_GO_REVISION: ${{ github.sha }}
-      # compose.local.yaml keeps the packaged test install's explicit default
-      # path at "admin"; make the browser helpers target that persisted path.
-      XBOARD_E2E_ADMIN_PATH: admin
+      # Keep the packaged test install on a valid configurable secure path;
+      # browser helpers target the same persisted path.
+      XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
       XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
       XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
