@@ -15,7 +15,7 @@ func TestSiteAccessSettingsSwitchLegacyAdminPathWithoutWeakeningAuthorization(t 
 	if initial.Code != http.StatusOK || !strings.Contains(initial.Body.String(), `"safe_mode_enable":false`) || !strings.Contains(initial.Body.String(), `"secure_path":"admin"`) {
 		t.Fatalf("initial legacy safe settings status=%d body=%s", initial.Code, initial.Body)
 	}
-	updated := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	updated := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"https://panel.example.test:8443/root",
 		"safe_mode_enable":true,"secure_path":"secure-admin-01","tos_url":"","logo":""
 	}`)
@@ -55,7 +55,7 @@ func TestSiteAccessSettingsSwitchLegacyAdminPathWithoutWeakeningAuthorization(t 
 		"missing safe host": `{"revision":3,"app_name":"Xboard-Go","app_description":"","app_url":"","safe_mode_enable":true,"secure_path":"next-admin-path","tos_url":"","logo":""}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			response := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", body)
+			response := admin.request(t, api, http.MethodPut, "/api/v1/admin/next-admin-path/site-settings", body)
 			expectAPIError(t, response, http.StatusUnprocessableEntity, "validation_failed")
 		})
 	}

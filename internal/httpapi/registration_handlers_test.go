@@ -55,7 +55,7 @@ func TestBasicRegistrationContractAndStopPolicy(t *testing.T) {
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 
 	admin := loginAdmin(t, api)
-	closed := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	closed := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"","stop_register":true
 	}`)
 	if closed.Code != http.StatusOK {
@@ -104,7 +104,7 @@ func TestLegacyRegistrationReturnsPermanentBearerWithoutConfirmationField(t *tes
 func TestRegistrationEmailAndSuccessfulIPPolicies(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	whitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	whitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"stop_register":false,"email_whitelist_enable":true,"email_whitelist_suffix":["allowed.test"],
 		"email_gmail_limit_enable":false,"register_limit_by_ip_enable":false,"register_limit_count":2,"register_limit_expire":1
@@ -123,7 +123,7 @@ func TestRegistrationEmailAndSuccessfulIPPolicies(t *testing.T) {
 	}`)
 	expectAPIError(t, blocked, http.StatusBadRequest, "email_domain_not_allowed")
 
-	gmail := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	gmail := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"stop_register":false,"email_whitelist_enable":false,"email_whitelist_suffix":["allowed.test"],
 		"email_gmail_limit_enable":true,"register_limit_by_ip_enable":false,"register_limit_count":2,"register_limit_expire":1
@@ -142,7 +142,7 @@ func TestRegistrationEmailAndSuccessfulIPPolicies(t *testing.T) {
 		t.Fatalf("non-Gmail dot/plus registration status=%d body=%s", nonGmailDot.Code, nonGmailDot.Body)
 	}
 
-	ipPolicy := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	ipPolicy := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"stop_register":false,"email_whitelist_enable":false,"email_whitelist_suffix":["allowed.test"],
 		"email_gmail_limit_enable":false,"register_limit_by_ip_enable":true,"register_limit_count":2,"register_limit_expire":1

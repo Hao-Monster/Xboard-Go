@@ -14,7 +14,7 @@ import (
 func TestPasswordLoginLimitMatchesLegacyPolicyWithoutIdentityBypasses(t *testing.T) {
 	api, database := newTestAPI(t)
 	administrator := loginAdmin(t, api)
-	configured := administrator.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	configured := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"password_limit_enable":true,"password_limit_count":2,"password_limit_expire":1
 	}`)
@@ -54,7 +54,7 @@ func TestPasswordLoginLimitMatchesLegacyPolicyWithoutIdentityBypasses(t *testing
 	}
 	assertPasswordLoginError(t, api, "/api/v1/auth/login", "banned@example.test", "banned-password-123", http.StatusTooManyRequests, "login_rate_limited", limitedMessage)
 
-	disabled := administrator.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	disabled := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"password_limit_enable":false
 	}`)

@@ -46,37 +46,37 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 	}, now); err != nil {
 		t.Fatal(err)
 	}
-	injectedTarget := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/users/%d/orders", account.ID),
+	injectedTarget := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/admin/users/%d/orders", account.ID),
 		fmt.Sprintf(`{"email":"other@example.test","plan_id":%d,"period":"monthly","total_amount":1300}`, plan.ID))
 	if injectedTarget.Code != http.StatusBadRequest {
 		t.Fatalf("scoped order accepted client target status=%d body=%s", injectedTarget.Code, injectedTarget.Body)
 	}
-	assigned := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/users/%d/orders", account.ID),
+	assigned := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/admin/users/%d/orders", account.ID),
 		fmt.Sprintf(`{"plan_id":%d,"period":"monthly","total_amount":1300}`, plan.ID))
 	if assigned.Code != http.StatusCreated || !strings.Contains(assigned.Body.String(), fmt.Sprintf(`"user_id":%d`, account.ID)) {
 		t.Fatalf("scoped order status=%d body=%s", assigned.Code, assigned.Body)
 	}
 
-	missingKey := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`)
+	missingKey := admin.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`)
 	if missingKey.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing idempotency key status=%d body=%s", missingKey.Code, missingKey.Body)
 	}
 	reset := adminOperationRequest(t, admin, api, http.MethodPost,
-		fmt.Sprintf("/api/v1/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`, "u4-http-reset-0001")
+		fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`, "u4-http-reset-0001")
 	if reset.Code != http.StatusOK || !containsAll(reset.Body.String(), `"upload_before":321`, `"download_before":654`, `"idempotent":false`) {
 		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body)
 	}
 	retry := adminOperationRequest(t, admin, api, http.MethodPost,
-		fmt.Sprintf("/api/v1/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`, "u4-http-reset-0001")
+		fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic-reset", account.ID), `{"reason":"manual check"}`, "u4-http-reset-0001")
 	if retry.Code != http.StatusOK || !strings.Contains(retry.Body.String(), `"idempotent":true`) {
 		t.Fatalf("retry status=%d body=%s", retry.Code, retry.Body)
 	}
 
 	for name, path := range map[string]string{
-		"orders":      fmt.Sprintf("/api/v1/admin/users/%d/orders?page=1&page_size=20", account.ID),
-		"invitations": fmt.Sprintf("/api/v1/admin/users/%d/invitations?page=1&page_size=20", account.ID),
-		"traffic":     fmt.Sprintf("/api/v1/admin/users/%d/traffic?page=1&page_size=20", account.ID),
-		"resets":      fmt.Sprintf("/api/v1/admin/users/%d/traffic-resets?page=1&page_size=20", account.ID),
+		"orders":      fmt.Sprintf("/api/v1/admin/admin/users/%d/orders?page=1&page_size=20", account.ID),
+		"invitations": fmt.Sprintf("/api/v1/admin/admin/users/%d/invitations?page=1&page_size=20", account.ID),
+		"traffic":     fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic?page=1&page_size=20", account.ID),
+		"resets":      fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic-resets?page=1&page_size=20", account.ID),
 	} {
 		t.Run(name, func(t *testing.T) {
 			response := admin.request(t, api, http.MethodGet, path, "")
@@ -85,11 +85,11 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 			}
 		})
 	}
-	traffic := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d/traffic?page=1&page_size=20", account.ID), "")
+	traffic := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic?page=1&page_size=20", account.ID), "")
 	if !containsAll(traffic.Body.String(), `"items":[]`, `"total":0`) {
 		t.Fatalf("traffic body=%s", traffic.Body)
 	}
-	history := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d/traffic-resets?page=1&page_size=20", account.ID), "")
+	history := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/users/%d/traffic-resets?page=1&page_size=20", account.ID), "")
 	if !containsAll(history.Body.String(), `"reason":"manual check"`, `"administrator_email":"admin@example.test"`) {
 		t.Fatalf("history body=%s", history.Body)
 	}
@@ -98,12 +98,12 @@ func TestAdminUserOperationEndpointsResetAndScopeRelatedData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d/subscription-url", account.ID), "")
+	subscription := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/users/%d/subscription-url", account.ID), "")
 	if subscription.Code != http.StatusOK || subscription.Header().Get("Cache-Control") != "no-store" ||
 		!strings.Contains(subscription.Body.String(), token) || !strings.Contains(subscription.Body.String(), "https://admin-subscriptions.example.test/s/") {
 		t.Fatalf("subscription status=%d headers=%v body=%s", subscription.Code, subscription.Header(), subscription.Body)
 	}
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?page=1&page_size=20", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/users?page=1&page_size=20", "")
 	if strings.Contains(listed.Body.String(), token) {
 		t.Fatalf("ordinary user directory leaked token: %s", listed.Body)
 	}
@@ -126,7 +126,7 @@ func TestAdministratorSubscriptionSecurityResetInvalidatesTheOldCredentials(t *t
 	}
 	oldToken := beforeSubscription.SubscriptionToken
 
-	resetPath := fmt.Sprintf("/api/v1/admin/users/%d/subscription-security/reset", account.ID)
+	resetPath := fmt.Sprintf("/api/v1/admin/admin/users/%d/subscription-security/reset", account.ID)
 	reset := administrator.request(t, api, http.MethodPost, resetPath, fmt.Sprintf(`{"revision":%d}`, account.Revision))
 	if reset.Code != http.StatusOK || !containsAll(reset.Body.String(), `"status":"success"`, `"data":true`) || reset.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("administrator subscription reset status=%d headers=%v body=%s", reset.Code, reset.Header(), reset.Body)

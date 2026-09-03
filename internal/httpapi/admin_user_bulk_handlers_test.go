@@ -44,7 +44,7 @@ func TestAdminUserBulkBanPersistsWarningWhenRuntimeNotificationFails(t *testing.
 	testServer := &server{
 		store: database, hub: newWSHub(failedHubStore, fixedNow, logger, nil, nil), logger: logger, now: fixedNow,
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/bulk/ban", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/users/bulk/ban", nil)
 	warned := testServer.notifyAndRecordAdminUserBulkBan(request, job)
 	if warned.Status != store.AdminUserBulkStatusSucceeded || !strings.Contains(warned.LastError, "next full pull") {
 		t.Fatalf("runtime notification warning = %#v", warned)
@@ -81,11 +81,11 @@ func TestAdminUserBulkEndpointsValidateScopeProtectSelfAndHideContent(t *testing
 		t.Fatal(err)
 	}
 
-	invalid := client.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/csv", `{"scope":"filtered"}`)
+	invalid := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/csv", `{"scope":"filtered"}`)
 	if invalid.Code != http.StatusUnprocessableEntity || !strings.Contains(invalid.Body.String(), `"code":"validation_failed"`) {
 		t.Fatalf("empty filtered scope status=%d body=%s", invalid.Code, invalid.Body)
 	}
-	mail := client.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/mail", fmt.Sprintf(
+	mail := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/mail", fmt.Sprintf(
 		`{"scope":"selected","user_ids":[%d],"subject":"通知 {{user.email}}","content":"secret body {{app.name}}"}`, target.ID))
 	if mail.Code != http.StatusAccepted || !containsAll(mail.Body.String(), `"kind":"mail"`, `"status":"queued"`, `"total_count":1`) ||
 		strings.Contains(mail.Body.String(), "secret body") {
@@ -97,16 +97,16 @@ func TestAdminUserBulkEndpointsValidateScopeProtectSelfAndHideContent(t *testing
 		} `json:"data"`
 	}
 	decodeResponse(t, mail, &mailPayload)
-	detail := client.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+mailPayload.Data.ID, "")
+	detail := client.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs/"+mailPayload.Data.ID, "")
 	if detail.Code != http.StatusOK || strings.Contains(detail.Body.String(), "secret body") || strings.Contains(detail.Body.String(), "smtp.example.test") {
 		t.Fatalf("job detail status=%d body=%s", detail.Code, detail.Body)
 	}
 
-	missingKey := client.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/ban", `{"scope":"all"}`)
+	missingKey := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/ban", `{"scope":"all"}`)
 	if missingKey.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing ban key status=%d body=%s", missingKey.Code, missingKey.Body)
 	}
-	ban := client.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/ban",
+	ban := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/ban",
 		`{"scope":"all","idempotency_key":"u5-http-ban-0001"}`)
 	if ban.Code != http.StatusOK || !containsAll(ban.Body.String(), `"kind":"ban"`, `"status":"succeeded"`, `"success_count":1`, `"skipped_count":1`) {
 		t.Fatalf("ban status=%d body=%s", ban.Code, ban.Body)
@@ -119,13 +119,13 @@ func TestAdminUserBulkEndpointsValidateScopeProtectSelfAndHideContent(t *testing
 	if err != nil || !targetAfter.Banned {
 		t.Fatalf("banned target state=%#v error=%v", targetAfter, err)
 	}
-	replay := client.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/ban",
+	replay := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/ban",
 		`{"scope":"all","idempotency_key":"u5-http-ban-0001"}`)
 	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"success_count":1`) {
 		t.Fatalf("ban replay status=%d body=%s", replay.Code, replay.Body)
 	}
 
-	listed := client.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs?page=1&page_size=20", "")
+	listed := client.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs?page=1&page_size=20", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), `"total":2`, `"page":1`) || strings.Contains(listed.Body.String(), "secret body") {
 		t.Fatalf("job list status=%d body=%s", listed.Code, listed.Body)
 	}
@@ -133,12 +133,12 @@ func TestAdminUserBulkEndpointsValidateScopeProtectSelfAndHideContent(t *testing
 
 func TestAdminUserBulkEndpointsEnforceAuthenticationAuthorizationCSRFAndUnknownJobPrivacy(t *testing.T) {
 	api, _ := newTestAPI(t)
-	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs", "")
+	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs", "")
 	if unauthenticated.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated list status=%d body=%s", unauthenticated.Code, unauthenticated.Body)
 	}
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"u5-bulk-reader@example.test","password":"reader-password-123","group_id":7,
 		"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
@@ -150,7 +150,7 @@ func TestAdminUserBulkEndpointsEnforceAuthenticationAuthorizationCSRFAndUnknownJ
 	}
 	decodeResponse(t, created, &createdPayload)
 	reader := loginAccount(t, api, createdPayload.Data.Email, "reader-password-123")
-	forbidden := reader.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/csv", fmt.Sprintf(
+	forbidden := reader.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/csv", fmt.Sprintf(
 		`{"scope":"selected","user_ids":[%d]}`, createdPayload.Data.ID))
 	if forbidden.Code != http.StatusForbidden || strings.Contains(forbidden.Body.String(), createdPayload.Data.Email) {
 		t.Fatalf("non-admin bulk status=%d body=%s", forbidden.Code, forbidden.Body)
@@ -162,12 +162,12 @@ func TestAdminUserBulkEndpointsEnforceAuthenticationAuthorizationCSRFAndUnknownJ
 		t.Fatalf("non-admin legacy bulk status=%d body=%s", legacyForbidden.Code, legacyForbidden.Body)
 	}
 	withoutCSRF := testClient{cookies: admin.cookies}
-	csrfRejected := withoutCSRF.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/csv", fmt.Sprintf(
+	csrfRejected := withoutCSRF.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/csv", fmt.Sprintf(
 		`{"scope":"selected","user_ids":[%d]}`, createdPayload.Data.ID))
 	if csrfRejected.Code != http.StatusForbidden || !strings.Contains(csrfRejected.Body.String(), `"code":"csrf_failed"`) {
 		t.Fatalf("missing CSRF status=%d body=%s", csrfRejected.Code, csrfRejected.Body)
 	}
-	unknown := admin.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs/00000000-0000-4000-8000-000000000099", "")
+	unknown := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs/00000000-0000-4000-8000-000000000099", "")
 	if unknown.Code != http.StatusNotFound || strings.Contains(unknown.Body.String(), createdPayload.Data.Email) {
 		t.Fatalf("unknown job status=%d body=%s", unknown.Code, unknown.Body)
 	}
@@ -235,12 +235,12 @@ func TestLegacyAndModernAdminUserBulkCSVDownload(t *testing.T) {
 		t.Fatalf("CSV jobs=%#v error=%v", jobs, err)
 	}
 	unauthenticated := httptest.NewRecorder()
-	api.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", nil))
+	api.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", nil))
 	if unauthenticated.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated download status=%d body=%s", unauthenticated.Code, unauthenticated.Body)
 	}
 	client := loginAdmin(t, api)
-	download := client.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", "")
+	download := client.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", "")
 	if download.Code != http.StatusOK || download.Body.String() != exported.Body.String() ||
 		download.Header().Get("Content-Disposition") == "" {
 		t.Fatalf("modern download status=%d headers=%v body=%q", download.Code, download.Header(), download.Body.String())
@@ -248,7 +248,7 @@ func TestLegacyAndModernAdminUserBulkCSVDownload(t *testing.T) {
 	if cleared, err := database.ClearExpiredAdminUserBulkOutput(ctx, jobs.Items[0].ID, jobs.Items[0].OutputRelativePath, now.Add(25*time.Hour)); err != nil || !cleared {
 		t.Fatalf("ClearExpiredAdminUserBulkOutput() = %v, %v", cleared, err)
 	}
-	expired := client.request(t, api, http.MethodGet, "/api/v1/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", "")
+	expired := client.request(t, api, http.MethodGet, "/api/v1/admin/admin/user-bulk-jobs/"+jobs.Items[0].ID+"/download", "")
 	if expired.Code != http.StatusGone || !strings.Contains(expired.Body.String(), `"code":"bulk_export_expired"`) || expired.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("expired download status=%d headers=%v body=%s", expired.Code, expired.Header(), expired.Body)
 	}

@@ -14,7 +14,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
 
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/notices", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/notices", `{
 		"title":" Service update ","content":"**Available now**",
 		"image_url":"https://cdn.example.test/update.png","tags":["news"," news ","service"],"show":true
 	}`)
@@ -30,7 +30,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 		t.Fatalf("created notice = %#v", first)
 	}
 
-	hiddenResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/notices", `{
+	hiddenResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/notices", `{
 		"title":"Draft maintenance","content":"draft","image_url":"","tags":[],"show":false
 	}`)
 	if hiddenResponse.Code != http.StatusCreated {
@@ -42,7 +42,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 	decodeResponse(t, hiddenResponse, &hiddenPayload)
 	hidden := hiddenPayload.Data
 
-	adminList := admin.request(t, api, http.MethodGet, "/api/v1/admin/notices", "")
+	adminList := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/notices", "")
 	if adminList.Code != http.StatusOK {
 		t.Fatalf("list notices status = %d; body=%s", adminList.Code, adminList.Body)
 	}
@@ -54,14 +54,14 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 		t.Fatalf("admin notice order = %#v", listed.Data)
 	}
 
-	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/notices/%d", first.ID), `{
+	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/notices/%d", first.ID), `{
 		"revision":99,"title":"stale","content":"stale","image_url":"","tags":[],"show":true
 	}`)
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale update status = %d; body=%s", stale.Code, stale.Body)
 	}
 
-	updated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/notices/%d", first.ID), fmt.Sprintf(`{
+	updated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/notices/%d", first.ID), fmt.Sprintf(`{
 		"revision":%d,"title":"Service update revised","content":"revised","image_url":"","tags":["release"],"show":true
 	}`, first.Revision))
 	if updated.Code != http.StatusOK {
@@ -73,7 +73,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 	decodeResponse(t, updated, &updatedPayload)
 	first = updatedPayload.Data
 
-	shown := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/notices/%d/visibility", hidden.ID), fmt.Sprintf(`{"revision":%d,"show":true}`, hidden.Revision))
+	shown := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/notices/%d/visibility", hidden.ID), fmt.Sprintf(`{"revision":%d,"show":true}`, hidden.Revision))
 	if shown.Code != http.StatusOK {
 		t.Fatalf("show notice status = %d; body=%s", shown.Code, shown.Body)
 	}
@@ -83,7 +83,7 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 	decodeResponse(t, shown, &shownPayload)
 	hidden = shownPayload.Data
 
-	reordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/notices/order", fmt.Sprintf(`{"ids":[%d,%d]}`, first.ID, hidden.ID))
+	reordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/notices/order", fmt.Sprintf(`{"ids":[%d,%d]}`, first.ID, hidden.ID))
 	if reordered.Code != http.StatusOK {
 		t.Fatalf("reorder notices status = %d; body=%s", reordered.Code, reordered.Body)
 	}
@@ -100,11 +100,11 @@ func TestNoticeAdminLifecycleAndUserVisibilityContract(t *testing.T) {
 		t.Fatalf("visible notice page = %#v", page.Data)
 	}
 
-	removed := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/notices/%d?revision=%d", hidden.ID, hidden.Revision), "")
+	removed := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/notices/%d?revision=%d", hidden.ID, hidden.Revision), "")
 	if removed.Code != http.StatusNoContent {
 		t.Fatalf("delete notice status = %d; body=%s", removed.Code, removed.Body)
 	}
-	staleDelete := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/notices/%d?revision=%d", first.ID, first.Revision-1), "")
+	staleDelete := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/notices/%d?revision=%d", first.ID, first.Revision-1), "")
 	if staleDelete.Code != http.StatusConflict {
 		t.Fatalf("stale delete status = %d; body=%s", staleDelete.Code, staleDelete.Body)
 	}
@@ -121,7 +121,7 @@ func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.
 	}
 
 	admin := loginAdmin(t, api)
-	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"notice-reader@example.test","password":"notice-reader-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
@@ -132,7 +132,7 @@ func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.
 	if result := reader.request(t, api, http.MethodGet, "/api/v1/notices", ""); result.Code != http.StatusOK {
 		t.Fatalf("ordinary user notice list status = %d; body=%s", result.Code, result.Body)
 	}
-	if result := reader.request(t, api, http.MethodGet, "/api/v1/admin/notices", ""); result.Code != http.StatusForbidden {
+	if result := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/notices", ""); result.Code != http.StatusForbidden {
 		t.Fatalf("ordinary user admin notice list status = %d; body=%s", result.Code, result.Body)
 	}
 	for name, body := range map[string]string{
@@ -141,7 +141,7 @@ func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.
 		"unknown field": `{"title":"title","content":"body","image_url":"","tags":[],"show":true,"popup":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			result := admin.request(t, api, http.MethodPost, "/api/v1/admin/notices", body)
+			result := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/notices", body)
 			want := http.StatusUnprocessableEntity
 			if name == "unknown field" {
 				want = http.StatusBadRequest
@@ -152,7 +152,7 @@ func TestNoticeEndpointsEnforceAuthenticationCSRFAndStrictValidation(t *testing.
 		})
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/notices", strings.NewReader(`{"title":"title","content":"body","image_url":"","tags":[],"show":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/notices", strings.NewReader(`{"title":"title","content":"body","image_url":"","tags":[],"show":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	admin.addCookies(request)
 	response = httptest.NewRecorder()

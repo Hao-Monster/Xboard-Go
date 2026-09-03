@@ -28,7 +28,7 @@ import (
 func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	api, _ := newTestAPI(t)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/machines", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/admin/machines", nil)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
@@ -36,7 +36,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	}
 
 	client := loginAdmin(t, api)
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	client.addCookies(request)
 	response = httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 		t.Fatalf("missing CSRF status = %d, want %d; body=%s", response.Code, http.StatusForbidden, response.Body)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "https://attacker.example.test")
 	client.addCookies(request)
@@ -56,7 +56,7 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 		t.Fatalf("untrusted origin status = %d, want %d; body=%s", response.Code, http.StatusForbidden, response.Body)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/machines", strings.NewReader(`{"name":"edge-01","is_active":true}`))
 	request.Header.Set("Content-Type", "application/json")
 	client.addCookies(request)
 	request.Header.Set("X-CSRF-Token", client.csrf)
@@ -90,7 +90,7 @@ func TestAPIMACH002MachineEnrollmentCredentialLifecycleIsOneTimeAndNoStore(t *te
 	api, database := newTestAPI(t)
 	client := loginAdmin(t, api)
 
-	created := client.request(t, api, http.MethodPost, "/api/v1/admin/machines", `{"name":"credential-edge","is_active":true}`)
+	created := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/machines", `{"name":"credential-edge","is_active":true}`)
 	if created.Code != http.StatusCreated || created.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("create status=%d cache=%q", created.Code, created.Header().Get("Cache-Control"))
 	}
@@ -124,7 +124,7 @@ func TestAPIMACH002MachineEnrollmentCredentialLifecycleIsOneTimeAndNoStore(t *te
 		t.Fatal("initial exchange returned invalid credential data")
 	}
 
-	rotation := client.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/machines/%d/enrollments", machineID), `{"revoke_existing":true}`)
+	rotation := client.request(t, api, http.MethodPost, fmt.Sprintf("/api/v1/admin/admin/machines/%d/enrollments", machineID), `{"revoke_existing":true}`)
 	if rotation.Code != http.StatusCreated || rotation.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("rotation status=%d cache=%q", rotation.Code, rotation.Header().Get("Cache-Control"))
 	}
@@ -173,8 +173,8 @@ func TestAPIMACH002MachineEnrollmentCredentialLifecycleIsOneTimeAndNoStore(t *te
 	}
 
 	for _, response := range []*httptest.ResponseRecorder{
-		client.request(t, api, http.MethodGet, "/api/v1/admin/machines", ""),
-		client.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/machines/%d", machineID), ""),
+		client.request(t, api, http.MethodGet, "/api/v1/admin/admin/machines", ""),
+		client.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/machines/%d", machineID), ""),
 	} {
 		body := response.Body.String()
 		if response.Code != http.StatusOK || strings.Contains(body, initialEnrollment) || strings.Contains(body, rotationEnrollment) || strings.Contains(body, oldCredential) || strings.Contains(body, newCredential) {
@@ -202,6 +202,31 @@ func TestValidLegacyAdminPath(t *testing.T) {
 	}
 }
 
+func TestModernAdminAPIRequiresPersistedSecurePath(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	for _, test := range []struct {
+		name string
+		path string
+		want int
+	}{
+		{name: "fixed namespace", path: "/api/v1/admin/site-settings", want: http.StatusNotFound},
+		{name: "wrong path", path: "/api/v1/admin/not-the-active-path/site-settings", want: http.StatusNotFound},
+		{name: "active path", path: "/api/v1/admin/admin/site-settings", want: http.StatusOK},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := admin.request(t, api, http.MethodGet, test.path, "")
+			if response.Code != test.want {
+				t.Fatalf("GET %s status=%d want=%d body=%s", test.path, response.Code, test.want, response.Body.String())
+			}
+		})
+	}
+	access, err := database.GetSiteAccessSettings(context.Background())
+	if err != nil || access.SecurePath != "admin" {
+		t.Fatalf("test fixture secure path = %#v, err=%v", access, err)
+	}
+}
+
 func TestLoginRateLimitBlocksRepeatedFailures(t *testing.T) {
 	api, _ := newTestAPI(t)
 	for attempt := 1; attempt <= 6; attempt++ {
@@ -222,7 +247,7 @@ func TestLoginRateLimitBlocksRepeatedFailures(t *testing.T) {
 func TestMachineNodesAndDailyScheduleAPI(t *testing.T) {
 	api, _ := newTestAPI(t)
 	client := loginAdmin(t, api)
-	createdNode := client.request(t, api, http.MethodPost, "/api/v1/admin/nodes", `{"name":"SG VLESS","type":"vless","host":"sg.example.test","port":443,"show":true,"enabled":false,"sort":0}`)
+	createdNode := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes", `{"name":"SG VLESS","type":"vless","host":"sg.example.test","port":443,"show":true,"enabled":false,"sort":0}`)
 	if createdNode.Code != http.StatusCreated {
 		t.Fatalf("create node status = %d; body=%s", createdNode.Code, createdNode.Body)
 	}
@@ -232,7 +257,7 @@ func TestMachineNodesAndDailyScheduleAPI(t *testing.T) {
 	decodeResponse(t, createdNode, &nodePayload)
 	node := nodePayload.Data
 
-	create := client.request(t, api, http.MethodPost, "/api/v1/admin/machines", `{"name":"edge-01","is_active":true}`)
+	create := client.request(t, api, http.MethodPost, "/api/v1/admin/admin/machines", `{"name":"edge-01","is_active":true}`)
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create machine status = %d; body=%s", create.Code, create.Body)
 	}
@@ -243,13 +268,13 @@ func TestMachineNodesAndDailyScheduleAPI(t *testing.T) {
 	}
 	decodeResponse(t, create, &created)
 
-	bindPath := fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", created.Data.ID, node.ID)
+	bindPath := fmt.Sprintf("/api/v1/admin/admin/machines/%d/nodes/%d", created.Data.ID, node.ID)
 	bind := client.request(t, api, http.MethodPut, bindPath, `{"revision":1}`)
 	if bind.Code != http.StatusNoContent {
 		t.Fatalf("bind node status = %d; body=%s", bind.Code, bind.Body)
 	}
 
-	schedulePath := fmt.Sprintf("/api/v1/admin/nodes/%d/activation-schedule", node.ID)
+	schedulePath := fmt.Sprintf("/api/v1/admin/admin/nodes/%d/activation-schedule", node.ID)
 	saved := client.request(t, api, http.MethodPut, schedulePath, `{"schedule_type":"daily","timezone":"Asia/Singapore","enable_time":"19:00","disable_time":"01:00"}`)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save schedule status = %d; body=%s", saved.Code, saved.Body)
@@ -267,7 +292,7 @@ func TestMachineNodesAndDailyScheduleAPI(t *testing.T) {
 		t.Fatalf("unexpected schedule response: %#v", schedulePayload)
 	}
 
-	nodes := client.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/machines/%d/nodes", created.Data.ID), "")
+	nodes := client.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/machines/%d/nodes", created.Data.ID), "")
 	if nodes.Code != http.StatusOK {
 		t.Fatalf("list nodes status = %d; body=%s", nodes.Code, nodes.Body)
 	}

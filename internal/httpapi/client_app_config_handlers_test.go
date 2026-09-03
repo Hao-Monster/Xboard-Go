@@ -174,7 +174,7 @@ func TestLegacyClientAppConfigV2ShapeSettingsAndPHPHash(t *testing.T) {
 		t.Fatalf("initial V2 response status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
 	administrator := loginAdmin(t, api)
-	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Oracle Board","app_description":"Oracle 描述","app_url":"https://app.oracle.test",
 		"tos_url":"https://app.oracle.test/tos","logo":"https://app.oracle.test/logo.png",
 		"currency":"usd","currency_symbol":"$","email_whitelist_suffix":["oracle.test"]

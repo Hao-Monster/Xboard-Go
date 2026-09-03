@@ -15,27 +15,27 @@ func TestAdminMailTemplateModernLegacyAndDeliverySurface(t *testing.T) {
 	api, database := newMailSettingsTestAPI(t, sender)
 	administrator := loginAdmin(t, api)
 
-	list := administrator.request(t, api, http.MethodGet, "/api/v1/admin/mail-templates", "")
+	list := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/mail-templates", "")
 	if list.Code != http.StatusOK || strings.Count(list.Body.String(), `"customized":false`) != 5 || !strings.Contains(list.Body.String(), `"name":"verify"`) || !strings.Contains(list.Body.String(), `"name":"mailLogin"`) {
 		t.Fatalf("modern template list status=%d body=%s", list.Code, list.Body)
 	}
 	if strings.Contains(list.Body.String(), `"subject"`) || strings.Contains(list.Body.String(), `"content"`) {
 		t.Fatalf("modern template list exposed template bodies: %s", list.Body)
 	}
-	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-templates/notify", `{
+	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-templates/notify", `{
 		"revision":1,"subject":"{{name}} - 自定义通知","content":"<p>{{content}}</p><script>alert(1)</script><p>{{url}}</p>"
 	}`)
 	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"customized":true`) || !strings.Contains(updated.Body.String(), `"revision":2`) {
 		t.Fatalf("modern template update status=%d body=%s", updated.Code, updated.Body)
 	}
-	preview := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-templates/notify/preview", `{
+	preview := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-templates/notify/preview", `{
 		"subject":"{{name}} - 预览","content":"<p onclick=\"bad()\">{{content}}</p><script>alert(2)</script>"
 	}`)
 	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"subject":"Xboard-Go - 预览"`) || strings.Contains(strings.ToLower(preview.Body.String()), "<script") || strings.Contains(strings.ToLower(preview.Body.String()), "onclick") {
 		t.Fatalf("template preview status=%d body=%s", preview.Code, preview.Body)
 	}
 
-	mailSettings := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-settings", `{
+	mailSettings := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-settings", `{
 		"revision":1,"smtp_enabled":true,"smtp_host":"smtp.example.test","smtp_port":587,
 		"smtp_username":"mailer","smtp_password":"template-test-password","smtp_encryption":"starttls",
 		"smtp_from_address":"support@example.test","remind_mail_enable":true
@@ -43,7 +43,7 @@ func TestAdminMailTemplateModernLegacyAndDeliverySurface(t *testing.T) {
 	if mailSettings.Code != http.StatusOK {
 		t.Fatalf("save SMTP status=%d body=%s", mailSettings.Code, mailSettings.Body)
 	}
-	testSend := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-templates/notify/test", `{"email":"recipient@example.test"}`)
+	testSend := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-templates/notify/test", `{"email":"recipient@example.test"}`)
 	if testSend.Code != http.StatusOK || len(sender.messages) != 1 {
 		t.Fatalf("template test status=%d sends=%d body=%s", testSend.Code, len(sender.messages), testSend.Body)
 	}
@@ -54,14 +54,14 @@ func TestAdminMailTemplateModernLegacyAndDeliverySurface(t *testing.T) {
 	if sender.configurations[0].Password != "template-test-password" || sender.configurations[0].Encryption != mailer.EncryptionStartTLS {
 		t.Fatalf("template SMTP configuration=%#v", sender.configurations[0])
 	}
-	fallbackSend := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-templates/verify/test", `{}`)
+	fallbackSend := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-templates/verify/test", `{}`)
 	if fallbackSend.Code != http.StatusOK || len(sender.messages) != 2 || sender.messages[1].To != "admin@example.test" || sender.messages[1].Subject != "Xboard-Go - 验证码测试" {
 		t.Fatalf("template administrator fallback status=%d messages=%#v body=%s", fallbackSend.Code, sender.messages, fallbackSend.Body)
 	}
 
-	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-templates/notify", `{"revision":1,"subject":"stale","content":"{{content}}"}`)
+	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-templates/notify", `{"revision":1,"subject":"stale","content":"{{content}}"}`)
 	expectAPIError(t, stale, http.StatusConflict, "conflict")
-	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-templates/verify", `{"revision":1,"subject":"bad","content":"missing code"}`)
+	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-templates/verify", `{"revision":1,"subject":"bad","content":"missing code"}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
 
 	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
@@ -104,19 +104,19 @@ func TestAdminMailTemplateRoutesEnforceAuthorizationCSRFAndInputBounds(t *testin
 	api, database := newMailSettingsTestAPI(t, &recordingMailSettingsSender{})
 	createHTTPTestUser(t, database, "template-reader@example.test", "reader-password-123")
 	reader := loginAccount(t, api, "template-reader@example.test", "reader-password-123")
-	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/mail-templates", ""), http.StatusForbidden, "forbidden")
+	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/mail-templates", ""), http.StatusForbidden, "forbidden")
 
 	administrator := loginAdmin(t, api)
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/mail-templates/notify", strings.NewReader(`{"revision":1,"subject":"s","content":"{{content}}"}`))
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/mail-templates/notify", strings.NewReader(`{"revision":1,"subject":"s","content":"{{content}}"}`))
 	request.Header.Set("Content-Type", "application/json")
 	administrator.addCookies(request)
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	expectAPIError(t, response, http.StatusForbidden, "csrf_failed")
 
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-templates/notify", `{"revision":1,"subject":"s","content":"{{content}}","unknown":true}`)
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-templates/notify", `{"revision":1,"subject":"s","content":"{{content}}","unknown":true}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
-	badRecipient := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-templates/notify/test", `{"email":"victim@example.test\r\nBcc: attacker@example.test"}`)
+	badRecipient := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-templates/notify/test", `{"email":"victim@example.test\r\nBcc: attacker@example.test"}`)
 	expectAPIError(t, badRecipient, http.StatusUnprocessableEntity, "validation_failed")
 
 	legacyReader := loginLegacyBearer(t, api, "template-reader@example.test", "reader-password-123").Authorization

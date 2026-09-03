@@ -36,7 +36,7 @@ func TestCaptchaAdminSecretsPublicContractAndProtectedActions(t *testing.T) {
 	api, _ := newTestAPIWithCaptcha(t, verifier)
 	admin := loginAdmin(t, api)
 
-	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"captcha_enable":true,"captcha_type":"recaptcha","recaptcha_site_key":"public-v2-site","recaptcha_secret":"private-v2-secret"
 	}`)
@@ -67,7 +67,7 @@ func TestCaptchaAdminSecretsPublicContractAndProtectedActions(t *testing.T) {
 		t.Fatalf("registration CAPTCHA verification = %#v", inputs)
 	}
 
-	configuredV3 := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	configuredV3 := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"captcha_type":"recaptcha-v3","recaptcha_v3_site_key":"public-v3-site","recaptcha_v3_secret":"private-v3-secret","recaptcha_v3_score_threshold":0.7
 	}`)
@@ -89,7 +89,7 @@ func TestCaptchaAdminSecretsPublicContractAndProtectedActions(t *testing.T) {
 		t.Fatalf("legacy email CAPTCHA verification = %#v", last)
 	}
 
-	configuredTurnstile := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	configuredTurnstile := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"captcha_type":"turnstile","turnstile_site_key":"public-turnstile-site","turnstile_secret":"private-turnstile-secret"
 	}`)
@@ -104,17 +104,17 @@ func TestCaptchaAdminSecretsPublicContractAndProtectedActions(t *testing.T) {
 		t.Fatalf("registration email CAPTCHA verification = %#v", last)
 	}
 
-	preserved := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	preserved := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":4,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":""
 	}`)
 	if preserved.Code != http.StatusOK || !decodeSiteSettingsEnvelope(t, preserved).TurnstileSecretConfigured {
 		t.Fatalf("blank secret preservation status=%d body=%s", preserved.Code, preserved.Body)
 	}
-	clearWhileEnabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	clearWhileEnabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":5,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"","clear_turnstile_secret":true
 	}`)
 	expectAPIError(t, clearWhileEnabled, http.StatusUnprocessableEntity, "validation_failed")
-	disabledAndCleared := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	disabledAndCleared := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":5,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"","captcha_enable":false,"clear_turnstile_secret":true
 	}`)
 	if disabledAndCleared.Code != http.StatusOK || decodeSiteSettingsEnvelope(t, disabledAndCleared).TurnstileSecretConfigured {
@@ -126,14 +126,14 @@ func TestCaptchaVerificationErrorsFailClosedAndRemainSanitized(t *testing.T) {
 	verifier := &recordingCaptchaVerifier{result: captcha.ErrInvalid}
 	api, _ := newTestAPIWithCaptcha(t, verifier)
 	admin := loginAdmin(t, api)
-	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"captcha_enable":true,"captcha_type":"recaptcha","recaptcha_site_key":"site","recaptcha_secret":"server-secret"
 	}`)
 	if configured.Code != http.StatusOK {
 		t.Fatalf("configure status=%d body=%s", configured.Code, configured.Body)
 	}
-	tooLongSecret := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"","recaptcha_secret":"`+strings.Repeat("x", 4097)+`"}`)
+	tooLongSecret := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"","recaptcha_secret":"`+strings.Repeat("x", 4097)+`"}`)
 	expectAPIError(t, tooLongSecret, http.StatusUnprocessableEntity, "validation_failed")
 	invalid := testClient{}.request(t, api, http.MethodPost, "/api/v1/auth/register", `{"email":"invalid-captcha@example.test","password":"strong-password-123","password_confirmation":"strong-password-123","recaptcha_data":"invalid-token"}`)
 	expectAPIError(t, invalid, http.StatusBadRequest, "captcha_invalid")

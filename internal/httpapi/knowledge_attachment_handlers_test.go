@@ -21,14 +21,14 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 	content := []byte("abcdefgh")
 	wholeDigest := attachmentTestDigest(content)
 
-	unsafe := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads", fmt.Sprintf(`{
+	unsafe := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/uploads", fmt.Sprintf(`{
 		"original_name":"../escape.bin","size":8,"draft_token":%q,"sha256":%q
 	}`, draftToken, wholeDigest))
 	if unsafe.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("unsafe name status=%d body=%s", unsafe.Code, unsafe.Body)
 	}
 
-	initialized := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads", fmt.Sprintf(`{
+	initialized := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/uploads", fmt.Sprintf(`{
 		"original_name":"guide.txt","size":8,"draft_token":%q,"sha256":%q
 	}`, draftToken, wholeDigest))
 	if initialized.Code != http.StatusOK {
@@ -55,7 +55,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 		t.Fatalf("idempotent chunk status=%d body=%s", idempotent.Code, idempotent.Body)
 	}
 
-	completed := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads/"+uploadUUID+"/complete", `{}`)
+	completed := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/uploads/"+uploadUUID+"/complete", `{}`)
 	if completed.Code != http.StatusOK {
 		t.Fatalf("complete status=%d body=%s", completed.Code, completed.Body)
 	}
@@ -102,7 +102,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 		t.Fatalf("unsigned query status=%d body=%s", extraResponse.Code, extraResponse.Body)
 	}
 
-	article := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge", fmt.Sprintf(`{
+	article := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge", fmt.Sprintf(`{
 		"language":"zh-CN","category":"guide","title":"附件指南","body":"[下载](%s)","show":true,"draft_token":%q
 	}`, completeResult.Data.Placeholder, draftToken))
 	if article.Code != http.StatusCreated {
@@ -118,7 +118,7 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 	if articleResult.Data.Body != "[下载](knowledge-attachment://"+uploadUUID+")" {
 		t.Fatalf("administrator create response must retain editable placeholder: %+v", articleResult.Data)
 	}
-	adminDetail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/knowledge/%d", articleResult.Data.ID), "")
+	adminDetail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/knowledge/%d", articleResult.Data.ID), "")
 	if adminDetail.Code != http.StatusOK || !strings.Contains(adminDetail.Body.String(), "knowledge-attachment://"+uploadUUID) ||
 		strings.Contains(adminDetail.Body.String(), "/knowledge-attachments/"+uploadUUID) {
 		t.Fatalf("administrator detail must retain editable placeholder: status=%d body=%s", adminDetail.Code, adminDetail.Body)
@@ -131,13 +131,13 @@ func TestKnowledgeAttachmentHTTPUploadBindSignedAndPublicRead(t *testing.T) {
 		t.Fatalf("user detail must contain a signed URL instead of the editable placeholder: status=%d body=%s", viewerDetail.Code, viewerDetail.Body)
 	}
 	cloneToken := strings.Repeat("b", 64)
-	cloned := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge-attachments/clone", fmt.Sprintf(`{
+	cloned := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/clone", fmt.Sprintf(`{
 		"source_knowledge_id":%d,"source_uuids":[%q],"draft_token":%q
 	}`, articleResult.Data.ID, uploadUUID, cloneToken))
 	if cloned.Code != http.StatusOK || !strings.Contains(cloned.Body.String(), `"source_uuid":"`+uploadUUID+`"`) {
 		t.Fatalf("clone status=%d body=%s", cloned.Code, cloned.Body)
 	}
-	qrCode := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge-attachments/qr-code", fmt.Sprintf(`{"url":%q}`, completeResult.Data.URL))
+	qrCode := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/qr-code", fmt.Sprintf(`{"url":%q}`, completeResult.Data.URL))
 	var qrResult struct {
 		Data struct {
 			SVG string `json:"svg"`
@@ -239,7 +239,7 @@ func attachmentChunkRequest(t *testing.T, client testClient, api http.Handler, u
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/knowledge-attachments/uploads/"+uploadUUID+"/chunks", &body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/knowledge-attachments/uploads/"+uploadUUID+"/chunks", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("X-CSRF-Token", client.csrf)
 	client.addCookies(request)

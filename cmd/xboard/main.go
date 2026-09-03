@@ -280,12 +280,12 @@ func main() {
 		TicketRegionResolver:       ticketRegionResolver,
 	})
 	if settings.WebRoot != "" {
-		handler, err = webui.New(settings.WebRoot, handler, func(request *http.Request) (bool, error) {
+		handler, err = webui.New(settings.WebRoot, handler, func(request *http.Request) (webui.FrontendAccess, error) {
 			access, accessErr := database.GetSiteAccessSettings(request.Context())
 			if accessErr != nil {
-				return false, accessErr
+				return webui.FrontendAccess{}, accessErr
 			}
-			return !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL), nil
+			return webui.FrontendAccess{Allowed: !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL), SecurePath: access.SecurePath}, nil
 		})
 		if err != nil {
 			logger.Error("load web frontend", "error", err)

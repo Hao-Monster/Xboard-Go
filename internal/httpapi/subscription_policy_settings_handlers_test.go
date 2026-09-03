@@ -16,12 +16,12 @@ func TestSubscriptionPolicySettingsModernAndLegacyContracts(t *testing.T) {
 	administrator := loginAdmin(t, api)
 	reader := loginAs(t, api, "subscription-policy-reader@example.test", "subscription-policy-reader-password-123")
 
-	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/subscription-policy-settings", "")
+	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/admin/subscription-policy-settings", "")
 	expectAPIError(t, unauthenticated, http.StatusUnauthorized, "unauthenticated")
-	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/subscription-policy-settings", "")
+	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/subscription-policy-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
-	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/subscription-policy-settings", "")
+	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/subscription-policy-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("GET subscription policy = %d %s", initialResponse.Code, initialResponse.Body)
 	}
@@ -37,7 +37,7 @@ func TestSubscriptionPolicySettingsModernAndLegacyContracts(t *testing.T) {
 		"new_order_event_id":1,"renew_order_event_id":1,"change_order_event_id":1,
 		"default_remind_expire":false,"default_remind_traffic":true
 	}`
-	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/subscription-policy-settings", updateBody)
+	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-policy-settings", updateBody)
 	if updatedResponse.Code != http.StatusOK {
 		t.Fatalf("PUT subscription policy = %d %s", updatedResponse.Code, updatedResponse.Body)
 	}
@@ -48,15 +48,15 @@ func TestSubscriptionPolicySettingsModernAndLegacyContracts(t *testing.T) {
 		t.Fatalf("updated subscription policy = %#v", updated)
 	}
 
-	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/subscription-policy-settings", updateBody)
+	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-policy-settings", updateBody)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
-	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/subscription-policy-settings", `{
+	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-policy-settings", `{
 		"revision":2,"plan_change_enable":true,"reset_traffic_method":5,"surplus_enable":true,
 		"new_order_event_id":2,"renew_order_event_id":0,"change_order_event_id":0,
 		"default_remind_expire":true,"default_remind_traffic":true
 	}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/subscription-policy-settings", `{
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-policy-settings", `{
 		"revision":2,"plan_change_enable":true,"reset_traffic_method":0,"surplus_enable":true,
 		"new_order_event_id":0,"renew_order_event_id":0,"change_order_event_id":0,
 		"default_remind_expire":true,"default_remind_traffic":true,"server_token":"forbidden"

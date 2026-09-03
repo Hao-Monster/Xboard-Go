@@ -1871,6 +1871,15 @@ export class APIError extends Error {
 }
 
 export class APIClient implements AdminAPI {
+  private readonly adminPath?: string;
+
+  constructor(adminPath?: string) {
+    if (adminPath !== undefined && !/^[0-9A-Za-z_-]{1,64}$/.test(adminPath)) {
+      throw new Error("invalid administrator path");
+    }
+    this.adminPath = adminPath;
+  }
+
   async guestConfig(): Promise<GuestConfig> {
     return this.request<GuestConfig>("/api/v1/guest/comm/config");
   }
@@ -2914,6 +2923,7 @@ export class APIClient implements AdminAPI {
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
+    path = this.resolvePath(path);
     const method = options.method ?? "GET";
     const headers = new Headers({ Accept: "application/json" });
     if (options.body !== undefined) {
@@ -2945,6 +2955,7 @@ export class APIClient implements AdminAPI {
   }
 
   private async requestForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+    path = this.resolvePath(path);
     const headers = new Headers({ Accept: "application/json" });
     const csrf = readCookie("xboard_csrf");
     if (csrf !== null) headers.set("X-CSRF-Token", csrf);
@@ -2958,6 +2969,7 @@ export class APIClient implements AdminAPI {
   }
 
   private async download(path: string, body?: unknown): Promise<Blob> {
+    path = this.resolvePath(path);
     const method = body === undefined ? "GET" : "POST";
     const headers = new Headers({ Accept: "text/csv" });
     if (body !== undefined) headers.set("Content-Type", "application/json");
@@ -2972,6 +2984,12 @@ export class APIClient implements AdminAPI {
       throw new APIError(response.status, error.code, error.message, error.fields);
     }
     return response.blob();
+  }
+
+  private resolvePath(path: string): string {
+    const prefix = "/api/v1/admin/";
+    if (this.adminPath === undefined || !path.startsWith(prefix)) return path;
+    return `${prefix}${this.adminPath}/${path.slice(prefix.length)}`;
   }
 }
 

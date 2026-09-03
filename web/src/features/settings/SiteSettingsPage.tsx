@@ -5,9 +5,10 @@ import type { AdminAPI, Plan, SiteSettings, SiteSettingsInput } from "../../lib/
 type SiteSettingsAPI = Pick<AdminAPI, "getSiteSettings" | "updateSiteSettings" | "listPlans">;
 type SiteDraft = Omit<SiteSettingsInput, "revision">;
 
-export function SiteSettingsPage({ api, onIdentityChanged }: {
+export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged }: {
   api: SiteSettingsAPI;
   onIdentityChanged: (settings: SiteSettings) => void;
+  onSecurePathChanged?: (nextPath: string) => void;
 }) {
   const [current, setCurrent] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteDraft | null>(null);
@@ -60,9 +61,11 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
     setSaved(false);
     try {
       const updated = await api.updateSiteSettings({ revision: current.revision, ...draft });
+      const securePathChanged = updated.secure_path !== current.secure_path;
       applySettings(updated);
       onIdentityChanged(updated);
       setSaved(true);
+      if (securePathChanged) onSecurePathChanged?.(updated.secure_path);
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
@@ -94,8 +97,8 @@ export function SiteSettingsPage({ api, onIdentityChanged }: {
         <fieldset className="settings-fieldset">
           <legend>访问安全</legend>
           <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
-          <label>后台路径<input required minLength={1} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
-          <p className="small muted">新路径至少 8 位，仅限字母、数字、下划线和连字符。修改后旧 V2 管理接口路径立即失效；后台路径不能替代登录和权限校验。</p>
+          <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
+          <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
           {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
         </fieldset>
         <fieldset className="settings-fieldset">

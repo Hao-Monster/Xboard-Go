@@ -29,12 +29,12 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 	administrator := loginAdmin(t, api)
 	reader := loginAs(t, api, "client-version-reader@example.test", "client-version-reader-password-123")
 
-	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/client-app-settings", "")
+	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/admin/client-app-settings", "")
 	expectAPIError(t, unauthenticated, http.StatusUnauthorized, "unauthenticated")
-	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/client-app-settings", "")
+	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/client-app-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
-	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/client-app-settings", "")
+	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/client-app-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("initial client app settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
@@ -45,7 +45,7 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 		t.Fatalf("initial client app settings=%#v", initial)
 	}
 
-	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/client-app-settings", `{
+	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-app-settings", `{
 		"revision":1,
 		"windows_version":" 4.8.1 ","windows_download_url":" https://download.example.test/windows.exe ",
 		"macos_version":"4.8.2","macos_download_url":"https://download.example.test/macos.dmg",
@@ -62,7 +62,7 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 		t.Fatalf("updated client app settings=%#v", updated)
 	}
 
-	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/client-app-settings", `{
+	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-app-settings", `{
 		"revision":1,
 		"windows_version":"","windows_download_url":"","macos_version":"","macos_download_url":"",
 		"android_version":"","android_download_url":""
@@ -73,10 +73,10 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 		`{"revision":2,"windows_version":"4","windows_download_url":"https://user:secret@download.example.test/a","macos_version":"","macos_download_url":"","android_version":"","android_download_url":""}`,
 		`{"revision":2,"windows_version":"4","windows_download_url":"https://download.example.test/a#fragment","macos_version":"","macos_download_url":"","android_version":"","android_download_url":""}`,
 	} {
-		invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/client-app-settings", invalidBody)
+		invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-app-settings", invalidBody)
 		expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
 	}
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/client-app-settings", `{
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-app-settings", `{
 		"revision":2,
 		"windows_version":"4","windows_download_url":"","macos_version":"","macos_download_url":"",
 		"android_version":"","android_download_url":"","unexpected":true
@@ -85,7 +85,7 @@ func TestClientAppSettingsModernLegacyAndVersionContracts(t *testing.T) {
 	invalidUTF8Body := []byte(`{"revision":2,"windows_version":"`)
 	invalidUTF8Body = append(invalidUTF8Body, 0xff)
 	invalidUTF8Body = append(invalidUTF8Body, []byte(`","windows_download_url":"","macos_version":"","macos_download_url":"","android_version":"","android_download_url":""}`)...)
-	invalidUTF8Request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/client-app-settings", bytes.NewReader(invalidUTF8Body))
+	invalidUTF8Request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/client-app-settings", bytes.NewReader(invalidUTF8Body))
 	invalidUTF8Request.Header.Set("Content-Type", "application/json")
 	invalidUTF8Request.Header.Set("X-CSRF-Token", administrator.csrf)
 	administrator.addCookies(invalidUTF8Request)

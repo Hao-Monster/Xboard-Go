@@ -26,7 +26,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 	}
 	bearers := make(map[string]string, len(accounts))
 	for _, account := range accounts {
-		created := administrator.request(t, api, http.MethodPost, "/api/v1/admin/users", fmt.Sprintf(`{
+		created := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", fmt.Sprintf(`{
 			"email":%q,"password":%q,"group_id":null,"transfer_enable":0,"expired_at":null,
 			"speed_limit":0,"device_limit":0,"banned":false,%s
 		}`, account.email, password, account.roleFields))
@@ -37,7 +37,7 @@ func TestAdministratorNamespacesAreAuthorizationBoundaries(t *testing.T) {
 	}
 	adminBearer := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
 
-	modernUnknown := "/api/v1/admin/not-a-registered-route"
+	modernUnknown := "/api/v1/admin/admin/not-a-registered-route"
 	visitor := httptest.NewRecorder()
 	api.ServeHTTP(visitor, httptest.NewRequest(http.MethodGet, modernUnknown, nil))
 	if visitor.Code != http.StatusUnauthorized {
@@ -107,7 +107,7 @@ func TestDistributorAccessIsAnExplicitServerSideAllowlist(t *testing.T) {
 		email    = "authorization-allowlist-distributor@example.test"
 		password = "authorization-allowlist-password-123"
 	)
-	created := administrator.request(t, api, http.MethodPost, "/api/v1/admin/users", fmt.Sprintf(`{
+	created := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", fmt.Sprintf(`{
 		"email":%q,"password":%q,"group_id":null,"transfer_enable":0,"expired_at":null,
 		"speed_limit":0,"device_limit":0,"banned":false,"is_admin":false,"is_staff":false,
 		"is_distributor":true,"distributor_name":"允许清单分销商"
@@ -223,7 +223,7 @@ func TestLegacyAdministratorDistributorOrderMutationsAreAudited(t *testing.T) {
 func TestJSONWritesRequireAnExactJSONMediaType(t *testing.T) {
 	api, _ := newTestAPI(t)
 	authorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
-	const path = "/api/v1/admin/commission-settings"
+	const path = "/api/v1/admin/admin/commission-settings"
 
 	for _, contentType := range []string{
 		"application/jsonp",
@@ -258,7 +258,7 @@ func TestAPISecurityHeadersCoverSuccessfulAndRejectedRequests(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "successful public API", path: "/api/v1/guest/plans", wantStatus: http.StatusOK},
-		{name: "rejected administrator API", path: "/api/v1/admin/not-a-registered-route", wantStatus: http.StatusUnauthorized},
+		{name: "rejected administrator API", path: "/api/v1/admin/admin/not-a-registered-route", wantStatus: http.StatusUnauthorized},
 	}
 	wantHeaders := map[string]string{
 		"Cache-Control":           "no-store",

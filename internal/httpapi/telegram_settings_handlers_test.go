@@ -97,12 +97,12 @@ func TestAdminTelegramSettingsProvisionAndLegacyCompatibility(t *testing.T) {
 	api, database := newTestAPIWithTelegram(t, telegramClient)
 	administrator := loginAdmin(t, api)
 
-	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/telegram-settings", "")
+	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/telegram-settings", "")
 	if initial.Code != http.StatusOK || strings.Contains(initial.Body.String(), "cipher") || strings.Contains(initial.Body.String(), "telegram_bot_token\"") {
 		t.Fatalf("initial Telegram settings status=%d body=%s", initial.Code, initial.Body)
 	}
 
-	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"`+httpTestTelegramToken+`",
 		"telegram_webhook_url":"https://hooks.example.test/xboard","telegram_discuss_link":"https://t.me/xboard_group"
 	}`)
@@ -124,7 +124,7 @@ func TestAdminTelegramSettingsProvisionAndLegacyCompatibility(t *testing.T) {
 		t.Fatalf("guest Telegram config status=%d body=%s", guestConfig.Code, guestConfig.Body)
 	}
 
-	provisioned := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":2}`)
+	provisioned := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":2}`)
 	if provisioned.Code != http.StatusOK || telegramClient.getMeCalls != 1 || telegramClient.setMyCommandsCalls != 1 || len(telegramClient.commands) != 5 || telegramClient.setWebhookURL != "https://hooks.example.test/xboard/api/v1/guest/telegram/webhook" || len(telegramClient.webhookSecret) < 32 {
 		t.Fatalf("provision status=%d getMe=%d webhook=%q secretLength=%d body=%s", provisioned.Code, telegramClient.getMeCalls, telegramClient.setWebhookURL, len(telegramClient.webhookSecret), provisioned.Body)
 	}
@@ -173,23 +173,23 @@ func TestTelegramAdministratorRoutesEnforceRoleCSRFOriginAndBoundedStrictJSON(t 
 	api, database := newTestAPIWithTelegram(t, &recordingTelegramBot{})
 	createHTTPTestUser(t, database, "telegram-reader@example.test", "reader-password-123")
 	reader := loginAccount(t, api, "telegram-reader@example.test", "reader-password-123")
-	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/telegram-settings", ""), http.StatusForbidden, "forbidden")
+	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/telegram-settings", ""), http.StatusForbidden, "forbidden")
 
-	visitor := plainAPIRequest(api, http.MethodGet, "/api/v1/admin/telegram-settings", "")
+	visitor := plainAPIRequest(api, http.MethodGet, "/api/v1/admin/admin/telegram-settings", "")
 	expectAPIError(t, visitor, http.StatusUnauthorized, "unauthenticated")
 	administrator := loginAdmin(t, api)
 	before, err := database.GetTelegramSettings(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	missingCSRFRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
+	missingCSRFRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
 	missingCSRFRequest.Header.Set("Content-Type", "application/json")
 	administrator.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()
 	api.ServeHTTP(missingCSRF, missingCSRFRequest)
 	expectAPIError(t, missingCSRF, http.StatusForbidden, "csrf_failed")
 
-	crossOriginRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
+	crossOriginRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/telegram-settings", strings.NewReader(`{"revision":1}`))
 	crossOriginRequest.Header.Set("Content-Type", "application/json")
 	crossOriginRequest.Header.Set("Origin", "https://attacker.example.test")
 	crossOriginRequest.Header.Set("X-CSRF-Token", administrator.csrf)
@@ -198,9 +198,9 @@ func TestTelegramAdministratorRoutesEnforceRoleCSRFOriginAndBoundedStrictJSON(t 
 	api.ServeHTTP(crossOrigin, crossOriginRequest)
 	expectAPIError(t, crossOrigin, http.StatusForbidden, "invalid_origin")
 
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{"revision":1,"unknown":true}`)
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{"revision":1,"unknown":true}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
-	oversized := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{"revision":1,"telegram_bot_token":"`+strings.Repeat("x", int(maxJSONBody))+`"}`)
+	oversized := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{"revision":1,"telegram_bot_token":"`+strings.Repeat("x", int(maxJSONBody))+`"}`)
 	expectAPIError(t, oversized, http.StatusRequestEntityTooLarge, "request_too_large")
 
 	legacyAuthorization := loginLegacyBearer(t, api, "telegram-reader@example.test", "reader-password-123").Authorization
@@ -220,14 +220,14 @@ func TestTelegramWebhookAuthenticatesAndApprovesOnlyAvailableUsers(t *testing.T)
 	telegramClient := &recordingTelegramBot{}
 	api, database := newTestAPIWithTelegram(t, telegramClient)
 	administrator := loginAdmin(t, api)
-	save := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	save := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"`+httpTestTelegramToken+`",
 		"telegram_webhook_url":"https://panel.example.test","telegram_discuss_link":""
 	}`)
 	if save.Code != http.StatusOK {
 		t.Fatalf("save status=%d body=%s", save.Code, save.Body)
 	}
-	if response := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":2}`); response.Code != http.StatusOK {
+	if response := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":2}`); response.Code != http.StatusOK {
 		t.Fatalf("provision status=%d body=%s", response.Code, response.Body)
 	}
 
@@ -295,7 +295,7 @@ func TestTelegramWebhookAuthenticatesAndApprovesOnlyAvailableUsers(t *testing.T)
 	if duplicateDecline.Code != http.StatusOK || telegramClient.declineCalls != 3 {
 		t.Fatalf("duplicate decline status=%d calls=%d body=%s", duplicateDecline.Code, telegramClient.declineCalls, duplicateDecline.Body)
 	}
-	disabled := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	disabled := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":3,"telegram_bot_enable":false,"telegram_webhook_url":"https://panel.example.test","telegram_discuss_link":""
 	}`)
 	if disabled.Code != http.StatusOK {
@@ -311,21 +311,21 @@ func TestTelegramWebhookProvisionFailureKeepsActiveSecretAndRetriesPendingSecret
 	telegramClient := &recordingTelegramBot{}
 	api, database := newTestAPIWithTelegram(t, telegramClient)
 	administrator := loginAdmin(t, api)
-	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"`+httpTestTelegramToken+`",
 		"telegram_webhook_url":"https://panel.example.test","telegram_discuss_link":""
 	}`)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save status=%d body=%s", saved.Code, saved.Body)
 	}
-	first := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":2}`)
+	first := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":2}`)
 	if first.Code != http.StatusOK {
 		t.Fatalf("initial provision status=%d body=%s", first.Code, first.Body)
 	}
 	activeSecret := append([]byte(nil), telegramClient.webhookSecret...)
 
 	telegramClient.setWebhookFailure = telegrambot.ErrUnavailable
-	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":3}`)
+	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":3}`)
 	if failed.Code != http.StatusBadGateway || strings.Contains(failed.Body.String(), string(telegramClient.webhookSecret)) {
 		t.Fatalf("failed rotation status=%d body=%s", failed.Code, failed.Body)
 	}
@@ -345,7 +345,7 @@ func TestTelegramWebhookProvisionFailureKeepsActiveSecretAndRetriesPendingSecret
 	}
 
 	telegramClient.setWebhookFailure = nil
-	retried := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":3}`)
+	retried := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":3}`)
 	if retried.Code != http.StatusOK || string(telegramClient.webhookSecret) != string(pendingSecret) {
 		t.Fatalf("retried rotation status=%d reused=%t body=%s", retried.Code, string(telegramClient.webhookSecret) == string(pendingSecret), retried.Body)
 	}
@@ -365,7 +365,7 @@ func TestTelegramWebhookProvisionPersistsSuccessAfterRequestCancellation(t *test
 	telegramClient := &recordingTelegramBot{}
 	api, database := newTestAPIWithTelegram(t, telegramClient)
 	administrator := loginAdmin(t, api)
-	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"`+httpTestTelegramToken+`",
 		"telegram_webhook_url":"https://panel.example.test","telegram_discuss_link":""
 	}`)
@@ -375,7 +375,7 @@ func TestTelegramWebhookProvisionPersistsSuccessAfterRequestCancellation(t *test
 	requestContext, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	telegramClient.onSetWebhook = cancelRequest
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/telegram-settings/webhook", strings.NewReader(`{"revision":2}`)).WithContext(requestContext)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", strings.NewReader(`{"revision":2}`)).WithContext(requestContext)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-CSRF-Token", administrator.csrf)
 	administrator.addCookies(request)
@@ -394,7 +394,7 @@ func TestAdminTelegramSettingsRejectsInvalidSecretsConflictsAndUpstreamDetails(t
 	telegramClient := &recordingTelegramBot{}
 	api, _ := newTestAPIWithTelegram(t, telegramClient)
 	administrator := loginAdmin(t, api)
-	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	invalid := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"bad token",
 		"telegram_webhook_url":"http://panel.example.test","telegram_discuss_link":"https://example.test/group"
 	}`)
@@ -403,20 +403,20 @@ func TestAdminTelegramSettingsRejectsInvalidSecretsConflictsAndUpstreamDetails(t
 		t.Fatalf("invalid save called Telegram %d times", telegramClient.getMeCalls)
 	}
 
-	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/telegram-settings", `{
+	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/telegram-settings", `{
 		"revision":1,"telegram_bot_enable":true,"telegram_bot_token":"`+httpTestTelegramToken+`",
 		"telegram_webhook_url":"https://panel.example.test","telegram_discuss_link":""
 	}`)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save status=%d body=%s", saved.Code, saved.Body)
 	}
-	stale := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":1}`)
+	stale := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":1}`)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
 	if telegramClient.getMeCalls != 0 {
 		t.Fatalf("stale provision called Telegram %d times", telegramClient.getMeCalls)
 	}
 	telegramClient.failure = errors.Join(telegrambot.ErrUnavailable, errors.New("upstream secret must not leak"))
-	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/telegram-settings/webhook", `{"revision":2}`)
+	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/telegram-settings/webhook", `{"revision":2}`)
 	expectAPIError(t, failed, http.StatusBadGateway, "telegram_webhook_failed")
 	if strings.Contains(failed.Body.String(), "upstream secret") {
 		t.Fatalf("upstream details leaked: %s", failed.Body)

@@ -264,7 +264,7 @@ func TestAccessTokenAuthorizationAndOwnershipBoundaries(t *testing.T) {
 	if response := bearerRequest(api, http.MethodGet, "/api/v1/auth/session", authorization, ""); response.Code != http.StatusOK {
 		t.Fatalf("denied revocation changed owned token: status=%d body=%s", response.Code, response.Body)
 	}
-	if response := bearerRequest(api, http.MethodGet, "/api/v1/admin/users", authorization, ""); response.Code != http.StatusForbidden {
+	if response := bearerRequest(api, http.MethodGet, "/api/v1/admin/admin/users", authorization, ""); response.Code != http.StatusForbidden {
 		t.Fatalf("non-admin bearer reached administrator API: status=%d body=%s", response.Code, response.Body)
 	}
 	createdByBearer := bearerRequest(api, http.MethodPost, "/api/v1/auth/access-tokens", authorization, `{"name":"bearer automation"}`)

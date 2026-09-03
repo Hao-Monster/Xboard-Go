@@ -41,7 +41,7 @@ func (*fakePaymentGateway) VerifyWebhook(context.Context, payment.WebhookRequest
 func TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	providers := admin.request(t, api, http.MethodGet, "/api/v1/admin/payment-providers", "")
+	providers := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/payment-providers", "")
 	if providers.Code != http.StatusOK || !containsAll(providers.Body.String(), `"provider":"AlipayF2F"`, `"provider":"BTCPay"`, `"provider":"MGate"`) {
 		t.Fatalf("provider definitions status=%d body=%s", providers.Code, providers.Body)
 	}
@@ -51,7 +51,7 @@ func TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets(t *test
 		"notify_domain":"https://pay.example.test","handling_fee_fixed":123,"handling_fee_basis_points":250,"enable":true,
 		"config":{"btcpay_url":"https://btcpay.example.test/","btcpay_storeId":"store-one","btcpay_api_key":"api-secret-one","btcpay_webhook_key":"webhook-secret-one"}
 	}`
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/payments", createBody)
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/payments", createBody)
 	if created.Code != http.StatusCreated || !containsAll(created.Body.String(), `"name":"BTCPay 主通道"`, `"handling_fee_basis_points":250`, `"configured_fields":["btcpay_api_key","btcpay_webhook_key"]`) {
 		t.Fatalf("create payment status=%d body=%s", created.Code, created.Body)
 	}
@@ -79,7 +79,7 @@ func TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets(t *test
 		"notify_domain":"https://pay.example.test","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":true,
 		"config":{"btcpay_url":"https://new-btcpay.example.test","btcpay_storeId":"store-two","btcpay_api_key":"","btcpay_webhook_key":"webhook-secret-two"}
 	}`, createdPayload.Data.Revision)
-	updated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/payments/%d", createdPayload.Data.ID), updateBody)
+	updated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/payments/%d", createdPayload.Data.ID), updateBody)
 	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"name":"BTCPay 更新"`, `"btcpay_url":"https://new-btcpay.example.test"`) || containsAll(updated.Body.String(), "webhook-secret-two") {
 		t.Fatalf("update payment status=%d body=%s", updated.Code, updated.Body)
 	}
@@ -93,7 +93,7 @@ func TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets(t *test
 		t.Fatalf("updated encrypted config = (%#v, %v)", config, err)
 	}
 
-	second := admin.request(t, api, http.MethodPost, "/api/v1/admin/payments", `{
+	second := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/payments", `{
 		"payment":"CoinPayments","name":"CoinPayments","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":false,
 		"config":{"coinpayments_merchant_id":"merchant","coinpayments_ipn_secret":"ipn-secret","coinpayments_currency":"cny"}
 	}`)
@@ -106,11 +106,11 @@ func TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets(t *test
 		} `json:"data"`
 	}
 	decodeResponse(t, second, &secondPayload)
-	reordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/payments/order", fmt.Sprintf(`{"ids":[%d,%d]}`, secondPayload.Data.ID, createdPayload.Data.ID))
+	reordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/payments/order", fmt.Sprintf(`{"ids":[%d,%d]}`, secondPayload.Data.ID, createdPayload.Data.ID))
 	if reordered.Code != http.StatusNoContent {
 		t.Fatalf("reorder payments status=%d body=%s", reordered.Code, reordered.Body)
 	}
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/payments?page=1&page_size=20", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/payments?page=1&page_size=20", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), `"total":2`) || bytes.Contains(listed.Body.Bytes(), []byte("ipn-secret")) {
 		t.Fatalf("list payments status=%d body=%s", listed.Code, listed.Body)
 	}
@@ -159,7 +159,7 @@ func TestPaymentLegacyAdminAndUserMethodContractsDoNotExposeSecrets(t *testing.T
 func TestPaymentConfigCannotBeDecodedAsPlainJSON(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/payments", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/payments", `{
 		"payment":"EPay","name":"EPay","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":true,
 		"config":{"url":"https://epay.example.test","pid":"1001","key":"epay-secret","type":"alipay"}
 	}`)
@@ -180,7 +180,7 @@ func TestPaymentConfigCannotBeDecodedAsPlainJSON(t *testing.T) {
 func TestPaymentAPIKeepsActiveCallbackCredentialsStableWhileAllowingMetadataEdits(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/payments", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/payments", `{
 		"payment":"EPay","name":"EPay","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":true,
 		"config":{"url":"https://epay.example.test","pid":"1001","key":"epay-secret","type":"alipay"}
 	}`)
@@ -213,7 +213,7 @@ func TestPaymentAPIKeepsActiveCallbackCredentialsStableWhileAllowingMetadataEdit
 		t.Fatal(err)
 	}
 
-	metadata := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/payments/%d", method.ID), fmt.Sprintf(`{
+	metadata := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/payments/%d", method.ID), fmt.Sprintf(`{
 		"revision":%d,"payment":"EPay","name":"EPay 新名称","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":true,
 		"config":{"url":"https://epay.example.test","pid":"1001","key":"","type":"alipay"}
 	}`, createdPayload.Data.Revision))
@@ -234,7 +234,7 @@ func TestPaymentAPIKeepsActiveCallbackCredentialsStableWhileAllowingMetadataEdit
 		t.Fatal("metadata-only update unexpectedly re-encrypted provider credentials")
 	}
 
-	rotated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/payments/%d", method.ID), fmt.Sprintf(`{
+	rotated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/payments/%d", method.ID), fmt.Sprintf(`{
 		"revision":%d,"payment":"EPay","name":"EPay 新名称","handling_fee_fixed":0,"handling_fee_basis_points":0,"enable":true,
 		"config":{"url":"https://epay.example.test","pid":"1001","key":"replacement-secret","type":"alipay"}
 	}`, metadataPayload.Data.Revision))

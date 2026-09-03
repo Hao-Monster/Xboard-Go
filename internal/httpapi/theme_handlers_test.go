@@ -22,12 +22,12 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 	administrator := loginAdmin(t, api)
 	reader := loginAs(t, api, "theme-reader@example.test", "theme-reader-password-123")
 
-	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/themes", "")
+	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes", "")
 	expectAPIError(t, unauthenticated, http.StatusUnauthorized, "unauthenticated")
-	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/themes", "")
+	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
-	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/themes", "")
+	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes", "")
 	if initial.Code != http.StatusOK || !containsAll(initial.Body.String(), `"active_theme":"Xboard"`, `"revision":1`, `"sidebar_style":"light"`, `"header_style":"dark"`, `"is_system":true`, `"theme_color":"default"`, `"default":{`, `"blue":{`, `"black":{`, `"darkblue":{`, `"images":[]`, `"backgrounds":[]`) {
 		t.Fatalf("initial themes status=%d body=%s", initial.Code, initial.Body)
 	}
@@ -41,22 +41,22 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 		t.Fatalf("upload theme status=%d body=%s", upload.Code, upload.Body)
 	}
 
-	updated := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/themes/Aurora/config", `{
+	updated := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/admin/themes/Aurora/config", `{
 		"revision":1,"theme_color":"blue","background_url":"","font_scale":"large","radius":"pill"
 	}`)
 	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"revision":2`, `"theme_color":"blue"`, `"font_scale":"large"`) {
 		t.Fatalf("update theme status=%d body=%s", updated.Code, updated.Body)
 	}
-	stale := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/themes/Aurora/config", `{
+	stale := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/admin/themes/Aurora/config", `{
 		"revision":1,"theme_color":"default","background_url":"","font_scale":"normal","radius":"rounded"
 	}`)
 	expectAPIError(t, stale, http.StatusConflict, "theme_conflict")
 
-	activated := administrator.request(t, api, http.MethodPost, "/api/v1/admin/themes/Aurora/activate", `{"revision":1}`)
+	activated := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/themes/Aurora/activate", `{"revision":1}`)
 	if activated.Code != http.StatusOK || !containsAll(activated.Body.String(), `"active_theme":"Aurora"`, `"revision":2`) {
 		t.Fatalf("activate theme status=%d body=%s", activated.Code, activated.Body)
 	}
-	layout := administrator.request(t, api, http.MethodPut, "/api/v1/admin/themes/layout", `{"revision":2,"sidebar_style":"dark","header_style":"light"}`)
+	layout := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/themes/layout", `{"revision":2,"sidebar_style":"dark","header_style":"light"}`)
 	if layout.Code != http.StatusOK || !containsAll(layout.Body.String(), `"active_theme":"Aurora"`, `"revision":3`, `"sidebar_style":"dark"`, `"header_style":"light"`) {
 		t.Fatalf("update theme layout status=%d body=%s", layout.Code, layout.Body)
 	}
@@ -115,11 +115,11 @@ func TestThemeModernLegacyGuestAndAssetContracts(t *testing.T) {
 		t.Fatalf("legacy theme activation status=%d body=%s", legacyActivate.Code, legacyActivate.Body)
 	}
 
-	deleted := administrator.request(t, api, http.MethodDelete, "/api/v1/admin/themes/Aurora", "")
+	deleted := administrator.request(t, api, http.MethodDelete, "/api/v1/admin/admin/themes/Aurora", "")
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete theme status=%d body=%s", deleted.Code, deleted.Body)
 	}
-	missing := administrator.request(t, api, http.MethodGet, "/api/v1/admin/themes/Aurora/config", "")
+	missing := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes/Aurora/config", "")
 	expectAPIError(t, missing, http.StatusNotFound, "theme_not_found")
 
 	audits, err := database.ListAdminAuditLogs(t.Context(), store.AdminAuditFilter{Page: 1, PageSize: 100, Query: "theme"})
@@ -182,7 +182,7 @@ func themeUploadRequest(t *testing.T, api http.Handler, client testClient, archi
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/themes", &body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/themes", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("X-CSRF-Token", client.csrf)
 	client.addCookies(request)

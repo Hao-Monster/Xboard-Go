@@ -16,12 +16,12 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 	administrator := loginAdmin(t, api)
 	reader := loginAs(t, api, "commission-reader@example.test", "commission-reader-password-123")
 
-	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/commission-settings", "")
+	unauthenticated := testClient{}.request(t, api, http.MethodGet, "/api/v1/admin/admin/commission-settings", "")
 	expectAPIError(t, unauthenticated, http.StatusUnauthorized, "unauthenticated")
-	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/commission-settings", "")
+	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/commission-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
-	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/commission-settings", "")
+	initialResponse := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/commission-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("initial commission settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
@@ -33,7 +33,7 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 		t.Fatalf("initial commission settings=%#v", initial)
 	}
 
-	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	updatedResponse := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":1,"invite_commission":25,"commission_first_time_enable":false,
 		"commission_auto_check_enable":false,"commission_withdraw_limit":125.25,
 		"commission_withdraw_method":["USDT","Paypal"],"withdraw_close_enable":true,
@@ -51,25 +51,25 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 		t.Fatalf("updated commission settings=%#v", updated)
 	}
 
-	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":1,"invite_commission":10,"commission_first_time_enable":true,
 		"commission_auto_check_enable":true,"withdraw_close_enable":false,
 		"commission_distribution_enable":false,"commission_distribution_l1":100,
 		"commission_distribution_l2":0,"commission_distribution_l3":0
 	}`)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
-	missing := administrator.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	missing := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":2,"invite_commission":10,"commission_first_time_enable":true
 	}`)
 	expectAPIError(t, missing, http.StatusUnprocessableEntity, "validation_failed")
-	invalidTotal := administrator.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	invalidTotal := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":2,"invite_commission":10,"commission_first_time_enable":true,
 		"commission_auto_check_enable":true,"withdraw_close_enable":false,
 		"commission_distribution_enable":false,"commission_distribution_l1":51,
 		"commission_distribution_l2":30,"commission_distribution_l3":20
 	}`)
 	expectAPIError(t, invalidTotal, http.StatusUnprocessableEntity, "validation_failed")
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":2,"invite_commission":10,"commission_first_time_enable":true,
 		"commission_auto_check_enable":true,"withdraw_close_enable":false,
 		"commission_distribution_enable":false,"commission_distribution_l1":100,
@@ -78,14 +78,14 @@ func TestCommissionSettingsModernAndLegacyContractsAreStrictAndAudited(t *testin
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 	withoutCSRF := administrator
 	withoutCSRF.csrf = ""
-	csrfRejected := withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/commission-settings", `{
+	csrfRejected := withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/admin/commission-settings", `{
 		"revision":2,"invite_commission":10,"commission_first_time_enable":true,
 		"commission_auto_check_enable":true,"withdraw_close_enable":false,
 		"commission_distribution_enable":false,"commission_distribution_l1":100,
 		"commission_distribution_l2":0,"commission_distribution_l3":0
 	}`)
 	expectAPIError(t, csrfRejected, http.StatusForbidden, "csrf_failed")
-	wrongMediaTypeRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/commission-settings", strings.NewReader(`{}`))
+	wrongMediaTypeRequest := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/commission-settings", strings.NewReader(`{}`))
 	administrator.addCookies(wrongMediaTypeRequest)
 	wrongMediaTypeRequest.Header.Set("X-CSRF-Token", administrator.csrf)
 	wrongMediaTypeRequest.Header.Set("Content-Type", "text/plain")

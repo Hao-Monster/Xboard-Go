@@ -171,7 +171,7 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	}
 	admin := loginAdmin(t, api)
 	reset := admin.request(t, api, http.MethodPost,
-		fmt.Sprintf("/api/v1/admin/users/%d/subscription-security/reset", user.ID),
+		fmt.Sprintf("/api/v1/admin/admin/users/%d/subscription-security/reset", user.ID),
 		fmt.Sprintf(`{"revision":%d}`, account.Revision))
 	if reset.Code != http.StatusOK {
 		t.Fatalf("subscription-security reset status=%d body=%s", reset.Code, reset.Body)

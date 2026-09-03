@@ -11,11 +11,11 @@ import (
 func TestClientCatalogAdminUserQRAndRedirectContracts(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/client-catalog", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/client-catalog", "")
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"id":"karing"`) || !strings.Contains(listed.Body.String(), `"revision":1`) {
 		t.Fatalf("admin catalog status=%d body=%s", listed.Code, listed.Body)
 	}
-	saved := admin.request(t, api, http.MethodPut, "/api/v1/admin/client-catalog", `{
+	saved := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-catalog", `{
 		"revision":1,"links":{"karing":{"android":{
 			"direct":"https://downloads.example.test/karing.apk",
 			"qr":"https://qr.example.test/karing",
@@ -27,7 +27,7 @@ func TestClientCatalogAdminUserQRAndRedirectContracts(t *testing.T) {
 		t.Fatalf("save catalog status=%d body=%s", saved.Code, saved.Body)
 	}
 
-	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"client-reader@example.test","password":"client-reader-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
@@ -44,7 +44,7 @@ func TestClientCatalogAdminUserQRAndRedirectContracts(t *testing.T) {
 		!strings.Contains(qr.Body.String(), `"download_url":"https://panel.example.test/client-link/karing/android/qr"`) {
 		t.Fatalf("QR status=%d body=%s", qr.Code, qr.Body)
 	}
-	if denied := reader.request(t, api, http.MethodGet, "/api/v1/admin/client-catalog", ""); denied.Code != http.StatusForbidden {
+	if denied := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/client-catalog", ""); denied.Code != http.StatusForbidden {
 		t.Fatalf("ordinary user admin catalog status=%d", denied.Code)
 	}
 
@@ -72,7 +72,7 @@ func TestClientCatalogRejectsCSRFUnsafeURLsUnknownFieldsAndStaleWrites(t *testin
 		"unknown field":  `{"revision":1,"links":{},"popup":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			response := admin.request(t, api, http.MethodPut, "/api/v1/admin/client-catalog", body)
+			response := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-catalog", body)
 			want := http.StatusUnprocessableEntity
 			if name == "unknown field" {
 				want = http.StatusBadRequest
@@ -83,7 +83,7 @@ func TestClientCatalogRejectsCSRFUnsafeURLsUnknownFieldsAndStaleWrites(t *testin
 		})
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/client-catalog", strings.NewReader(`{"revision":1,"links":{}}`))
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/admin/client-catalog", strings.NewReader(`{"revision":1,"links":{}}`))
 	request.Header.Set("Content-Type", "application/json")
 	admin.addCookies(request)
 	response := httptest.NewRecorder()
@@ -92,11 +92,11 @@ func TestClientCatalogRejectsCSRFUnsafeURLsUnknownFieldsAndStaleWrites(t *testin
 		t.Fatalf("missing CSRF status=%d body=%s", response.Code, response.Body)
 	}
 
-	first := admin.request(t, api, http.MethodPut, "/api/v1/admin/client-catalog", `{"revision":1,"links":{}}`)
+	first := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-catalog", `{"revision":1,"links":{}}`)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first save status=%d body=%s", first.Code, first.Body)
 	}
-	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/client-catalog", `{"revision":1,"links":{}}`)
+	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/client-catalog", `{"revision":1,"links":{}}`)
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale save status=%d body=%s", stale.Code, stale.Body)
 	}

@@ -55,22 +55,22 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 	}
 
 	listed := admin.request(t, api, http.MethodGet,
-		"/api/v1/admin/orders?status=3&status=4&type=1&type=2&period=monthly&commission_status=0&sort_by=total_amount&sort_desc=false", "")
+		"/api/v1/admin/admin/orders?status=3&status=4&type=1&type=2&period=monthly&commission_status=0&sort_by=total_amount&sort_desc=false", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), order.TradeNo, `"commission_status":0`) {
 		t.Fatalf("multi-filtered administrator orders status=%d body=%s", listed.Code, listed.Body)
 	}
-	injection := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders?sort_by=total_amount%20DESC%3B%20DROP%20TABLE%20orders", "")
+	injection := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/orders?sort_by=total_amount%20DESC%3B%20DROP%20TABLE%20orders", "")
 	if injection.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("untrusted sort status=%d body=%s", injection.Code, injection.Body)
 	}
-	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders/"+order.TradeNo, "")
+	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/orders/"+order.TradeNo, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(),
 		`"callback_no":"gateway-parity-callback"`, `"invite_user":{"id":`, `"email":"admin@example.test"`,
 		`"commission_log":[]`, `"subscribe_url":"https://order-subscriptions.example.test/s/`) {
 		t.Fatalf("administrator order detail status=%d body=%s", detail.Code, detail.Body)
 	}
 
-	updated := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
+	updated := admin.request(t, api, http.MethodPatch, "/api/v1/admin/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
 	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"commission_status":3`,
 		`"invite_user":{"id":`, `"commission_log":[]`, `"subscribe_url":"https://order-subscriptions.example.test/s/`) {
 		t.Fatalf("modern commission update status=%d body=%s", updated.Code, updated.Body)
@@ -119,12 +119,12 @@ func TestAdministratorOrderParityFiltersSortsDetailsAndProtectsPaidCommission(t 
 		fmt.Sprintf(`"available_commission":%d`, order.CommissionBalance-transferAmount)) {
 		t.Fatalf("refreshed invitation summary status=%d body=%s", refreshedSummary.Code, refreshedSummary.Body)
 	}
-	rollback := admin.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":1}`)
+	rollback := admin.request(t, api, http.MethodPatch, "/api/v1/admin/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":1}`)
 	if rollback.Code != http.StatusConflict || !containsAll(rollback.Body.String(), `"code":"order_state_conflict"`) {
 		t.Fatalf("paid commission rollback status=%d body=%s", rollback.Code, rollback.Body)
 	}
 	buyerClient := loginAs(t, api, "order-parity-buyer@example.test", "order-parity-password-123")
-	forbidden := buyerClient.request(t, api, http.MethodPatch, "/api/v1/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
+	forbidden := buyerClient.request(t, api, http.MethodPatch, "/api/v1/admin/admin/orders/"+order.TradeNo+"/commission", `{"commission_status":3}`)
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("non-administrator commission update status=%d body=%s", forbidden.Code, forbidden.Body)
 	}
@@ -214,7 +214,7 @@ func TestAdministratorCanAssignListCompleteAndCancelOrders(t *testing.T) {
 	user := createKnowledgeTestUser(t, database, "assigned-order@example.test", "assigned-order-password-123", 1, false)
 	admin := loginAdmin(t, api)
 
-	assigned := admin.request(t, api, http.MethodPost, "/api/v1/admin/orders",
+	assigned := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/orders",
 		fmt.Sprintf(`{"email":%q,"plan_id":%d,"period":"month_price","total_amount":99}`, user.email, plan.ID))
 	if assigned.Code != http.StatusCreated || !containsAll(assigned.Body.String(), `"total_amount":99`, `"status":0`) {
 		t.Fatalf("assign status=%d body=%s", assigned.Code, assigned.Body)
@@ -226,31 +226,31 @@ func TestAdministratorCanAssignListCompleteAndCancelOrders(t *testing.T) {
 	if len(payload.Data.TradeNo) != 32 {
 		t.Fatalf("assigned trade number=%q, want legacy 32-character shape", payload.Data.TradeNo)
 	}
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders?status=0&query=assigned-order", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/orders?status=0&query=assigned-order", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), payload.Data.TradeNo, user.email, `"plan_name":"API order plan"`) {
 		t.Fatalf("admin list status=%d body=%s", listed.Code, listed.Body)
 	}
-	paid := admin.request(t, api, http.MethodPost, "/api/v1/admin/orders/"+payload.Data.TradeNo+"/paid", `{}`)
+	paid := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/orders/"+payload.Data.TradeNo+"/paid", `{}`)
 	if paid.Code != http.StatusOK || !containsAll(paid.Body.String(), `"status":3`, `"callback_no":"manual_operation"`) {
 		t.Fatalf("admin paid status=%d body=%s", paid.Code, paid.Body)
 	}
-	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/orders/"+payload.Data.TradeNo, "")
+	detail := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/orders/"+payload.Data.TradeNo, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(), user.email, `"entitlement_expired_at_after"`) {
 		t.Fatalf("admin detail status=%d body=%s", detail.Code, detail.Body)
 	}
 
-	second := admin.request(t, api, http.MethodPost, "/api/v1/admin/orders",
+	second := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/orders",
 		fmt.Sprintf(`{"email":%q,"plan_id":%d,"period":"month_price","total_amount":50}`, user.email, plan.ID))
 	if second.Code != http.StatusCreated {
 		t.Fatalf("second assign status=%d body=%s", second.Code, second.Body)
 	}
 	decodeResponse(t, second, &payload)
-	cancelled := admin.request(t, api, http.MethodPost, "/api/v1/admin/orders/"+payload.Data.TradeNo+"/cancel", `{}`)
+	cancelled := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/orders/"+payload.Data.TradeNo+"/cancel", `{}`)
 	if cancelled.Code != http.StatusOK || !containsAll(cancelled.Body.String(), `"status":2`) {
 		t.Fatalf("admin cancel status=%d body=%s", cancelled.Code, cancelled.Body)
 	}
 	userClient := loginAs(t, api, user.email, user.password)
-	forbidden := userClient.request(t, api, http.MethodGet, "/api/v1/admin/orders", "")
+	forbidden := userClient.request(t, api, http.MethodGet, "/api/v1/admin/admin/orders", "")
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("non-admin list status=%d body=%s", forbidden.Code, forbidden.Body)
 	}

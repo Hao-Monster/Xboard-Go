@@ -14,7 +14,7 @@ import (
 func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/plans", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/plans", `{
 		"name":"Pro","transfer_enable":100,"speed_limit":200,"device_limit":3,"capacity_limit":0,
 		"reset_traffic_method":1,"prices":{"monthly":101,"quarterly":202,"half_yearly":303,"yearly":404,
 		"two_yearly":505,"three_yearly":606,"onetime":707,"reset_traffic":808},"tags":["推荐"],
@@ -43,7 +43,7 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 		}
 	}
 
-	state := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/plans/%d/state", payload.Data.ID),
+	state := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/plans/%d/state", payload.Data.ID),
 		fmt.Sprintf(`{"revision":%d,"show":true,"sell":true,"renew":false}`, payload.Data.Revision))
 	if state.Code != http.StatusOK {
 		t.Fatalf("update plan state status = %d; body=%s", state.Code, state.Body)
@@ -69,28 +69,28 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 	if userPlans.Code != http.StatusOK || !containsAll(userPlans.Body.String(), `"name":"Pro"`, `"can_purchase":true`) {
 		t.Fatalf("user plans status = %d; body=%s", userPlans.Code, userPlans.Body)
 	}
-	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/plans/%d", payload.Data.ID),
+	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/plans/%d", payload.Data.ID),
 		fmt.Sprintf(`{"revision":%d,"name":"stale","transfer_enable":1,"prices":{},"tags":[],"content":"","force_update":false}`, payload.Data.Revision))
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale plan update status = %d; body=%s", stale.Code, stale.Body)
 	}
-	invalid := admin.request(t, api, http.MethodPost, "/api/v1/admin/plans", `{"name":"bad","transfer_enable":1,"prices":{"weekly":100}}`)
+	invalid := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/plans", `{"name":"bad","transfer_enable":1,"prices":{"weekly":100}}`)
 	if invalid.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid plan status = %d; body=%s", invalid.Code, invalid.Body)
 	}
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/plans", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/plans", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), `"name":"Pro"`, `"revision":2`, `"users_count":0`, `"active_users_count":0`) {
 		t.Fatalf("list plans status = %d; body=%s", listed.Code, listed.Body)
 	}
-	ordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/plans/order", fmt.Sprintf(`{"ids":[%d]}`, payload.Data.ID))
+	ordered := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/plans/order", fmt.Sprintf(`{"ids":[%d]}`, payload.Data.ID))
 	if ordered.Code != http.StatusOK {
 		t.Fatalf("reorder plan status = %d; body=%s", ordered.Code, ordered.Body)
 	}
-	deleted := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/plans/%d", payload.Data.ID), "")
+	deleted := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/plans/%d", payload.Data.ID), "")
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete plan status = %d; body=%s", deleted.Code, deleted.Body)
 	}
-	missing := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/plans/%d", payload.Data.ID), "")
+	missing := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/plans/%d", payload.Data.ID), "")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("delete missing plan status = %d; body=%s", missing.Code, missing.Body)
 	}
@@ -100,11 +100,11 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 func TestPlanWritesRequireAdministratorCSRFAndRejectUnknownFields(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	unknown := admin.request(t, api, http.MethodPost, "/api/v1/admin/plans", `{"name":"bad","transfer_enable":1,"unexpected":true}`)
+	unknown := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/plans", `{"name":"bad","transfer_enable":1,"unexpected":true}`)
 	if unknown.Code != http.StatusBadRequest {
 		t.Fatalf("unknown field status = %d; body=%s", unknown.Code, unknown.Body)
 	}
-	unauthenticated := plainRequest(api, http.MethodPost, "/api/v1/admin/plans", `{"name":"bad","transfer_enable":1}`)
+	unauthenticated := plainRequest(api, http.MethodPost, "/api/v1/admin/admin/plans", `{"name":"bad","transfer_enable":1}`)
 	if unauthenticated.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status = %d; body=%s", unauthenticated.Code, unauthenticated.Body)
 	}

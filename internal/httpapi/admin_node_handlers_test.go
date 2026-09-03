@@ -26,7 +26,7 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 	}
 	admin := loginAdmin(t, api)
 
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/nodes?page=1&page_size=500&q=API&type=vless&show=true", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes?page=1&page_size=500&q=API&type=vless&show=true", "")
 	if listed.Code != http.StatusOK {
 		t.Fatalf("list status=%d body=%s", listed.Code, listed.Body)
 	}
@@ -36,12 +36,12 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 	if err := json.Unmarshal(listed.Body.Bytes(), &page); err != nil || page.Data.Total != 1 || len(page.Data.Items) != 1 || page.Data.Items[0].ID != node.ID {
 		t.Fatalf("list response=%s error=%v", listed.Body, err)
 	}
-	invalidPage := admin.request(t, api, http.MethodGet, "/api/v1/admin/nodes?page_size=501", "")
+	invalidPage := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes?page_size=501", "")
 	if invalidPage.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid page status=%d body=%s", invalidPage.Code, invalidPage.Body)
 	}
 
-	updatePath := fmt.Sprintf("/api/v1/admin/nodes/%d", node.ID)
+	updatePath := fmt.Sprintf("/api/v1/admin/admin/nodes/%d", node.ID)
 	updateBody := fmt.Sprintf(`{"revision":%d,"name":"API updated","host":"updated.example.test","port":"8443","show":true,"enabled":true,"sort":20,"machine_id":null}`, node.Revision)
 	missingCSRFRequest := httptest.NewRequest(http.MethodPatch, updatePath, strings.NewReader(updateBody))
 	missingCSRFRequest.Header.Set("Content-Type", "application/json")
@@ -78,7 +78,7 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 		t.Fatalf("copy response=%s error=%v", copyResponse.Body, err)
 	}
 
-	bulkState := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+	bulkState := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-state", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":2},{"id":%d,"revision":1}],"show":false}`, node.ID, copyPayload.Data.ID,
 	))
 	if bulkState.Code != http.StatusOK {
@@ -90,7 +90,7 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 		t.Fatalf("bulk state nodes: updated=%#v copied=%#v", updated, copied)
 	}
 
-	reset := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-reset-traffic", fmt.Sprintf(
+	reset := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-reset-traffic", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":3},{"id":%d,"revision":2}]}`, node.ID, copied.ID,
 	))
 	if reset.Code != http.StatusOK {
@@ -102,7 +102,7 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 		t.Fatalf("reset nodes: updated=%#v copied=%#v", updated, copied)
 	}
 
-	deleted := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-delete", fmt.Sprintf(
+	deleted := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-delete", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":3}]}`, copied.ID,
 	))
 	if deleted.Code != http.StatusNoContent {
@@ -130,7 +130,7 @@ func TestAdminNodeParentOptionsAreBoundedSearchableAndAdministratorOnly(t *testi
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
-	path := fmt.Sprintf("/api/v1/admin/nodes/parent-options?type=vless&q=searchable&include_id=%d&exclude_id=%d", first.ID, second.ID)
+	path := fmt.Sprintf("/api/v1/admin/admin/nodes/parent-options?type=vless&q=searchable&include_id=%d&exclude_id=%d", first.ID, second.ID)
 	response := admin.request(t, api, http.MethodGet, path, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("parent options status=%d body=%s", response.Code, response.Body)
@@ -143,9 +143,9 @@ func TestAdminNodeParentOptionsAreBoundedSearchableAndAdministratorOnly(t *testi
 	}
 
 	for _, invalidPath := range []string{
-		"/api/v1/admin/nodes/parent-options",
-		"/api/v1/admin/nodes/parent-options?type=unknown",
-		"/api/v1/admin/nodes/parent-options?type=vless&include_id=0",
+		"/api/v1/admin/admin/nodes/parent-options",
+		"/api/v1/admin/admin/nodes/parent-options?type=unknown",
+		"/api/v1/admin/admin/nodes/parent-options?type=vless&include_id=0",
 	} {
 		invalid := admin.request(t, api, http.MethodGet, invalidPath, "")
 		if invalid.Code != http.StatusUnprocessableEntity {
@@ -164,7 +164,7 @@ func TestAdminNodeParentOptionsAreBoundedSearchableAndAdministratorOnly(t *testi
 		t.Fatal(err)
 	}
 	ordinary := loginAs(t, api, "parent-ordinary@example.test", "ordinary-parent-password-123")
-	forbidden := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/nodes/parent-options?type=vless", "")
+	forbidden := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes/parent-options?type=vless", "")
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("ordinary parent options status=%d body=%s", forbidden.Code, forbidden.Body)
 	}
@@ -183,7 +183,7 @@ func TestAdminNodeManagementAPIRequiresAdministrator(t *testing.T) {
 		t.Fatal(err)
 	}
 	ordinary := loginAs(t, api, "node-ordinary@example.test", "ordinary-password-123")
-	response := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/nodes", "")
+	response := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes", "")
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("ordinary user status=%d body=%s", response.Code, response.Body)
 	}
@@ -192,7 +192,7 @@ func TestAdminNodeManagementAPIRequiresAdministrator(t *testing.T) {
 func TestAdminNodeBasicCreateProducesEditableProtocolDefinition(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes", `{
 		"name":"Basic VLESS","type":"vless","host":"basic.example.test","port":"2443",
 		"show":true,"enabled":true,"sort":7
 	}`)
@@ -206,7 +206,7 @@ func TestAdminNodeBasicCreateProducesEditableProtocolDefinition(t *testing.T) {
 		t.Fatalf("decode basic node response=%s error=%v", created.Body, err)
 	}
 
-	detail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/nodes/%d", createdPayload.Data.ID), "")
+	detail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/nodes/%d", createdPayload.Data.ID), "")
 	if detail.Code != http.StatusOK {
 		t.Fatalf("read basic node definition status=%d body=%s", detail.Code, detail.Body)
 	}
@@ -252,7 +252,7 @@ func TestAdminNodeDefinitionAPICreatesReadsAndUpdatesAtomically(t *testing.T) {
 		"rate_time_ranges":[{"start":"00:00","end":"06:00","rate":0.5}],
 		"custom_outbounds":[],"custom_routes":[],"certificate_config":{},"transfer_enable":1073741824
 	}`, settings, machine.ID, group.ID, route.ID)
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes", body)
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes", body)
 	if createdResponse.Code != http.StatusCreated {
 		t.Fatalf("create definition status=%d body=%s", createdResponse.Code, createdResponse.Body)
 	}
@@ -263,7 +263,7 @@ func TestAdminNodeDefinitionAPICreatesReadsAndUpdatesAtomically(t *testing.T) {
 		t.Fatalf("create definition response=%s error=%v", createdResponse.Body, err)
 	}
 
-	path := fmt.Sprintf("/api/v1/admin/nodes/%d", createdPayload.Data.ID)
+	path := fmt.Sprintf("/api/v1/admin/admin/nodes/%d", createdPayload.Data.ID)
 	readResponse := admin.request(t, api, http.MethodGet, path, "")
 	if readResponse.Code != http.StatusOK {
 		t.Fatalf("read definition status=%d body=%s", readResponse.Code, readResponse.Body)
@@ -314,7 +314,7 @@ func TestMachineNodeMutationsRequireCurrentAdministratorRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
-	path := fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", machine.ID, node.ID)
+	path := fmt.Sprintf("/api/v1/admin/admin/machines/%d/nodes/%d", machine.ID, node.ID)
 
 	missing := admin.request(t, api, http.MethodPut, path, `{}`)
 	if missing.Code != http.StatusUnprocessableEntity {
