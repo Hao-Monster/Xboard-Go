@@ -175,6 +175,7 @@ test("administrator site identity persists into the public shell and can be rest
     expect(contentPayload.data?.page_title).toBe(`Brand guide ${unique} - ${changed.app_name}`);
 
     await page.getByRole("button", { name: "退出" }).click();
+    await page.goto("/");
     await expect(page.getByRole("heading", { name: `登录 ${changed.app_name}` })).toBeVisible();
     const logo = page.getByRole("img", { name: `${changed.app_name} LOGO` });
     await expect(logo).toHaveAttribute("src", changed.logo);
