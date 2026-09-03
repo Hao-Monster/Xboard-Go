@@ -203,7 +203,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	await expect(dialog.getByLabel("用户邮箱")).toHaveAttribute("readonly", "");
 	await dialog.getByLabel("订阅套餐").selectOption({ label: planName });
 	await dialog.getByLabel("支付金额（CNY）").fill("2.50");
-	const assignedOrderResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/orders$/.test(new URL(response.url()).pathname));
+	const assignedOrderResponsePromise = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/orders") && new URL(response.url()).pathname.includes(adminAPIPath("/api/v1/admin/users/")));
 	await dialog.getByRole("button", { name: "创建订单" }).click();
 	const assignedOrderResponse = await assignedOrderResponsePromise;
 	expect(assignedOrderResponse.status(), await assignedOrderResponse.text()).toBe(201);
