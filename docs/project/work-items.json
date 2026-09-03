@@ -5,7 +5,7 @@
     {"id":"GOV-001","title":"建立 M0 项目治理基线","status":"done","milestone":"M0","issue_number":113,"requirement_ids":[],"decision_ids":[]},
     {"id":"FUNC-001","title":"确定并实现原子佣金提现账本","status":"blocked","milestone":"M1","issue_number":114,"requirement_ids":["FIN-001"],"decision_ids":["D-011"]},
     {"id":"FUNC-002","title":"确定并实现用户停用、恢复与匿名化","status":"blocked","milestone":"M1","issue_number":115,"requirement_ids":["USER-001","USER-003"],"decision_ids":["D-012"]},
-    {"id":"FUNC-003","title":"恢复管理员安全路径完整语义","status":"open","milestone":"M1","issue_number":145,"requirement_ids":[],"decision_ids":[]},
+    {"id":"FUNC-003","title":"恢复管理员安全路径完整语义","status":"done","milestone":"M1","issue_number":145,"requirement_ids":[],"decision_ids":[]},
     {"id":"OPS-001","title":"确定并实施日志与统计迁移保留策略","status":"blocked","milestone":"M2","issue_number":116,"requirement_ids":["OPS-002"],"decision_ids":["D-012","D-013"]},
     {"id":"OPS-002","title":"完成备份、异地副本和恢复演练","status":"open","milestone":"M2","issue_number":117,"requirement_ids":["OPS-002"],"decision_ids":[]},
     {"id":"MIG-001","title":"完成代表性旧数据迁移、对账和回滚证据","status":"open","milestone":"M2","issue_number":118,"requirement_ids":[],"decision_ids":["D-006","D-009","D-013"]},
