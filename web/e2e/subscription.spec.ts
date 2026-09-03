@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
 
 interface SubscriptionSettings {
   revision: number;
@@ -131,7 +131,7 @@ test("administrator subscription settings drive the user dashboard, QR, output p
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
@@ -152,6 +152,7 @@ async function getSubscriptionPolicySettings(page: Page): Promise<SubscriptionPo
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const encoded = document.cookie.split("; ").find((item) => item.startsWith("xboard_csrf="))?.slice("xboard_csrf=".length) ?? "";
     const response = await fetch(requestPath, {

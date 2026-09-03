@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage  } from "./support";
 
 test("administrator controls the fixed trusted plugin inventory and disabled payment providers disappear", async ({ page }) => {
   test.setTimeout(90_000);
@@ -41,7 +41,7 @@ test("administrator controls the fixed trusted plugin inventory and disabled pay
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(adminEmail);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
@@ -51,7 +51,7 @@ async function login(page: Page) {
 
 async function restoreEPay(page: Page) {
   const result = await page.evaluate(async () => {
-    const listed = await fetch("/api/v1/admin/plugins", { credentials: "same-origin" });
+    const listed = await fetch(adminAPIPath("/api/v1/admin/plugins"), { credentials: "same-origin" });
     if (!listed.ok) return listed.status;
     const payload: unknown = await listed.json();
     const data = typeof payload === "object" && payload !== null ? Reflect.get(payload, "data") : null;
@@ -60,7 +60,7 @@ async function restoreEPay(page: Page) {
     if (typeof plugin !== "object" || plugin === null || Reflect.get(plugin, "enabled") === true) return 200;
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const restored = await fetch("/api/v1/admin/plugins/epay", {
+    const restored = await fetch(adminAPIPath("/api/v1/admin/plugins/epay"), {
       method: "PATCH",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },

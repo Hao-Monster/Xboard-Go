@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage  } from "./support";
 
 test("administrator uploads, publishes, reopens, and removes a multi-chunk knowledge attachment", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -89,7 +89,7 @@ test("administrator uploads, publishes, reopens, and removes a multi-chunk knowl
   await expect(dialog.getByRole("listitem").filter({ hasText: fileName })).toHaveCount(0);
   await expect(dialog.getByLabel("内容")).not.toHaveValue(new RegExp(escapeRegExp(attachment.placeholder)));
   const updatedResponse = page.waitForResponse((response) =>
-    response.request().method() === "PATCH" && new URL(response.url()).pathname === `/api/v1/admin/knowledge/${summary.id}`);
+    response.request().method() === "PATCH" && new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/knowledge/${summary.id}`));
   await dialog.getByRole("button", { name: "提交" }).click();
   expect((await updatedResponse).status()).toBe(200);
   await expect(dialog).toHaveCount(0);
@@ -112,7 +112,7 @@ test("administrator uploads, publishes, reopens, and removes a multi-chunk knowl
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
@@ -120,7 +120,7 @@ async function login(page: Page) {
 }
 
 async function apiData<T>(page: Page, path: string): Promise<T> {
-  const response = await page.request.get(path);
+  const response = await page.request.get(adminAPIPath(path));
   expect(response.status()).toBe(200);
   const payload = await response.json() as { data: T };
   return payload.data;

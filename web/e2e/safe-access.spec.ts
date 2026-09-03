@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword  } from "./support";
 
 interface SiteAccessSettings {
   revision: number;
@@ -19,7 +19,7 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
 
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -73,10 +73,10 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
 });
 
 async function getSiteAccessSettings(page: Page): Promise<SiteAccessSettings> {
-  const response = await page.evaluate(async () => {
-    const result = await fetch("/api/v1/admin/site-settings", { credentials: "same-origin" });
+  const response = await page.evaluate(async (requestPath) => {
+    const result = await fetch(requestPath, { credentials: "same-origin" });
     return { status: result.status, body: await result.text() };
-  });
+  }, adminAPIPath("/api/v1/admin/site-settings"));
   expect(response.status, response.body).toBe(200);
   const payload: unknown = JSON.parse(response.body);
   const data: unknown = typeof payload === "object" && payload !== null ? Reflect.get(payload, "data") : null;
@@ -85,15 +85,15 @@ async function getSiteAccessSettings(page: Page): Promise<SiteAccessSettings> {
 }
 
 async function adminRequest(page: Page, body: SiteAccessSettings) {
-  return page.evaluate(async (requestBody) => {
+  return page.evaluate(async ({ requestBody, requestPath }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const response = await fetch("/api/v1/admin/site-settings", {
+    const response = await fetch(requestPath, {
       method: "PUT",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
       body: JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, body);
+  }, { requestBody: body, requestPath: adminAPIPath("/api/v1/admin/site-settings") });
 }

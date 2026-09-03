@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait  } from "./support";
 
 test("gift-card administrator and user lifecycle works on every supported viewport", async ({ page }) => {
   test.setTimeout(120_000);
@@ -60,7 +60,7 @@ test("gift-card administrator and user lifecycle works on every supported viewpo
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/"); await expectLoginPage(page); await page.getByLabel("邮箱", { exact: true }).fill(email); await page.getByLabel("密码", { exact: true }).fill(password); await page.getByRole("button", { name: "登录", exact: true }).click();
+  await page.goto(adminEntryPath); await expectLoginPage(page); await page.getByLabel("邮箱", { exact: true }).fill(email); await page.getByLabel("密码", { exact: true }).fill(password); await page.getByRole("button", { name: "登录", exact: true }).click();
 }
 
 async function createUser(page: Page, email: string, password: string) {

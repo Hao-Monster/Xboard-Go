@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait  } from "./support";
 
 test("free checkout and administrator order lifecycle work on every supported viewport", async ({ page }) => {
   test.setTimeout(90_000);
@@ -103,7 +103,7 @@ test("free checkout and administrator order lifecycle work on every supported vi
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);
@@ -116,22 +116,22 @@ async function createUser(page: Page, email: string, password: string) {
 }
 
 async function findReusableInvitedUser(page: Page): Promise<{ email: string; inviterEmail: string } | null> {
-  const response = await page.evaluate(async () => {
-    const result = await fetch("/api/v1/admin/users?email_prefix=il-&limit=100", { credentials: "same-origin" });
+  const response = await page.evaluate(async (requestPath) => {
+    const result = await fetch(requestPath, { credentials: "same-origin" });
     return { status: result.status, body: await result.text() };
-  });
+  }, adminAPIPath("/api/v1/admin/users?email_prefix=il-&limit=100"));
   expect(response.status, response.body).toBe(200);
   const payload = JSON.parse(response.body) as { data?: { items?: Array<{ email?: string }> } };
   const candidates = (payload.data?.items ?? [])
     .flatMap((item) => item.email?.startsWith("il-") ? [item.email] : [])
     .sort((left, right) => right.localeCompare(left));
   for (const email of candidates) {
-    const prior = await page.evaluate(async (candidate) => {
+    const prior = await page.evaluate(async ({ candidate, requestPrefix }) => {
       const query = new URLSearchParams({ page: "1", page_size: "100", query: candidate });
       for (const status of ["1", "3", "4"]) query.append("status", status);
-      const result = await fetch(`/api/v1/admin/orders?${query.toString()}`, { credentials: "same-origin" });
+      const result = await fetch(`${requestPrefix}?${query.toString()}`, { credentials: "same-origin" });
       return { status: result.status, body: await result.text() };
-    }, email);
+    }, { candidate: email, requestPrefix: adminAPIPath("/api/v1/admin/orders") });
     expect(prior.status, prior.body).toBe(200);
     const orders = JSON.parse(prior.body) as { data?: { items?: Array<{ user_email?: string }> } };
     if (!(orders.data?.items ?? []).some((order) => order.user_email === email)) {

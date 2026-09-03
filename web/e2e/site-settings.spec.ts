@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword  } from "./support";
 
 interface SiteSettings {
   revision: number;
@@ -58,7 +58,7 @@ test("administrator site identity persists into the public shell and can be rest
   let createdKnowledge: { id: number; revision: number } | null = null;
 
   try {
-    await page.goto("/");
+    await page.goto(adminEntryPath);
     changed.logo = new URL("/xboard-logo.svg", page.url()).toString();
     await page.getByLabel("邮箱").fill(adminEmail);
     await page.getByLabel("密码").fill(adminPassword);
@@ -234,7 +234,7 @@ test("administrator site identity persists into the public shell and can be rest
 
 async function ensureAdmin(page: Page) {
   if (await page.getByRole("button", { name: "退出" }).count() > 0) return;
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -252,6 +252,7 @@ async function getAdminSiteSettings(page: Page): Promise<SiteSettings> {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
