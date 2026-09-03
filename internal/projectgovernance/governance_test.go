@@ -299,7 +299,14 @@ func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 			t.Errorf("expected %s to be governance metadata", path)
 		}
 	}
-	for _, path := range []string{"cmd/xboard/main.go", "internal/store/sqlite.go", "web/src/App.tsx", "web/scripts/check-entry-budget.mjs"} {
+	for _, path := range []string{
+		"cmd/xboard/main.go",
+		"cmd/testdatagen-evil/main.go",
+		"internal/store/sqlite.go",
+		"internal/testdata-evil/fixture.go",
+		"web/src/App.tsx",
+		"web/scripts/check-entry-budget.mjs",
+	} {
 		if isEvidenceMetadataPath(path) {
 			t.Errorf("expected %s to invalidate product evidence", path)
 		}
