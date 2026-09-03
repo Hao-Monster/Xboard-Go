@@ -105,6 +105,10 @@ export async function expectLoginPage(page: Page) {
 
 export async function logoutAndWait(page: Page) {
   await page.getByRole("button", { name: "退出" }).click();
+  // App sign-out revokes the session before rendering the auth page. Wait for
+  // that state transition before navigating to the public root; navigating
+  // immediately can abort the in-flight logout request and retain the cookie.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^登录 .+$/, { timeout: 10_000 });
   await page.goto("/");
   await expectLoginPage(page);
 }
