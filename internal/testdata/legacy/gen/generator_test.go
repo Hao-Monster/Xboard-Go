@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/testdata/legacy/gen"
@@ -117,6 +118,11 @@ func TestGeneratedDatabaseFileHasRestrictedPermissions(t *testing.T) {
 	}
 	if !info.Mode().IsRegular() {
 		t.Fatalf("generated DB is not a regular file")
+	}
+	if runtime.GOOS != "windows" {
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("generated DB permissions = %o, want 600", got)
+		}
 	}
 }
 

@@ -29,12 +29,12 @@ const DefaultSeed uint64 = 20260903
 // DatasetManifest records metadata for a generated legacy dataset.
 // It is written to manifest.json alongside the generated SQLite file.
 type DatasetManifest struct {
-	Version     string            `json:"version"`
-	GeneratedAt time.Time         `json:"generated_at"`
-	Seed        uint64            `json:"seed"`
-	DatabaseSHA string            `json:"database_sha256"`
-	DomainRows  map[string]int    `json:"domain_rows"`
-	Notes       []string          `json:"notes"`
+	Version     string         `json:"version"`
+	GeneratedAt time.Time      `json:"generated_at"`
+	Seed        uint64         `json:"seed"`
+	DatabaseSHA string         `json:"database_sha256"`
+	DomainRows  map[string]int `json:"domain_rows"`
+	Notes       []string       `json:"notes"`
 }
 
 // Config holds generation parameters.
@@ -94,6 +94,9 @@ func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
 	}
 	if err := db.Close(); err != nil {
 		return DatasetManifest{}, fmt.Errorf("close legacy db: %w", err)
+	}
+	if err := os.Chmod(g.cfg.OutputPath, 0o600); err != nil {
+		return DatasetManifest{}, fmt.Errorf("restrict legacy db permissions: %w", err)
 	}
 
 	sha, err := fileSHA256(g.cfg.OutputPath)
