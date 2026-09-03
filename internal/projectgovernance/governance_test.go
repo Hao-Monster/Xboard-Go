@@ -258,6 +258,33 @@ func TestCheckAllowsMetadataOnlyCommitAfterCurrentEvidenceTarget(t *testing.T) {
 	}
 }
 
+func TestCheckAllowsSyntheticTestdataChangesAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	retargetCurrentEvidence(&state, strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD")))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	testdataPath := filepath.Join(temporaryRoot, "internal", "testdata", "legacy", "gen", "fixture.go")
+	if err := os.MkdirAll(filepath.Dir(testdataPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(testdataPath, []byte("package gen\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "synthetic testdata tooling")
+	if err := Check(temporaryRoot); err != nil {
+		t.Fatalf("synthetic testdata changes must not invalidate product evidence: %v", err)
+	}
+}
+
 func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 	for _, path := range []string{
 		"docs/project/requirements.json",
@@ -265,12 +292,21 @@ func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 		".github/scripts/check-production-licenses.mjs",
 		"cmd/projectctl/main.go",
 		"internal/projectgovernance/governance.go",
+		"cmd/testdatagen/main.go",
+		"internal/testdata/legacy/gen/generator.go",
 	} {
 		if !isEvidenceMetadataPath(path) {
 			t.Errorf("expected %s to be governance metadata", path)
 		}
 	}
-	for _, path := range []string{"cmd/xboard/main.go", "internal/store/sqlite.go", "web/src/App.tsx", "web/scripts/check-entry-budget.mjs"} {
+	for _, path := range []string{
+		"cmd/xboard/main.go",
+		"cmd/testdatagen-evil/main.go",
+		"internal/store/sqlite.go",
+		"internal/testdata-evil/fixture.go",
+		"web/src/App.tsx",
+		"web/scripts/check-entry-budget.mjs",
+	} {
 		if isEvidenceMetadataPath(path) {
 			t.Errorf("expected %s to invalidate product evidence", path)
 		}
