@@ -97,7 +97,7 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址", { exact: true })).toHaveValue(changed.app_url);
     await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).not.toBeChecked();
-    await expect(page.getByLabel("后台路径")).toHaveValue(original.secure_path);
+    await expect(page.getByLabel("管理员安全路径")).toHaveValue(original.secure_path);
     await expect(page.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).toBeChecked();
     await expect(page.getByLabel("订阅公开地址")).toHaveValue(changed.subscribe_url);
     await expect(page.getByLabel("LOGO")).toHaveValue(changed.logo);

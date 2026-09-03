@@ -54,7 +54,7 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
     await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).toBeChecked();
-    await expect(page.getByLabel("后台路径")).toHaveValue(original.secure_path);
+    await expect(page.getByLabel("管理员安全路径")).toHaveValue(original.secure_path);
   } finally {
     const current = await getSiteAccessSettings(page);
     const restored = await adminRequest(page, {
