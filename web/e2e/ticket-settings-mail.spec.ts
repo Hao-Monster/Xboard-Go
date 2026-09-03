@@ -129,7 +129,7 @@ async function waitForCapturedMail(request: APIRequestContext, recipient: string
 }
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto(adminEntryPath);
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
