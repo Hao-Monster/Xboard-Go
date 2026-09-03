@@ -74,6 +74,20 @@ func TestGeneratorRefusesToOverwriteExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestGeneratorCleansUpAfterCancelledGeneration(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := gen.New(gen.DefaultConfig(dbPath)).Generate(ctx); err == nil {
+		t.Fatal("Generate() unexpectedly succeeded with a cancelled context")
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatalf("cancelled generation left database behind, stat error = %v", err)
+	}
+}
+
 // TestManifestContainsNoPII verifies the manifest does not contain
 // common PII patterns (email addresses with real domains, passwords).
 func TestManifestContainsNoPII(t *testing.T) {
