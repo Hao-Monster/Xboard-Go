@@ -3044,12 +3044,12 @@ test("legacy and Go theme administration preserve upload preview configuration a
     await expect(goHeaderStyle).toBeVisible();
     const originalSidebarStyle = await goSidebarStyle.inputValue();
     const changedSidebarStyle = originalSidebarStyle === "light" ? "dark" : "light";
-    const layoutUpdate = goPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    const layoutUpdate = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes/layout") && response.request().method() === "PUT");
     await goSidebarStyle.selectOption(changedSidebarStyle);
     expect((await layoutUpdate).status()).toBe(200);
     await expect(goPage.getByRole("status")).toContainText("导航样式已保存");
     await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(changedSidebarStyle);
-    const layoutRestore = goPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    const layoutRestore = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes/layout") && response.request().method() === "PUT");
     await goSidebarStyle.selectOption(originalSidebarStyle);
     expect((await layoutRestore).status()).toBe(200);
     await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(originalSidebarStyle);
@@ -3143,7 +3143,7 @@ test("legacy and Go theme administration preserve upload preview configuration a
     await expect(legacyCard).toHaveCount(0);
 
     goPage.once("dialog", (dialog) => dialog.accept());
-    const goDelete = goPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/api/v1/admin/themes/${goName}`) && response.request().method() === "DELETE");
+    const goDelete = goPage.waitForResponse((response) => goAdminResponse(response.url(), `themes/${goName}`) && response.request().method() === "DELETE");
     await goCard.getByRole("button", { name: `删除 ${goName}` }).click();
     expect((await goDelete).status()).toBe(204);
     await expect(goCard).toHaveCount(0);
@@ -3151,8 +3151,21 @@ test("legacy and Go theme administration preserve upload preview configuration a
     expect(goErrors).toEqual([]);
   } finally {
     if (legacyAuthorization !== "") {
-      const listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), { headers: { authorization: legacyAuthorization } });
-      if (listed.status() === 200) {
+      // The legacy oracle can leave this catalog request open after a theme delete.
+      // Bound cleanup independently so an oracle-side connection leak cannot turn a
+      // completed parity assertion into a three-minute test timeout.
+      let listed = null;
+      try {
+        listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), {
+          headers: { authorization: legacyAuthorization }, timeout: 15_000
+        });
+      } catch (error) {
+        test.info().annotations.push({
+          type: "cleanup",
+          description: `legacy theme cleanup request timed out: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
+      if (listed?.status() === 200) {
         const envelope = readObjectProperty(await listed.json() as unknown, "data");
         const data = readObjectProperty(envelope, "themes");
         const active = readProperty(envelope, "active");
