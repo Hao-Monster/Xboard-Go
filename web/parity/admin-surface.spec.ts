@@ -3159,10 +3159,10 @@ test("legacy and Go theme administration preserve upload preview configuration a
         listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), {
           headers: { authorization: legacyAuthorization }, timeout: 15_000
         });
-      } catch (error) {
+      } catch {
         test.info().annotations.push({
           type: "cleanup",
-          description: `legacy theme cleanup request timed out: ${error instanceof Error ? error.message : String(error)}`
+          description: "legacy theme cleanup request failed or timed out in the oracle; parity assertions completed"
         });
       }
       if (listed?.status() === 200) {
