@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEmail, adminEntryPath, adminPassword, adminSecurePath, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator configures a registration trial and a public registration receives its full entitlement", async ({ page }, testInfo) => {
   const failures: string[] = [];
@@ -84,7 +84,7 @@ async function login(page: Page, email: string, password: string) {
   if (await page.getByRole("button", { name: "退出" }).count() > 0) {
     await logoutAndWait(page);
   }
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);
@@ -107,6 +107,7 @@ function decodeData(body: string): Record<string, unknown> {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  const requestPath = adminAPIPath(adminSecurePath, path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
@@ -118,5 +119,5 @@ async function adminRequest(page: Page, path: string, method: string, body?: unk
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: requestPath, method, body });
 }
