@@ -223,7 +223,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	dialog = page.getByRole("dialog", { name: "重置流量" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);
 	await dialog.getByLabel("重置原因（可选）").fill("E2E U4 manual reset");
-	const resetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/traffic-reset$/.test(new URL(request.url()).pathname));
+	const resetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname.endsWith("/traffic-reset") && new URL(request.url()).pathname.includes(adminAPIPath("/api/v1/admin/users/")));
 	await dialog.getByRole("button", { name: "确认重置流量" }).click();
 	const resetRequest = await resetRequestPromise;
 	expect(resetRequest.headers()["idempotency-key"]).toBeTruthy();
