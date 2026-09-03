@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminAPIPath, adminEmail, adminEntryPath, adminPassword, adminSecurePath, expectLoginPage, logoutAndWait } from "./support";
+import { adminAPIPath, adminEmail, adminEntryPath, adminPassword, expectLoginPage, logoutAndWait } from "./support";
 
 test("administrator configures a registration trial and a public registration receives its full entitlement", async ({ page }, testInfo) => {
   const failures: string[] = [];
@@ -107,7 +107,7 @@ function decodeData(body: string): Record<string, unknown> {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
-  const requestPath = adminAPIPath(adminSecurePath, path);
+  const requestPath = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
