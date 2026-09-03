@@ -227,6 +227,32 @@ func TestModernAdminAPIRequiresPersistedSecurePath(t *testing.T) {
 	}
 }
 
+func TestAdminPathNormalizationCannotBypassSecureNamespace(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	for _, path := range []string{
+		"/api/v1/admin/../admin/site-settings",
+		"/api/v1/admin//site-settings",
+		"/api/v1/admin/%2e%2e/admin/site-settings",
+	} {
+		t.Run(path, func(t *testing.T) {
+			response := admin.request(t, api, http.MethodGet, path, "")
+			if response.Code != http.StatusMovedPermanently && response.Code != http.StatusTemporaryRedirect && response.Code != http.StatusNotFound {
+				t.Fatalf("normalized administrator path returned unexpected status=%d body=%s", response.Code, response.Body.String())
+			}
+			if location := response.Header().Get("Location"); location != "" {
+				if location != "/api/v1/admin/site-settings" {
+					t.Fatalf("normalized administrator path redirected to unexpected location %q", location)
+				}
+				redirected := admin.request(t, api, http.MethodGet, location, "")
+				if redirected.Code != http.StatusNotFound {
+					t.Fatalf("redirect target %q returned status=%d, want 404", location, redirected.Code)
+				}
+			}
+		})
+	}
+}
+
 func TestLoginRateLimitBlocksRepeatedFailures(t *testing.T) {
 	api, _ := newTestAPI(t)
 	for attempt := 1; attempt <= 6; attempt++ {
