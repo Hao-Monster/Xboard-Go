@@ -53,6 +53,27 @@ func TestGeneratorProducesDeterministicDataset(t *testing.T) {
 	}
 }
 
+func TestGeneratorRefusesToOverwriteExistingDatabase(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+	sentinel := []byte("caller-owned data")
+	if err := os.WriteFile(dbPath, sentinel, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := gen.New(gen.DefaultConfig(dbPath)).Generate(context.Background())
+	if err == nil {
+		t.Fatal("Generate() unexpectedly overwrote an existing database")
+	}
+	got, readErr := os.ReadFile(dbPath)
+	if readErr != nil {
+		t.Fatalf("read sentinel database: %v", readErr)
+	}
+	if string(got) != string(sentinel) {
+		t.Fatalf("existing database changed: got %q want %q", got, sentinel)
+	}
+}
+
 // TestManifestContainsNoPII verifies the manifest does not contain
 // common PII patterns (email addresses with real domains, passwords).
 func TestManifestContainsNoPII(t *testing.T) {

@@ -17,6 +17,8 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -79,12 +81,21 @@ func New(cfg Config) *Generator {
 // any external system, does not connect to production, and does not process
 // real user data.
 func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
+	if err := reserveFreshOutput(g.cfg.OutputPath); err != nil {
+		return DatasetManifest{}, err
+	}
 	// Open fresh SQLite — legacy schema (pre-migration target)
 	db, err := sql.Open("sqlite", "file:"+g.cfg.OutputPath+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return DatasetManifest{}, fmt.Errorf("open legacy db: %w", err)
 	}
 	defer db.Close()
+	completed := false
+	defer func() {
+		if !completed {
+			removeGeneratedDatabase(g.cfg.OutputPath)
+		}
+	}()
 
 	if err := g.buildSchema(ctx, db); err != nil {
 		return DatasetManifest{}, fmt.Errorf("build legacy schema: %w", err)
@@ -115,7 +126,30 @@ func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
 			"D-013 domains (stats, failed_jobs, stat_server) are excluded pending decision.",
 		},
 	}
+	completed = true
 	return manifest, nil
+}
+
+func reserveFreshOutput(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("open legacy db: output path is required")
+	}
+	reserved, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("open legacy db: reserve output path: %w", err)
+	}
+	if err := reserved.Close(); err != nil {
+		removeGeneratedDatabase(path)
+		return fmt.Errorf("open legacy db: close reserved output: %w", err)
+	}
+	return nil
+}
+
+func removeGeneratedDatabase(path string) {
+	_ = os.Remove(path)
+	_ = os.Remove(path + "-wal")
+	_ = os.Remove(path + "-shm")
+	_ = os.Remove(filepath.Clean(path) + "-journal")
 }
 
 // WriteManifest writes the manifest to manifestPath as pretty-printed JSON.
