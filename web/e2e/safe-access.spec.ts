@@ -43,7 +43,7 @@ test("packaged frontend safe mode protects every SPA entry and leaves API and as
     expect(matchingRoot.status()).toBe(200);
     const deniedRoot = await request.get("/", { headers: { Host: "attacker.example.test" } });
     expect(deniedRoot.status()).toBe(403);
-    const deniedRoute = await request.get("/account/security", { headers: { Host: "attacker.example.test" } });
+    const deniedRoute = await request.get(adminEntryPath, { headers: { Host: "attacker.example.test" } });
     expect(deniedRoute.status()).toBe(403);
     const publicAsset = await request.get("/xboard-logo.svg", { headers: { Host: "attacker.example.test" } });
     expect(publicAsset.status()).toBe(200);
