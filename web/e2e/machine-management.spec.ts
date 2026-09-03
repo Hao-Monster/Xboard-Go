@@ -20,7 +20,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   page.on("response", (response) => {
     if (response.status() < 500) return;
     const path = new URL(response.url()).pathname;
-    if (response.status() === 503 && /^\/api\/v1\/admin\/machines\/\d+$/.test(path)) {
+    if (response.status() === 503 && /^\/api\/v1\/admin\/[^/]+\/machines\/\d+$/.test(path)) {
       expectedFailureResponses += 1;
       return;
     }
