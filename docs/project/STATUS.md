@@ -50,6 +50,7 @@ Baseline: `M0` · as of 2026-09-03 · verification target `5b3d7b00db1cc727881de
 | `GOV-001` | M0 | done | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
 | `FUNC-001` | M1 | blocked | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
 | `FUNC-002` | M1 | blocked | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
+| `FUNC-003` | M1 | open | [#145](https://github.com/Hao-Monster/Xboard-Go/issues/145) | 恢复管理员安全路径完整语义 |
 | `OPS-001` | M2 | blocked | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
 | `OPS-002` | M2 | open | [#117](https://github.com/Hao-Monster/Xboard-Go/issues/117) | 完成备份、异地副本和恢复演练 |
 | `MIG-001` | M2 | open | [#118](https://github.com/Hao-Monster/Xboard-Go/issues/118) | 完成代表性旧数据迁移、对账和回滚证据 |
