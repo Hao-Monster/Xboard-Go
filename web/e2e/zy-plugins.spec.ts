@@ -50,8 +50,8 @@ async function login(page: Page) {
 }
 
 async function restoreEPay(page: Page) {
-  const result = await page.evaluate(async () => {
-    const listed = await fetch(adminAPIPath("/api/v1/admin/plugins"), { credentials: "same-origin" });
+  const result = await page.evaluate(async ({ listPath, updatePath }) => {
+    const listed = await fetch(listPath, { credentials: "same-origin" });
     if (!listed.ok) return listed.status;
     const payload: unknown = await listed.json();
     const data = typeof payload === "object" && payload !== null ? Reflect.get(payload, "data") : null;
@@ -60,13 +60,13 @@ async function restoreEPay(page: Page) {
     if (typeof plugin !== "object" || plugin === null || Reflect.get(plugin, "enabled") === true) return 200;
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const restored = await fetch(adminAPIPath("/api/v1/admin/plugins/epay"), {
+    const restored = await fetch(updatePath, {
       method: "PATCH",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) },
       body: JSON.stringify({ revision: Reflect.get(plugin, "revision"), enabled: true, config: {} })
     });
     return restored.status;
-  });
+  }, { listPath: adminAPIPath("/api/v1/admin/plugins"), updatePath: adminAPIPath("/api/v1/admin/plugins/epay") });
   expect(result).toBe(200);
 }

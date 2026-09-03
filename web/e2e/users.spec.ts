@@ -174,7 +174,7 @@ test("administrator creates and changes a user's access state", async ({ page, c
 	dialog = page.getByRole("dialog", { name: "重置订阅凭据" });
 	await expect(page.getByRole("dialog")).toHaveCount(1);
 	await expect(dialog).toContainText("旧订阅地址会立即失效");
-	const securityResetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && /\/api\/v1\/admin\/users\/\d+\/subscription-security\/reset$/.test(new URL(request.url()).pathname));
+	const securityResetRequestPromise = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname.endsWith("/subscription-security/reset") && new URL(request.url()).pathname.includes(adminAPIPath("/api/v1/admin/users/")));
 	await dialog.getByRole("button", { name: "确认重置订阅凭据" }).click();
 	const securityResetRequest = await securityResetRequestPromise;
 	expect(securityResetRequest.postDataJSON()).toEqual({ revision: expect.any(Number) });
