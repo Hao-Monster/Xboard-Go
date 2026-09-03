@@ -87,6 +87,7 @@ func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
 	// Open fresh SQLite — legacy schema (pre-migration target)
 	db, err := sql.Open("sqlite", "file:"+g.cfg.OutputPath+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
 	if err != nil {
+		removeGeneratedDatabase(g.cfg.OutputPath)
 		return DatasetManifest{}, fmt.Errorf("open legacy db: %w", err)
 	}
 	defer db.Close()
