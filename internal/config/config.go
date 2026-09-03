@@ -1,7 +1,9 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -19,6 +21,16 @@ var (
 	legacyAdminPathRE      = regexp.MustCompile(`^[0-9A-Za-z_-]{1,64}$`)
 	redisKeyPrefixRE       = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 )
+
+const generatedLegacyAdminPathBytes = 24
+
+func generatedLegacyAdminPath() (string, error) {
+	bytes := make([]byte, generatedLegacyAdminPathBytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate secure administrator path: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
+}
 
 type Config struct {
 	Address                    string
@@ -63,6 +75,14 @@ type Config struct {
 
 func Load() (Config, error) {
 	panelURL := envOrDefault("XBOARD_PANEL_URL", "http://127.0.0.1:5173")
+	legacyAdminPath := strings.TrimSpace(os.Getenv("XBOARD_LEGACY_ADMIN_PATH"))
+	if legacyAdminPath == "" {
+		generatedPath, err := generatedLegacyAdminPath()
+		if err != nil {
+			return Config{}, err
+		}
+		legacyAdminPath = generatedPath
+	}
 	cookieSecure, err := parseBoolEnv("XBOARD_COOKIE_SECURE", strings.HasPrefix(strings.ToLower(panelURL), "https://"))
 	if err != nil {
 		return Config{}, err
@@ -163,7 +183,7 @@ func Load() (Config, error) {
 		Address:                    envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:                DatabaseDSN(),
 		PanelURL:                   panelURL,
-		LegacyAdminPath:            envOrDefault("XBOARD_LEGACY_ADMIN_PATH", "admin"),
+		LegacyAdminPath:            legacyAdminPath,
 		TrustedProxyPrefixes:       trustedProxyPrefixes,
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
@@ -267,8 +287,12 @@ func Load() (Config, error) {
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
 		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.3")
 	}
-	if !legacyAdminPathRE.MatchString(config.LegacyAdminPath) {
-		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one URL-safe path segment of 1 to 64 characters")
+	if len(config.LegacyAdminPath) < 8 || !legacyAdminPathRE.MatchString(config.LegacyAdminPath) {
+		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one URL-safe path segment of 8 to 64 characters")
+	}
+	switch strings.ToLower(config.LegacyAdminPath) {
+	case "client", "passport", "server":
+		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH uses a reserved route segment")
 	}
 	parsedPanelURL, err := url.Parse(config.PanelURL)
 	if err != nil || parsedPanelURL.Host == "" || (parsedPanelURL.Scheme != "http" && parsedPanelURL.Scheme != "https") {

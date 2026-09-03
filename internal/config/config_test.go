@@ -84,6 +84,40 @@ func TestLoadReadsExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestLoadGeneratesHighEntropyLegacyAdminPathWhenUnset(t *testing.T) {
+	t.Setenv("XBOARD_LEGACY_ADMIN_PATH", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+
+	first, err := Load()
+	if err != nil {
+		t.Fatalf("first Load() error = %v", err)
+	}
+	second, err := Load()
+	if err != nil {
+		t.Fatalf("second Load() error = %v", err)
+	}
+	if len(first.LegacyAdminPath) != generatedLegacyAdminPathBytes*2 || !legacyAdminPathRE.MatchString(first.LegacyAdminPath) {
+		t.Fatalf("generated administrator path = %q, want %d URL-safe characters", first.LegacyAdminPath, generatedLegacyAdminPathBytes*2)
+	}
+	if first.LegacyAdminPath == second.LegacyAdminPath {
+		t.Fatal("two generated administrator paths unexpectedly matched")
+	}
+}
+
+func TestLoadRejectsShortOrReservedLegacyAdminPath(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	for _, value := range []string{"admin", "server"} {
+		t.Setenv("XBOARD_LEGACY_ADMIN_PATH", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted non-compliant administrator path %q", value)
+		}
+	}
+}
+
 func TestSECNODE005LoadRejectsInvalidTrustedProxyCIDRs(t *testing.T) {
 	for _, value := range []string{
 		"10.0.0.0/8,not-a-cidr",
