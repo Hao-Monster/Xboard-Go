@@ -234,12 +234,15 @@ test("administrator site identity persists into the public shell and can be rest
 });
 
 async function ensureAdmin(page: Page) {
-  if (await page.getByRole("button", { name: "退出" }).count() > 0) return;
   await page.goto(adminEntryPath);
-  await page.getByLabel("邮箱").fill(adminEmail);
+  const serverHeading = page.getByRole("heading", { name: "服务器管理" });
+  const email = page.getByLabel("邮箱");
+  await expect(serverHeading.or(email)).toBeVisible();
+  if (await serverHeading.isVisible()) return;
+  await email.fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
+  await expect(serverHeading).toBeVisible();
 }
 
 async function getAdminSiteSettings(page: Page): Promise<SiteSettings> {
