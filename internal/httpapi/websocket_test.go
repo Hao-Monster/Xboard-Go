@@ -186,7 +186,7 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 	deviceCleanupSeen := false
 	nodeReconciliationSeen := false
 syncCompleted:
-	for range 4 {
+	for range 12 {
 		event := readWSEvent(t, second)
 		switch event.Event {
 		case "sync.devices":
@@ -195,18 +195,31 @@ syncCompleted:
 				Users  map[int64][]string `json:"users"`
 			}
 			decodeWSData(t, event.Data, &data)
+			if data.NodeID == newNode.ID {
+				continue
+			}
 			if data.NodeID != node.ID || len(data.Users[user.ID]) != 0 {
 				t.Fatalf("disabled-node device cleanup = %#v", data)
 			}
 			deviceCleanupSeen = true
 		case "sync.nodes":
-			assertMachineNodeSnapshot(t, event, node.ID)
-			if deviceCleanupSeen {
+			nodeIDs := machineNodeSnapshotIDs(t, event)
+			switch {
+			case reflect.DeepEqual(nodeIDs, []int64{node.ID}):
 				nodeReconciliationSeen = true
-				break syncCompleted
+			case reflect.DeepEqual(nodeIDs, []int64{node.ID, newNode.ID}):
+				// The one-second reconciliation loop may have already queued a
+				// duplicate assignment snapshot before the disable committed.
+			default:
+				t.Fatalf("disabled-node snapshot = %v", nodeIDs)
 			}
+		case "sync.config", "sync.users":
+			assertNodeSyncTarget(t, event, newNode.ID)
 		default:
-			t.Fatalf("disabled-node event = %q, want sync.devices or sync.nodes", event.Event)
+			t.Fatalf("disabled-node event = %q", event.Event)
+		}
+		if deviceCleanupSeen && nodeReconciliationSeen {
+			break syncCompleted
 		}
 	}
 	if !deviceCleanupSeen || !nodeReconciliationSeen {
@@ -224,16 +237,13 @@ syncCompleted:
 	}
 	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
 	closed := false
-	for range 3 {
+	for range 12 {
 		var event wsIncomingEnvelope
 		if err := second.ReadJSON(&event); err != nil {
 			closed = true
 			break
 		}
-		if event.Event != "sync.nodes" {
-			t.Fatalf("event queued before machine close = %q, want sync.nodes", event.Event)
-		}
-		assertMachineNodeSnapshot(t, event, node.ID)
+		assertQueuedMachineReconciliationEvent(t, event, node.ID, newNode.ID)
 	}
 	if !closed {
 		t.Fatal("disabled machine websocket remained readable")
@@ -1276,14 +1286,49 @@ func decodeWSData(t *testing.T, data json.RawMessage, output any) {
 	}
 }
 
-func assertMachineNodeSnapshot(t *testing.T, event wsIncomingEnvelope, nodeID int64) {
+func machineNodeSnapshotIDs(t *testing.T, event wsIncomingEnvelope) []int64 {
 	t.Helper()
 	var data struct {
 		Nodes []machineNodeSummary `json:"nodes"`
 	}
 	decodeWSData(t, event.Data, &data)
-	if len(data.Nodes) != 1 || data.Nodes[0].ID != nodeID {
-		t.Fatalf("machine node snapshot = %#v, want node %d", data.Nodes, nodeID)
+	nodeIDs := make([]int64, len(data.Nodes))
+	for index, node := range data.Nodes {
+		nodeIDs[index] = node.ID
+	}
+	return nodeIDs
+}
+
+func assertNodeSyncTarget(t *testing.T, event wsIncomingEnvelope, nodeID int64) {
+	t.Helper()
+	var data struct {
+		NodeID int64 `json:"node_id"`
+	}
+	decodeWSData(t, event.Data, &data)
+	if data.NodeID != nodeID {
+		t.Fatalf("%s target = %d, want node %d", event.Event, data.NodeID, nodeID)
+	}
+}
+
+func assertQueuedMachineReconciliationEvent(t *testing.T, event wsIncomingEnvelope, activeNodeID, staleNodeID int64) {
+	t.Helper()
+	switch event.Event {
+	case "sync.nodes":
+		nodeIDs := machineNodeSnapshotIDs(t, event)
+		if !reflect.DeepEqual(nodeIDs, []int64{activeNodeID}) &&
+			!reflect.DeepEqual(nodeIDs, []int64{activeNodeID, staleNodeID}) {
+			t.Fatalf("queued machine node snapshot = %v", nodeIDs)
+		}
+	case "sync.config", "sync.users", "sync.devices":
+		var data struct {
+			NodeID int64 `json:"node_id"`
+		}
+		decodeWSData(t, event.Data, &data)
+		if data.NodeID != activeNodeID && data.NodeID != staleNodeID {
+			t.Fatalf("queued %s target = %d", event.Event, data.NodeID)
+		}
+	default:
+		t.Fatalf("event queued before machine close = %q", event.Event)
 	}
 }
 

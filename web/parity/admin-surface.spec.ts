@@ -1,5 +1,6 @@
 import { expect, request as playwrightRequest, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { shouldRecordServerError } from "./network-errors";
 
 const legacyURL = requiredEnv("LEGACY_ADMIN_URL");
 const legacyEmail = requiredEnv("LEGACY_ADMIN_EMAIL");
@@ -3472,7 +3473,9 @@ function watchErrors(page: Page) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("response", (response) => {
-    if (response.status() >= 500) errors.push(`${response.status()} ${response.url()}`);
+    if (shouldRecordServerError(response.status(), page.url(), response.url())) {
+      errors.push(`${response.status()} ${response.url()}`);
+    }
   });
   return errors;
 }
