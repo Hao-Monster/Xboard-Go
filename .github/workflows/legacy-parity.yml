@@ -59,6 +59,10 @@ jobs:
           fetch-depth: 1
           clean: true
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           package_json_file: web/package.json
@@ -72,6 +76,8 @@ jobs:
           docker info --format '{{json .SecurityOptions}}' | grep -q rootless
           test "$(docker inspect --format '{{.Config.Image}}' xboard-legacy-ci-oracle)" = xboard-legacy-parity:8065164
           test "$(docker inspect --format '{{.State.Health.Status}}' xboard-legacy-ci-oracle)" = healthy
+          test "$(docker image inspect --format '{{.Id}}' xboard-go:ci-base-3784c0a)" = sha256:f3143c6057fe30c109cbb122237eab2bed949ab7e08c10afee07dadd37a20a48
+          test "$(docker image inspect --format '{{.Id}}' wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc)" = sha256:fa9f68583b26ac828a99dc67f60096aee04e58b0746614faf4260d2c4fd9db3a
           curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18182/ >/dev/null
           google-chrome --version
       - name: Install locked browser-test dependencies
@@ -84,6 +90,12 @@ jobs:
           printf '%s' "$candidate_password" > .local/bootstrap-password.txt
           printf '%s' "$settings_key" > .local/settings-encryption-key.txt
           chmod 600 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          cat > .local/compose.legacy-parity.yaml <<'YAML'
+          services:
+            captcha-stub:
+              image: wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc
+              pull_policy: never
+          YAML
           echo "::add-mask::$candidate_password"
           printf 'XBOARD_GO_ADMIN_PASSWORD=%s\n' "$candidate_password" >> "$GITHUB_ENV"
       - name: Build and start the exact candidate
@@ -91,7 +103,28 @@ jobs:
           XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
           XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
           COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
-        run: docker compose -f compose.local.yaml --profile e2e up --build --wait
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          install -d -m 700 .local/image-context
+          CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -trimpath \
+            -ldflags="-s -w -buildid= -X main.buildRevision=$TARGET_SHA" \
+            -o .local/image-context/xboard ./cmd/xboard
+          pnpm --dir web build
+          cp -a web/dist .local/image-context/web-dist
+          cat > .local/Dockerfile.legacy-parity <<'DOCKERFILE'
+          FROM xboard-go:ci-base-3784c0a
+          ARG APP_REVISION
+          COPY --chown=65532:65532 xboard /xboard
+          COPY --chown=65532:65532 web-dist /srv/xboard/web
+          LABEL org.opencontainers.image.revision="${APP_REVISION}"
+          DOCKERFILE
+          docker build \
+            --file .local/Dockerfile.legacy-parity \
+            --build-arg "APP_REVISION=$TARGET_SHA" \
+            --tag "$XBOARD_GO_IMAGE" \
+            .local/image-context
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$XBOARD_GO_IMAGE")" = "$TARGET_SHA"
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e up --no-build --wait
       - name: Load local Oracle credentials without exposing them
         run: |
           legacy_path="$(tr -d '\r\n' < /srv/xboard-go-oracle/.secrets/admin-path.txt)"
@@ -131,5 +164,7 @@ jobs:
           XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
           COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
         run: |
-          docker compose -f compose.local.yaml --profile e2e down --volumes --remove-orphans
-          rm -f -- .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e down --volumes --remove-orphans
+          docker image rm "$XBOARD_GO_IMAGE" >/dev/null 2>&1 || true
+          rm -rf -- .local/image-context
+          rm -f -- .local/bootstrap-password.txt .local/settings-encryption-key.txt .local/compose.legacy-parity.yaml .local/Dockerfile.legacy-parity
