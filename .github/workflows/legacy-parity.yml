@@ -78,6 +78,7 @@ jobs:
           test "$(docker inspect --format '{{.State.Health.Status}}' xboard-legacy-ci-oracle)" = healthy
           test "$(docker image inspect --format '{{.Id}}' xboard-go:ci-base-3784c0a)" = sha256:f3143c6057fe30c109cbb122237eab2bed949ab7e08c10afee07dadd37a20a48
           test "$(docker image inspect --format '{{.Id}}' wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc)" = sha256:fa9f68583b26ac828a99dc67f60096aee04e58b0746614faf4260d2c4fd9db3a
+          echo '460d44f3416005662f528d4b92e7b94ace924e8a0288106d3803b73c56eaadc8  /home/xboard-ci/.cache/ms-playwright/ffmpeg-1011/ffmpeg-linux' | sha256sum --check --strict
           curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18182/ >/dev/null
           google-chrome --version
       - name: Install locked browser-test dependencies
