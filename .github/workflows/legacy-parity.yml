@@ -148,7 +148,7 @@ jobs:
       - name: Compare the administrator surface with the fixed legacy Oracle
         env:
           LEGACY_DOCKER_CONTAINER: xboard-legacy-ci-oracle
-          XBOARD_GO_URL: http://127.0.0.1:17550
+          XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
           XBOARD_GO_ADMIN_EMAIL: admin@legacy-parity.test
           XBOARD_E2E_BROWSER_CHANNEL: chrome
         run: >-
