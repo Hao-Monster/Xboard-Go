@@ -183,19 +183,34 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 	if disableAssignedNode.Code != http.StatusOK {
 		t.Fatalf("disable assigned node status=%d body=%s", disableAssignedNode.Code, disableAssignedNode.Body)
 	}
-	if event := readWSEvent(t, second); event.Event != "sync.devices" {
-		t.Fatalf("disabled-node device cleanup event = %q, want sync.devices", event.Event)
+	deviceCleanupSeen := false
+	nodeReconciliationSeen := false
+syncCompleted:
+	for range 4 {
+		event := readWSEvent(t, second)
+		switch event.Event {
+		case "sync.devices":
+			var data struct {
+				NodeID int64              `json:"node_id"`
+				Users  map[int64][]string `json:"users"`
+			}
+			decodeWSData(t, event.Data, &data)
+			if data.NodeID != node.ID || len(data.Users[user.ID]) != 0 {
+				t.Fatalf("disabled-node device cleanup = %#v", data)
+			}
+			deviceCleanupSeen = true
+		case "sync.nodes":
+			assertMachineNodeSnapshot(t, event, node.ID)
+			if deviceCleanupSeen {
+				nodeReconciliationSeen = true
+				break syncCompleted
+			}
+		default:
+			t.Fatalf("disabled-node event = %q, want sync.devices or sync.nodes", event.Event)
+		}
 	}
-	reconciled := readWSEvent(t, second)
-	if reconciled.Event != "sync.nodes" {
-		t.Fatalf("reconciliation event = %q, want sync.nodes", reconciled.Event)
-	}
-	var reconciledData struct {
-		Nodes []machineNodeSummary `json:"nodes"`
-	}
-	decodeWSData(t, reconciled.Data, &reconciledData)
-	if len(reconciledData.Nodes) != 1 || reconciledData.Nodes[0].ID != node.ID {
-		t.Fatalf("reconciled nodes = %#v", reconciledData.Nodes)
+	if !deviceCleanupSeen || !nodeReconciliationSeen {
+		t.Fatalf("disabled-node sync incomplete: devices=%t nodes=%t", deviceCleanupSeen, nodeReconciliationSeen)
 	}
 	waitFor(t, 2*time.Second, func() bool {
 		devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now)
@@ -208,7 +223,19 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 		t.Fatalf("deactivate machine status = %d; body=%s", deactivated.Code, deactivated.Body)
 	}
 	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
-	if _, _, err := second.ReadMessage(); err == nil {
+	closed := false
+	for range 3 {
+		var event wsIncomingEnvelope
+		if err := second.ReadJSON(&event); err != nil {
+			closed = true
+			break
+		}
+		if event.Event != "sync.nodes" {
+			t.Fatalf("event queued before machine close = %q, want sync.nodes", event.Event)
+		}
+		assertMachineNodeSnapshot(t, event, node.ID)
+	}
+	if !closed {
 		t.Fatal("disabled machine websocket remained readable")
 	}
 }
@@ -1246,6 +1273,17 @@ func decodeWSData(t *testing.T, data json.RawMessage, output any) {
 	t.Helper()
 	if err := json.Unmarshal(data, output); err != nil {
 		t.Fatalf("decode websocket data: %v; data=%s", err, data)
+	}
+}
+
+func assertMachineNodeSnapshot(t *testing.T, event wsIncomingEnvelope, nodeID int64) {
+	t.Helper()
+	var data struct {
+		Nodes []machineNodeSummary `json:"nodes"`
+	}
+	decodeWSData(t, event.Data, &data)
+	if len(data.Nodes) != 1 || data.Nodes[0].ID != nodeID {
+		t.Fatalf("machine node snapshot = %#v, want node %d", data.Nodes, nodeID)
 	}
 }
 
