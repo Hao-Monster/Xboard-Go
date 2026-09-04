@@ -1,0 +1,184 @@
+name: Legacy parity
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-parity-bingo-dev
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.target.outputs.authorized }}
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test the runner authorization boundary
+        run: node --test .github/scripts/authorize-legacy-parity.test.mjs
+      - id: target
+        name: Authorize an exact trusted-main commit
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node .github/scripts/authorize-legacy-parity.mjs
+
+  legacy-parity:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
+    timeout-minutes: 45
+    env:
+      XBOARD_GO_PORT: "17550"
+      XBOARD_MAILPIT_PORT: "17552"
+      XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
+      XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE: .local/bootstrap-password.txt
+      XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE: .local/settings-encryption-key.txt
+      XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Verify the isolated runner and legacy Oracle
+        run: |
+          docker info --format '{{json .SecurityOptions}}' | grep -q rootless
+          test "$(docker inspect --format '{{.Config.Image}}' xboard-legacy-ci-oracle)" = xboard-legacy-parity:8065164
+          test "$(docker inspect --format '{{.State.Health.Status}}' xboard-legacy-ci-oracle)" = healthy
+          test "$(docker image inspect --format '{{.Id}}' xboard-go:ci-base-3784c0a)" = sha256:f3143c6057fe30c109cbb122237eab2bed949ab7e08c10afee07dadd37a20a48
+          test "$(docker image inspect --format '{{.Id}}' wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc)" = sha256:fa9f68583b26ac828a99dc67f60096aee04e58b0746614faf4260d2c4fd9db3a
+          echo '460d44f3416005662f528d4b92e7b94ace924e8a0288106d3803b73c56eaadc8  /home/xboard-ci/.cache/ms-playwright/ffmpeg-1011/ffmpeg-linux' | sha256sum --check --strict
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18182/ >/dev/null
+          google-chrome --version
+      - name: Install locked browser-test dependencies
+        run: pnpm --dir web install --frozen-lockfile --ignore-scripts
+      - name: Create isolated candidate secrets
+        run: |
+          install -d -m 700 .local
+          candidate_password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          printf '%s' "$candidate_password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          # Compose bind-mounts file-backed secrets as container root. Keep the
+          # enclosing host directory private while allowing the non-root
+          # container process to read the mounted, read-only files.
+          chmod 444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          cat > .local/compose.legacy-parity.yaml <<'YAML'
+          services:
+            captcha-stub:
+              image: wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc
+              pull_policy: never
+          YAML
+          echo "::add-mask::$candidate_password"
+          printf 'XBOARD_GO_ADMIN_PASSWORD=%s\n' "$candidate_password" >> "$GITHUB_ENV"
+      - name: Build and start the exact candidate
+        env:
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
+          COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          install -d -m 700 .local/image-context
+          CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -trimpath \
+            -ldflags="-s -w -buildid= -X main.buildRevision=$TARGET_SHA" \
+            -o .local/image-context/xboard ./cmd/xboard
+          pnpm --dir web build
+          cp -a web/dist .local/image-context/web-dist
+          cat > .local/Dockerfile.legacy-parity <<'DOCKERFILE'
+          FROM xboard-go:ci-base-3784c0a
+          ARG APP_REVISION
+          COPY --chown=65532:65532 xboard /xboard
+          COPY --chown=65532:65532 web-dist /srv/xboard/web
+          LABEL org.opencontainers.image.revision="${APP_REVISION}"
+          DOCKERFILE
+          docker build \
+            --file .local/Dockerfile.legacy-parity \
+            --build-arg "APP_REVISION=$TARGET_SHA" \
+            --tag "$XBOARD_GO_IMAGE" \
+            .local/image-context
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$XBOARD_GO_IMAGE")" = "$TARGET_SHA"
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e up --no-build --wait
+      - name: Load local Oracle credentials without exposing them
+        run: |
+          legacy_path="$(tr -d '\r\n' < /srv/xboard-go-oracle/.secrets/admin-path.txt)"
+          legacy_password="$(tr -d '\r\n' < /srv/xboard-go-oracle/.secrets/admin-password.txt)"
+          legacy_email="$(docker exec xboard-legacy-ci-oracle php -r 'require "/www/vendor/autoload.php"; $app=require "/www/bootstrap/app.php"; $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo \App\Models\User::where("is_admin", 1)->value("email");' | tr -d '\r\n')"
+          [[ "$legacy_path" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$legacy_email" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]]
+          test -n "$legacy_password"
+          echo "::add-mask::$legacy_path"
+          echo "::add-mask::$legacy_email"
+          echo "::add-mask::$legacy_password"
+          {
+            printf 'LEGACY_ADMIN_URL=http://127.0.0.1:18182/%s\n' "$legacy_path"
+            printf 'LEGACY_ADMIN_EMAIL=%s\n' "$legacy_email"
+            printf 'LEGACY_ADMIN_PASSWORD=%s\n' "$legacy_password"
+          } >> "$GITHUB_ENV"
+      - name: Compare the administrator surface with the fixed legacy Oracle
+        env:
+          LEGACY_DOCKER_CONTAINER: xboard-legacy-ci-oracle
+          XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
+          XBOARD_GO_ADMIN_EMAIL: admin@legacy-parity.test
+          XBOARD_E2E_BROWSER_CHANNEL: chrome
+        run: |
+          test "$XBOARD_GO_ADMIN_PASSWORD" = "$(tr -d '\r\n' < .local/bootstrap-password.txt)"
+          pnpm --dir web exec playwright test \
+            --config playwright.parity.config.ts \
+            admin-surface.spec.ts
+      - name: Record exact-commit evidence
+        if: success()
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          printf '### Legacy parity\n\n- Commit: `%s`\n- Oracle: `xboard-legacy-parity:8065164`\n- Result: PASS\n' "$TARGET_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Capture candidate diagnostics
+        if: failure()
+        env:
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
+          COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
+        run: |
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e ps --all || true
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e logs --no-color --tail=200 || true
+      - name: Stop the isolated candidate
+        if: always()
+        env:
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
+          COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
+        run: |
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e down --volumes --remove-orphans
+          docker image rm "$XBOARD_GO_IMAGE" >/dev/null 2>&1 || true
+          rm -rf -- .local/image-context
+          rm -f -- .local/bootstrap-password.txt .local/settings-encryption-key.txt .local/compose.legacy-parity.yaml .local/Dockerfile.legacy-parity
