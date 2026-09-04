@@ -62,7 +62,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-          cache: true
+          # This dedicated runner retains its local module/build caches. A
+          # remote cache would upload roughly 2.8 GiB after every new key and
+          # turns a passed parity run into a network-dependent post step.
+          cache: false
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           package_json_file: web/package.json
