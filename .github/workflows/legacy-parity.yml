@@ -41,6 +41,8 @@ jobs:
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
     env:
+      COREPACK_ENABLE_NETWORK: "0"
+      GOTOOLCHAIN: local
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
@@ -59,23 +61,16 @@ jobs:
           fetch-depth: 1
           clean: true
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          # This dedicated runner retains its local module/build caches. A
-          # remote cache would upload roughly 2.8 GiB after every new key and
-          # turns a passed parity run into a network-dependent post step.
-          cache: false
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
-        with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Configure the pinned server toolchain
+        run: |
+          echo '/opt/xboard-go-ci-tools/node-v24.20.0-linux-x64/bin' >> "$GITHUB_PATH"
+          echo '/opt/xboard-go-ci-tools/go1.26.6/bin' >> "$GITHUB_PATH"
       - name: Verify the isolated runner and legacy Oracle
         run: |
+          test "$(node --version)" = v24.20.0
+          test "$(go version)" = 'go version go1.26.6 linux/amd64'
+          test "$(pnpm --version)" = 11.10.0
+          test ! -w /opt/xboard-go-ci-tools
           docker info --format '{{json .SecurityOptions}}' | grep -q rootless
           test "$(docker inspect --format '{{.Config.Image}}' xboard-legacy-ci-oracle)" = xboard-legacy-parity:8065164
           test "$(docker inspect --format '{{.State.Health.Status}}' xboard-legacy-ci-oracle)" = healthy
