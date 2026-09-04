@@ -100,6 +100,10 @@ jobs:
               image: wechatproduct-node-build:171a683fe5ec3d4ca5ae46f03015b518560001fc
               pull_policy: never
           YAML
+          # The rootless container UID is mapped outside the runner account.
+          # Keep this public fixture read-only while allowing the bind mount to
+          # be read under the runner service's restrictive UMask.
+          chmod 444 web/e2e/captcha-stub.mjs
           echo "::add-mask::$candidate_password"
           printf 'XBOARD_GO_ADMIN_PASSWORD=%s\n' "$candidate_password" >> "$GITHUB_ENV"
       - name: Build and start the exact candidate
