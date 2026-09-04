@@ -89,7 +89,10 @@ jobs:
           settings_key="$(openssl rand -base64 32 | tr -d '\n')"
           printf '%s' "$candidate_password" > .local/bootstrap-password.txt
           printf '%s' "$settings_key" > .local/settings-encryption-key.txt
-          chmod 600 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          # Compose bind-mounts file-backed secrets as container root. Keep the
+          # enclosing host directory private while allowing the non-root
+          # container process to read the mounted, read-only files.
+          chmod 444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
           cat > .local/compose.legacy-parity.yaml <<'YAML'
           services:
             captcha-stub:
@@ -157,6 +160,15 @@ jobs:
           TARGET_SHA: ${{ needs.authorize.outputs.sha }}
         run: |
           printf '### Legacy parity\n\n- Commit: `%s`\n- Oracle: `xboard-legacy-parity:8065164`\n- Result: PASS\n' "$TARGET_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Capture candidate diagnostics
+        if: failure()
+        env:
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_REVISION: ${{ needs.authorize.outputs.sha }}
+          COMPOSE_PROJECT_NAME: xboard-go-legacy-parity-${{ github.run_id }}
+        run: |
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e ps --all || true
+          docker compose -f compose.local.yaml -f .local/compose.legacy-parity.yaml --profile e2e logs --no-color --tail=200 || true
       - name: Stop the isolated candidate
         if: always()
         env:
