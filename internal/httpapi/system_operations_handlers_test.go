@@ -14,7 +14,7 @@ import (
 func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	csrfAttempt := httptest.NewRequest(http.MethodPost, "/api/v1/admin/machines", strings.NewReader(`{"name":"blocked"}`))
+	csrfAttempt := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/machines", strings.NewReader(`{"name":"blocked"}`))
 	csrfAttempt.Header.Set("Content-Type", "application/json")
 	admin.addCookies(csrfAttempt)
 	csrfResponse := httptest.NewRecorder()
@@ -23,7 +23,7 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 		t.Fatalf("missing CSRF status = %d", csrfResponse.Code)
 	}
 
-	statusResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/system/status", "")
+	statusResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/system/status", "")
 	if statusResponse.Code != http.StatusOK {
 		t.Fatalf("system status = %d; body=%s", statusResponse.Code, statusResponse.Body)
 	}
@@ -41,17 +41,17 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 		t.Fatalf("system status payload = %#v", statusPayload.Data)
 	}
 
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/notices", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/notices", `{
 		"title":"Audited notice","content":"private audit body","image_url":"","tags":[],"show":false
 	}`)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create notice = %d; body=%s", created.Code, created.Body)
 	}
-	notAllowed := admin.request(t, api, http.MethodTrace, "/api/v1/admin/notices", "")
+	notAllowed := admin.request(t, api, http.MethodTrace, "/api/v1/admin/admin/notices", "")
 	if notAllowed.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("unsupported method = %d; body=%s", notAllowed.Code, notAllowed.Body)
 	}
-	auditResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/system/audit?page=1&page_size=20&query=notices", "")
+	auditResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/system/audit?page=1&page_size=20&query=notices", "")
 	if auditResponse.Code != http.StatusOK {
 		t.Fatalf("audit response = %d; body=%s", auditResponse.Code, auditResponse.Body)
 	}
@@ -69,7 +69,7 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 	if item.Method != http.MethodPost || item.Route != "/api/v1/admin/notices" || item.StatusCode != http.StatusCreated || item.AdministratorEmail != "admin@example.test" {
 		t.Fatalf("audit item = %#v", item)
 	}
-	blockedAudit := admin.request(t, api, http.MethodGet, "/api/v1/admin/system/audit?page=1&page_size=20&method=POST&query=machines", "")
+	blockedAudit := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/system/audit?page=1&page_size=20&method=POST&query=machines", "")
 	var blockedAuditPayload struct {
 		Data store.AdminAuditPage `json:"data"`
 	}
@@ -78,7 +78,7 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 		t.Fatalf("blocked audit = %#v", blockedAuditPayload.Data)
 	}
 
-	failures := admin.request(t, api, http.MethodGet, "/api/v1/admin/system/mail-failures?page=1&page_size=20", "")
+	failures := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/system/mail-failures?page=1&page_size=20", "")
 	if failures.Code != http.StatusOK {
 		t.Fatalf("mail failures = %d; body=%s", failures.Code, failures.Body)
 	}
@@ -101,7 +101,7 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	ordinary := loginAs(t, api, "ordinary@example.test", "ordinary-password-123")
-	for _, path := range []string{"/api/v1/admin/system/status", "/api/v1/admin/system/audit", "/api/v1/admin/system/mail-failures"} {
+	for _, path := range []string{"/api/v1/admin/admin/system/status", "/api/v1/admin/admin/system/audit", "/api/v1/admin/admin/system/mail-failures"} {
 		response := ordinary.request(t, api, http.MethodGet, path, "")
 		if response.Code != http.StatusForbidden {
 			t.Fatalf("ordinary user %s = %d", path, response.Code)

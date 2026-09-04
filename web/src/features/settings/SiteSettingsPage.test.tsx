@@ -87,7 +87,7 @@ describe("SiteSettingsPage", () => {
     expect(screen.getByLabelText("站点描述")).toHaveValue("Existing description");
     expect(screen.getByLabelText("站点网址")).toHaveValue("https://old.example.test");
     expect(screen.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).not.toBeChecked();
-    expect(screen.getByLabelText("后台路径")).toHaveValue("admin-path");
+    expect(screen.getByLabelText("管理员安全路径")).toHaveValue("admin-path");
     expect(screen.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" })).not.toBeChecked();
     expect(screen.getByLabelText("订阅公开地址")).toHaveValue("");
     expect(screen.getByLabelText("用户条款(TOS)URL")).toHaveValue("https://old.example.test/terms");
@@ -117,7 +117,7 @@ describe("SiteSettingsPage", () => {
     changeValue("站点描述", updated.app_description);
     changeValue("站点网址", updated.app_url);
     await user.click(screen.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" }));
-    changeValue("后台路径", "secure-admin-01");
+    changeValue("管理员安全路径", "secure-admin-01");
     await user.click(screen.getByRole("checkbox", { name: "强制使用 HTTPS 生成公开地址" }));
     fireEvent.change(screen.getByLabelText("订阅公开地址"), { target: { value: " https://subscribe-a.example.test/\nhttps://subscribe-b.example.test/root " } });
     changeValue("用户条款(TOS)URL", updated.tos_url);

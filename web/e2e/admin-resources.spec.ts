@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEmail, adminEntryPath, adminPassword } from "./support";
 
 test("administrator manages permission groups and routing rules", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -10,7 +10,7 @@ test("administrator manages permission groups and routing rules", async ({ page 
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
 
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -71,6 +71,7 @@ test("administrator manages permission groups and routing rules", async ({ page 
 });
 
 async function readAdminResources(page: Page, path: string): Promise<Array<{ id: number; name: string }>> {
+  path = adminAPIPath(path);
   return page.evaluate(async (requestPath) => {
     const response = await fetch(requestPath, { credentials: "same-origin" });
     if (!response.ok) throw new Error(`resource snapshot failed with ${response.status}`);

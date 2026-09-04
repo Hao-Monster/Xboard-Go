@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword  } from "./support";
 
 interface SiteSettings {
   revision: number;
@@ -114,7 +114,7 @@ async function logoutAndWait(page: Page) {
 }
 
 async function loginAdministrator(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -167,6 +167,7 @@ function decodeSiteSettings(body: string): SiteSettings {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

@@ -136,7 +136,7 @@ func TestInvitationHTTPGenerationPVRegistrationAndPrivacy(t *testing.T) {
 func TestGuestInvitationForceAndProtectedSettings(t *testing.T) {
 	api, _ := newTestAPI(t)
 	administrator := loginAdmin(t, api)
-	settings := administrator.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
+	settings := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/site-settings", "")
 	if settings.Code != http.StatusOK {
 		t.Fatal(settings.Body.String())
 	}
@@ -155,7 +155,7 @@ func TestGuestInvitationForceAndProtectedSettings(t *testing.T) {
 		"invite_force": true, "invite_gen_limit": 7, "invite_never_expire": true,
 	}
 	body, _ := json.Marshal(input)
-	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", string(body))
+	updated := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", string(body))
 	if updated.Code != http.StatusOK {
 		t.Fatalf("settings update status=%d body=%s", updated.Code, updated.Body)
 	}
@@ -241,7 +241,7 @@ func TestInvitationHTTPFailsClosedWithoutProtectionButKeepsOptionalRegistration(
 	if response := administrator.request(t, api, http.MethodGet, "/api/v1/invitations", ""); response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unprotected invitation list status=%d body=%s", response.Code, response.Body)
 	}
-	settings := administrator.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
+	settings := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/site-settings", "")
 	var payload struct {
 		Data store.SiteSettings `json:"data"`
 	}
@@ -250,7 +250,7 @@ func TestInvitationHTTPFailsClosedWithoutProtectionButKeepsOptionalRegistration(
 		"revision": payload.Data.Revision, "app_name": payload.Data.AppName,
 		"invite_force": true,
 	})
-	forced := administrator.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", string(body))
+	forced := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", string(body))
 	assertAPIError(t, forced, http.StatusServiceUnavailable, "settings_encryption_unavailable", "服务器未配置邀请码加密密钥")
 
 	optional := plainAPIRequest(api, http.MethodPost, "/api/v1/auth/register", `{"email":"optional-no-key@example.test","password":"password-123","password_confirmation":"password-123","invite_code":"Badc1234"}`)

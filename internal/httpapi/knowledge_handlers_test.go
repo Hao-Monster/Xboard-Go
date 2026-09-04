@@ -17,7 +17,7 @@ import (
 func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Tenant Knowledge","app_description":"","app_url":"https://panel.example.test",
 		"subscribe_url":"https://knowledge-subscriptions.example.test/root/",
 		"tos_url":"","logo":"https://images.example.test/tenant.png"
@@ -26,7 +26,7 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 		t.Fatalf("update site identity status=%d body=%s", siteResponse.Code, siteResponse.Body)
 	}
 
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/knowledge", `{
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/knowledge", `{
 		"language":"zh-CN","category":"入门","title":"连接指南",
 		"body":"# {{siteName}}\n\n{{subscribeUrl}}\n\n<!--access start-->订阅专属<!--access end-->","show":true
 	}`)
@@ -41,15 +41,15 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 		t.Fatalf("created knowledge = %#v", created.Data)
 	}
 
-	listResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/knowledge", "")
+	listResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/knowledge", "")
 	if listResponse.Code != http.StatusOK || strings.Contains(listResponse.Body.String(), "subscribeUrl") {
 		t.Fatalf("admin list status=%d leaked full body=%s", listResponse.Code, listResponse.Body)
 	}
-	detailResponse := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/knowledge/%d", created.Data.ID), "")
+	detailResponse := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/knowledge/%d", created.Data.ID), "")
 	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "subscribeUrl") {
 		t.Fatalf("admin detail status=%d body=%s", detailResponse.Code, detailResponse.Body)
 	}
-	categoriesResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/knowledge/categories", "")
+	categoriesResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/knowledge/categories", "")
 	if categoriesResponse.Code != http.StatusOK || !strings.Contains(categoriesResponse.Body.String(), "入门") {
 		t.Fatalf("categories status=%d body=%s", categoriesResponse.Code, categoriesResponse.Body)
 	}
@@ -77,7 +77,7 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 		t.Fatalf("filtered knowledge status=%d body=%s", filteredResponse.Code, filteredResponse.Body)
 	}
 
-	visibilityResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/knowledge/%d/visibility", created.Data.ID), fmt.Sprintf(`{"revision":%d,"show":false}`, created.Data.Revision))
+	visibilityResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/knowledge/%d/visibility", created.Data.ID), fmt.Sprintf(`{"revision":%d,"show":false}`, created.Data.Revision))
 	if visibilityResponse.Code != http.StatusOK {
 		t.Fatalf("hide knowledge status=%d body=%s", visibilityResponse.Code, visibilityResponse.Body)
 	}
@@ -90,7 +90,7 @@ func TestKnowledgeAdminLifecycleAndUserSubscriptionRendering(t *testing.T) {
 func TestPublicKnowledgeUsesCanonicalSafeSharePageWithoutUserSecrets(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	siteResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Public Board","app_description":"","app_url":"https://panel.example.test",
 		"tos_url":"","logo":"https://images.example.test/public.svg?version=1"
 	}`)

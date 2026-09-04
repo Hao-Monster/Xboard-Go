@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, logoutAndWait } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -216,7 +216,7 @@ async function waitForLoginURL(request: APIRequestContext, recipient: string, su
 }
 
 async function login(page: Page, email: string, password: string, administrator: boolean) {
-  await page.goto("/#/login");
+  await page.goto(administrator ? adminEntryPath : "/#/login");
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
@@ -227,7 +227,7 @@ async function login(page: Page, email: string, password: string, administrator:
 async function ensureAdministrator(page: Page) {
   const logout = page.getByRole("button", { name: "退出" });
   if (await logout.count() > 0) await logoutAndWait(page);
-  else await page.goto("/#/login");
+  else await page.goto(adminEntryPath);
   await login(page, adminEmail, adminPassword, true);
 }
 
@@ -298,6 +298,7 @@ function decodeData<T>(response: { status: number; body: string }): T {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage  } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -155,7 +155,7 @@ test("a saved template is delivered as sanitized HTML and plain text through Mai
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
@@ -198,6 +198,7 @@ async function getAppName(page: Page): Promise<string> {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

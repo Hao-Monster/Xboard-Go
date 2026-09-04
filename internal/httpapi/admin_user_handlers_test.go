@@ -33,14 +33,14 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
-	inviterResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	inviterResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"u2-inviter@example.test","password":"inviter-password-123","group_id":7,
 		"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
 	if inviterResponse.Code != http.StatusCreated {
 		t.Fatalf("create inviter status=%d body=%s", inviterResponse.Code, inviterResponse.Body)
 	}
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"u2-before@example.test","password":"before-password-123","group_id":7,
 		"transfer_enable":1024,"speed_limit":10,"device_limit":2,"banned":false
 	}`)
@@ -55,7 +55,7 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	userClient := loginAccount(t, api, created.Email, "before-password-123")
 
 	expiresAt := now.AddDate(0, 2, 0).Format(time.RFC3339)
-	updatedResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+	updatedResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"u2-after@example.test","password":"after-password-123",
 		"group_id":7,"plan_id":%d,"invite_user_email":"u2-inviter@example.test",
 		"transfer_enable":999,"traffic_upload":11000,"traffic_download":22000,"expired_at":%q,
@@ -85,14 +85,14 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	if login := loginAccountResponse(api, "u2-after@example.test", "after-password-123"); login.Code != http.StatusOK {
 		t.Fatalf("updated password login status=%d body=%s", login.Code, login.Body)
 	}
-	missingPlan := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", updated.ID), fmt.Sprintf(`{
+	missingPlan := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", updated.ID), fmt.Sprintf(`{
 		"revision":%d,"email":%q,"group_id":8,"plan_id":999999,"transfer_enable":%d,
 		"expired_at":%q,"speed_limit":125,"device_limit":5,"banned":false
 	}`, updated.Revision, updated.Email, updated.TransferEnable, expiresAt))
 	if missingPlan.Code != http.StatusUnprocessableEntity || !strings.Contains(missingPlan.Body.String(), "plan_not_found") {
 		t.Fatalf("modern missing plan status=%d body=%s", missingPlan.Code, missingPlan.Body)
 	}
-	missingInviter := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", updated.ID), fmt.Sprintf(`{
+	missingInviter := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", updated.ID), fmt.Sprintf(`{
 		"revision":%d,"email":%q,"group_id":8,"plan_id":%d,"invite_user_email":"missing-u2@example.test",
 		"transfer_enable":%d,"expired_at":%q,"speed_limit":125,"device_limit":5,"banned":false
 	}`, updated.Revision, updated.Email, plan.ID, updated.TransferEnable, expiresAt))
@@ -178,7 +178,7 @@ func TestAdminUserTelegramIDConflictHasDistinctModernAndLegacyErrors(t *testing.
 		t.Fatalf("UpdateAdminUser(owner Telegram ID) error = %v", err)
 	}
 
-	modern := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", subject.ID), fmt.Sprintf(`{
+	modern := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", subject.ID), fmt.Sprintf(`{
 		"revision":%d,"email":%q,"group_id":null,"transfer_enable":%d,"expired_at":null,
 		"speed_limit":%d,"device_limit":%d,"banned":false,"telegram_id":%d
 	}`, subject.Revision, subject.Email, subject.TransferEnable, subject.SpeedLimit, subject.DeviceLimit, telegramID))
@@ -219,7 +219,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	expiresAt := now.AddDate(0, 1, 0).Format(time.RFC3339)
-	singleResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+	singleResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate", fmt.Sprintf(`{
 		"mode":"single","email":"generated-single@example.test","plan_id":%d,"expired_at":%q
 	}`, plan.ID, expiresAt))
 	if singleResponse.Code != http.StatusCreated || singleResponse.Header().Get("Cache-Control") != "no-store" {
@@ -248,7 +248,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 		t.Fatalf("generated single login status=%d body=%s", login.Code, login.Body)
 	}
 	ordinary := loginAs(t, api, singlePayload.Data.Items[0].Email, singlePayload.Data.Items[0].Password)
-	denied := ordinary.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+	denied := ordinary.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate",
 		`{"mode":"single","email":"unauthorized-generation@example.test"}`)
 	if denied.Code != http.StatusForbidden {
 		t.Fatalf("ordinary user generation status=%d body=%s", denied.Code, denied.Body)
@@ -259,7 +259,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 		t.Fatalf("generated single user = %#v err=%v", generatedUser, err)
 	}
 
-	batchResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+	batchResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate", fmt.Sprintf(`{
 		"mode":"prefixed_batch","email_prefix":"team","email_domain":"example.test","count":3,"plan_id":%d
 	}`, plan.ID))
 	if batchResponse.Code != http.StatusCreated {
@@ -288,7 +288,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 	if len(passwords) != 3 {
 		t.Fatalf("batch passwords were not independent: %#v", batchPayload.Data.Items)
 	}
-	randomResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+	randomResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate",
 		`{"mode":"random_batch","email_domain":"example.test","count":2}`)
 	if randomResponse.Code != http.StatusCreated {
 		t.Fatalf("random batch status=%d body=%s", randomResponse.Code, randomResponse.Body)
@@ -311,12 +311,12 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 			t.Fatalf("random email = %q", item.Email)
 		}
 	}
-	conflictFixture := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+	conflictFixture := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate",
 		`{"mode":"single","email":"rollback_2@example.test"}`)
 	if conflictFixture.Code != http.StatusCreated {
 		t.Fatalf("conflict fixture status=%d body=%s", conflictFixture.Code, conflictFixture.Body)
 	}
-	conflictedBatch := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+	conflictedBatch := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate",
 		`{"mode":"prefixed_batch","email_prefix":"rollback","email_domain":"example.test","count":2}`)
 	if conflictedBatch.Code != http.StatusConflict || !strings.Contains(conflictedBatch.Body.String(), `"code":"email_in_use"`) {
 		t.Fatalf("conflicted batch status=%d body=%s", conflictedBatch.Code, conflictedBatch.Body)
@@ -326,7 +326,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 		t.Fatalf("conflicted batch was not atomic: page=%#v err=%v", rollbackPage, err)
 	}
 
-	distributorResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", fmt.Sprintf(`{
+	distributorResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate", fmt.Sprintf(`{
 		"mode":"single","email":"generated-distributor@example.test","plan_id":%d,
 		"is_distributor":true,"distributor_name":" Oracle Distributor "
 	}`, plan.ID))
@@ -350,7 +350,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 		t.Fatalf("generated distributor = %#v err=%v", distributor, err)
 	}
 
-	unknownPrivilege := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate",
+	unknownPrivilege := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate",
 		`{"mode":"single","email":"privilege@example.test","is_admin":true}`)
 	if unknownPrivilege.Code != http.StatusBadRequest || unknownPrivilege.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("unknown privilege status=%d cache=%q body=%s", unknownPrivilege.Code, unknownPrivilege.Header().Get("Cache-Control"), unknownPrivilege.Body)
@@ -374,7 +374,7 @@ func TestAdminUserGenerationUsesIndependentCredentialsAndSafeCSV(t *testing.T) {
 			body: `{"mode":"prefixed_batch","email_domain":"example.test","count":2}`, expectedField: `"email_prefix":"账号前缀不能为空"`,
 		},
 	} {
-		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/generate", testCase.body)
+		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/generate", testCase.body)
 		if response.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("%s generation status=%d body=%s", name, response.Code, response.Body)
 		}
@@ -425,7 +425,7 @@ func TestAdminUserGenerationRejectsConcurrentMemoryIntensiveBatches(t *testing.T
 		store: database, passwordHasher: hasher, now: fixedNow, panelURL: "https://panel.example.test",
 		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
 	}
-	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/users/generate",
 		strings.NewReader(`{"mode":"single","email":"concurrency-first@example.test"}`))
 	firstRequest.Header.Set("Content-Type", "application/json")
 	firstResponse := httptest.NewRecorder()
@@ -436,7 +436,7 @@ func TestAdminUserGenerationRejectsConcurrentMemoryIntensiveBatches(t *testing.T
 	}()
 	<-hasher.started
 
-	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/users/generate",
 		strings.NewReader(`{"mode":"single","email":"concurrency-second@example.test"}`))
 	secondRequest.Header.Set("Content-Type", "application/json")
 	secondResponse := httptest.NewRecorder()
@@ -463,7 +463,7 @@ func TestAdminUserGenerationLogsInternalFailureWithoutCredentials(t *testing.T) 
 		passwordHashSlots: make(chan struct{}, 2), adminUserGenerationSlots: make(chan struct{}, 1),
 	}
 	email, password := "must-not-log@example.test", "must-not-log-password-123"
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/generate",
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/users/generate",
 		strings.NewReader(fmt.Sprintf(`{"mode":"single","email":%q,"password":%q}`, email, password)))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -529,14 +529,14 @@ func TestAdminUserPagedQueryAndLegacyFetchAreAllowlistedAndSecretFree(t *testing
 		`{"email":"directory-beta@example.test","password":"secure-password-123","group_id":8,"transfer_enable":2000,"speed_limit":0,"device_limit":0,"banned":false}`,
 		`{"email":"other@example.test","password":"secure-password-123","group_id":7,"transfer_enable":3000,"speed_limit":0,"device_limit":0,"banned":true}`,
 	} {
-		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", body)
+		response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", body)
 		if response.Code != http.StatusCreated {
 			t.Fatalf("create directory fixture status=%d body=%s", response.Code, response.Body)
 		}
 	}
 	filters := url.QueryEscape(`[{"field":"email","operator":"contains","value":"directory"},{"field":"banned","operator":"eq","value":false}]`)
 	response := admin.request(t, api, http.MethodGet,
-		"/api/v1/admin/users?page=1&page_size=1&sort_by=transfer_enable&sort_desc=true&filters="+filters, "")
+		"/api/v1/admin/admin/users?page=1&page_size=1&sort_by=transfer_enable&sort_desc=true&filters="+filters, "")
 	if response.Code != http.StatusOK || !containsAll(response.Body.String(),
 		`"total":2`, `"page":1`, `"page_size":1`, `directory-beta@example.test`, `"traffic_used":0`, `"group_name":"Test group 8"`) {
 		t.Fatalf("modern paged directory status=%d body=%s", response.Code, response.Body)
@@ -544,7 +544,7 @@ func TestAdminUserPagedQueryAndLegacyFetchAreAllowlistedAndSecretFree(t *testing
 	if containsAll(response.Body.String(), `"subscription_token"`) || containsAll(response.Body.String(), `"subscribe_url"`) || containsAll(response.Body.String(), `"uuid"`) {
 		t.Fatalf("modern directory exposed subscription secrets: %s", response.Body)
 	}
-	postQuery := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/query",
+	postQuery := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/query",
 		`{"page":1,"page_size":20,"sort_by":"id","sort_desc":true,"email_prefix":"","banned":false,"group_id":null,"filters":[{"field":"subscription_token","operator":"eq","value":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}`)
 	if postQuery.Code != http.StatusOK || !containsAll(postQuery.Body.String(), `"items":[]`, `"total":0`, `"page":1`, `"page_size":20`) {
 		t.Fatalf("modern POST query status=%d body=%s", postQuery.Code, postQuery.Body)
@@ -553,9 +553,9 @@ func TestAdminUserPagedQueryAndLegacyFetchAreAllowlistedAndSecretFree(t *testing
 		t.Fatalf("modern POST query reflected secret: %s", postQuery.Body)
 	}
 	for _, path := range []string{
-		"/api/v1/admin/users?page=1&page_size=20&sort_by=id%20DESC%3BDELETE%20FROM%20users",
-		"/api/v1/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"password_hash","operator":"eq","value":"hash"}]`),
-		"/api/v1/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"subscription_token","operator":"eq","value":"secret"}]`),
+		"/api/v1/admin/admin/users?page=1&page_size=20&sort_by=id%20DESC%3BDELETE%20FROM%20users",
+		"/api/v1/admin/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"password_hash","operator":"eq","value":"hash"}]`),
+		"/api/v1/admin/admin/users?page=1&page_size=20&filters=" + url.QueryEscape(`[{"field":"subscription_token","operator":"eq","value":"secret"}]`),
 	} {
 		invalid := admin.request(t, api, http.MethodGet, path, "")
 		if invalid.Code != http.StatusUnprocessableEntity {
@@ -584,7 +584,7 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
 
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":" New.User@Example.Test ","password":"secure-password-123","group_id":7,
 		"transfer_enable":1073741824,"expired_at":"2026-09-24T12:00:00Z","speed_limit":50,"device_limit":3,"banned":false
 	}`)
@@ -607,7 +607,7 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 		t.Fatalf("stored credential is not opaque: user=%#v err=%v", found, err)
 	}
 
-	listResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?limit=1&email_prefix=new&group_id=7&banned=false", "")
+	listResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/users?limit=1&email_prefix=new&group_id=7&banned=false", "")
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d; body=%s", listResponse.Code, listResponse.Body)
 	}
@@ -619,12 +619,12 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 		t.Fatalf("list payload = %#v", listPayload.Data)
 	}
 
-	detailResponse := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), "")
+	detailResponse := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.ID), "")
 	if detailResponse.Code != http.StatusOK {
 		t.Fatalf("detail status = %d; body=%s", detailResponse.Code, detailResponse.Body)
 	}
 
-	updatedResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+	updatedResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"renamed@example.test","group_id":8,"transfer_enable":2147483648,
 		"expired_at":null,"speed_limit":75,"device_limit":4,"banned":false
 	}`, created.Revision))
@@ -640,7 +640,7 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 		t.Fatalf("updated user = %#v", updated)
 	}
 
-	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+	stale := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"stale@example.test","group_id":8,"transfer_enable":1,
 		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false
 	}`, created.Revision))
@@ -648,7 +648,7 @@ func TestAdminUserLifecycleAndCursorAPI(t *testing.T) {
 		t.Fatalf("stale status = %d; body=%s", stale.Code, stale.Body)
 	}
 
-	reset := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/users/%d/password", created.ID), fmt.Sprintf(`{
+	reset := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/users/%d/password", created.ID), fmt.Sprintf(`{
 		"revision":%d,"new_password":"another-secure-password-123"
 	}`, updated.Revision))
 	if reset.Code != http.StatusOK || strings.Contains(reset.Body.String(), "another-secure-password-123") {
@@ -673,7 +673,7 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 		"unknown field": `{"email":"safe@example.test","password":"secure-password-123","group_id":7,"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false,"unexpected":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", body)
+			response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", body)
 			if response.Code != http.StatusUnprocessableEntity && response.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d; body=%s", response.Code, response.Body)
 			}
@@ -688,14 +688,14 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selfBan := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", detail.ID), fmt.Sprintf(`{
+	selfBan := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", detail.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"admin@example.test","group_id":null,"transfer_enable":0,
 		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":true
 	}`, detail.Revision))
 	if selfBan.Code != http.StatusUnprocessableEntity || !strings.Contains(selfBan.Body.String(), "cannot_ban_self") {
 		t.Fatalf("self ban status = %d; body=%s", selfBan.Code, selfBan.Body)
 	}
-	selfDemotion := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", detail.ID), fmt.Sprintf(`{
+	selfDemotion := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", detail.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"admin@example.test","group_id":null,"transfer_enable":0,
 		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,"is_admin":false
 	}`, detail.Revision))
@@ -718,13 +718,13 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 		t.Fatalf("self-protection requests mutated administrator: %#v err=%v", afterSelfProtection, err)
 	}
 
-	missingRevision := admin.request(t, api, http.MethodPatch, "/api/v1/admin/users/999", `{
+	missingRevision := admin.request(t, api, http.MethodPatch, "/api/v1/admin/admin/users/999", `{
 		"email":"missing@example.test","group_id":null,"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
 	if missingRevision.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing revision status = %d; body=%s", missingRevision.Code, missingRevision.Body)
 	}
-	invalidFilter := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?banned=maybe", "")
+	invalidFilter := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/users?banned=maybe", "")
 	if invalidFilter.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid filter status = %d; body=%s", invalidFilter.Code, invalidFilter.Body)
 	}
@@ -733,7 +733,7 @@ func TestAdminUserAPIRejectsUnsafeAndAmbiguousChanges(t *testing.T) {
 func TestAdminDistributorRoleIsExposedAndRevokesLoginWhenDisabled(t *testing.T) {
 	api, _ := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"dealer@example.test","password":"dealer-password-123","group_id":null,
 		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
 		"is_admin":false,"is_staff":true,"is_distributor":true,"distributor_name":"  华东渠道  "
@@ -757,7 +757,7 @@ func TestAdminDistributorRoleIsExposedAndRevokesLoginWhenDisabled(t *testing.T) 
 		t.Fatalf("distributor session status=%d body=%s", session.Code, session.Body)
 	}
 
-	updated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.ID), fmt.Sprintf(`{
+	updated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"dealer@example.test","group_id":null,"transfer_enable":0,
 		"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
 		"is_admin":false,"is_staff":true,"is_distributor":false,"distributor_name":"不得保留"
@@ -788,7 +788,7 @@ func TestRoleCombinationAuthorizationMatrix(t *testing.T) {
 	}
 	clients := make(map[string]testClient, len(accounts))
 	for _, account := range accounts {
-		created := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", fmt.Sprintf(`{
+		created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", fmt.Sprintf(`{
 			"email":%q,"password":%q,"group_id":null,"transfer_enable":0,"expired_at":null,
 			"speed_limit":0,"device_limit":0,"banned":false,%s
 		}`, account.email, password, account.roleFields))
@@ -808,7 +808,7 @@ func TestRoleCombinationAuthorizationMatrix(t *testing.T) {
 		hybrid        int
 	}
 	for _, expectation := range []routeExpectation{
-		{path: "/api/v1/admin/users", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusOK},
+		{path: "/api/v1/admin/admin/users", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusOK},
 		{path: "/api/v1/distributor/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusForbidden, staff: http.StatusForbidden, distributor: http.StatusOK, administrator: http.StatusForbidden, hybrid: http.StatusOK},
 		{path: "/api/v1/orders", visitor: http.StatusUnauthorized, ordinary: http.StatusOK, staff: http.StatusOK, distributor: http.StatusForbidden, administrator: http.StatusOK, hybrid: http.StatusForbidden},
 	} {
@@ -904,11 +904,11 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 		t.Fatalf("internal access-token creation error=%v, want ErrNotFound", err)
 	}
 	admin := loginAdmin(t, api)
-	list := admin.request(t, api, http.MethodGet, "/api/v1/admin/users?email_prefix=internal-login", "")
+	list := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/users?email_prefix=internal-login", "")
 	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), "internal-login@example.test") {
 		t.Fatalf("internal account leaked in list: status=%d body=%s", list.Code, list.Body)
 	}
-	detail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/users/%d", internal.ID), "")
+	detail := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/users/%d", internal.ID), "")
 	if detail.Code != http.StatusNotFound {
 		t.Fatalf("internal detail status = %d; body=%s", detail.Code, detail.Body)
 	}
@@ -948,7 +948,7 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 	if legacyList.Code != http.StatusOK || strings.Contains(legacyList.Body.String(), internalEmail) {
 		t.Fatalf("internal account leaked in legacy list: status=%d body=%s", legacyList.Code, legacyList.Body)
 	}
-	for _, endpoint := range []string{"/api/v1/admin/users/bulk/csv", "/api/v1/admin/users/bulk/mail"} {
+	for _, endpoint := range []string{"/api/v1/admin/admin/users/bulk/csv", "/api/v1/admin/admin/users/bulk/mail"} {
 		body := fmt.Sprintf(`{"scope":"selected","user_ids":[%d]}`, internal.ID)
 		if strings.HasSuffix(endpoint, "/mail") {
 			body = fmt.Sprintf(`{"scope":"selected","user_ids":[%d],"subject":"private","content":"private"}`, internal.ID)
@@ -963,7 +963,7 @@ func TestInternalSubscriptionAccountIsHiddenAndCannotLogin(t *testing.T) {
 func TestAdminUserPasswordResetRevokesExistingLogin(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"session-user@example.test","password":"session-password-123","group_id":7,
 		"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false
 	}`)
@@ -972,11 +972,11 @@ func TestAdminUserPasswordResetRevokesExistingLogin(t *testing.T) {
 	}
 	decodeResponse(t, created, &payload)
 	userClient := loginAccount(t, api, "session-user@example.test", "session-password-123")
-	forbidden := userClient.request(t, api, http.MethodGet, "/api/v1/admin/users", "")
+	forbidden := userClient.request(t, api, http.MethodGet, "/api/v1/admin/admin/users", "")
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("non-admin directory status = %d; body=%s", forbidden.Code, forbidden.Body)
 	}
-	forbiddenQuery := userClient.request(t, api, http.MethodPost, "/api/v1/admin/users/query", `{"page":1,"page_size":20,"filters":[]}`)
+	forbiddenQuery := userClient.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/query", `{"page":1,"page_size":20,"filters":[]}`)
 	if forbiddenQuery.Code != http.StatusForbidden {
 		t.Fatalf("non-admin query status = %d; body=%s", forbiddenQuery.Code, forbiddenQuery.Body)
 	}
@@ -986,7 +986,7 @@ func TestAdminUserPasswordResetRevokesExistingLogin(t *testing.T) {
 		t.Fatalf("non-admin legacy directory status = %d; body=%s", forbiddenLegacy.Code, forbiddenLegacy.Body)
 	}
 
-	reset := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/users/%d/password", payload.Data.ID), fmt.Sprintf(`{"revision":%d,"new_password":"rotated-password-123"}`, payload.Data.Revision))
+	reset := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/users/%d/password", payload.Data.ID), fmt.Sprintf(`{"revision":%d,"new_password":"rotated-password-123"}`, payload.Data.Revision))
 	if reset.Code != http.StatusOK {
 		t.Fatalf("reset status = %d body=%s", reset.Code, reset.Body)
 	}

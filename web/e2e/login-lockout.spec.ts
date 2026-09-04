@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, logoutAndWait } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, logoutAndWait } from "./support";
 
 interface SiteSettings {
   revision: number;
@@ -134,7 +134,7 @@ test("configurable password lockout persists successful attempts and resists ide
 });
 
 async function login(page: Page, email: string, password: string, administrator: boolean) {
-  await page.goto("/");
+  await page.goto(administrator ? adminEntryPath : "/");
   if (await page.getByRole("button", { name: "退出" }).count() > 0) {
     if (administrator && await page.getByRole("button", { name: "系统设置", exact: true }).count() > 0) return;
     await logoutAndWait(page);
@@ -172,6 +172,7 @@ function siteSettingsBody(settings: SiteSettings, revision: number) {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const encoded = document.cookie.split("; ").find((item) => item.startsWith("xboard_csrf="))?.slice("xboard_csrf=".length) ?? "";
     const response = await fetch(requestPath, {

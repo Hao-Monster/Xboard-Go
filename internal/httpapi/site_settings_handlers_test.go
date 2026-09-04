@@ -22,7 +22,7 @@ func TestSiteSettingsRegistrationTrialContractValidatesPlanAndStaysPrivate(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", fmt.Sprintf(`{
+	configured := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", fmt.Sprintf(`{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"try_out_plan_id":%d,"try_out_hour":48
 	}`, plan.ID))
@@ -33,7 +33,7 @@ func TestSiteSettingsRegistrationTrialContractValidatesPlanAndStaysPrivate(t *te
 	if settings.TrialPlanID != plan.ID || settings.TrialHours != 48 {
 		t.Fatalf("configured trial settings=%#v", settings)
 	}
-	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":2,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"try_out_plan_id":999999,"try_out_hour":0
 	}`)
@@ -67,7 +67,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 	}
 	assertGuestConfigKeys(t, publicInitial)
 
-	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
+	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/site-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("initial admin settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
@@ -77,20 +77,20 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		initial.ForceHTTPS || initial.SubscribeURL != "" {
 		t.Fatalf("initial admin site settings = %#v", initial)
 	}
-	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/site-settings", "")
+	forbidden := reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/site-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
-	requiresSMTP := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	requiresSMTP := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"email_verify":true
 	}`)
 	expectAPIError(t, requiresSMTP, http.StatusConflict, "registration_email_requires_smtp")
-	mailLoginRequiresSMTP := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	mailLoginRequiresSMTP := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Xboard-Go","app_description":"","app_url":"","tos_url":"","logo":"",
 		"login_with_mail_link_enable":true
 	}`)
 	expectAPIError(t, mailLoginRequiresSMTP, http.StatusConflict, "mail_login_requires_smtp")
 
-	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
 		"safe_mode_enable":false,"secure_path":"admin",
@@ -133,7 +133,7 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 			t.Fatalf("public config disclosed internal policy %q: %s", internalKey, publicUpdated.Body)
 		}
 	}
-	preservedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	preservedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":2,"app_name":"Example Board","app_description":"Fast and safe control plane",
 		"app_url":"https://panel.example.test/","tos_url":"https://panel.example.test/terms/",
 		"logo":"https://images.example.test/brand.svg"
@@ -150,47 +150,47 @@ func TestSiteSettingsAdminAndPublicContracts(t *testing.T) {
 		t.Fatalf("legacy-shape settings update lost registration policy fields: %#v", preserved)
 	}
 
-	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":1,"app_name":"Stale","app_description":"","app_url":"","tos_url":""
 	}`)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
-	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"",
 		"logo":"https://user@example.test/logo.png"
 	}`)
 	expectAPIError(t, invalid, http.StatusUnprocessableEntity, "validation_failed")
-	invalidCurrency := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalidCurrency := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"currency":"US","currency_symbol":"$"
 	}`)
 	expectAPIError(t, invalidCurrency, http.StatusUnprocessableEntity, "validation_failed")
-	invalidWhitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalidWhitelist := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"email_whitelist_enable":true,"email_whitelist_suffix":["*.example.test"]
 	}`)
 	expectAPIError(t, invalidWhitelist, http.StatusUnprocessableEntity, "validation_failed")
-	invalidSubscribeURL := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalidSubscribeURL := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"subscribe_url":"http://external.example.test"
 	}`)
 	expectAPIError(t, invalidSubscribeURL, http.StatusUnprocessableEntity, "validation_failed")
-	invalidIPLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalidIPLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"register_limit_count":0
 	}`)
 	expectAPIError(t, invalidIPLimit, http.StatusUnprocessableEntity, "validation_failed")
-	invalidPasswordLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	invalidPasswordLimit := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","logo":"",
 		"password_limit_count":0
 	}`)
 	expectAPIError(t, invalidPasswordLimit, http.StatusUnprocessableEntity, "validation_failed")
-	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"Example","app_description":"","app_url":"","tos_url":"","smtp_password":"secret"
 	}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 	withoutCSRF := admin
 	withoutCSRF.csrf = ""
-	csrfRejected := withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/site-settings", `{
+	csrfRejected := withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/admin/site-settings", `{
 		"revision":3,"app_name":"No CSRF","app_description":"","app_url":"","tos_url":""
 	}`)
 	expectAPIError(t, csrfRejected, http.StatusForbidden, "csrf_failed")

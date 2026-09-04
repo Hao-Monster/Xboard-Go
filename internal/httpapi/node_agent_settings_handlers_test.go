@@ -18,7 +18,7 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 	admin := loginAdmin(t, api)
 	reader := loginAs(t, api, "node-settings-reader@example.test", "node-settings-reader-password-123")
 
-	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/node-agent-settings", "")
+	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/node-agent-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("initial settings status=%d body=%s", initialResponse.Code, initialResponse.Body)
 	}
@@ -29,10 +29,10 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 	if strings.Contains(initialResponse.Body.String(), "server_token_hash") || strings.Contains(initialResponse.Body.String(), "issued_token") {
 		t.Fatalf("initial response exposed credential material: %s", initialResponse.Body)
 	}
-	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/node-agent-settings", ""), http.StatusForbidden, "forbidden")
+	expectAPIError(t, reader.request(t, api, http.MethodGet, "/api/v1/admin/admin/node-agent-settings", ""), http.StatusForbidden, "forbidden")
 
 	token := "legacy-node-token-1234567890"
-	replaced := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	replaced := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":1,"server_token":"legacy-node-token-1234567890","server_pull_interval":30,
 		"server_push_interval":45,"device_limit_mode":1,"server_ws_enable":false,
 		"server_ws_url":"wss://panel.example.test/ws"
@@ -74,7 +74,7 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 		t.Fatalf("legacy telemetry handshake status=%d body=%s", handshake.Code, handshake.Body)
 	}
 
-	readBack := admin.request(t, api, http.MethodGet, "/api/v1/admin/node-agent-settings", "")
+	readBack := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/node-agent-settings", "")
 	if readBack.Code != http.StatusOK || strings.Contains(readBack.Body.String(), token) || strings.Contains(readBack.Body.String(), "server_token_hash") || strings.Contains(readBack.Body.String(), "issued_token") {
 		t.Fatalf("read-back exposed one-time token: status=%d body=%s", readBack.Code, readBack.Body)
 	}
@@ -83,12 +83,12 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 		t.Fatalf("legacy telemetry=%#v", readBackSettings)
 	}
 
-	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":1,"server_pull_interval":60,"server_push_interval":60,"device_limit_mode":0,"server_ws_enable":false
 	}`)
 	expectAPIError(t, stale, http.StatusConflict, "settings_conflict")
 
-	generated := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	generated := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":2,"generate_server_token":true,"server_pull_interval":60,"server_push_interval":60,
 		"device_limit_mode":0,"server_ws_enable":false
 	}`)
@@ -103,12 +103,12 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 		t.Fatal("replaced token remained valid")
 	}
 
-	unavailable := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	unavailable := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":3,"server_pull_interval":60,"server_push_interval":60,"device_limit_mode":0,"server_ws_enable":true
 	}`)
 	expectAPIError(t, unavailable, http.StatusConflict, "websocket_unavailable")
 
-	clear := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	clear := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":3,"server_token":"","server_pull_interval":60,"server_push_interval":60,
 		"device_limit_mode":0,"server_ws_enable":false
 	}`)
@@ -120,13 +120,13 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 		t.Fatalf("cleared settings=%#v", cleared)
 	}
 
-	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{
+	unknown := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
 		"revision":4,"server_token_hash":"attacker-controlled","server_pull_interval":60,"server_push_interval":60
 	}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 	withoutCSRF := admin
 	withoutCSRF.csrf = ""
-	expectAPIError(t, withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", `{"revision":4}`), http.StatusForbidden, "csrf_failed")
+	expectAPIError(t, withoutCSRF.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{"revision":4}`), http.StatusForbidden, "csrf_failed")
 }
 
 func TestNodeAgentSettingsCanPreserveUnavailableWebSocketButCannotEnableIt(t *testing.T) {
@@ -143,7 +143,7 @@ func TestNodeAgentSettingsCanPreserveUnavailableWebSocketButCannotEnableIt(t *te
 	}
 	admin := loginAdmin(t, api)
 
-	preserved := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	preserved := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"server_pull_interval":31,"server_push_interval":29,
 		"device_limit_mode":0,"server_ws_enable":true,"server_ws_url":""
 	}`, stored.Revision))
@@ -155,7 +155,7 @@ func TestNodeAgentSettingsCanPreserveUnavailableWebSocketButCannotEnableIt(t *te
 		t.Fatalf("preserved settings=%#v", updated)
 	}
 
-	disabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	disabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"server_pull_interval":31,"server_push_interval":29,
 		"device_limit_mode":0,"server_ws_enable":false,"server_ws_url":""
 	}`, updated.Revision))
@@ -163,7 +163,7 @@ func TestNodeAgentSettingsCanPreserveUnavailableWebSocketButCannotEnableIt(t *te
 		t.Fatalf("disable unavailable WebSocket status=%d body=%s", disabled.Code, disabled.Body)
 	}
 	disabledSettings := decodeNodeAgentSettings(t, disabled.Body.Bytes())
-	reenabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	reenabled := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"server_pull_interval":31,"server_push_interval":29,
 		"device_limit_mode":0,"server_ws_enable":true,"server_ws_url":""
 	}`, disabledSettings.Revision))

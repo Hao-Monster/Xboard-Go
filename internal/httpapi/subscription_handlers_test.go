@@ -137,7 +137,7 @@ func TestAdministratorSubscriptionSettingsAreAtomicAndChangeDynamicPath(t *testi
 	account := createSubscriptionTestAccount(t, database, "path-test@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
 	admin := loginAdmin(t, api)
 
-	get := admin.request(t, api, http.MethodGet, "/api/v1/admin/subscription-settings", "")
+	get := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/subscription-settings", "")
 	if get.Code != http.StatusOK {
 		t.Fatalf("GET settings = %d %s", get.Code, get.Body)
 	}
@@ -156,7 +156,7 @@ func TestAdministratorSubscriptionSettingsAreAtomicAndChangeDynamicPath(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	update := admin.request(t, api, http.MethodPut, "/api/v1/admin/subscription-settings", string(body))
+	update := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-settings", string(body))
 	if update.Code != http.StatusOK {
 		t.Fatalf("PUT settings = %d %s", update.Code, update.Body)
 	}
@@ -174,7 +174,7 @@ func TestAdministratorSubscriptionSettingsAreAtomicAndChangeDynamicPath(t *testi
 		t.Fatalf("new dynamic path status = %d, want 200", got)
 	}
 
-	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/subscription-settings", string(body))
+	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-settings", string(body))
 	if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), "revision_conflict") {
 		t.Fatalf("stale update = %d %s", stale.Code, stale.Body)
 	}
@@ -182,7 +182,7 @@ func TestAdministratorSubscriptionSettingsAreAtomicAndChangeDynamicPath(t *testi
 		"revision": updated.Data.Revision, "path": "../unsafe", "show_info": false, "show_protocol": false,
 		"templates": emptySubscriptionTemplates(),
 	})
-	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/subscription-settings", string(invalidBody))
+	invalid := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/subscription-settings", string(invalidBody))
 	if invalid.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid update = %d %s", invalid.Code, invalid.Body)
 	}

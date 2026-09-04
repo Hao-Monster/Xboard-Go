@@ -72,11 +72,11 @@ func TestCouponAdministratorAPIsValidatePermissionsLegacyContractAndSafeCSV(t *t
 	userClient := loginAs(t, api, user.email, user.password)
 	started, ended := fixedNow().Add(-time.Hour).Unix(), fixedNow().Add(time.Hour).Unix()
 	body := fmt.Sprintf(`{"code":"SAFE500","name":"=danger","type":1,"value":500,"show":true,"limit_use":3,"limit_use_with_user":2,"limit_plan_ids":[%d],"limit_period":["month_price"],"started_at":%d,"ended_at":%d}`, plan.ID, started, ended)
-	forbidden := userClient.request(t, api, http.MethodPost, "/api/v1/admin/coupons", body)
+	forbidden := userClient.request(t, api, http.MethodPost, "/api/v1/admin/admin/coupons", body)
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("non-admin create status=%d body=%s", forbidden.Code, forbidden.Body)
 	}
-	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/coupons", body)
+	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/coupons", body)
 	if created.Code != http.StatusCreated || !containsAll(created.Body.String(), `"code":"SAFE500"`, `"show":true`) {
 		t.Fatalf("admin create status=%d body=%s", created.Code, created.Body)
 	}
@@ -84,20 +84,20 @@ func TestCouponAdministratorAPIsValidatePermissionsLegacyContractAndSafeCSV(t *t
 		Data store.Coupon `json:"data"`
 	}
 	decodeResponse(t, created, &payload)
-	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/coupons?query=safe&page=1&page_size=20", "")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/coupons?query=safe&page=1&page_size=20", "")
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), `"total":1`, `"code":"SAFE500"`) {
 		t.Fatalf("admin list status=%d body=%s", listed.Code, listed.Body)
 	}
-	toggled := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/coupons/%d/visibility", payload.Data.ID), `{"show":false}`)
+	toggled := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/coupons/%d/visibility", payload.Data.ID), `{"show":false}`)
 	if toggled.Code != http.StatusOK || !containsAll(toggled.Body.String(), `"show":false`) {
 		t.Fatalf("admin toggle status=%d body=%s", toggled.Code, toggled.Body)
 	}
 	updatedBody := fmt.Sprintf(`{"code":"SAFE500","name":"updated coupon","type":1,"value":500,"show":false,"limit_use":3,"limit_use_with_user":2,"limit_plan_ids":[%d],"limit_period":["monthly"],"started_at":%d,"ended_at":%d}`, plan.ID, started, ended)
-	updated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/coupons/%d", payload.Data.ID), updatedBody)
+	updated := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/coupons/%d", payload.Data.ID), updatedBody)
 	if updated.Code != http.StatusOK || !containsAll(updated.Body.String(), `"name":"updated coupon"`, `"show":false`) {
 		t.Fatalf("admin update status=%d body=%s", updated.Code, updated.Body)
 	}
-	disposable := admin.request(t, api, http.MethodPost, "/api/v1/admin/coupons", fmt.Sprintf(`{"code":"DELETE-ME","name":"temporary","type":1,"value":1,"started_at":%d,"ended_at":%d}`, started, ended))
+	disposable := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/coupons", fmt.Sprintf(`{"code":"DELETE-ME","name":"temporary","type":1,"value":1,"started_at":%d,"ended_at":%d}`, started, ended))
 	if disposable.Code != http.StatusCreated {
 		t.Fatalf("admin disposable create status=%d body=%s", disposable.Code, disposable.Body)
 	}
@@ -105,7 +105,7 @@ func TestCouponAdministratorAPIsValidatePermissionsLegacyContractAndSafeCSV(t *t
 		Data store.Coupon `json:"data"`
 	}
 	decodeResponse(t, disposable, &disposablePayload)
-	deleted := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/coupons/%d", disposablePayload.Data.ID), "")
+	deleted := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/coupons/%d", disposablePayload.Data.ID), "")
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("admin delete status=%d body=%s", deleted.Code, deleted.Body)
 	}
@@ -120,7 +120,7 @@ func TestCouponAdministratorAPIsValidatePermissionsLegacyContractAndSafeCSV(t *t
 		t.Fatalf("legacy toggle status=%d body=%s", legacyToggle.Code, legacyToggle.Body)
 	}
 
-	batch := admin.request(t, api, http.MethodPost, "/api/v1/admin/coupons/batch", fmt.Sprintf(`{"name":"=cmd|' /C calc'!A0","type":1,"value":100,"count":2,"started_at":%d,"ended_at":%d}`, started, ended))
+	batch := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/coupons/batch", fmt.Sprintf(`{"name":"=cmd|' /C calc'!A0","type":1,"value":100,"count":2,"started_at":%d,"ended_at":%d}`, started, ended))
 	if batch.Code != http.StatusOK || !strings.HasPrefix(batch.Header().Get("Content-Type"), "text/csv") {
 		t.Fatalf("batch CSV status=%d type=%q body=%s", batch.Code, batch.Header().Get("Content-Type"), batch.Body)
 	}

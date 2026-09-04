@@ -152,7 +152,7 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
-	assigned := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/machines/%d/nodes/%d", machine.ID, newNode.ID), `{"revision":1}`)
+	assigned := admin.request(t, api, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/machines/%d/nodes/%d", machine.ID, newNode.ID), `{"revision":1}`)
 	if assigned.Code != http.StatusNoContent {
 		t.Fatalf("assign node status = %d; body=%s", assigned.Code, assigned.Body)
 	}
@@ -178,7 +178,7 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 	if err != nil {
 		t.Fatal(err)
 	}
-	disableAssignedNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+	disableAssignedNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-state", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":%d}],"enabled":false}`, newNode.ID, assignedNode.Revision))
 	if disableAssignedNode.Code != http.StatusOK {
 		t.Fatalf("disable assigned node status=%d body=%s", disableAssignedNode.Code, disableAssignedNode.Body)
@@ -201,7 +201,7 @@ func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnectio
 		devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now)
 		return err == nil && len(devices[user.ID]) == 0
 	})
-	deactivated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/machines/%d", machine.ID), `{
+	deactivated := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/machines/%d", machine.ID), `{
 		"name":"ws-machine","notes":"","is_active":false
 	}`)
 	if deactivated.Code != http.StatusOK {
@@ -281,7 +281,7 @@ func TestDIFFNODE004LegacyWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettin
 	if err != nil {
 		t.Fatal(err)
 	}
-	disableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+	disableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-state", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":%d}],"enabled":false}`, node.ID, definition.Revision))
 	if disableNode.Code != http.StatusOK {
 		t.Fatalf("disable legacy node status=%d body=%s", disableNode.Code, disableNode.Body)
@@ -290,7 +290,7 @@ func TestDIFFNODE004LegacyWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettin
 	if _, _, err := second.ReadMessage(); err == nil {
 		t.Fatal("legacy connection survived node disable")
 	}
-	reenableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/nodes/bulk-state", fmt.Sprintf(
+	reenableNode := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/nodes/bulk-state", fmt.Sprintf(
 		`{"targets":[{"id":%d,"revision":%d}],"enabled":true}`, node.ID, definition.Revision+1))
 	if reenableNode.Code != http.StatusOK {
 		t.Fatalf("reenable legacy node status=%d body=%s", reenableNode.Code, reenableNode.Body)
@@ -299,7 +299,7 @@ func TestDIFFNODE004LegacyWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettin
 	defer active.Close()
 	assertInitialLegacySync(t, active, node.ID, user.ID)
 
-	rotate := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	rotate := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"generate_server_token":true,"server_pull_interval":31,"server_push_interval":29,
 		"device_limit_mode":0,"server_ws_enable":true
 	}`, settings.Revision))
@@ -320,7 +320,7 @@ func TestDIFFNODE004LegacyWebSocketSyncsFencesAndDisconnectsOnCredentialOrSettin
 	current := dialLegacyNodeWebSocket(t, server.URL, node.ID, rotated.IssuedToken)
 	defer current.Close()
 	assertInitialLegacySync(t, current, node.ID, user.ID)
-	disable := admin.request(t, api, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	disable := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"server_pull_interval":31,"server_push_interval":29,
 		"device_limit_mode":0,"server_ws_enable":false
 	}`, rotated.Revision))
@@ -451,7 +451,7 @@ func TestAdminNodeDefinitionUpdatePublishesOnlyRequiredMachineSnapshots(t *testi
 		}
 		return string(encoded)
 	}
-	path := fmt.Sprintf("/api/v1/admin/nodes/%d", created.ID)
+	path := fmt.Sprintf("/api/v1/admin/admin/nodes/%d", created.ID)
 	response := admin.request(t, api, http.MethodPut, path, body(created.Revision, created.Name, "aes-256-gcm"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("protocol update status=%d body=%s", response.Code, response.Body)
@@ -527,7 +527,7 @@ func TestBulkBanPublishesBoundedRuntimeRemovalDelta(t *testing.T) {
 	assertInitialMachineSync(t, connection, machine.ID, node.ID, target.ID)
 
 	admin := loginAdmin(t, api)
-	response := admin.request(t, api, http.MethodPost, "/api/v1/admin/users/bulk/ban", fmt.Sprintf(
+	response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users/bulk/ban", fmt.Sprintf(
 		`{"scope":"selected","user_ids":[%d],"idempotency_key":"u5-ws-bulk-ban-0001"}`, target.ID))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"success_count":1`) {
 		t.Fatalf("bulk ban status=%d body=%s", response.Code, response.Body)
@@ -727,7 +727,7 @@ func TestRoutingRuleUpdatePushesCompatibleWebSocketConfig(t *testing.T) {
 	assertInitialMachineSync(t, connection, machine.ID, node.ID, user.ID)
 
 	admin := loginAdmin(t, api)
-	response := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/routing-rules/%d", rule.ID), `{
+	response := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/routing-rules/%d", rule.ID), `{
 		"remarks":"updated route","match":["*.example.net"],"action":"proxy","action_value":"warp-out"
 	}`)
 	if response.Code != http.StatusOK {
@@ -970,7 +970,7 @@ func TestAdminUserBanPublishesIncrementalRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
-	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/users", `{
+	createdResponse := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"delta-user@example.test","password":"delta-password-123","group_id":7,
 		"transfer_enable":1000000,"speed_limit":10,"device_limit":2,"banned":false
 	}`)
@@ -986,7 +986,7 @@ func TestAdminUserBanPublishesIncrementalRemoval(t *testing.T) {
 	defer connection.Close()
 	assertInitialMachineSync(t, connection, machine.ID, node.ID, created.Data.ID)
 
-	banResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", created.Data.ID), fmt.Sprintf(`{
+	banResponse := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", created.Data.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"delta-user@example.test","group_id":7,"transfer_enable":1000000,
 		"expired_at":null,"speed_limit":10,"device_limit":2,"banned":true
 	}`, created.Data.Revision))

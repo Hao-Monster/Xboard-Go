@@ -70,7 +70,7 @@ func TestTicketHTTPWorkflowEnforcesOwnershipAndLegacyClosedReplyRules(t *testing
 	closedReply := user.request(t, api, http.MethodPost, "/api/v1/tickets/"+ticketID(created.ID)+"/messages", `{"message":"must fail"}`)
 	expectAPIError(t, closedReply, http.StatusConflict, "ticket_closed")
 
-	adminReply := admin.request(t, api, http.MethodPost, "/api/v1/admin/tickets/"+ticketID(created.ID)+"/messages", `{"message":"Administrator answer"}`)
+	adminReply := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/tickets/"+ticketID(created.ID)+"/messages", `{"message":"Administrator answer"}`)
 	if adminReply.Code != http.StatusOK {
 		t.Fatalf("admin reply status = %d; body=%s", adminReply.Code, adminReply.Body)
 	}
@@ -190,7 +190,7 @@ func TestAdminTicketHTTPFiltersValidationAndRoleBoundary(t *testing.T) {
 		"status=0&reply_status=0&level=1&query=Route",
 		"status=0&reply_status=0&level=1&query=FILTER-TICKET%40EXAMPLE.TEST",
 	} {
-		response := admin.request(t, api, http.MethodGet, "/api/v1/admin/tickets?page=1&page_size=20&"+query, "")
+		response := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/tickets?page=1&page_size=20&"+query, "")
 		if response.Code != http.StatusOK {
 			t.Fatalf("admin list status = %d; body=%s", response.Code, response.Body)
 		}
@@ -203,15 +203,15 @@ func TestAdminTicketHTTPFiltersValidationAndRoleBoundary(t *testing.T) {
 		}
 	}
 
-	nonAdminList := user.request(t, api, http.MethodGet, "/api/v1/admin/tickets", "")
+	nonAdminList := user.request(t, api, http.MethodGet, "/api/v1/admin/admin/tickets", "")
 	expectAPIError(t, nonAdminList, http.StatusForbidden, "forbidden")
 	for _, path := range []string{
 		"/api/v1/tickets?page_size=101",
-		"/api/v1/admin/tickets?status=2",
-		"/api/v1/admin/tickets?level=-1",
+		"/api/v1/admin/admin/tickets?status=2",
+		"/api/v1/admin/admin/tickets?level=-1",
 	} {
 		client := user
-		if len(path) >= len("/api/v1/admin/") && path[:len("/api/v1/admin/")] == "/api/v1/admin/" {
+		if len(path) >= len("/api/v1/admin/admin/") && path[:len("/api/v1/admin/admin/")] == "/api/v1/admin/admin/" {
 			client = admin
 		}
 		response := client.request(t, api, http.MethodGet, path, "")
@@ -220,7 +220,7 @@ func TestAdminTicketHTTPFiltersValidationAndRoleBoundary(t *testing.T) {
 	unknown := user.request(t, api, http.MethodPost, "/api/v1/tickets", `{"subject":"x","level":0,"message":"x","admin":true}`)
 	expectAPIError(t, unknown, http.StatusBadRequest, "invalid_json")
 
-	closed := admin.request(t, api, http.MethodPost, "/api/v1/admin/tickets/"+ticketID(ticket.ID)+"/close", `{}`)
+	closed := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/tickets/"+ticketID(ticket.ID)+"/close", `{}`)
 	if closed.Code != http.StatusOK || decodeTicketEnvelope(t, closed).Status != store.TicketStatusClosed {
 		t.Fatalf("admin close status = %d; body=%s", closed.Code, closed.Body)
 	}

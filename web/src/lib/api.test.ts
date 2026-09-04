@@ -4,6 +4,20 @@ import { APIClient } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("APIClient administrator path routing", () => {
+  it("prefixes only V1 administrator calls and rejects unsafe path segments", async () => {
+    const paths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      paths.push(typeof input === "string" ? input : input instanceof URL ? input.pathname : new URL(input.url).pathname);
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    await new APIClient("secure-admin-01").getNodeAgentSettings();
+    await new APIClient("secure-admin-01").guestConfig();
+    expect(paths).toEqual(["/api/v1/admin/secure-admin-01/node-agent-settings", "/api/v1/guest/comm/config"]);
+    expect(() => new APIClient("../admin")).toThrow("invalid administrator path");
+  });
+});
+
 describe("APIClient CAPTCHA contracts", () => {
   it("sends the legacy provider token fields only on protected actions", async () => {
     const requests: Array<{ path: string; body: Record<string, unknown> }> = [];

@@ -17,7 +17,7 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 	now := fixedNow()
 	admin := loginAdmin(t, api)
 
-	createdGroup := admin.request(t, api, http.MethodPost, "/api/v1/admin/server-groups", `{"name":"  Premium  "}`)
+	createdGroup := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/server-groups", `{"name":"  Premium  "}`)
 	if createdGroup.Code != http.StatusCreated {
 		t.Fatalf("create group status = %d; body=%s", createdGroup.Code, createdGroup.Body)
 	}
@@ -29,7 +29,7 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 		t.Fatalf("created group = %#v", groupPayload.Data)
 	}
 
-	createdRoute := admin.request(t, api, http.MethodPost, "/api/v1/admin/routing-rules", `{
+	createdRoute := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/routing-rules", `{
 		"remarks":"  Domestic direct  ",
 		"match":[" example.cn ","","example.cn","10.0.0.0/8"],
 		"action":"direct",
@@ -60,7 +60,7 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtimePath := fmt.Sprintf("/api/v1/admin/nodes/%d/runtime", node.ID)
+	runtimePath := fmt.Sprintf("/api/v1/admin/admin/nodes/%d/runtime", node.ID)
 	runtime := admin.request(t, api, http.MethodPut, runtimePath, fmt.Sprintf(`{
 		"rate":1,"group_ids":[%d],"route_ids":[%d],
 		"config":{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}
@@ -82,7 +82,7 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 		t.Fatalf("node config route contract status = %d; body=%s", firstConfig.Code, firstConfig.Body)
 	}
 
-	updatedRoute := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/routing-rules/%d", routePayload.Data.ID), `{
+	updatedRoute := admin.request(t, api, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/routing-rules/%d", routePayload.Data.ID), `{
 		"remarks":"Proxy route","match":["*.example.com"],"action":"proxy","action_value":"warp-out"
 	}`)
 	if updatedRoute.Code != http.StatusOK {
@@ -96,7 +96,7 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 		t.Fatal("routing rule update did not change config ETag")
 	}
 
-	groups := admin.request(t, api, http.MethodGet, "/api/v1/admin/server-groups", "")
+	groups := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/server-groups", "")
 	if groups.Code != http.StatusOK {
 		t.Fatalf("list groups status = %d; body=%s", groups.Code, groups.Body)
 	}
@@ -115,10 +115,10 @@ func TestAdminGroupAndRoutingRuleLifecycleFeedsNodeConfig(t *testing.T) {
 		t.Fatalf("group counts = %#v", found)
 	}
 
-	if response := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/server-groups/%d", groupPayload.Data.ID), ""); response.Code != http.StatusConflict {
+	if response := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/server-groups/%d", groupPayload.Data.ID), ""); response.Code != http.StatusConflict {
 		t.Fatalf("delete referenced group status = %d; body=%s", response.Code, response.Body)
 	}
-	if response := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/routing-rules/%d", routePayload.Data.ID), ""); response.Code != http.StatusConflict {
+	if response := admin.request(t, api, http.MethodDelete, fmt.Sprintf("/api/v1/admin/admin/routing-rules/%d", routePayload.Data.ID), ""); response.Code != http.StatusConflict {
 		t.Fatalf("delete referenced route status = %d; body=%s", response.Code, response.Body)
 	}
 }
@@ -133,20 +133,20 @@ func TestAdminGroupAndRoutingRuleEndpointsRejectInvalidOrUntrustedWrites(t *test
 		"unknown action": `{"remarks":"unknown","match":["example.com"],"action":"unknown","action_value":""}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			response := admin.request(t, api, http.MethodPost, "/api/v1/admin/routing-rules", body)
+			response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/routing-rules", body)
 			if response.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body)
 			}
 		})
 	}
-	if response := admin.request(t, api, http.MethodPatch, "/api/v1/admin/server-groups/999999", `{"name":"missing"}`); response.Code != http.StatusNotFound {
+	if response := admin.request(t, api, http.MethodPatch, "/api/v1/admin/admin/server-groups/999999", `{"name":"missing"}`); response.Code != http.StatusNotFound {
 		t.Fatalf("update missing group status = %d; body=%s", response.Code, response.Body)
 	}
-	if response := admin.request(t, api, http.MethodPost, "/api/v1/admin/server-groups", `{"name":"group","unexpected":true}`); response.Code != http.StatusBadRequest {
+	if response := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/server-groups", `{"name":"group","unexpected":true}`); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown group field status = %d; body=%s", response.Code, response.Body)
 	}
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/server-groups", strings.NewReader(`{"name":"no csrf"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/server-groups", strings.NewReader(`{"name":"no csrf"}`))
 	request.Header.Set("Content-Type", "application/json")
 	for _, cookie := range admin.cookies {
 		request.AddCookie(cookie)

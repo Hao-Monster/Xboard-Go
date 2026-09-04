@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait, publicAppName } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait, publicAppName  } from "./support";
 
 test("administrator manages knowledge while active, inactive, and public readers receive the correct content", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -85,7 +85,7 @@ test("administrator manages knowledge while active, inactive, and public readers
 });
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码").fill(password);
@@ -107,14 +107,14 @@ type KnowledgeSnapshotItem = {
 };
 
 async function readAdminKnowledge(page: Page): Promise<KnowledgeSnapshotItem[]> {
-  return page.evaluate(async () => {
-    const response = await fetch("/api/v1/admin/knowledge", { credentials: "same-origin" });
+  return page.evaluate(async (paths) => {
+    const response = await fetch(paths.list, { credentials: "same-origin" });
     if (!response.ok) throw new Error(`knowledge snapshot failed with ${response.status}`);
     const payload = await response.json() as { data?: Omit<KnowledgeSnapshotItem, "body">[] };
     if (!Array.isArray(payload.data)) throw new Error("knowledge snapshot data must be an array");
     const result: KnowledgeSnapshotItem[] = [];
     for (const summary of payload.data) {
-      const detailResponse = await fetch(`/api/v1/admin/knowledge/${summary.id}`, { credentials: "same-origin" });
+      const detailResponse = await fetch(`${paths.detailPrefix}/${summary.id}`, { credentials: "same-origin" });
       if (!detailResponse.ok) throw new Error(`knowledge detail snapshot failed with ${detailResponse.status}`);
       const detailPayload = await detailResponse.json() as { data?: KnowledgeSnapshotItem };
       const article = detailPayload.data;
@@ -128,7 +128,7 @@ async function readAdminKnowledge(page: Page): Promise<KnowledgeSnapshotItem[]> 
       result.push(article);
     }
     return result;
-  });
+  }, { list: adminAPIPath("/api/v1/admin/knowledge"), detailPrefix: adminAPIPath("/api/v1/admin/knowledge") });
 }
 
 async function createUser(page: Page, email: string, password: string, transfer: string) {

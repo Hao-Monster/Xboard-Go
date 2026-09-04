@@ -103,7 +103,7 @@ func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotific
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, firstAPI)
-	createdUser := admin.request(t, firstAPI, http.MethodPost, "/api/v1/admin/users", `{
+	createdUser := admin.request(t, firstAPI, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"coordinated-created@example.test","password":"coordinated-password-123","group_id":7,
 		"transfer_enable":1000000,"speed_limit":10,"device_limit":2,"banned":false
 	}`)
@@ -126,7 +126,7 @@ func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotific
 	if usersSnapshot.NodeID != node.ID || !runtimeUsersContain(usersSnapshot.Users, createdUserPayload.Data.ID) {
 		t.Fatalf("cross-instance user snapshot = %#v", usersSnapshot)
 	}
-	bannedUser := admin.request(t, firstAPI, http.MethodPatch, fmt.Sprintf("/api/v1/admin/users/%d", createdUserPayload.Data.ID), fmt.Sprintf(`{
+	bannedUser := admin.request(t, firstAPI, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/users/%d", createdUserPayload.Data.ID), fmt.Sprintf(`{
 		"revision":%d,"email":"coordinated-created@example.test","group_id":7,"transfer_enable":1000000,
 		"expired_at":null,"speed_limit":10,"device_limit":2,"banned":true
 	}`, createdUserPayload.Data.Revision))
@@ -159,7 +159,7 @@ func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotific
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := admin.request(t, firstAPI, http.MethodPut, fmt.Sprintf("/api/v1/admin/nodes/%d", node.ID), string(definitionBody))
+	updated := admin.request(t, firstAPI, http.MethodPut, fmt.Sprintf("/api/v1/admin/admin/nodes/%d", node.ID), string(definitionBody))
 	if updated.Code != http.StatusOK {
 		t.Fatalf("cross-instance node update status=%d body=%s", updated.Code, updated.Body)
 	}
@@ -245,7 +245,7 @@ func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotific
 	if !foundSecondNode {
 		t.Fatal("dynamically claimed node did not receive the reported device in an authoritative event")
 	}
-	disabled := admin.request(t, firstAPI, http.MethodPatch, fmt.Sprintf("/api/v1/admin/machines/%d", machine.ID),
+	disabled := admin.request(t, firstAPI, http.MethodPatch, fmt.Sprintf("/api/v1/admin/admin/machines/%d", machine.ID),
 		`{"name":"coordinated-machine","notes":"","is_active":false}`)
 	if disabled.Code != http.StatusOK {
 		t.Fatalf("disable machine status=%d body=%s", disabled.Code, disabled.Body)
@@ -319,7 +319,7 @@ func TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInsta
 	}
 
 	admin := loginAdmin(t, firstAPI)
-	rotated := admin.request(t, firstAPI, http.MethodPut, "/api/v1/admin/node-agent-settings", fmt.Sprintf(`{
+	rotated := admin.request(t, firstAPI, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", fmt.Sprintf(`{
 		"revision":%d,"generate_server_token":true,"server_pull_interval":41,"server_push_interval":37,
 		"device_limit_mode":0,"server_ws_enable":true
 	}`, settings.Revision))

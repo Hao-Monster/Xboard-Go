@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
+import { adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait  } from "./support";
 
 test("payment administration, exact checkout fees, signed callback, and duplicate notification work on every supported viewport", async ({ page }) => {
   test.setTimeout(120_000);
@@ -105,7 +105,7 @@ function callbackHeaders(secret: string, body: string): Record<string, string> {
 }
 
 async function login(page: Page, email: string, password: string) {
-  await page.goto("/");
+  await page.goto(email === adminEmail ? adminEntryPath : "/");
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);

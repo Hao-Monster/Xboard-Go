@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "./App";
+import { App, surfaceFromPathname } from "./App";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -11,6 +11,14 @@ afterEach(() => {
 });
 
 describe("App public identity bootstrap", () => {
+	it("classifies only the configured single-segment path as an administrator surface", () => {
+		expect(surfaceFromPathname("/")).toEqual({ kind: "public" });
+		expect(surfaceFromPathname("/index.html")).toEqual({ kind: "public" });
+		expect(surfaceFromPathname("/secure-admin-01/")).toEqual({ kind: "admin", path: "secure-admin-01" });
+		expect(surfaceFromPathname("/secure-admin-01/#/")).toEqual({ kind: "public" });
+		expect(surfaceFromPathname("/api/v1/admin/site-settings")).toEqual({ kind: "public" });
+	});
+
 	it("routes a distributor session to the dedicated allowlisted portal", async () => {
 		const requested: string[] = [];
 		vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
@@ -51,7 +59,7 @@ describe("App public identity bootstrap", () => {
 			return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
 		}));
 
-		render(<App />);
+		render(<App surface={{ kind: "admin", path: "admin" }} />);
 		const navigation = await screen.findByRole("navigation", { name: "管理端导航" });
 		expect(navigation).toBeVisible();
 		expect(navigation).toHaveClass("admin-sidebar");
@@ -77,7 +85,7 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         id: 92, email: "client-admin@example.test", is_admin: true, is_staff: false, is_distributor: false
       } }));
-      if (path.endsWith("/api/v1/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+      if (path.endsWith("/api/v1/admin/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         revision: 1,
         windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
         macos_version: "4.8.2", macos_download_url: "https://download.example.test/macos.dmg",
@@ -87,7 +95,7 @@ describe("App public identity bootstrap", () => {
       return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
     }));
     const user = userEvent.setup();
-    render(<App />);
+    render(<App surface={{ kind: "admin", path: "admin" }} />);
 
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");

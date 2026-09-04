@@ -34,7 +34,7 @@ func TestAdminMailSettingsModernAndLegacySurface(t *testing.T) {
 	administrator := loginAdmin(t, api)
 	ordinary := loginAs(t, api, "mail-settings-reader@example.test", "mail-settings-reader-password-123")
 
-	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/mail-settings", "")
+	initial := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/mail-settings", "")
 	if initial.Code != http.StatusOK {
 		t.Fatalf("initial mail settings status=%d body=%s", initial.Code, initial.Body)
 	}
@@ -58,7 +58,7 @@ func TestAdminMailSettingsModernAndLegacySurface(t *testing.T) {
 		t.Fatalf("mail settings exposed a secret field: %s", initial.Body)
 	}
 
-	forbidden := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/mail-settings", "")
+	forbidden := ordinary.request(t, api, http.MethodGet, "/api/v1/admin/admin/mail-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 
 	legacyAuthorization := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
@@ -85,7 +85,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 	api, database := newMailSettingsTestAPI(t, sender, slog.New(slog.NewTextHandler(&logs, nil)))
 	administrator := loginAdmin(t, api)
 
-	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-settings", `{
+	saved := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-settings", `{
 		"revision":1,"smtp_enabled":true,"smtp_host":"smtp.example.test","smtp_port":587,
 		"smtp_username":"mailer","smtp_password":"secret-smtp-password","smtp_encryption":"starttls",
 		"smtp_from_address":"support@example.test","remind_mail_enable":true
@@ -104,7 +104,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 		t.Fatalf("saved mail settings=%#v", savedEnvelope.Data)
 	}
 
-	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-settings", `{
+	stale := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-settings", `{
 		"revision":1,"smtp_enabled":true,"smtp_host":"stale.example.test","smtp_port":587,
 		"smtp_username":"mailer","smtp_encryption":"starttls","smtp_from_address":"support@example.test",
 		"remind_mail_enable":true
@@ -115,7 +115,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 		t.Fatalf("stale update changed settings=%#v err=%v", current, err)
 	}
 
-	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-settings", `{
+	unknown := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-settings", `{
 		"revision":2,"smtp_enabled":true,"smtp_host":"smtp.example.test","smtp_port":587,
 		"smtp_username":"mailer","smtp_encryption":"starttls","smtp_from_address":"support@example.test",
 		"remind_mail_enable":true,"unexpected":true
@@ -123,7 +123,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 	if unknown.Code != http.StatusBadRequest {
 		t.Fatalf("unknown mail setting status=%d body=%s", unknown.Code, unknown.Body)
 	}
-	missingCSRFRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/mail-settings/test", nil)
+	missingCSRFRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/admin/mail-settings/test", nil)
 	administrator.addCookies(missingCSRFRequest)
 	missingCSRF := httptest.NewRecorder()
 	api.ServeHTTP(missingCSRF, missingCSRFRequest)
@@ -131,7 +131,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 		t.Fatalf("missing CSRF status=%d sends=%d", missingCSRF.Code, len(sender.messages))
 	}
 
-	testResponse := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-settings/test", "")
+	testResponse := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-settings/test", "")
 	if testResponse.Code != http.StatusOK || len(sender.messages) != 1 {
 		t.Fatalf("test mail status=%d sends=%d body=%s", testResponse.Code, len(sender.messages), testResponse.Body)
 	}
@@ -168,7 +168,7 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 	}
 
 	sender.failure = errors.New("dial smtp.example.test: credential secret must not leak")
-	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-settings/test", "")
+	failed := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-settings/test", "")
 	expectAPIError(t, failed, http.StatusBadGateway, "smtp_test_failed")
 	if strings.Contains(failed.Body.String(), "smtp.example.test") || strings.Contains(failed.Body.String(), "credential") {
 		t.Fatalf("SMTP failure response leaked internal details: %s", failed.Body)
@@ -179,14 +179,14 @@ func TestAdminMailSettingsSaveTestAndLegacyCompatibility(t *testing.T) {
 	if !strings.Contains(logs.String(), "SMTP test delivery failed") {
 		t.Fatalf("SMTP failure log omitted the sanitized operational event: %s", logs.String())
 	}
-	limited := administrator.request(t, api, http.MethodPost, "/api/v1/admin/mail-settings/test", "")
+	limited := administrator.request(t, api, http.MethodPost, "/api/v1/admin/admin/mail-settings/test", "")
 	expectAPIError(t, limited, http.StatusTooManyRequests, "rate_limited")
 }
 
 func TestAdminMailSettingsRejectCleartextSMTPByDefault(t *testing.T) {
 	api, _ := newMailSettingsTestAPI(t, &recordingMailSettingsSender{})
 	administrator := loginAdmin(t, api)
-	response := administrator.request(t, api, http.MethodPut, "/api/v1/admin/mail-settings", `{
+	response := administrator.request(t, api, http.MethodPut, "/api/v1/admin/admin/mail-settings", `{
 		"revision":1,"smtp_enabled":true,"smtp_host":"mailpit","smtp_port":1025,
 		"smtp_username":"","smtp_encryption":"none","smtp_from_address":"support@example.test",
 		"remind_mail_enable":true

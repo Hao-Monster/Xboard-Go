@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage  } from "./support";
 
 const mailpitURL = process.env.XBOARD_E2E_MAILPIT_URL;
 
@@ -78,7 +78,7 @@ test("administrator mail settings persist and the saved SMTP sends a real Mailpi
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
@@ -96,6 +96,7 @@ async function getMailSettings(page: Page): Promise<MailSettings> {
 }
 
 async function adminRequest(page: Page, path: string, method: string, body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

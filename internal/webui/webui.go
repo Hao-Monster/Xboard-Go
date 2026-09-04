@@ -21,21 +21,26 @@ type staticFile struct {
 	modTime  time.Time
 }
 
-type FrontendAccessChecker func(*http.Request) (bool, error)
+type FrontendAccess struct {
+	Allowed    bool
+	SecurePath string
+}
+
+type FrontendAccessResolver func(*http.Request) (FrontendAccess, error)
 
 // New serves an immutable frontend build and delegates all API and realtime
 // traffic to api. The build directory is trusted release input, not writable
 // user content.
-func New(root string, api http.Handler, accessChecks ...FrontendAccessChecker) (http.Handler, error) {
+func New(root string, api http.Handler, accessResolvers ...FrontendAccessResolver) (http.Handler, error) {
 	if api == nil {
 		return nil, errors.New("webui: API handler is required")
 	}
-	if len(accessChecks) > 1 {
-		return nil, errors.New("webui: at most one frontend access checker is supported")
+	if len(accessResolvers) > 1 {
+		return nil, errors.New("webui: at most one frontend access resolver is supported")
 	}
-	var accessCheck FrontendAccessChecker
-	if len(accessChecks) == 1 {
-		accessCheck = accessChecks[0]
+	var accessResolver FrontendAccessResolver
+	if len(accessResolvers) == 1 {
+		accessResolver = accessResolvers[0]
 	}
 	absoluteRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -66,12 +71,8 @@ func New(root string, api http.Handler, accessChecks ...FrontendAccessChecker) (
 		if requestPath == "" {
 			requestPath = "index.html"
 		}
-		if !fs.ValidPath(requestPath) {
-			http.NotFound(w, r)
-			return
-		}
-		if file, exists := files[requestPath]; exists {
-			if requestPath == "index.html" && !frontendAccessAllowed(w, r, accessCheck) {
+		if file, exists := files[requestPath]; fs.ValidPath(requestPath) && exists {
+			if requestPath == "index.html" && !frontendAccessAllowed(w, r, accessResolver) {
 				return
 			}
 			if strings.HasPrefix(requestPath, "assets/") {
@@ -88,7 +89,16 @@ func New(root string, api http.Handler, accessChecks ...FrontendAccessChecker) (
 			http.NotFound(w, r)
 			return
 		}
-		if !frontendAccessAllowed(w, r, accessCheck) {
+		access, ok := resolveFrontendAccess(w, r, accessResolver)
+		if !ok {
+			return
+		}
+		if accessResolver != nil && (!validSecurePath(access.SecurePath) || (r.URL.Path != "/"+access.SecurePath && r.URL.Path != "/"+access.SecurePath+"/")) {
+			http.NotFound(w, r)
+			return
+		}
+		if !access.Allowed {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -96,17 +106,39 @@ func New(root string, api http.Handler, accessChecks ...FrontendAccessChecker) (
 	}), nil
 }
 
-func frontendAccessAllowed(w http.ResponseWriter, r *http.Request, check FrontendAccessChecker) bool {
-	if check == nil {
-		return true
-	}
-	allowed, err := check(r)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+func frontendAccessAllowed(w http.ResponseWriter, r *http.Request, resolve FrontendAccessResolver) bool {
+	access, ok := resolveFrontendAccess(w, r, resolve)
+	if !ok {
 		return false
 	}
-	if !allowed {
+	if !access.Allowed {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func resolveFrontendAccess(w http.ResponseWriter, r *http.Request, resolve FrontendAccessResolver) (FrontendAccess, bool) {
+	if resolve == nil {
+		return FrontendAccess{Allowed: true}, true
+	}
+	access, err := resolve(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return FrontendAccess{}, false
+	}
+	return access, true
+}
+
+func validSecurePath(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || character == '_' || character == '-' {
+			continue
+		}
 		return false
 	}
 	return true

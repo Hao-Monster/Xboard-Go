@@ -17,7 +17,7 @@ func TestAdminTicketSettingsProtectSecretRevisionAndReplyPolicy(t *testing.T) {
 	admin := loginAdmin(t, api)
 	user := loginAs(t, api, "ticket-policy-user@example.test", "ticket-policy-password-123")
 
-	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/ticket-settings", "")
+	initialResponse := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/ticket-settings", "")
 	if initialResponse.Code != http.StatusOK {
 		t.Fatalf("initial settings status = %d; body=%s", initialResponse.Code, initialResponse.Body)
 	}
@@ -26,7 +26,7 @@ func TestAdminTicketSettingsProtectSecretRevisionAndReplyPolicy(t *testing.T) {
 		t.Fatalf("initial settings = %#v", initial)
 	}
 
-	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/ticket-settings", `{
+	updatedResponse := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/ticket-settings", `{
 		"revision":1,"app_name":"Xboard","app_url":"https://panel.example.test",
 		"ticket_must_wait_reply":true,"smtp_enabled":true,"smtp_host":"smtp.example.test",
 		"smtp_port":587,"smtp_username":"mailer","smtp_password":"smtp-secret-password",
@@ -43,7 +43,7 @@ func TestAdminTicketSettingsProtectSecretRevisionAndReplyPolicy(t *testing.T) {
 		t.Fatalf("updated settings = %#v", updated)
 	}
 
-	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/ticket-settings", `{
+	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/ticket-settings", `{
 		"revision":1,"app_name":"stale","app_url":"","ticket_must_wait_reply":false,
 		"smtp_enabled":false,"smtp_host":"","smtp_port":587,"smtp_username":"",
 		"smtp_encryption":"starttls","smtp_from_address":""
@@ -58,14 +58,14 @@ func TestAdminTicketSettingsProtectSecretRevisionAndReplyPolicy(t *testing.T) {
 	pending := user.request(t, api, http.MethodPost, "/api/v1/tickets/"+ticketID(ticket.ID)+"/messages", `{"message":"连续回复"}`)
 	expectAPIError(t, pending, http.StatusConflict, "ticket_reply_pending")
 
-	forbidden := user.request(t, api, http.MethodGet, "/api/v1/admin/ticket-settings", "")
+	forbidden := user.request(t, api, http.MethodGet, "/api/v1/admin/admin/ticket-settings", "")
 	expectAPIError(t, forbidden, http.StatusForbidden, "forbidden")
 }
 
 func TestTicketSettingsRejectInsecureSMTPAndUnavailableEncryption(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
-	insecure := admin.request(t, api, http.MethodPut, "/api/v1/admin/ticket-settings", `{
+	insecure := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/ticket-settings", `{
 		"revision":1,"app_name":"Xboard","app_url":"","ticket_must_wait_reply":false,
 		"smtp_enabled":true,"smtp_host":"mailpit","smtp_port":1025,"smtp_username":"",
 		"smtp_encryption":"none","smtp_from_address":"support@example.test"
@@ -77,7 +77,7 @@ func TestTicketSettingsRejectInsecureSMTPAndUnavailableEncryption(t *testing.T) 
 	})
 	withoutCipher := New(Dependencies{Store: database, PasswordHasher: hasher, Now: fixedNow, PanelURL: "https://panel.example.test"})
 	adminWithoutCipher := loginAdmin(t, withoutCipher)
-	unavailable := adminWithoutCipher.request(t, withoutCipher, http.MethodPut, "/api/v1/admin/ticket-settings", `{
+	unavailable := adminWithoutCipher.request(t, withoutCipher, http.MethodPut, "/api/v1/admin/admin/ticket-settings", `{
 		"revision":1,"app_name":"Xboard","app_url":"","ticket_must_wait_reply":false,
 		"smtp_enabled":true,"smtp_host":"smtp.example.test","smtp_port":587,"smtp_username":"mailer",
 		"smtp_password":"secret-password","smtp_encryption":"starttls","smtp_from_address":"support@example.test"

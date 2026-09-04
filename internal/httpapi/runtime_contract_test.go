@@ -34,7 +34,7 @@ func TestXboardNodeRuntimeConfigContract(t *testing.T) {
 	}
 
 	admin := loginAdmin(t, api)
-	runtimePath := fmt.Sprintf("/api/v1/admin/nodes/%d/runtime", node.ID)
+	runtimePath := fmt.Sprintf("/api/v1/admin/admin/nodes/%d/runtime", node.ID)
 	configured := admin.request(t, api, http.MethodPut, runtimePath, `{
 		"rate":1.5,
 		"group_ids":[7],

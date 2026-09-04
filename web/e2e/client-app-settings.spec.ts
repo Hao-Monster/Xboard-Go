@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword, expectLoginPage } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword, expectLoginPage  } from "./support";
 
 interface ClientAppSettings {
   revision: number;
@@ -44,7 +44,7 @@ test("client app settings show all legacy fields, guard edits, validate and pers
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
 
-    const saveResponsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/admin/client-app-settings") && response.request().method() === "PUT");
+    const saveResponsePromise = page.waitForResponse((response) => response.url().includes(adminAPIPath("/api/v1/admin/client-app-settings")) && response.request().method() === "PUT");
     await page.getByRole("button", { name: "保存客户端版本", exact: true }).click();
     expect((await saveResponsePromise).status()).toBe(200);
     await expect(page.getByRole("status")).toContainText("客户端版本设置已保存");
@@ -67,7 +67,7 @@ test("client app settings show all legacy fields, guard edits, validate and pers
       android_version: concurrentAndroidVersion, android_download_url: beforeConflict.android_download_url
     });
     expect(concurrent.status, concurrent.body).toBe(200);
-    const conflictResponsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/admin/client-app-settings") && response.request().method() === "PUT");
+    const conflictResponsePromise = page.waitForResponse((response) => response.url().includes(adminAPIPath("/api/v1/admin/client-app-settings")) && response.request().method() === "PUT");
     await page.getByRole("button", { name: "保存客户端版本", exact: true }).click();
     expect((await conflictResponsePromise).status()).toBe(409);
     await expect(page.getByRole("alert")).toContainText("设置已被其他管理员修改");
@@ -94,7 +94,7 @@ test("client app settings show all legacy fields, guard edits, validate and pers
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await expectLoginPage(page);
   await page.getByLabel("邮箱", { exact: true }).fill(adminEmail);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
@@ -117,6 +117,7 @@ async function getClientAppSettings(page: Page): Promise<ClientAppSettings> {
 }
 
 async function adminRequest(page: Page, path: string, method: "GET" | "PUT", body?: unknown) {
+  path = adminAPIPath(path);
   return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";

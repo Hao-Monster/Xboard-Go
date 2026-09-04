@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { adminEmail, adminPassword } from "./support";
+import { adminAPIPath, adminEntryPath, adminEmail, adminPassword  } from "./support";
 
 test("node compatibility settings are complete, one-time, conflict-safe, and secret-free", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -24,7 +24,7 @@ test("node compatibility settings are complete, one-time, conflict-safe, and sec
   await page.getByLabel("拉取间隔（秒）").fill("31");
   await page.getByLabel("推送间隔（秒）").fill("29");
   await page.getByLabel("WebSocket 地址").fill("wss://panel.example.test/ws");
-  const generatedResponsePromise = page.waitForResponse((response) => response.url().includes("/api/v1/admin/node-agent-settings") && response.request().method() === "PUT");
+  const generatedResponsePromise = page.waitForResponse((response) => response.url().includes(adminAPIPath("/api/v1/admin/node-agent-settings")) && response.request().method() === "PUT");
   await page.getByRole("button", { name: "保存节点配置" }).click();
   const generatedResponse = await generatedResponsePromise;
   expect(generatedResponse.status()).toBe(200);
@@ -75,7 +75,7 @@ test("node compatibility settings are complete, one-time, conflict-safe, and sec
 });
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto(adminEntryPath);
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(adminPassword);
   await page.getByRole("button", { name: "登录" }).click();
@@ -83,17 +83,18 @@ async function login(page: Page) {
 }
 
 async function adminRequest(page: Page, method: "GET" | "PUT", body?: Record<string, unknown>) {
-  return page.evaluate(async ({ requestMethod, requestBody }) => {
+  const requestPath = adminAPIPath("/api/v1/admin/node-agent-settings");
+  return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
     const prefix = "xboard_csrf=";
     const encoded = document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
-    const response = await fetch("/api/v1/admin/node-agent-settings", {
+    const response = await fetch(requestPath, {
       method: requestMethod,
       credentials: "same-origin",
       headers: requestMethod === "PUT" ? { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(encoded) } : undefined,
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestMethod: method, requestBody: body });
+  }, { requestMethod: method, requestBody: body, requestPath });
 }
 
 function readData(body: string): { revision: number } {

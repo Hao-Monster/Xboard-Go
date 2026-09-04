@@ -121,9 +121,9 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 	checks := 0
 	handler, err := New(root, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}), func(request *http.Request) (bool, error) {
+	}), func(request *http.Request) (FrontendAccess, error) {
 		checks++
-		return HostMatchesURL(request.Host, "https://panel.example.test:8443"), nil
+		return FrontendAccess{Allowed: HostMatchesURL(request.Host, "https://panel.example.test:8443"), SecurePath: "secure-admin-01"}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,8 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 		status     int
 	}{
 		{path: "/", host: "PANEL.EXAMPLE.TEST.:443", status: http.StatusOK},
-		{path: "/account", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/secure-admin-01/", host: "attacker.example.test", status: http.StatusForbidden},
+		{path: "/account", host: "attacker.example.test", status: http.StatusNotFound},
 		{path: "/index.html", host: "attacker.example.test", status: http.StatusForbidden},
 		{path: "/assets/app.js", host: "attacker.example.test", status: http.StatusOK},
 		{path: "/api/v1/auth/session", host: "attacker.example.test", status: http.StatusNoContent},
@@ -146,8 +147,8 @@ func TestFrontendAccessCheckerProtectsEverySPAEntryWithoutTaxingAssetsOrAPI(t *t
 			t.Fatalf("GET %s Host %q status=%d want=%d body=%s", test.path, test.host, response.Code, test.status, response.Body)
 		}
 	}
-	if checks != 3 {
-		t.Fatalf("frontend access checks = %d, want 3 HTML entries only", checks)
+	if checks != 4 {
+		t.Fatalf("frontend access checks = %d, want 4 HTML entries only", checks)
 	}
 }
 
@@ -172,8 +173,8 @@ func TestHostMatchesURLHandlesPortsIPv6AndRejectsMalformedInputs(t *testing.T) {
 func TestFrontendAccessCheckerFailsClosedOnSettingsError(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "index.html", "protected")
-	handler, err := New(root, http.NotFoundHandler(), func(*http.Request) (bool, error) {
-		return false, errors.New("settings unavailable")
+	handler, err := New(root, http.NotFoundHandler(), func(*http.Request) (FrontendAccess, error) {
+		return FrontendAccess{}, errors.New("settings unavailable")
 	})
 	if err != nil {
 		t.Fatal(err)

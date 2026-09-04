@@ -719,7 +719,14 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/system/status", api.getSystemStatus)
 	admin.HandleFunc("GET /api/v1/admin/system/audit", api.listAdminAudit)
 	admin.HandleFunc("GET /api/v1/admin/system/mail-failures", api.listTicketMailFailures)
-	root.Handle("/api/v1/admin/", api.requireSession(api.requireAdmin(api.auditAdminMutations(api.requireCSRF(api.recoverPanic(admin))))))
+	// Authenticate before the audit wrapper so rejected administrator mutations
+	// (for example CSRF failures) retain an attributable, sanitized audit entry.
+	protectedAdmin := api.requireSession(api.auditAdminMutations(api.requireAdmin(api.requireCSRF(api.recoverPanic(admin)))))
+	// The fixed /api/v1/admin/... namespace is intentionally not an alias for
+	// the administrator API.  It must not provide a bypass when the persisted
+	// secure path changes.
+	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
 	return api.securityHeaders(api.recoverPanic(root))
 }
@@ -765,6 +772,32 @@ func (s *server) dynamicLegacyAdminPath(routingPath string, next http.Handler) h
 	})
 }
 
+func (s *server) dynamicModernAdminPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		candidate := r.PathValue("adminPath")
+		if !validLegacyAdminPath(candidate) {
+			http.NotFound(w, r)
+			return
+		}
+		settings, err := s.store.GetSiteAccessSettings(r.Context())
+		if err != nil {
+			s.logger.Error("read secure admin path", "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+			return
+		}
+		if len(candidate) != len(settings.SecurePath) || subtle.ConstantTimeCompare([]byte(candidate), []byte(settings.SecurePath)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		request := r.Clone(r.Context())
+		requestURL := *r.URL
+		request.URL = &requestURL
+		request.URL.Path = "/api/v1/admin" + strings.TrimPrefix(r.URL.Path, "/api/v1/admin/"+candidate)
+		request.URL.RawPath = ""
+		next.ServeHTTP(w, request)
+	})
+}
+
 func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -784,7 +817,7 @@ func (s *server) auditAdminMutations(next http.Handler) http.Handler {
 			return
 		}
 		route := r.Pattern
-		if route == "" || route == "/api/v1/admin/" {
+		if route == "" || route == "/api/v1/admin/" || route == "/api/v1/admin/{adminPath}/" {
 			route = r.URL.Path
 		} else if _, patternRoute, found := strings.Cut(route, " "); found {
 			route = patternRoute
