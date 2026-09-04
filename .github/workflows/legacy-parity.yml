@@ -151,10 +151,11 @@ jobs:
           XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
           XBOARD_GO_ADMIN_EMAIL: admin@legacy-parity.test
           XBOARD_E2E_BROWSER_CHANNEL: chrome
-        run: >-
-          pnpm --dir web exec playwright test
-          --config playwright.parity.config.ts
-          admin-surface.spec.ts
+        run: |
+          test "$XBOARD_GO_ADMIN_PASSWORD" = "$(tr -d '\r\n' < .local/bootstrap-password.txt)"
+          pnpm --dir web exec playwright test \
+            --config playwright.parity.config.ts \
+            admin-surface.spec.ts
       - name: Record exact-commit evidence
         if: success()
         env:
