@@ -279,14 +279,22 @@ func main() {
 		LegacyAppClashRenderer:     legacyAppClashRenderer,
 		TicketRegionResolver:       ticketRegionResolver,
 	})
-	if settings.WebRoot != "" {
-		handler, err = webui.New(settings.WebRoot, handler, func(request *http.Request) (webui.FrontendAccess, error) {
+	if settings.WebRoot != "" || settings.FrontendOrigin != "" {
+		resolveFrontendAccess := func(request *http.Request) (webui.FrontendAccess, error) {
 			access, accessErr := database.GetSiteAccessSettings(request.Context())
 			if accessErr != nil {
 				return webui.FrontendAccess{}, accessErr
 			}
-			return webui.FrontendAccess{Allowed: !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL), SecurePath: access.SecurePath}, nil
-		})
+			return webui.FrontendAccess{
+				Allowed:    !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL),
+				SecurePath: access.SecurePath,
+			}, nil
+		}
+		if settings.WebRoot != "" {
+			handler, err = webui.New(settings.WebRoot, handler, resolveFrontendAccess)
+		} else {
+			handler, err = webui.NewRemote(settings.FrontendOrigin, handler, resolveFrontendAccess)
+		}
 		if err != nil {
 			logger.Error("load web frontend", "error", err)
 			os.Exit(1)
