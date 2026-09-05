@@ -23,6 +23,7 @@
     {"id":"R-019","severity":"high","status":"open","milestone":"M3","title":"历史测试被误标为当前验收造成虚假完成度","mitigation":"五维状态、精确提交证据和 acceptance 不变量。"},
     {"id":"R-020","severity":"high","status":"controlled","milestone":"M3","title":"GitHub Actions 使用可变主版本标签且未强制 SHA 固定","mitigation":"projectctl 强制所有远程 action 使用 40 位提交哈希；CI 执行最小权限依赖审查、全量 Go/Web 许可证门禁并生成固定 Syft 版本的 SPDX SBOM。"},
     {"id":"R-021","severity":"medium","status":"open","milestone":"M0","title":"并发任务修改共享文件导致覆盖、重复和状态漂移","mitigation":"单一集成责任人、共享面清单、独立 PR 与重放验证。"},
-    {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"}
+    {"id":"R-022","severity":"high","status":"open","milestone":"M4","title":"无正式发布、回滚和事故响应门禁导致不可控切换","mitigation":"版本化发布门禁、运行手册、回滚演练和独立生产授权。"},
+    {"id":"R-024","severity":"high","status":"open","milestone":"M4","title":"前端、后端与网关独立发布造成契约、路由、数据库或回滚版本漂移","mitigation":"同仓契约、N/N-1 组合测试、精确镜像摘要、原子部署清单、SQLite 单写门禁、版本化迁移与组件级回滚演练。"}
   ]
 }

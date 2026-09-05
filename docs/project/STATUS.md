@@ -30,7 +30,7 @@ Baseline: `M0` · as of 2026-09-05 · verification target `ac0e62d40262009ba85f7
 ## Control summary
 
 - Decisions: 7 resolved, 11 pending (18 total).
-- Risks: 1 open Critical, 11 open High, 22 total.
+- Risks: 1 open Critical, 12 open High, 23 total.
 - Compatibility exceptions: 5 accepted, 1 proposed.
 - Current-head verification: 76/80; accepted: 76/80. Historical evidence is not current acceptance.
 
@@ -64,6 +64,7 @@ Baseline: `M0` · as of 2026-09-05 · verification target `ac0e62d40262009ba85f7
 | `DEP-001` | M0 | done | [#129](https://github.com/Hao-Monster/Xboard-Go/issues/129) | 分类并处理现有 Dependabot 更新积压 |
 | `PERF-001` | M4 | blocked | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
 | `REL-001` | M4 | blocked | [#131](https://github.com/Hao-Monster/Xboard-Go/issues/131) | 完成生产切换、回滚和事故响应运行手册 |
+| `ARCH-001` | M4 | in_progress | [#148](https://github.com/Hao-Monster/Xboard-Go/issues/148) | 按 Issue #148 已确认边界拆分网关、前端与后端独立部署单元 |
 
 ## Release gates
 
@@ -73,7 +74,7 @@ Baseline: `M0` · as of 2026-09-05 · verification target `ac0e62d40262009ba85f7
 | M1 — Functional Parity | blocked | 0 | 2 | 0 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
-| M4 — Production Ready | blocked | 0 | 2 | 1 |
+| M4 — Production Ready | blocked | 0 | 3 | 1 |
 
 ## Interpretation
 
