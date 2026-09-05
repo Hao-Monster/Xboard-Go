@@ -234,7 +234,7 @@ func Replicate(ctx context.Context, inputPath, outputPath string) (Replication, 
 		return Replication{}, errors.New("backup archive must be a non-empty regular file within the size limit")
 	}
 
-	outputPath, err = prepareNewOutputPath(outputPath)
+	outputPath, err = prepareReplicaOutputPath(outputPath)
 	if err != nil {
 		return Replication{}, fmt.Errorf("prepare backup replica output: %w", err)
 	}
@@ -936,6 +936,51 @@ func prepareNewDirectoryPath(path string) (string, error) {
 		return "", err
 	}
 	return absolute, os.Chmod(filepath.Dir(absolute), backupDirectoryMode)
+}
+
+func prepareReplicaOutputPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("output path is required")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(absolute); err == nil {
+		return "", fmt.Errorf("destination already exists: %s", absolute)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+
+	directory := filepath.Dir(absolute)
+	directoryInfo, err := os.Lstat(directory)
+	switch {
+	case err == nil:
+		if !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("backup replica destination directory is unsafe")
+		}
+	case errors.Is(err, os.ErrNotExist):
+		if err := os.MkdirAll(directory, backupDirectoryMode); err != nil {
+			return "", err
+		}
+		directoryInfo, err = os.Lstat(directory)
+		if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("backup replica destination directory is unsafe")
+		}
+		if err := os.Chmod(directory, backupDirectoryMode); err != nil {
+			return "", err
+		}
+	default:
+		return "", err
+	}
+
+	if _, err := os.Lstat(absolute); err == nil {
+		return "", fmt.Errorf("destination already exists: %s", absolute)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return absolute, nil
 }
 
 func unusedTemporaryPath(directory, pattern string) (string, error) {
