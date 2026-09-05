@@ -112,6 +112,31 @@ func TestDeploymentStatusRejectsRuntimeDatabaseDrift(t *testing.T) {
 	}
 }
 
+func TestDeploymentRollbackRejectsRuntimeDatabaseDriftBeforeRestoreOrActivation(t *testing.T) {
+	previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	target := previous
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Backend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	verified := testBackupManifest(previous.Backend.Revision)
+	store := &memoryDeploymentStateStore{states: []DeploymentState{{
+		Version: DeploymentStateVersion, Status: StatusUpgraded, UpdatedAt: time.Now(), Changed: []Component{ComponentBackend},
+		Previous: &previous, Target: &target, BackupPath: "/var/lib/xboard-backups/lifecycle-20260905T130000.000000000Z-aaaaaaaaaaaa.xbbackup",
+		BackupManifest: &verified, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+	}}}
+	platform := &fakeDeploymentPlatform{
+		current:        DeploymentApplication{Deployment: target, DSN: "file:/var/lib/xboard/xboard-other.db", Healthy: true},
+		backupManifest: verified,
+	}
+	_, err := NewDeploymentOrchestrator(platform, store, time.Now).Rollback(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "database DSN drifts") {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	if platform.restores != 0 || len(platform.activations) != 0 {
+		t.Fatalf("rollback crossed drift gate: restores=%d activations=%d", platform.restores, len(platform.activations))
+	}
+}
+
 func TestDeploymentUpgradePreservesRecordedSourceRevisionForRollback(t *testing.T) {
 	recorded := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
 	current := recorded

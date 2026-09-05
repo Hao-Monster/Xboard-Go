@@ -254,6 +254,9 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if !sameDeploymentImages(current.Deployment, *state.Target) {
 		return DeploymentResult{}, errors.New("active deployment does not match the recorded rollback target")
 	}
+	if state.ActiveDSN != "" && current.DSN != state.ActiveDSN {
+		return DeploymentResult{}, errors.New("active deployment database DSN drifts from the lifecycle journal")
+	}
 	recoveryDSN := current.DSN
 	if containsComponent(state.Changed, ComponentBackend) {
 		if state.BackupManifest == nil {
