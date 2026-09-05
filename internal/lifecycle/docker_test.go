@@ -29,6 +29,137 @@ func TestDockerPlatformRejectsImagesWithoutTrustedIdentityLabels(t *testing.T) {
 	}
 }
 
+func TestDockerPlatformResolvesExactDeploymentComponent(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	revision := strings.Repeat("a", 40)
+	digest := strings.Repeat("1", 64)
+	component := ComponentImage{
+		Reference: "registry.example/xboard-frontend@sha256:" + digest,
+		ID:        "sha256:" + digest,
+		Revision:  revision,
+	}
+	runner.outputs = []runnerResult{{stdout: `[{"Id":"sha256:` + digest + `","Config":{"Labels":{` +
+		`"org.opencontainers.image.title":"Xboard-Go Frontend",` +
+		`"org.opencontainers.image.licenses":"Apache-2.0",` +
+		`"org.opencontainers.image.revision":"` + revision + `"}}}]`}}
+
+	image, err := platform.ResolveComponentImage(context.Background(), ComponentFrontend, component)
+	if err != nil || image.ID != component.ID || image.Revision != revision {
+		t.Fatalf("ResolveComponentImage() = (%#v, %v)", image, err)
+	}
+	if !reflect.DeepEqual(runner.calls, []commandCall{{name: "docker", arguments: []string{"image", "inspect", component.Reference}}}) {
+		t.Fatalf("calls = %#v", runner.calls)
+	}
+}
+
+func TestDockerPlatformRejectsDeploymentComponentIdentityMismatch(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	revision := strings.Repeat("a", 40)
+	digest := strings.Repeat("1", 64)
+	component := ComponentImage{Reference: "registry.example/xboard-gateway@sha256:" + digest, ID: "sha256:" + digest, Revision: revision}
+	runner.outputs = []runnerResult{{stdout: `[{"Id":"sha256:` + strings.Repeat("2", 64) + `","Config":{"Labels":{` +
+		`"org.opencontainers.image.title":"Xboard-Go Gateway",` +
+		`"org.opencontainers.image.licenses":"Apache-2.0",` +
+		`"org.opencontainers.image.revision":"` + revision + `"}}}]`}}
+
+	if _, err := platform.ResolveComponentImage(context.Background(), ComponentGateway, component); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("ResolveComponentImage() error = %v", err)
+	}
+}
+
+func TestDockerPlatformCurrentDeploymentAllowsIndependentComponentRevisions(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	deployment := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	deployment.Frontend.Revision = strings.Repeat("b", 40)
+	deployment.ID = deploymentFingerprint(deployment.Gateway, deployment.Frontend, deployment.Backend)
+	runner.outputs = []runnerResult{{stdout: deploymentInspectionJSON(t, deployment, defaultDatabaseDSN, "healthy")}}
+
+	application, err := platform.CurrentDeployment(context.Background())
+	if err != nil || !application.Healthy || !sameDeploymentImages(application.Deployment, deployment) {
+		t.Fatalf("CurrentDeployment() = (%#v, %v)", application, err)
+	}
+}
+
+func TestDockerPlatformActivatesOnlyChangedFrontendWithExactBoundImages(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	deployment := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	runner.outputs = []runnerResult{{}, {}, {}, {}, {stdout: deploymentInspectionJSON(t, deployment, defaultDatabaseDSN, "healthy")}}
+
+	application, err := platform.ActivateDeployment(context.Background(), deployment, defaultDatabaseDSN, []Component{ComponentFrontend})
+	if err != nil || !application.Healthy {
+		t.Fatalf("ActivateDeployment() = (%#v, %v)", application, err)
+	}
+	if len(runner.calls) != 5 {
+		t.Fatalf("calls = %#v", runner.calls)
+	}
+	compose := runner.calls[3]
+	if !slicesContain(compose.arguments, "--no-deps") || !slicesContain(compose.arguments, "frontend") || slicesContain(compose.arguments, "backend") || slicesContain(compose.arguments, "gateway") {
+		t.Fatalf("activation compose call = %#v", compose)
+	}
+	entries, err := os.ReadDir(platform.config.RuntimeEnvDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("runtime environment entries = %d", len(entries))
+	}
+	payload, err := os.ReadFile(filepath.Join(platform.config.RuntimeEnvDir, entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"XBOARD_GO_GATEWAY_IMAGE=xboard-go-gateway:lifecycle-lifecycle-test", "XBOARD_GO_FRONTEND_IMAGE=xboard-go-frontend:lifecycle-lifecycle-test", "XBOARD_GO_BACKEND_IMAGE=xboard-go-backend:lifecycle-lifecycle-test"} {
+		if !strings.Contains(string(payload), expected) {
+			t.Fatalf("runtime environment %q lacks %q", payload, expected)
+		}
+	}
+}
+
+func TestDockerPlatformResolvesAllManifestImages(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	revision := strings.Repeat("a", 40)
+	manifest := testDeploymentManifest(revision, "1", "2", "3")
+	for _, value := range []struct {
+		image ComponentImage
+		title string
+	}{{manifest.Gateway, "Xboard-Go Gateway"}, {manifest.Frontend, "Xboard-Go Frontend"}, {manifest.Backend, "Xboard-Go Backend"}} {
+		runner.outputs = append(runner.outputs, runnerResult{stdout: `[{"Id":"` + value.image.ID + `","Config":{"Labels":{` +
+			`"org.opencontainers.image.title":"` + value.title + `","org.opencontainers.image.licenses":"Apache-2.0",` +
+			`"org.opencontainers.image.revision":"` + value.image.Revision + `"}}}]`})
+	}
+	deployment, err := platform.ResolveDeployment(context.Background(), manifest)
+	if err != nil || deployment.SourceRevision != revision || deployment.ID == "" {
+		t.Fatalf("ResolveDeployment() = (%#v, %v)", deployment, err)
+	}
+}
+
+func TestDockerPlatformDeploymentBackupBindsEveryExactImage(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	deployment := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	application := DeploymentApplication{Deployment: deployment, DSN: defaultDatabaseDSN, Healthy: true}
+	manifest := testBackupManifest(deployment.Backend.Revision)
+	runner.outputs = []runnerResult{{}, {}, {}, {stdout: backupResultJSON(t, "backup.create", manifest)}, {stdout: backupResultJSON(t, "backup.verify", manifest)}}
+	got, err := platform.BackupDeployment(context.Background(), application, "/var/lib/xboard-backups/test.xbbackup")
+	if err != nil || !reflect.DeepEqual(got, manifest) {
+		t.Fatalf("BackupDeployment() = (%#v, %v)", got, err)
+	}
+	for index, component := range []Component{ComponentGateway, ComponentFrontend, ComponentBackend} {
+		if runner.calls[index].name != "docker" || !slicesContain(runner.calls[index].arguments, platform.deploymentRuntimeImageTag(component)) {
+			t.Fatalf("tag call %d = %#v", index, runner.calls[index])
+		}
+	}
+}
+
+func TestDockerPlatformDeploymentRestoreRejectsUnrelatedAttachmentPath(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	image := Image{ID: "sha256:" + strings.Repeat("3", 64), Revision: strings.Repeat("a", 40)}
+	if _, err := platform.RestoreDeployment(context.Background(), image, "/var/lib/xboard-backups/test.xbbackup", "/var/lib/xboard/rollback.db", "/var/lib/xboard/unrelated"); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("RestoreDeployment() error = %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("commands executed before validation: %#v", runner.calls)
+	}
+}
+
 func TestDockerPlatformActivateUsesArgumentVectorsAndNonSecretRuntimeEnvironment(t *testing.T) {
 	platform, runner := newDockerTestPlatform(t)
 	image := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
@@ -242,6 +373,37 @@ func applicationInspection(t *testing.T, image Image, dsn, health string) string
 		t.Fatal(err)
 	}
 	return string(encoded)
+}
+
+func deploymentInspectionJSON(t *testing.T, deployment Deployment, dsn, health string) string {
+	t.Helper()
+	records := make([]map[string]any, 0, 3)
+	for _, value := range []struct {
+		component Component
+		image     Image
+		title     string
+	}{
+		{ComponentGateway, deployment.Gateway, "Xboard-Go Gateway"},
+		{ComponentFrontend, deployment.Frontend, "Xboard-Go Frontend"},
+		{ComponentBackend, deployment.Backend, "Xboard-Go Backend"},
+	} {
+		environment := []string{}
+		if value.component == ComponentBackend {
+			environment = append(environment, "XBOARD_DATABASE_DSN="+dsn)
+		}
+		records = append(records, map[string]any{
+			"Image": value.image.ID,
+			"Config": map[string]any{"Env": environment, "Labels": map[string]string{
+				"org.opencontainers.image.title": value.title, "org.opencontainers.image.licenses": "Apache-2.0", "org.opencontainers.image.revision": value.image.Revision,
+			}},
+			"State": map[string]any{"Status": "running", "Health": map[string]string{"Status": health}},
+		})
+	}
+	payload, err := json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(payload)
 }
 
 func backupResultJSON(t *testing.T, action string, manifest backup.Manifest) string {

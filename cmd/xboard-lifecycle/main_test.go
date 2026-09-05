@@ -22,6 +22,10 @@ func TestRunRejectsInvalidCommandsBeforeDockerAccess(t *testing.T) {
 		{name: "install image", arguments: []string{"install"}, message: "requires --image"},
 		{name: "status image", arguments: []string{"status", "--image", "candidate"}, message: "does not accept --image"},
 		{name: "timeout", arguments: []string{"status", "--health-timeout", "0s"}, message: "health-timeout"},
+		{name: "topology", arguments: []string{"status", "--topology", "cluster"}, message: "topology must"},
+		{name: "split install manifest", arguments: []string{"install", "--topology", "split"}, message: "requires --deployment-manifest"},
+		{name: "split image", arguments: []string{"install", "--topology", "split", "--image", "candidate"}, message: "does not accept --image"},
+		{name: "combined manifest", arguments: []string{"install", "--deployment-manifest", "candidate.json"}, message: "does not accept --deployment-manifest"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -46,6 +50,18 @@ func TestEncodeResultPreservesFailedMachineResultAndExitError(t *testing.T) {
 		t.Fatalf("encodeResult() error = %v", err)
 	}
 	if !strings.Contains(output.String(), `"status":"failed"`) || !strings.Contains(output.String(), `"action":"lifecycle.upgrade"`) {
+		t.Fatalf("encoded result = %q", output.String())
+	}
+}
+
+func TestEncodeDeploymentResultPreservesFailedMachineResultAndExitError(t *testing.T) {
+	var output bytes.Buffer
+	operationErr := errors.New("split deployment failed after safe automatic rollback")
+	result := lifecycle.DeploymentResult{Status: "failed", Action: "lifecycle.deployment.upgrade"}
+	if err := encodeDeploymentResult(&output, result, operationErr); !errors.Is(err, operationErr) {
+		t.Fatalf("encodeDeploymentResult() error = %v", err)
+	}
+	if !strings.Contains(output.String(), `"status":"failed"`) || !strings.Contains(output.String(), `"action":"lifecycle.deployment.upgrade"`) {
 		t.Fatalf("encoded result = %q", output.String())
 	}
 }

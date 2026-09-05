@@ -22,6 +22,10 @@ type Journal struct {
 	path string
 }
 
+type DeploymentJournal struct {
+	path string
+}
+
 type Lock struct {
 	path string
 }
@@ -76,6 +80,28 @@ func NewJournal(path string) *Journal {
 	return &Journal{path: path}
 }
 
+func NewDeploymentJournal(path string) *DeploymentJournal {
+	return &DeploymentJournal{path: path}
+}
+
+func (journal *DeploymentJournal) Append(state DeploymentState) error {
+	if err := validateDeploymentState(state); err != nil {
+		return err
+	}
+	return appendJournalRecord(journal.path, state)
+}
+
+func (journal *DeploymentJournal) Load() (DeploymentState, error) {
+	var state DeploymentState
+	if err := loadJournalRecord(journal.path, &state); err != nil {
+		return DeploymentState{}, err
+	}
+	if err := validateDeploymentState(state); err != nil {
+		return DeploymentState{}, fmt.Errorf("validate deployment lifecycle journal: %w", err)
+	}
+	return state, nil
+}
+
 func (j *Journal) Path() string {
 	return j.path
 }
@@ -84,18 +110,22 @@ func (j *Journal) Append(state State) error {
 	if err := validateState(state); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(j.path), stateDirectoryMode); err != nil {
+	return appendJournalRecord(j.path, state)
+}
+
+func appendJournalRecord(path string, record any) error {
+	if err := os.MkdirAll(filepath.Dir(path), stateDirectoryMode); err != nil {
 		return fmt.Errorf("create lifecycle state directory: %w", err)
 	}
-	if err := os.Chmod(filepath.Dir(j.path), stateDirectoryMode); err != nil {
+	if err := os.Chmod(filepath.Dir(path), stateDirectoryMode); err != nil {
 		return fmt.Errorf("restrict lifecycle state directory: %w", err)
 	}
-	payload, err := json.Marshal(state)
+	payload, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("encode lifecycle state: %w", err)
 	}
 	payload = append(payload, '\n')
-	file, err := os.OpenFile(j.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, stateFileMode)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, stateFileMode)
 	if err != nil {
 		return fmt.Errorf("open lifecycle journal: %w", err)
 	}
@@ -120,33 +150,40 @@ func (j *Journal) Append(state State) error {
 }
 
 func (j *Journal) Load() (State, error) {
-	data, err := os.ReadFile(j.path)
+	var state State
+	if err := loadJournalRecord(j.path, &state); err != nil {
+		return State{}, err
+	}
+	if err := validateState(state); err != nil {
+		return State{}, fmt.Errorf("validate lifecycle journal: %w", err)
+	}
+	return state, nil
+}
+
+func loadJournalRecord(path string, target any) error {
+	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return State{}, ErrNoState
+		return ErrNoState
 	}
 	if err != nil {
-		return State{}, fmt.Errorf("read lifecycle journal: %w", err)
+		return fmt.Errorf("read lifecycle journal: %w", err)
 	}
 	if len(data) > maxJournalBytes {
-		return State{}, fmt.Errorf("lifecycle journal exceeds %d bytes", maxJournalBytes)
+		return fmt.Errorf("lifecycle journal exceeds %d bytes", maxJournalBytes)
 	}
 	lastNewline := bytes.LastIndexByte(data, '\n')
 	if lastNewline < 0 {
-		return State{}, errors.New("lifecycle journal has no complete state record")
+		return errors.New("lifecycle journal has no complete state record")
 	}
 	lines := bytes.Split(data[:lastNewline], []byte{'\n'})
 	for index := len(lines) - 1; index >= 0; index-- {
 		if len(bytes.TrimSpace(lines[index])) == 0 {
 			continue
 		}
-		var state State
-		if err := json.Unmarshal(lines[index], &state); err != nil {
-			return State{}, fmt.Errorf("decode lifecycle journal record %d: %w", index+1, err)
+		if err := json.Unmarshal(lines[index], target); err != nil {
+			return fmt.Errorf("decode lifecycle journal record %d: %w", index+1, err)
 		}
-		if err := validateState(state); err != nil {
-			return State{}, fmt.Errorf("validate lifecycle journal record %d: %w", index+1, err)
-		}
-		return state, nil
+		return nil
 	}
-	return State{}, ErrNoState
+	return ErrNoState
 }
