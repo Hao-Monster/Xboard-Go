@@ -83,6 +83,58 @@ func TestDeploymentStatusRejectsRuntimeImageDrift(t *testing.T) {
 	}
 }
 
+func TestDeploymentUpgradeRejectsRuntimeImageDriftBeforeResolvingTarget(t *testing.T) {
+	recorded := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	active := recorded
+	active.Gateway = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: strings.Repeat("b", 40)}
+	active.ID = deploymentFingerprint(active.Gateway, active.Frontend, active.Backend)
+	store := &memoryDeploymentStateStore{states: []DeploymentState{
+		{Version: DeploymentStateVersion, Status: StatusInstalled, UpdatedAt: time.Now(), Target: &recorded, Changed: []Component{ComponentGateway, ComponentFrontend, ComponentBackend}, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN},
+	}}
+	platform := &fakeDeploymentPlatform{current: DeploymentApplication{Deployment: active, DSN: defaultDatabaseDSN, Healthy: true}}
+	_, err := NewDeploymentOrchestrator(platform, store, time.Now).Upgrade(context.Background(), manifestForDeployment(recorded))
+	if err == nil || !strings.Contains(err.Error(), "drift") {
+		t.Fatalf("Upgrade() error = %v", err)
+	}
+	if platform.resolves != 0 || len(platform.activations) != 0 || platform.backups != 0 {
+		t.Fatalf("upgrade crossed drift gate: resolves=%d activations=%d backups=%d", platform.resolves, len(platform.activations), platform.backups)
+	}
+}
+
+func TestDeploymentStatusRejectsRuntimeDatabaseDrift(t *testing.T) {
+	recorded := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	store := &memoryDeploymentStateStore{states: []DeploymentState{
+		{Version: DeploymentStateVersion, Status: StatusInstalled, UpdatedAt: time.Now(), Target: &recorded, Changed: []Component{ComponentGateway, ComponentFrontend, ComponentBackend}, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN},
+	}}
+	platform := &fakeDeploymentPlatform{current: DeploymentApplication{Deployment: recorded, DSN: "file:/var/lib/xboard/xboard-other.db", Healthy: true}}
+	if _, err := NewDeploymentOrchestrator(platform, store, time.Now).Status(context.Background()); err == nil || !strings.Contains(err.Error(), "database DSN drifts") {
+		t.Fatalf("Status() error = %v", err)
+	}
+}
+
+func TestDeploymentUpgradePreservesRecordedSourceRevisionForRollback(t *testing.T) {
+	recorded := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	current := recorded
+	current.SourceRevision = ""
+	target := recorded
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Frontend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	store := &memoryDeploymentStateStore{states: []DeploymentState{
+		{Version: DeploymentStateVersion, Status: StatusInstalled, UpdatedAt: time.Now(), Target: &recorded, Changed: []Component{ComponentGateway, ComponentFrontend, ComponentBackend}, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN},
+	}}
+	platform := &fakeDeploymentPlatform{
+		current: DeploymentApplication{Deployment: current, DSN: defaultDatabaseDSN, Healthy: true}, resolved: target,
+	}
+	result, err := NewDeploymentOrchestrator(platform, store, time.Now).Upgrade(context.Background(), manifestForDeployment(target))
+	if err != nil || result.State == nil || result.State.Previous == nil {
+		t.Fatalf("Upgrade() = (%#v, %v)", result, err)
+	}
+	if result.State.Previous.SourceRevision != recorded.SourceRevision {
+		t.Fatalf("previous source revision = %q, want %q", result.State.Previous.SourceRevision, recorded.SourceRevision)
+	}
+}
+
 func TestDeploymentStatusReportsAnUnhealthyButIdentifiableDeployment(t *testing.T) {
 	deployment := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
 	store := &memoryDeploymentStateStore{states: []DeploymentState{
@@ -180,12 +232,14 @@ type fakeDeploymentPlatform struct {
 	targets        []Deployment
 	backups        int
 	restores       int
+	resolves       int
 }
 
 func (platform *fakeDeploymentPlatform) CurrentDeployment(context.Context) (DeploymentApplication, error) {
 	return platform.current, nil
 }
 func (platform *fakeDeploymentPlatform) ResolveDeployment(context.Context, DeploymentManifest) (Deployment, error) {
+	platform.resolves++
 	return platform.resolved, nil
 }
 func (platform *fakeDeploymentPlatform) FreshDeployment(context.Context) (bool, error) {

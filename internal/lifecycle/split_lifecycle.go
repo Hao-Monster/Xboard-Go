@@ -77,19 +77,12 @@ func (orchestrator *DeploymentOrchestrator) Status(ctx context.Context) (Deploym
 	if err := validateDeploymentApplicationIdentity(application); err != nil {
 		return DeploymentResult{}, err
 	}
-	state, err := orchestrator.store.Load()
-	if errors.Is(err, ErrNoState) {
-		return DeploymentResult{Status: "success", Action: "lifecycle.deployment.status", Application: &application}, nil
-	}
+	state, managed, err := orchestrator.reconcileCurrentDeployment(&application)
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	expected := expectedDeploymentForState(state)
-	if expected != nil {
-		if !sameDeploymentImages(application.Deployment, *expected) {
-			return DeploymentResult{}, errors.New("active deployment images drift from the lifecycle journal")
-		}
-		application.Deployment.SourceRevision = expected.SourceRevision
+	if !managed {
+		return DeploymentResult{Status: "success", Action: "lifecycle.deployment.status", Application: &application}, nil
 	}
 	return DeploymentResult{Status: "success", Action: "lifecycle.deployment.status", Application: &application, State: &state}, nil
 }
@@ -139,6 +132,9 @@ func (orchestrator *DeploymentOrchestrator) Upgrade(ctx context.Context, manifes
 		return DeploymentResult{}, err
 	}
 	if err := validateDeploymentApplication(current); err != nil {
+		return DeploymentResult{}, err
+	}
+	if _, _, err := orchestrator.reconcileCurrentDeployment(&current); err != nil {
 		return DeploymentResult{}, err
 	}
 	target, err := orchestrator.platform.ResolveDeployment(ctx, manifest)
@@ -211,6 +207,33 @@ func (orchestrator *DeploymentOrchestrator) Upgrade(ctx context.Context, manifes
 		operationErr = errors.Join(operationErr, err)
 	}
 	return result, operationErr
+}
+
+func (orchestrator *DeploymentOrchestrator) reconcileCurrentDeployment(application *DeploymentApplication) (DeploymentState, bool, error) {
+	state, err := orchestrator.store.Load()
+	if errors.Is(err, ErrNoState) {
+		if application.Deployment.SourceRevision == "" &&
+			application.Deployment.Gateway.Revision == application.Deployment.Frontend.Revision &&
+			application.Deployment.Frontend.Revision == application.Deployment.Backend.Revision {
+			application.Deployment.SourceRevision = application.Deployment.Backend.Revision
+		}
+		return DeploymentState{}, false, nil
+	}
+	if err != nil {
+		return DeploymentState{}, false, err
+	}
+	expected := expectedDeploymentForState(state)
+	if expected == nil {
+		return DeploymentState{}, false, errors.New("lifecycle journal does not identify the expected active deployment")
+	}
+	if !sameDeploymentImages(application.Deployment, *expected) {
+		return DeploymentState{}, false, errors.New("active deployment images drift from the lifecycle journal")
+	}
+	if state.ActiveDSN != "" && application.DSN != state.ActiveDSN {
+		return DeploymentState{}, false, errors.New("active deployment database DSN drifts from the lifecycle journal")
+	}
+	application.Deployment.SourceRevision = expected.SourceRevision
+	return state, true, nil
 }
 
 func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (DeploymentResult, error) {
