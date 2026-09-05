@@ -26,7 +26,7 @@
       {"id":"M4-G01","title":"SLO、容量、监控、告警和责任人确认","status":"blocked"},
       {"id":"M4-G02","title":"切换、回滚、恢复和事故响应演练通过","status":"not_run"},
       {"id":"M4-G03","title":"取得独立生产部署授权","status":"blocked"},
-      {"id":"M4-G04","title":"ARCH-001 完成，网关、前端与后端具备独立构建、同源路由、兼容发布、精确回滚和隔离环境演练证据","status":"blocked"}
+      {"id":"M4-G04","title":"ARCH-001 完成，网关、前端与后端具备独立构建、同源路由、兼容发布、精确回滚和隔离环境演练证据","status":"pass"}
     ]}
   ]
 }
