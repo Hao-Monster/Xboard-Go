@@ -91,6 +91,85 @@ func TestCreateVerifyAndRestoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReplicateCopiesVerifiedArchiveWithoutReplacingDestination(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "source.db")
+	database, err := store.OpenSQLite("file:" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(directory, "source.xbbackup")
+	created, err := Create(t.Context(), "file:"+databasePath, source, "replication-test", time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(directory, "independent", "replica.xbbackup")
+	replicated, err := Replicate(t.Context(), source, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replicated.Manifest != created || replicated.Size <= 0 || len(replicated.SHA256) != sha256.Size*2 {
+		t.Fatalf("Replicate() = %#v", replicated)
+	}
+	if verified, err := Verify(t.Context(), destination); err != nil || verified != created {
+		t.Fatalf("Verify(replica) = (%#v, %v), want %#v", verified, err, created)
+	}
+	assertPrivateFile(t, destination)
+	if sourceDigest, err := fileSHA256(t.Context(), source); err != nil || sourceDigest != replicated.SHA256 {
+		t.Fatalf("source digest = (%q, %v), want %q", sourceDigest, err, replicated.SHA256)
+	}
+	before, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Replicate(t.Context(), source, destination); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Replicate(existing destination) error = %v", err)
+	}
+	after, err := os.ReadFile(destination)
+	if err != nil || !bytes.Equal(after, before) {
+		t.Fatalf("existing replica changed: bytes_equal=%t err=%v", bytes.Equal(after, before), err)
+	}
+}
+
+func TestReplicateRejectsInvalidArchiveAndCancellationWithoutPublishing(t *testing.T) {
+	directory := t.TempDir()
+	corrupt := filepath.Join(directory, "corrupt.xbbackup")
+	if err := os.WriteFile(corrupt, []byte("not a backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(directory, "replica.xbbackup")
+	if _, err := Replicate(t.Context(), corrupt, destination); err == nil {
+		t.Fatal("Replicate() accepted a corrupt source archive")
+	}
+	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("replica after corrupt source: %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		symlink := filepath.Join(directory, "source-link.xbbackup")
+		if err := os.Symlink(corrupt, symlink); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Replicate(t.Context(), symlink, destination); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("Replicate(symlink) error = %v", err)
+		}
+	}
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := Replicate(cancelled, corrupt, destination); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Replicate(cancelled) error = %v", err)
+	}
+	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("replica after cancellation: %v", err)
+	}
+}
+
 func TestAttachmentBundleCreateVerifyAndRestoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	directory := t.TempDir()

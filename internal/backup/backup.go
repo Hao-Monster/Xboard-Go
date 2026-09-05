@@ -57,6 +57,12 @@ type AttachmentManifest struct {
 	SHA256 string `json:"sha256"`
 }
 
+type Replication struct {
+	Manifest Manifest `json:"manifest"`
+	Size     int64    `json:"size"`
+	SHA256   string   `json:"sha256"`
+}
+
 func Create(ctx context.Context, sourceDSN, outputPath, appRevision string, now time.Time, attachmentRoots ...string) (Manifest, error) {
 	if err := ctx.Err(); err != nil {
 		return Manifest{}, err
@@ -207,6 +213,97 @@ func Restore(ctx context.Context, inputPath, outputPath string, attachmentOutput
 		return Manifest{}, fmt.Errorf("publish restored database: %w", err)
 	}
 	return manifest, nil
+}
+
+// Replicate copies one backup archive to an operator-provided independent
+// storage path. The caller remains responsible for ensuring that the target is
+// a separate failure domain with appropriate access control and encryption.
+func Replicate(ctx context.Context, inputPath, outputPath string) (Replication, error) {
+	if err := ctx.Err(); err != nil {
+		return Replication{}, err
+	}
+	inputPath = strings.TrimSpace(inputPath)
+	if inputPath == "" {
+		return Replication{}, errors.New("backup archive path is required")
+	}
+	inputInfo, err := os.Lstat(inputPath)
+	if err != nil {
+		return Replication{}, fmt.Errorf("inspect backup archive: %w", err)
+	}
+	if !inputInfo.Mode().IsRegular() || inputInfo.Size() <= 0 || inputInfo.Size() > maxArchiveBytes {
+		return Replication{}, errors.New("backup archive must be a non-empty regular file within the size limit")
+	}
+
+	outputPath, err = prepareNewOutputPath(outputPath)
+	if err != nil {
+		return Replication{}, fmt.Errorf("prepare backup replica output: %w", err)
+	}
+	temporaryPath, err := unusedTemporaryPath(filepath.Dir(outputPath), ".xboard-backup-replica-*")
+	if err != nil {
+		return Replication{}, fmt.Errorf("reserve backup replica path: %w", err)
+	}
+	defer os.Remove(temporaryPath)
+
+	input, err := os.Open(inputPath)
+	if err != nil {
+		return Replication{}, fmt.Errorf("open backup archive: %w", err)
+	}
+	defer input.Close()
+	openedInfo, err := input.Stat()
+	if err != nil {
+		return Replication{}, fmt.Errorf("inspect opened backup archive: %w", err)
+	}
+	if !os.SameFile(inputInfo, openedInfo) || !openedInfo.Mode().IsRegular() || openedInfo.Size() != inputInfo.Size() {
+		return Replication{}, errors.New("backup archive changed while it was opened")
+	}
+
+	output, err := os.OpenFile(temporaryPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, backupFileMode)
+	if err != nil {
+		return Replication{}, fmt.Errorf("create backup replica: %w", err)
+	}
+	outputOpen := true
+	defer func() {
+		if outputOpen {
+			_ = output.Close()
+		}
+	}()
+	hash := sha256.New()
+	written, err := io.CopyN(io.MultiWriter(output, hash), &contextReader{ctx: ctx, reader: input}, inputInfo.Size())
+	if err != nil {
+		return Replication{}, fmt.Errorf("copy backup replica: %w", err)
+	}
+	var extra [1]byte
+	if count, readErr := input.Read(extra[:]); count != 0 || !errors.Is(readErr, io.EOF) {
+		return Replication{}, errors.New("backup archive changed while it was copied")
+	}
+	if written != inputInfo.Size() {
+		return Replication{}, errors.New("backup replica size does not match its source")
+	}
+	if err := output.Sync(); err != nil {
+		return Replication{}, fmt.Errorf("sync backup replica: %w", err)
+	}
+	if err := output.Close(); err != nil {
+		return Replication{}, fmt.Errorf("close backup replica: %w", err)
+	}
+	outputOpen = false
+
+	digest := hex.EncodeToString(hash.Sum(nil))
+	manifest, err := Verify(ctx, temporaryPath)
+	if err != nil {
+		return Replication{}, fmt.Errorf("verify backup replica: %w", err)
+	}
+	if err := publishNoReplace(temporaryPath, outputPath); err != nil {
+		return Replication{}, fmt.Errorf("publish backup replica: %w", err)
+	}
+	publishedDigest, err := fileSHA256(ctx, outputPath)
+	if err != nil || publishedDigest != digest {
+		_ = os.Remove(outputPath)
+		if err != nil {
+			return Replication{}, fmt.Errorf("hash published backup replica: %w", err)
+		}
+		return Replication{}, errors.New("published backup replica SHA-256 does not match its source")
+	}
+	return Replication{Manifest: manifest, Size: written, SHA256: digest}, nil
 }
 
 func createSQLiteSnapshot(ctx context.Context, sourceDSN, destinationPath string) error {

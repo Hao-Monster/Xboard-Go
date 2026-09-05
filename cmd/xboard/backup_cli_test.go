@@ -44,6 +44,14 @@ func TestRunCommandBackupCreateVerifyAndRestore(t *testing.T) {
 	if restored.Action != "backup.restore" || restored.Path != restoredPath || restored.Manifest != created.Manifest {
 		t.Fatalf("restore output = %#v", restored)
 	}
+	replicaPath := filepath.Join(directory, "independent", "replica.xbbackup")
+	replicated := runBackupCommand(t, []string{
+		"backup", "replicate", "--input", archivePath, "--output", replicaPath, "--confirm-independent-storage",
+	}, now)
+	if replicated.Action != "backup.replicate" || replicated.Path != replicaPath ||
+		replicated.Manifest != created.Manifest || replicated.Bytes <= 0 || len(replicated.SHA256) != 64 {
+		t.Fatalf("replicate output = %#v, want manifest %#v", replicated, created.Manifest)
+	}
 }
 
 func TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments(t *testing.T) {
@@ -69,6 +77,8 @@ func TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments
 
 	for _, arguments := range [][]string{
 		{"backup"}, {"backup", "unknown"}, {"backup", "verify"}, {"backup", "restore", "--input", result.Path},
+		{"backup", "replicate"},
+		{"backup", "replicate", "--input", result.Path, "--output", filepath.Join(directory, "copy.xbbackup")},
 		{"backup", "create", "unexpected"}, {"unknown"},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -103,5 +113,7 @@ type commandOutput struct {
 	Status   string          `json:"status"`
 	Action   string          `json:"action"`
 	Path     string          `json:"path"`
+	Bytes    int64           `json:"bytes"`
+	SHA256   string          `json:"sha256"`
 	Manifest backup.Manifest `json:"manifest"`
 }

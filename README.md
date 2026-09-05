@@ -211,6 +211,27 @@ docker compose -f compose.local.yaml run --rm --no-deps maintenance backup verif
   --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup
 ```
 
+After verification, an operator can atomically copy the archive to a mounted
+independent storage target. Replication never overwrites an existing object,
+streams within the archive size limit, verifies the copied archive before it is
+published, and checks the published SHA-256. The confirmation flag is an
+explicit operator assertion; the process cannot prove that two paths belong to
+different failure domains.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  maintenance backup replicate \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --output /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --confirm-independent-storage
+```
+
+Backup archives contain sensitive business data. The mounted target must be an
+independent failure domain with encryption at rest, restricted operator access,
+versioning or write protection, and retention configured outside the
+application. A same-host directory or volume is not an offsite replica.
+
 Recovery deliberately writes a new database file and refuses to overwrite an
 existing path. Stop the application, restore into a new file, then explicitly
 select that file. Returning to the original DSN is the rollback path.
