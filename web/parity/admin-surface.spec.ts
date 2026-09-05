@@ -2942,6 +2942,126 @@ test("implemented Go administrator concepts map to the legacy navigation", async
   }
 });
 
+test("legacy resource editors map to Go management surfaces with approved plugin hardening", async ({ browser }) => {
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  try {
+    const legacyErrors = watchErrors(legacyPage);
+    const goErrors = watchErrors(goPage);
+    await loginLegacy(legacyPage);
+    await loginGo(goPage);
+
+    await legacyPage.locator('a[href="#/config/plugin"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "插件管理" })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: "上传插件", exact: true })).toBeVisible();
+    await expect(legacyPage.getByRole("button", { name: "卸载", exact: true })).toBeVisible();
+    await goPage.getByRole("button", { name: "插件管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "插件管理" })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "上传插件", exact: true })).toHaveCount(0);
+    await expect(goPage.getByRole("button", { name: "卸载", exact: true })).toHaveCount(0);
+    await expect(goPage.locator('section[aria-label="可信插件列表"] tbody tr')).toHaveCount(7);
+    await expectVisibleColumns(goPage, ["插件", "类型", "版本", "状态", "配置", "操作"]);
+
+    await legacyPage.locator('a[href="#/config/notice"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "公告管理" })).toBeVisible();
+    await expectVisibleColumns(legacyPage, ["ID", "显示状态", "标题", "操作"]);
+    await legacyPage.getByRole("button", { name: "添加公告", exact: true }).click();
+    await expect(legacyPage.getByRole("heading", { name: "添加公告" })).toBeVisible();
+    for (const label of ["标题", "公告内容", "公告背景", "节点标签", "显示"]) {
+      await expect(legacyPage.getByText(label, { exact: true }).last()).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "公告管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "公告管理" })).toBeVisible();
+    await goPage.getByRole("button", { name: "添加公告", exact: true }).click();
+    const goNotice = goPage.getByRole("dialog", { name: "添加公告" });
+    for (const label of ["标题", "公告内容", "公告背景图片 URL", "节点标签", "显示给用户"]) {
+      await expect(goNotice.getByLabel(label, { exact: true })).toBeVisible();
+    }
+    await goNotice.getByRole("button", { name: "取消", exact: true }).click();
+
+    await legacyPage.locator('a[href="#/server/group"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "权限组管理" })).toBeVisible();
+    await expectVisibleColumns(legacyPage, ["组ID", "组名称", "用户数量", "节点数量", "操作"]);
+    await legacyPage.getByRole("button", { name: "添加权限组", exact: true }).click();
+    await expect(legacyPage.getByText("组名称", { exact: true }).last()).toBeVisible();
+    await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "权限组", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "权限组" })).toBeVisible();
+    await goPage.getByRole("button", { name: "新增权限组", exact: true }).click();
+    const goGroup = goPage.getByRole("dialog", { name: "新增权限组" });
+    await expect(goGroup.getByLabel("权限组名称", { exact: true })).toBeVisible();
+    await goGroup.getByRole("button", { name: "取消", exact: true }).click();
+
+    await legacyPage.locator('a[href="#/server/route"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "路由管理" })).toBeVisible();
+    await expectVisibleColumns(legacyPage, ["组ID", "备注", "动作值", "动作", "操作"]);
+    await legacyPage.getByRole("button", { name: "添加路由", exact: true }).click();
+    const legacyAction = legacyPage.locator("select:visible").last();
+    await expect(legacyAction.locator("option")).toHaveText(["禁止访问", "指定DNS服务器进行解析", "直连", "转发"]);
+    await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "路由规则", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "路由规则" })).toBeVisible();
+    await goPage.getByRole("button", { name: "新增路由规则", exact: true }).click();
+    const goRoute = goPage.getByRole("dialog", { name: "新增路由规则" });
+    await expect(goRoute.getByLabel("备注", { exact: true })).toBeVisible();
+    await expect(goRoute.getByLabel("匹配规则", { exact: true })).toBeVisible();
+    const goAction = goRoute.getByRole("combobox");
+    await expect(goAction).toHaveAccessibleName(/^动作/);
+    await expect(goAction.locator("option")).toHaveText(["阻断", "直连", "DNS", "代理"]);
+    await goRoute.getByRole("button", { name: "取消", exact: true }).click();
+
+    await legacyPage.locator('a[href="#/finance/plan"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "订阅套餐" })).toBeVisible();
+    await expectVisibleColumns(legacyPage, ["ID", "显示", "新购", "续费", "名称", "统计", "权限组", "价格", "操作"]);
+    await legacyPage.getByRole("button", { name: "添加套餐", exact: true }).click();
+    for (const label of ["套餐名称", "标签", "流量", "速度限制", "设备限制", "容量限制", "流量重置方式", "套餐说明"]) {
+      await expect(legacyPage.getByText(label, { exact: true }).last()).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "套餐管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "套餐管理" })).toBeVisible();
+    await goPage.getByRole("button", { name: "添加套餐", exact: true }).click();
+    const goPlan = goPage.getByRole("dialog", { name: "添加套餐" });
+    for (const label of ["套餐名称", "标签", "服务器分组", "流量（GiB）", "速度限制", "设备限制", "容量限制", "流量重置方式", "套餐描述"]) {
+      await expect(goPlan.getByLabel(label).first()).toBeVisible();
+    }
+    for (const period of ["月付", "季付", "半年付", "年付", "两年付", "三年付", "流量包", "重置包"]) {
+      await expect(goPlan.getByLabel(period, { exact: true })).toBeVisible();
+    }
+    await goPlan.getByRole("button", { name: "取消", exact: true }).click();
+
+    await legacyPage.locator('a[href="#/finance/order"]').click();
+    await expect(legacyPage.getByRole("heading", { name: "订单管理" })).toBeVisible();
+    await expect(legacyPage.getByRole("heading", { name: "分销订单与结算" })).toBeVisible();
+    await legacyPage.getByRole("button", { name: "添加订单", exact: true }).click();
+    for (const label of ["用户邮箱", "订阅计划", "订单周期", "支付金额"]) {
+      await expect(legacyPage.getByText(label, { exact: true }).last()).toBeVisible();
+    }
+    await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "订单管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "订单管理" })).toBeVisible();
+    await goPage.getByRole("button", { name: "添加订单", exact: true }).click();
+    const goOrder = goPage.getByRole("dialog", { name: "添加订单" });
+    for (const label of ["用户邮箱", "订阅套餐", "付款周期", "支付金额（CNY）"]) {
+      await expect(goOrder.getByLabel(label).first()).toBeVisible();
+    }
+    await goOrder.getByRole("button", { name: "取消", exact: true }).click();
+    await goPage.getByRole("button", { name: "分销管理", exact: true }).click();
+    await expect(goPage.getByRole("heading", { name: "分销管理" })).toBeVisible();
+    await expect(goPage.getByRole("button", { name: "导出 Excel", exact: true })).toBeVisible();
+    await expect(goPage.getByLabel("结算状态")).toBeVisible();
+
+    expect(legacyErrors).toEqual([]);
+    expect(goErrors).toEqual([]);
+  } finally {
+    await legacyContext.close();
+    await goContext.close();
+  }
+});
+
 test("legacy subscription settings remain observable and map to Go policy and output controls", async ({ browser }) => {
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
@@ -3500,6 +3620,17 @@ function watchErrors(page: Page) {
 function uniqueLegacyNavigation(items: Array<{ href: string; label: string }>) {
   return [...new Map(items.map((item) => [`${item.href}\u0000${item.label}`, item])).values()]
     .sort((left, right) => left.href.localeCompare(right.href, "en") || left.label.localeCompare(right.label, "zh-CN"));
+}
+
+async function expectVisibleColumns(page: Page, columns: readonly string[]) {
+  const visible = page.locator("th:visible");
+  for (const column of columns) {
+    await expect(visible.filter({ hasText: new RegExp(`^${escapeRegExp(column)}$`) }).first(), column).toBeVisible();
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function requiredEnv(name: string) {
