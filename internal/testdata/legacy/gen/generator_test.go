@@ -1,12 +1,16 @@
 package gen_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/legacymigration"
@@ -195,6 +199,66 @@ func TestGeneratedDatasetSatisfiesImplementedMigrationReaders(t *testing.T) {
 				t.Fatalf("reader rejected generated dataset: %v", err)
 			}
 		})
+	}
+}
+
+func TestGeneratedDatabaseContainsOnlySyntheticIdentitiesAndHashedBearerTokens(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	if _, err := gen.New(gen.DefaultConfig(dbPath)).Generate(context.Background()); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	encoded, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"@gmail.com", "@qq.com", "@163.com", "@outlook.com",
+		fmt.Sprintf("synthetic-access-token-%d-", gen.DefaultSeed),
+	} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Errorf("generated database contains forbidden identity or plaintext token marker %q", forbidden)
+		}
+	}
+
+	database, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	emailRows, err := database.Query(`SELECT email FROM v2_user ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for emailRows.Next() {
+		var email string
+		if err := emailRows.Scan(&email); err != nil {
+			_ = emailRows.Close()
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(email, "@example.test") {
+			t.Errorf("generated email %q does not use the reserved synthetic domain", email)
+		}
+	}
+	if err := emailRows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	tokenRows, err := database.Query(`SELECT token FROM personal_access_tokens ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tokenRows.Next() {
+		var tokenHash string
+		if err := tokenRows.Scan(&tokenHash); err != nil {
+			_ = tokenRows.Close()
+			t.Fatal(err)
+		}
+		decoded, err := hex.DecodeString(tokenHash)
+		if err != nil || len(decoded) != 32 {
+			t.Errorf("generated bearer token is not a SHA-256 digest")
+		}
+	}
+	if err := tokenRows.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
