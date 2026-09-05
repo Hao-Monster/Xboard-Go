@@ -341,6 +341,8 @@ type commandResult struct {
 	Action         string          `json:"action"`
 	Path           string          `json:"path"`
 	AttachmentPath string          `json:"attachment_path,omitempty"`
+	Bytes          int64           `json:"bytes,omitempty"`
+	SHA256         string          `json:"sha256,omitempty"`
 	Manifest       backup.Manifest `json:"manifest"`
 }
 
@@ -486,7 +488,7 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, fmt.Errorf("unknown command %q", arguments[0])
 	}
 	if len(arguments) < 2 {
-		return true, errors.New("backup subcommand is required: create, verify, or restore")
+		return true, errors.New("backup subcommand is required: create, verify, replicate, or restore")
 	}
 
 	switch arguments[1] {
@@ -535,6 +537,31 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 			return true, err
 		}
 		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.verify", Path: absolute, Manifest: manifest})
+
+	case "replicate":
+		flags := flag.NewFlagSet("backup replicate", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "verified backup archive path")
+		output := flags.String("output", "", "new replica path on independent protected storage")
+		confirm := flags.Bool("confirm-independent-storage", false, "confirm the destination is a separately protected failure domain")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" || !*confirm {
+			return true, errors.New("backup replicate requires --input, --output, and --confirm-independent-storage and accepts no positional arguments")
+		}
+		replicated, err := backup.Replicate(ctx, *input, *output)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.replicate", Path: absolute,
+			Bytes: replicated.Size, SHA256: replicated.SHA256, Manifest: replicated.Manifest,
+		})
 
 	case "restore":
 		flags := flag.NewFlagSet("backup restore", flag.ContinueOnError)
