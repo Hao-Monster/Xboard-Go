@@ -234,6 +234,66 @@ lifecycle operations cannot retag another project's pending container image.
 The tool is currently a local test workflow, not a production updater or a
 remote image trust/signing system.
 
+For the split topology, use a versioned deployment manifest. Its top-level
+revision identifies the deployment decision; every component independently
+records an immutable registry digest, the expected local Docker image ID, and
+the revision label embedded in that image. This permits a frontend-only or
+gateway-only release to retain the exact previous backend image.
+
+```json
+{
+  "format_version": 1,
+  "revision": "0123456789abcdef0123456789abcdef01234567",
+  "gateway": {
+    "reference": "registry.example/xboard-go-gateway@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "revision": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "frontend": {
+    "reference": "registry.example/xboard-go-frontend@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "revision": "89abcdef0123456789abcdef0123456789abcdef"
+  },
+  "backend": {
+    "reference": "registry.example/xboard-go-backend@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "id": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "revision": "89abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+The tool rejects mutable references, unknown or duplicate JSON fields, an
+unexpected local image ID, title, license, or revision, and manifests larger
+than 64 KiB. It binds all three verified IDs to project-scoped runtime tags
+before changing containers. Component-only upgrades recreate only the changed
+containers. A backend change first creates and verifies a database backup; a
+failed activation restores that backup and the precise previous three-image
+combination.
+
+```bash
+go run ./cmd/xboard-lifecycle install --topology split \
+  --project xboard-go-split \
+  --compose-file compose.split.yaml \
+  --deployment-manifest .local/deployments/candidate.json
+
+go run ./cmd/xboard-lifecycle upgrade --topology split \
+  --project xboard-go-split \
+  --compose-file compose.split.yaml \
+  --deployment-manifest .local/deployments/next.json
+
+go run ./cmd/xboard-lifecycle status --topology split \
+  --project xboard-go-split --compose-file compose.split.yaml
+
+go run ./cmd/xboard-lifecycle rollback --topology split \
+  --project xboard-go-split --compose-file compose.split.yaml
+```
+
+Split lifecycle state uses a separate `-split.jsonl` append-only journal. A
+frontend- or gateway-only rollback preserves database writes made after the
+upgrade. A backend rollback restores the verified pre-upgrade snapshot, so its
+post-snapshot writes remain only in the non-overwritten failed database for
+explicit diagnosis or reconciliation.
+
 ## Local database backup and recovery
 
 The Compose profile mounts a separate `xboard-go-backups` volume. Creating a
