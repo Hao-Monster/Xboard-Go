@@ -230,12 +230,7 @@ func (s *server) authenticateLegacyNode(w http.ResponseWriter, r *http.Request, 
 		writeAPIError(w, http.StatusUnauthorized, "invalid_node_credential", "节点凭据无效或未配置", nil)
 		return false
 	}
-	if r.URL.Path == "/ws" {
-		s.legacyWebSocketAuthSuccess.Add(1)
-	} else {
-		s.legacyHTTPAuthSuccess.Add(1)
-	}
-	s.legacyLastUsedUnix.Store(s.now().Unix())
+	s.nodeAuthTelemetry.record(store.NodeAuthKindLegacyGlobalToken, r, s.now())
 	return true
 }
 
@@ -351,6 +346,7 @@ func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, mac
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return false
 	}
+	s.nodeAuthTelemetry.record(store.NodeAuthKindMachineCredential, r, s.now())
 	return true
 }
 

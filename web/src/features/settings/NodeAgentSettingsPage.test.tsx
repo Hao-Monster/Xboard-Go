@@ -18,6 +18,11 @@ const initial: NodeAgentSettings = {
   legacy_http_auth_success_count: 12,
   legacy_websocket_auth_success_count: 3,
   legacy_last_used_at: "2026-08-28T12:00:00Z",
+  node_auth_telemetry: {
+    observed_since: "2026-08-01T00:00:00Z",
+    legacy_global_token: { http_auth_success_count: 12, websocket_auth_success_count: 3, last_used_at: "2026-08-28T12:00:00Z" },
+    machine_credential: { http_auth_success_count: 41, websocket_auth_success_count: 17, last_used_at: "2026-08-28T12:01:00Z" }
+  },
   updated_at: "2026-08-28T11:00:00Z"
 };
 
@@ -34,9 +39,25 @@ describe("NodeAgentSettingsPage", () => {
     expect(screen.getByRole("checkbox", { name: "启用节点 WebSocket" })).toBeChecked();
     expect(screen.getByLabelText("WebSocket 地址")).toHaveValue("");
     expect(screen.queryByDisplayValue(/legacy-agent-token/i)).not.toBeInTheDocument();
-    const telemetry = screen.getByRole("region", { name: "旧单节点使用情况" });
+    const telemetry = screen.getByRole("region", { name: "节点鉴权迁移遥测" });
     expect(within(telemetry).getByText("12")).toBeVisible();
     expect(within(telemetry).getByText("3")).toBeVisible();
+    expect(within(telemetry).getByText("41")).toBeVisible();
+    expect(within(telemetry).getByText("17")).toBeVisible();
+    expect(within(telemetry).getByRole("heading", { name: "V1 全局令牌" })).toBeVisible();
+    expect(within(telemetry).getByRole("heading", { name: "V2 机器凭据" })).toBeVisible();
+  });
+
+  it("keeps a frontend-only rollout compatible with the previous backend telemetry fields", async () => {
+    const previousBackend = { ...initial, node_auth_telemetry: undefined };
+    const api = { getNodeAgentSettings: vi.fn().mockResolvedValue(previousBackend), updateNodeAgentSettings: vi.fn() };
+    render(<NodeAgentSettingsPage api={api} />);
+
+    const telemetry = await screen.findByRole("region", { name: "节点鉴权迁移遥测" });
+    expect(within(telemetry).getByText("12")).toBeVisible();
+    expect(within(telemetry).getByText("3")).toBeVisible();
+    expect(within(telemetry).getAllByText("0")).toHaveLength(2);
+    expect(within(telemetry).getAllByText("尚无记录")).toHaveLength(1);
   });
 
   it("replaces and generates one-time tokens with optimistic revisions", async () => {

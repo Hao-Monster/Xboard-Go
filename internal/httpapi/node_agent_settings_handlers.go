@@ -11,23 +11,22 @@ import (
 
 type nodeAgentSettingsResponse struct {
 	store.NodeAgentSettings
-	WebSocketAvailable         bool       `json:"websocket_available"`
-	IssuedToken                string     `json:"issued_token,omitempty"`
-	LegacyHTTPAuthSuccess      uint64     `json:"legacy_http_auth_success_count"`
-	LegacyWebSocketAuthSuccess uint64     `json:"legacy_websocket_auth_success_count"`
-	LegacyLastUsedAt           *time.Time `json:"legacy_last_used_at"`
+	WebSocketAvailable         bool                    `json:"websocket_available"`
+	IssuedToken                string                  `json:"issued_token,omitempty"`
+	LegacyHTTPAuthSuccess      uint64                  `json:"legacy_http_auth_success_count"`
+	LegacyWebSocketAuthSuccess uint64                  `json:"legacy_websocket_auth_success_count"`
+	LegacyLastUsedAt           *time.Time              `json:"legacy_last_used_at"`
+	NodeAuthTelemetry          store.NodeAuthTelemetry `json:"node_auth_telemetry"`
 }
 
-func (s *server) nodeAgentSettingsResponse(settings store.NodeAgentSettings, issuedToken string) nodeAgentSettingsResponse {
-	response := nodeAgentSettingsResponse{
+func (s *server) nodeAgentSettingsResponse(settings store.NodeAgentSettings, issuedToken string, telemetry store.NodeAuthTelemetry) nodeAgentSettingsResponse {
+	return nodeAgentSettingsResponse{
 		NodeAgentSettings: settings, WebSocketAvailable: s.webSocketEnabled, IssuedToken: issuedToken,
-		LegacyHTTPAuthSuccess: s.legacyHTTPAuthSuccess.Load(), LegacyWebSocketAuthSuccess: s.legacyWebSocketAuthSuccess.Load(),
+		LegacyHTTPAuthSuccess:      telemetry.LegacyGlobalToken.HTTPAuthSuccess,
+		LegacyWebSocketAuthSuccess: telemetry.LegacyGlobalToken.WebSocketAuthSuccess,
+		LegacyLastUsedAt:           telemetry.LegacyGlobalToken.LastUsedAt,
+		NodeAuthTelemetry:          telemetry,
 	}
-	if unix := s.legacyLastUsedUnix.Load(); unix > 0 {
-		usedAt := time.Unix(unix, 0).UTC()
-		response.LegacyLastUsedAt = &usedAt
-	}
-	return response
 }
 
 func (s *server) getNodeAgentSettings(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +35,12 @@ func (s *server) getNodeAgentSettings(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, s.nodeAgentSettingsResponse(settings, ""))
+	telemetry, err := s.nodeAuthTelemetry.snapshot(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, s.nodeAgentSettingsResponse(settings, "", telemetry))
 }
 
 func (s *server) updateNodeAgentSettings(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +59,11 @@ func (s *server) updateNodeAgentSettings(w http.ResponseWriter, r *http.Request)
 	}
 	if input.GenerateServerToken && input.ServerToken != nil {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "通讯密钥不能同时生成和手动设置", nil)
+		return
+	}
+	telemetry, err := s.nodeAuthTelemetry.snapshot(r.Context())
+	if err != nil {
+		handleStoreError(w, err)
 		return
 	}
 	current, err := s.store.GetNodeAgentSettings(r.Context())
@@ -131,5 +140,5 @@ func (s *server) updateNodeAgentSettings(w http.ResponseWriter, r *http.Request)
 			s.hub.DisconnectLegacy("server token changed")
 		}
 	}
-	writeSuccess(w, http.StatusOK, s.nodeAgentSettingsResponse(updated, issuedToken))
+	writeSuccess(w, http.StatusOK, s.nodeAgentSettingsResponse(updated, issuedToken, telemetry))
 }
