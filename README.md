@@ -216,7 +216,8 @@ independent storage target. Replication never overwrites an existing object,
 streams within the archive size limit, verifies the copied archive before it is
 published, and checks the published SHA-256. The confirmation flag is an
 explicit operator assertion; the process cannot prove that two paths belong to
-different failure domains.
+different failure domains. The destination filesystem must support atomic hard
+links within the mounted directory; replication fails closed when it does not.
 
 ```bash
 docker compose -f compose.local.yaml run --rm --no-deps \
