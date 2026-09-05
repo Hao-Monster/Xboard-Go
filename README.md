@@ -40,16 +40,43 @@ published to the host. Runtime application data is stored in the
 This profile explicitly permits cleartext SMTP only inside its isolated Docker
 network and is not a production deployment definition.
 
-The backend also supports a staged split-runtime mode for isolated integration
-work. Set `XBOARD_FRONTEND_ORIGIN` to the private HTTP(S) origin of a trusted
-frontend container and leave `XBOARD_WEB_ROOT` empty. The two settings are
-mutually exclusive. In this mode the backend retrieves only the fixed
-`/index.html` resource after applying safe-mode and administrator secure-path
-checks; it does not forward browser cookies, proxy headers, arbitrary paths, or
-upstream response headers. Static assets remain the responsibility of the
-private frontend and same-origin gateway. The current local Compose profile
-continues to use the combined image until the separate topology has its own
-integration and rollback evidence.
+The repository also provides `compose.split.yaml` for isolated integration of
+three independently replaceable deployment units: a same-origin gateway, a
+static frontend, and the Go backend. Only the gateway publishes the application
+port, and it binds to loopback. The frontend and backend remain private on a
+dedicated Docker network; only the backend mounts application secrets and data.
+The combined `compose.local.yaml` topology remains the conservative default
+until split-runtime lifecycle and rollback work is complete.
+
+On a Linux test host, create the file-backed secrets so the non-root backend can
+read the bind mounts while the containing directory prevents other host users
+from traversing to them:
+
+```bash
+mkdir -p .local
+chmod 700 .local
+printf '%s' 'replace-with-a-local-password' > .local/bootstrap-password.txt
+openssl rand -base64 32 | tr -d '\n' > .local/settings-encryption-key.txt
+chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+docker compose -f compose.split.yaml up --build --wait
+```
+
+Open `http://127.0.0.1:7080`. Stop the stack before returning the secret files
+to owner-only mode with `chmod 0600`. If the default private subnet overlaps a
+host network, override `XBOARD_SPLIT_SUBNET`, `XBOARD_SPLIT_GATEWAY_IP`, and
+`XBOARD_SPLIT_TRUSTED_PROXY_CIDRS` together; the trusted proxy value must be the
+exact gateway address with a `/32` prefix.
+
+Split mode sets `XBOARD_FRONTEND_ORIGIN` to the private frontend origin and
+leaves `XBOARD_WEB_ROOT` empty. The two settings are mutually exclusive. The
+backend retrieves only `/index.html` after applying safe-mode and administrator
+secure-path checks; it does not forward browser cookies, proxy headers,
+arbitrary paths, or upstream response headers. Static assets are served only by
+the private frontend through the same-origin gateway. Gateway upstream names
+are re-resolved through Docker DNS so a frontend or backend container can be
+replaced without restarting the gateway. Digest-addressed `/assets/` responses
+are cached in the gateway's bounded temporary filesystem; non-digest entry
+resources are always fetched from the current frontend container.
 
 The default `XBOARD_NODE_COORDINATION_MODE=local` is deliberately limited to
 one API/WebSocket replica. Multi-replica tests must use `redis` mode: the

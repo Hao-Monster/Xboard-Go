@@ -1,0 +1,251 @@
+services:
+  gateway:
+    image: ${XBOARD_GO_GATEWAY_IMAGE:-xboard-go-gateway:local}
+    build:
+      context: .
+      target: gateway
+      args:
+        APP_REVISION: ${XBOARD_GO_REVISION:-local}
+    ports:
+      - "127.0.0.1:${XBOARD_GO_PORT:-7080}:8080"
+    networks:
+      xboard-split:
+        ipv4_address: ${XBOARD_SPLIT_GATEWAY_IP:-172.31.237.254}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 128m
+    stop_grace_period: 10s
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+  frontend:
+    image: ${XBOARD_GO_FRONTEND_IMAGE:-xboard-go-frontend:local}
+    build:
+      context: .
+      target: frontend
+      args:
+        APP_REVISION: ${XBOARD_GO_REVISION:-local}
+    expose:
+      - "8080"
+    networks:
+      - xboard-split
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=101,gid=101,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 128m
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  backend:
+    image: ${XBOARD_GO_BACKEND_IMAGE:-xboard-go-backend:local}
+    build:
+      context: .
+      target: backend
+      args:
+        APP_REVISION: ${XBOARD_GO_REVISION:-local}
+        GO_MODULE_PROXY: ${XBOARD_GO_MODULE_PROXY:-https://proxy.golang.org,direct}
+    expose:
+      - "8080"
+    networks:
+      - xboard-split
+    environment:
+      XBOARD_PANEL_URL: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
+      XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_LEGACY_ADMIN_PATH:-}
+      XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
+      XBOARD_ALLOWED_ORIGINS: http://127.0.0.1:${XBOARD_GO_PORT:-7080}
+      XBOARD_TRUSTED_PROXY_CIDRS: ${XBOARD_SPLIT_TRUSTED_PROXY_CIDRS:-172.31.237.254/32}
+      XBOARD_FRONTEND_ORIGIN: http://frontend:8080
+      XBOARD_WEB_ROOT: ""
+      XBOARD_BOOTSTRAP_ADMIN_EMAIL: ${XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL:-admin@xboard-go.local}
+      XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
+      XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
+      XBOARD_ATTACHMENT_ROOT: ${XBOARD_ATTACHMENT_ROOT:-/var/lib/xboard/knowledge-attachments}
+      XBOARD_ADMIN_EXPORT_ROOT: /var/lib/xboard/admin-exports
+      XBOARD_BULK_POLL_INTERVAL: 1s
+      XBOARD_MAIL_POLL_INTERVAL: 1s
+      XBOARD_SMTP_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_ALLOW_INSECURE: ${XBOARD_CAPTCHA_ALLOW_INSECURE:-false}
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL:-}
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: ${XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL:-}
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: ${XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL:-}
+      XBOARD_NODE_COORDINATION_MODE: ${XBOARD_NODE_COORDINATION_MODE:-local}
+      XBOARD_REDIS_URL: ${XBOARD_REDIS_URL:-}
+      XBOARD_REDIS_KEY_PREFIX: ${XBOARD_REDIS_KEY_PREFIX:-xboard-go:}
+      XBOARD_WEBSOCKET_ENABLED: ${XBOARD_WEBSOCKET_ENABLED:-false}
+      XBOARD_WEBSOCKET_URL: ${XBOARD_WEBSOCKET_URL:-}
+      XBOARD_NODE_PUSH_INTERVAL: ${XBOARD_NODE_PUSH_INTERVAL:-60}
+      XBOARD_NODE_PULL_INTERVAL: ${XBOARD_NODE_PULL_INTERVAL:-60}
+      XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE: ${XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE:-}
+    secrets:
+      - bootstrap_admin_password
+      - settings_encryption_key
+    volumes:
+      - xboard-go-data:/var/lib/xboard
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 15s
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  maintenance:
+    profiles: [maintenance]
+    image: ${XBOARD_GO_BACKEND_IMAGE:-xboard-go-backend:local}
+    build:
+      context: .
+      target: backend
+      args:
+        APP_REVISION: ${XBOARD_GO_REVISION:-local}
+        GO_MODULE_PROXY: ${XBOARD_GO_MODULE_PROXY:-https://proxy.golang.org,direct}
+    environment:
+      XBOARD_DATABASE_DSN: ${XBOARD_DATABASE_DSN:-file:/var/lib/xboard/xboard.db}
+      XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_LEGACY_ADMIN_PATH:-}
+      XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
+      XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_encryption_key
+      XBOARD_ATTACHMENT_ROOT: ${XBOARD_ATTACHMENT_ROOT:-/var/lib/xboard/knowledge-attachments}
+      XBOARD_ADMIN_EXPORT_ROOT: /var/lib/xboard/admin-exports
+    secrets:
+      - settings_encryption_key
+    volumes:
+      - xboard-go-data:/var/lib/xboard
+      - xboard-go-backups:/var/lib/xboard-backups
+    networks:
+      - xboard-split
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    restart: "no"
+
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+    user: "65532:65532"
+    ports:
+      - "127.0.0.1:${XBOARD_MAILPIT_PORT:-7082}:8025"
+    networks:
+      - xboard-split
+    environment:
+      MP_LABEL: Xboard-Go split-runtime mail capture
+      MP_MAX_MESSAGES: 500
+      MP_MAX_AGE: 24h
+      MP_MAX_MESSAGE_SIZE: 1
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
+      MP_SMTP_DISABLE_RDNS: "true"
+      MP_SMTP_STRICT_RFC_HEADERS: "true"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 128m
+    cpus: 0.50
+    restart: unless-stopped
+
+  captcha-stub:
+    profiles: [e2e]
+    image: node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573
+    user: "65532:65532"
+    command: ["node", "/test/captcha-stub.mjs"]
+    environment:
+      XBOARD_CAPTCHA_STUB_ADDRESS: 0.0.0.0
+    volumes:
+      - ./web/e2e/captcha-stub.mjs:/test/captcha-stub.mjs:ro
+    networks:
+      - xboard-split
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4199/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    restart: "no"
+
+  redis:
+    profiles: [coordination]
+    image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+    user: "999:999"
+    entrypoint: ["/bin/sh", "/run-local-redis.sh"]
+    secrets:
+      - redis_password
+    volumes:
+      - ./.docker/redis/run-local-redis.sh:/run-local-redis.sh:ro
+      - ./.docker/redis/healthcheck-local-redis.sh:/healthcheck-local-redis.sh:ro
+    networks:
+      - xboard-split
+    read_only: true
+    tmpfs:
+      - /data:rw,noexec,nosuid,nodev,size=64m,uid=999,gid=999,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=999,gid=999,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.50
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/healthcheck-local-redis.sh"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: unless-stopped
+
+networks:
+  xboard-split:
+    ipam:
+      config:
+        - subnet: ${XBOARD_SPLIT_SUBNET:-172.31.237.0/24}
+
+volumes:
+  xboard-go-data:
+  xboard-go-backups:
+
+secrets:
+  bootstrap_admin_password:
+    file: ${XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE:-.local/bootstrap-password.txt}
+  settings_encryption_key:
+    file: ${XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE:-.local/settings-encryption-key.txt}
+  redis_password:
+    file: ${XBOARD_GO_REDIS_PASSWORD_FILE:-.local/redis-password.txt}

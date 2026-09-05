@@ -363,3 +363,118 @@ jobs:
       - name: Stop packaged application
         if: always()
         run: docker compose -f compose.local.yaml --profile e2e down --volumes
+
+  split-runtime:
+    runs-on: ubuntu-latest
+    env:
+      XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
+      XBOARD_WEBSOCKET_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Validate split deployment invariants
+        run: |
+          node --test .github/scripts/check-split-topology.test.mjs
+          docker compose -f compose.split.yaml config --format json |
+            node .github/scripts/check-split-topology.mjs
+      - name: Build exact split images
+        run: |
+          mkdir -p .local
+          chmod 0700 .local
+          password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          echo "::add-mask::$password"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          printf 'XBOARD_SPLIT_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
+          docker compose -f compose.split.yaml build gateway frontend backend
+          for image in xboard-go-gateway:local xboard-go-frontend:local xboard-go-backend:local; do
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$GITHUB_SHA"
+          done
+      - name: Start split application and verify routing boundaries
+        run: |
+          docker compose -f compose.split.yaml --profile e2e up -d --no-build --wait
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/)" = 200
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/wrong-admin-path)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/frontend-healthz)" = 404
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/gateway-healthz)" = 200
+          asset="$(curl --fail --silent http://127.0.0.1:7080/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -n1)"
+          test -n "$asset"
+          curl --fail --silent --head "http://127.0.0.1:7080$asset" |
+            grep -qi '^cache-control: public, max-age=31536000, immutable'
+          for service in gateway frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '.[0].HostConfig.ReadonlyRootfs == true and
+                (.[0].HostConfig.CapDrop | index("ALL") != null) and
+                (.[0].HostConfig.SecurityOpt | index("no-new-privileges:true") != null)' >/dev/null
+          done
+          for service in frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '((.[0].HostConfig.PortBindings // {}) | length) == 0' >/dev/null
+          done
+      - name: Verify independent frontend and backend replacement
+        run: |
+          set -euo pipefail
+          wait_url() {
+            for _ in $(seq 1 20); do
+              if curl --fail --silent --show-error "$1" >/dev/null; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
+          gateway_id="$(docker compose -f compose.split.yaml ps -q gateway)"
+          backend_id="$(docker compose -f compose.split.yaml ps -q backend)"
+          frontend_id="$(docker compose -f compose.split.yaml ps -q frontend)"
+          asset="$(curl --fail --silent http://127.0.0.1:7080/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -n1)"
+
+          docker compose -f compose.split.yaml up -d --no-deps --no-build --force-recreate --wait frontend
+          test "$(docker compose -f compose.split.yaml ps -q gateway)" = "$gateway_id"
+          test "$(docker compose -f compose.split.yaml ps -q backend)" = "$backend_id"
+          test "$(docker compose -f compose.split.yaml ps -q frontend)" != "$frontend_id"
+          wait_url http://127.0.0.1:7080/xboard-logo.svg
+          wait_url "http://127.0.0.1:7080$asset"
+
+          frontend_id="$(docker compose -f compose.split.yaml ps -q frontend)"
+          docker compose -f compose.split.yaml up -d --no-deps --no-build --force-recreate --wait backend
+          test "$(docker compose -f compose.split.yaml ps -q gateway)" = "$gateway_id"
+          test "$(docker compose -f compose.split.yaml ps -q frontend)" = "$frontend_id"
+          test "$(docker compose -f compose.split.yaml ps -q backend)" != "$backend_id"
+          wait_url http://127.0.0.1:7080/healthz
+          wait_url http://127.0.0.1:7080/e2e-admin-secure
+      - name: Run critical desktop and mobile split-runtime browser regression
+        env:
+          XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
+          XBOARD_E2E_EXTERNAL_SERVER: "true"
+          XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
+          XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_SPLIT_PASSWORD }}
+          XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
+        run: >-
+          pnpm --dir web exec playwright test
+          e2e/admin-secure-path.spec.ts e2e/server-schedule.spec.ts
+          --project chromium --project mobile-chromium
+      - name: Capture split container logs on failure
+        if: failure()
+        run: docker compose -f compose.split.yaml --profile e2e logs --no-color
+      - name: Stop split application
+        if: always()
+        run: |
+          docker compose -f compose.split.yaml --profile e2e down --volumes
+          chmod 0600 .local/bootstrap-password.txt .local/settings-encryption-key.txt 2>/dev/null || true
