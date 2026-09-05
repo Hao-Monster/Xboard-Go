@@ -89,16 +89,7 @@ func New(root string, api http.Handler, accessResolvers ...FrontendAccessResolve
 			http.NotFound(w, r)
 			return
 		}
-		access, ok := resolveFrontendAccess(w, r, accessResolver)
-		if !ok {
-			return
-		}
-		if accessResolver != nil && (!validSecurePath(access.SecurePath) || (r.URL.Path != "/"+access.SecurePath && r.URL.Path != "/"+access.SecurePath+"/")) {
-			http.NotFound(w, r)
-			return
-		}
-		if !access.Allowed {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		if !secureFrontendAccessAllowed(w, r, accessResolver) {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -109,6 +100,22 @@ func New(root string, api http.Handler, accessResolvers ...FrontendAccessResolve
 func frontendAccessAllowed(w http.ResponseWriter, r *http.Request, resolve FrontendAccessResolver) bool {
 	access, ok := resolveFrontendAccess(w, r, resolve)
 	if !ok {
+		return false
+	}
+	if !access.Allowed {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func secureFrontendAccessAllowed(w http.ResponseWriter, r *http.Request, resolve FrontendAccessResolver) bool {
+	access, ok := resolveFrontendAccess(w, r, resolve)
+	if !ok {
+		return false
+	}
+	if resolve != nil && (!validSecurePath(access.SecurePath) || (r.URL.Path != "/"+access.SecurePath && r.URL.Path != "/"+access.SecurePath+"/")) {
+		http.NotFound(w, r)
 		return false
 	}
 	if !access.Allowed {

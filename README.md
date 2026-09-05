@@ -40,6 +40,17 @@ published to the host. Runtime application data is stored in the
 This profile explicitly permits cleartext SMTP only inside its isolated Docker
 network and is not a production deployment definition.
 
+The backend also supports a staged split-runtime mode for isolated integration
+work. Set `XBOARD_FRONTEND_ORIGIN` to the private HTTP(S) origin of a trusted
+frontend container and leave `XBOARD_WEB_ROOT` empty. The two settings are
+mutually exclusive. In this mode the backend retrieves only the fixed
+`/index.html` resource after applying safe-mode and administrator secure-path
+checks; it does not forward browser cookies, proxy headers, arbitrary paths, or
+upstream response headers. Static assets remain the responsibility of the
+private frontend and same-origin gateway. The current local Compose profile
+continues to use the combined image until the separate topology has its own
+integration and rollback evidence.
+
 The default `XBOARD_NODE_COORDINATION_MODE=local` is deliberately limited to
 one API/WebSocket replica. Multi-replica tests must use `redis` mode: the
 application then claims a 180-second machine-and-node lease, renews it every 60
