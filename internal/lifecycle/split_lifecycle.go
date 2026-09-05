@@ -248,7 +248,7 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if err := validateDeploymentApplication(current); err != nil {
+	if err := validateDeploymentApplicationIdentity(current); err != nil {
 		return DeploymentResult{}, err
 	}
 	if !sameDeploymentImages(current.Deployment, *state.Target) {

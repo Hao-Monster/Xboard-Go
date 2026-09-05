@@ -69,6 +69,26 @@ func TestDeploymentFrontendRollbackDoesNotRestoreDatabase(t *testing.T) {
 	}
 }
 
+func TestDeploymentRollbackAllowsUnhealthyRecordedTarget(t *testing.T) {
+	previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	target := previous
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Frontend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	store := &memoryDeploymentStateStore{states: []DeploymentState{{
+		Version: DeploymentStateVersion, Status: StatusUpgraded, UpdatedAt: time.Now(), Changed: []Component{ComponentFrontend},
+		Previous: &previous, Target: &target, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+	}}}
+	platform := &fakeDeploymentPlatform{current: DeploymentApplication{Deployment: target, DSN: defaultDatabaseDSN, Healthy: false}}
+	result, err := NewDeploymentOrchestrator(platform, store, time.Now).Rollback(context.Background())
+	if err != nil || result.Status != "success" {
+		t.Fatalf("Rollback() = (%#v, %v)", result, err)
+	}
+	if len(platform.targets) != 1 || !sameDeploymentImages(platform.targets[0], previous) {
+		t.Fatalf("targets = %#v", platform.targets)
+	}
+}
+
 func TestDeploymentStatusRejectsRuntimeImageDrift(t *testing.T) {
 	recorded := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
 	active := recorded
