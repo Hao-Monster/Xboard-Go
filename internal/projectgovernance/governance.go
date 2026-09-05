@@ -649,15 +649,17 @@ func validateEvidenceTarget(root string, state State) error {
 func isEvidenceMetadataPath(path string) bool {
 	// These paths control project governance and CI but are excluded from the
 	// packaged application by the Dockerfile and the cmd/xboard dependency graph.
-	// The synthetic migration-dataset generator is likewise tooling-only: it is
-	// intentionally kept outside the packaged binary and cannot alter runtime
-	// behavior covered by an existing product evidence target.
+	// The synthetic migration-dataset generator and clean-room parity specs are
+	// likewise tooling-only. They are intentionally kept outside the packaged
+	// binary and emitted web assets, so they cannot alter runtime behavior covered
+	// by an existing product evidence target.
 	return strings.HasPrefix(path, "docs/project/") ||
 		strings.HasPrefix(path, ".github/") ||
 		strings.HasPrefix(path, "cmd/projectctl/") ||
 		strings.HasPrefix(path, "internal/projectgovernance/") ||
 		strings.HasPrefix(path, "cmd/testdatagen/") ||
-		strings.HasPrefix(path, "internal/testdata/")
+		strings.HasPrefix(path, "internal/testdata/") ||
+		strings.HasPrefix(path, "web/parity/")
 }
 
 func RenderStatus(state State) (string, error) {

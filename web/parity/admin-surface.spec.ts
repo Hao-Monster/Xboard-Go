@@ -18,6 +18,7 @@ const legacyMenu = [
   ["公告管理", "#/config/notice"],
   ["支付配置", "#/config/payment"],
   ["知识库管理", "#/config/knowledge"],
+  ["客户端管理", "#/config/knowledge?client-catalog=1"],
   ["服务器管理", "#/server/machine"],
   ["节点管理", "#/server/manage"],
   ["权限组管理", "#/server/group"],
@@ -37,6 +38,13 @@ test("legacy administrator surface remains observable without frontend source", 
   for (const [label, href] of legacyMenu) {
     await expect(page.locator(`a[href="${href}"]`), `${label} (${href})`).toBeVisible();
   }
+  const observedMenu = await page.locator('a[href*="#/"]:visible').evaluateAll((links) => links.map((link) => ({
+    href: link.getAttribute("href") ?? "",
+    label: (link.textContent ?? "").replace(/\s+/g, " ").trim().replace(/^▣\s*/, "")
+  })).filter((item) => item.href.startsWith("#/")));
+  expect(uniqueLegacyNavigation(observedMenu)).toEqual(uniqueLegacyNavigation(
+    legacyMenu.map(([label, href]) => ({ label, href }))
+  ));
 
   const machineResponse = page.waitForResponse((response) => response.url().includes("/server/machine/fetch"));
   await page.locator('a[href="#/server/machine"]').click();
@@ -2886,14 +2894,23 @@ test("implemented Go administrator concepts map to the legacy navigation", async
     await loginGo(goPage);
 
     for (const [legacyLabel, goLabel] of [
-      ["服务器管理", "服务器管理"],
-      ["节点管理", "节点管理"],
-      ["用户管理", "用户管理"],
-      ["权限组管理", "权限组"],
-      ["路由管理", "路由规则"],
+      ["仪表盘", "系统状态"],
+      ["系统配置", "系统设置"],
+      ["插件管理", "插件管理"],
+      ["主题配置", "主题配置"],
       ["公告管理", "公告管理"],
+      ["支付配置", "支付配置"],
       ["知识库管理", "知识库管理"],
       ["客户端管理", "客户端管理"],
+      ["服务器管理", "服务器管理"],
+      ["节点管理", "节点管理"],
+      ["权限组管理", "权限组"],
+      ["路由管理", "路由规则"],
+      ["套餐管理", "套餐管理"],
+      ["订单管理", "订单管理"],
+      ["优惠券管理", "优惠券管理"],
+      ["礼品卡管理", "礼品卡管理"],
+      ["用户管理", "用户管理"],
       ["工单管理", "工单管理"]
     ] as const) {
       const legacyEntry = legacyLabel === "客户端管理"
@@ -3478,6 +3495,11 @@ function watchErrors(page: Page) {
     }
   });
   return errors;
+}
+
+function uniqueLegacyNavigation(items: Array<{ href: string; label: string }>) {
+  return [...new Map(items.map((item) => [`${item.href}\u0000${item.label}`, item])).values()]
+    .sort((left, right) => left.href.localeCompare(right.href, "en") || left.label.localeCompare(right.label, "zh-CN"));
 }
 
 function requiredEnv(name: string) {

@@ -285,6 +285,33 @@ func TestCheckAllowsSyntheticTestdataChangesAfterCurrentEvidenceTarget(t *testin
 	}
 }
 
+func TestCheckAllowsParitySpecChangesAfterCurrentEvidenceTarget(t *testing.T) {
+	root, state := repositoryState(t)
+	temporaryRoot := copyProjectFixture(t, root)
+	runGit(t, temporaryRoot, "init")
+	runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+	runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "verification target")
+	retargetCurrentEvidence(&state, strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD")))
+	requirement := &state.Requirements.Requirements[0]
+	requirement.VerificationStatus = "current"
+	requirement.Evidence = []Evidence{validTestEvidence(state)}
+	writeRequirementFixture(t, temporaryRoot, state)
+	parityPath := filepath.Join(temporaryRoot, "web", "parity", "admin-surface.spec.ts")
+	if err := os.MkdirAll(filepath.Dir(parityPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parityPath, []byte("export {};\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, temporaryRoot, "add", ".")
+	runGit(t, temporaryRoot, "commit", "-m", "strengthen parity specification")
+	if err := Check(temporaryRoot); err != nil {
+		t.Fatalf("parity specification changes must not invalidate runtime evidence: %v", err)
+	}
+}
+
 func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 	for _, path := range []string{
 		"docs/project/requirements.json",
@@ -294,6 +321,7 @@ func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 		"internal/projectgovernance/governance.go",
 		"cmd/testdatagen/main.go",
 		"internal/testdata/legacy/gen/generator.go",
+		"web/parity/admin-surface.spec.ts",
 	} {
 		if !isEvidenceMetadataPath(path) {
 			t.Errorf("expected %s to be governance metadata", path)
@@ -305,6 +333,7 @@ func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 		"internal/store/sqlite.go",
 		"internal/testdata-evil/fixture.go",
 		"web/src/App.tsx",
+		"web/parity-runtime/admin-surface.ts",
 		"web/scripts/check-entry-budget.mjs",
 	} {
 		if isEvidenceMetadataPath(path) {
