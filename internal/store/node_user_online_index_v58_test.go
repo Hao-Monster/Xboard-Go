@@ -36,8 +36,8 @@ func TestSchemaV58IndexesUserScopedOnlineStateWithoutLosingRows(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_user_online WHERE node_id=? AND user_id=?`, node.ID, account.ID).Scan(&preserved); err != nil {
 		t.Fatal(err)
 	}
-	if version != 59 || preserved != 1 {
-		t.Fatalf("schema version=%d preserved rows=%d, want 59/1", version, preserved)
+	if version != 60 || preserved != 1 {
+		t.Fatalf("schema version=%d preserved rows=%d, want 60/1", version, preserved)
 	}
 	assertQueryPlanContains(t, database, `
 		EXPLAIN QUERY PLAN DELETE FROM node_user_online WHERE user_id=?

@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/attachments"
@@ -121,9 +120,7 @@ type server struct {
 	paymentWebhookRequests     *requestLimiter
 	hub                        *wsHub
 	webSocketEnabled           bool
-	legacyHTTPAuthSuccess      atomic.Uint64
-	legacyWebSocketAuthSuccess atomic.Uint64
-	legacyLastUsedUnix         atomic.Int64
+	nodeAuthTelemetry          *nodeAuthTelemetryRecorder
 	clientCatalog              *clientcatalog.Service
 	settingsCipher             *appsettings.Cipher
 	passwordResetProtector     *security.PasswordResetProtector
@@ -156,6 +153,7 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.Now == nil {
 		dependencies.Now = time.Now
 	}
+	runBackgroundTelemetry := dependencies.Context != nil
 	if dependencies.Context == nil {
 		dependencies.Context = context.Background()
 	}
@@ -185,6 +183,9 @@ func New(dependencies Dependencies) http.Handler {
 		WebSocketEnabled: dependencies.WebSocketEnabled, WebSocketURL: strings.TrimRight(dependencies.WebSocketURL, "/"),
 	}, dependencies.Now()); err != nil {
 		panic(fmt.Sprintf("httpapi: ensure node agent settings: %v", err))
+	}
+	if err := dependencies.Store.EnsureNodeAuthTelemetry(dependencies.Context, dependencies.Now()); err != nil {
+		panic(fmt.Sprintf("httpapi: ensure node authentication telemetry: %v", err))
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
@@ -270,6 +271,7 @@ func New(dependencies Dependencies) http.Handler {
 		smtpTestRequests:           newRequestLimiter(3, time.Minute),
 		telegramProvisionRequests:  newRequestLimiter(3, time.Minute),
 		webSocketEnabled:           dependencies.WebSocketEnabled,
+		nodeAuthTelemetry:          newNodeAuthTelemetryRecorder(dependencies.Store),
 		clientCatalog: clientcatalog.New(clientcatalog.Options{
 			Store: dependencies.Store, PanelURL: dependencies.PanelURL, HTTPClient: dependencies.CatalogHTTPClient, Now: dependencies.Now,
 		}),
@@ -289,6 +291,9 @@ func New(dependencies Dependencies) http.Handler {
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
+	}
+	if runBackgroundTelemetry {
+		go api.nodeAuthTelemetry.run(dependencies.Context, dependencies.Logger)
 	}
 	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)

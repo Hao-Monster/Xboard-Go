@@ -73,6 +73,20 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 	if handshake.Code != http.StatusOK {
 		t.Fatalf("legacy telemetry handshake status=%d body=%s", handshake.Code, handshake.Body)
 	}
+	machine, enrollment, err := database.CreateMachine(t.Context(), store.CreateMachineInput{Name: "telemetry machine", IsActive: true}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(t.Context(), machine.ID, enrollment.Code, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidMachine := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", "invalid-machine-credential", fmt.Sprintf(`{"machine_id":%d}`, machine.ID))
+	expectAPIError(t, invalidMachine, http.StatusUnauthorized, "invalid_machine_credential")
+	machineHandshake := agentRequest(api, http.MethodPost, "/api/v2/server/handshake", credential.Token, fmt.Sprintf(`{"machine_id":%d}`, machine.ID))
+	if machineHandshake.Code != http.StatusOK {
+		t.Fatalf("machine telemetry handshake status=%d body=%s", machineHandshake.Code, machineHandshake.Body)
+	}
 
 	readBack := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/node-agent-settings", "")
 	if readBack.Code != http.StatusOK || strings.Contains(readBack.Body.String(), token) || strings.Contains(readBack.Body.String(), "server_token_hash") || strings.Contains(readBack.Body.String(), "issued_token") {
@@ -81,6 +95,14 @@ func TestNodeAgentSettingsAdminContractKeepsTokenOneTimeAndDeploymentBounded(t *
 	readBackSettings := decodeNodeAgentSettings(t, readBack.Body.Bytes())
 	if readBackSettings.LegacyHTTPAuthSuccess != 1 || readBackSettings.LegacyWebSocketAuthSuccess != 0 || readBackSettings.LegacyLastUsedAt == nil {
 		t.Fatalf("legacy telemetry=%#v", readBackSettings)
+	}
+	if !readBackSettings.NodeAuthTelemetry.ObservedSince.Equal(fixedNow()) ||
+		readBackSettings.NodeAuthTelemetry.LegacyGlobalToken.HTTPAuthSuccess != 1 ||
+		readBackSettings.NodeAuthTelemetry.LegacyGlobalToken.WebSocketAuthSuccess != 0 ||
+		readBackSettings.NodeAuthTelemetry.MachineCredential.HTTPAuthSuccess != 1 ||
+		readBackSettings.NodeAuthTelemetry.MachineCredential.WebSocketAuthSuccess != 0 ||
+		readBackSettings.NodeAuthTelemetry.MachineCredential.LastUsedAt == nil {
+		t.Fatalf("persistent node auth telemetry=%#v", readBackSettings.NodeAuthTelemetry)
 	}
 
 	stale := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/node-agent-settings", `{
@@ -172,11 +194,12 @@ func TestNodeAgentSettingsCanPreserveUnavailableWebSocketButCannotEnableIt(t *te
 
 type nodeAgentSettingsContract struct {
 	store.NodeAgentSettings
-	WebSocketAvailable         bool       `json:"websocket_available"`
-	IssuedToken                string     `json:"issued_token"`
-	LegacyHTTPAuthSuccess      uint64     `json:"legacy_http_auth_success_count"`
-	LegacyWebSocketAuthSuccess uint64     `json:"legacy_websocket_auth_success_count"`
-	LegacyLastUsedAt           *time.Time `json:"legacy_last_used_at"`
+	WebSocketAvailable         bool                    `json:"websocket_available"`
+	IssuedToken                string                  `json:"issued_token"`
+	LegacyHTTPAuthSuccess      uint64                  `json:"legacy_http_auth_success_count"`
+	LegacyWebSocketAuthSuccess uint64                  `json:"legacy_websocket_auth_success_count"`
+	LegacyLastUsedAt           *time.Time              `json:"legacy_last_used_at"`
+	NodeAuthTelemetry          store.NodeAuthTelemetry `json:"node_auth_telemetry"`
 }
 
 func decodeNodeAgentSettings(t *testing.T, body []byte) nodeAgentSettingsContract {

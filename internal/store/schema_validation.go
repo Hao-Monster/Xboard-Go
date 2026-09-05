@@ -82,6 +82,8 @@ var requiredSchemaTables = []struct {
 	{"theme_settings", 51},
 	{"trusted_plugins", 55},
 	{"telegram_message_outbox", 56},
+	{"node_auth_telemetry_state", 60},
+	{"node_auth_telemetry", 60},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -208,6 +210,11 @@ var requiredSchemaColumnsV56 = map[string][]string{
 
 var requiredSchemaColumnsV57 = map[string][]string{
 	"telegram_message_outbox": {"recipient_user_id"},
+}
+
+var requiredSchemaColumnsV60 = map[string][]string{
+	"node_auth_telemetry_state": {"id", "observed_since"},
+	"node_auth_telemetry":       {"auth_kind", "transport", "success_count", "last_used_at"},
 }
 
 type schemaQueryer interface {
@@ -384,6 +391,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	}
 	if schemaVersion >= 59 {
 		if err := validateUserTrafficTotalTriggers(ctx, database); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 60 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV60); err != nil {
+			return err
+		}
+		if err := validateNodeAuthTelemetrySchema(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
@@ -749,6 +764,50 @@ func validateTelegramNotificationRecipientTriggers(ctx context.Context, database
 
 func normalizeSchemaDefinition(value string) string {
 	return strings.TrimSuffix(strings.Join(strings.Fields(strings.ToLower(value)), ""), ";")
+}
+
+func validateNodeAuthTelemetrySchema(ctx context.Context, database schemaQueryer) error {
+	expected := map[string]string{
+		"node_auth_telemetry_state": `CREATE TABLE node_auth_telemetry_state (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			observed_since INTEGER NOT NULL CHECK (observed_since >= 0)
+		) STRICT`,
+		"node_auth_telemetry": `CREATE TABLE node_auth_telemetry (
+			auth_kind TEXT NOT NULL CHECK (auth_kind IN ('legacy_global_token', 'machine_credential')),
+			transport TEXT NOT NULL CHECK (transport IN ('http', 'websocket')),
+			success_count INTEGER NOT NULL CHECK (success_count >= 0),
+			last_used_at INTEGER NOT NULL CHECK (last_used_at >= 0),
+			PRIMARY KEY (auth_kind, transport)
+		) STRICT, WITHOUT ROWID`,
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT name, sql FROM sqlite_schema
+		WHERE type = 'table' AND name IN ('node_auth_telemetry_state', 'node_auth_telemetry')
+	`)
+	if err != nil {
+		return fmt.Errorf("inspect node authentication telemetry schema: %w", err)
+	}
+	found := make(map[string]string, len(expected))
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("inspect node authentication telemetry schema: %w", err)
+		}
+		found[name] = definition
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect node authentication telemetry schema: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect node authentication telemetry schema: %w", err)
+	}
+	for name, definition := range expected {
+		if normalizeSchemaDefinition(found[name]) != normalizeSchemaDefinition(definition) {
+			return fmt.Errorf("node authentication telemetry table %q is missing or invalid", name)
+		}
+	}
+	return nil
 }
 
 func validateRequiredSchemaColumns(ctx context.Context, database schemaQueryer, schemaVersion int, requiredByTable map[string][]string) error {

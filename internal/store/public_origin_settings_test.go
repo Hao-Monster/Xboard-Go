@@ -77,7 +77,7 @@ func TestSchemaV52MigrationAddsSafePublicOriginDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if CurrentSchemaVersion() != 59 || settings.AppName != "Preserved V51" || settings.Revision != 41 || settings.ForceHTTPS || settings.SubscribeURL != "" {
+	if CurrentSchemaVersion() != 60 || settings.AppName != "Preserved V51" || settings.Revision != 41 || settings.ForceHTTPS || settings.SubscribeURL != "" {
 		t.Fatalf("v52 migration result = %#v version=%d", settings, CurrentSchemaVersion())
 	}
 }

@@ -32,8 +32,19 @@ export interface NodeAgentSettings {
   legacy_http_auth_success_count: number;
   legacy_websocket_auth_success_count: number;
   legacy_last_used_at: string | null;
+  node_auth_telemetry?: {
+    observed_since: string;
+    legacy_global_token: NodeAuthUsage;
+    machine_credential: NodeAuthUsage;
+  };
   updated_at: string;
   issued_token?: string;
+}
+
+export interface NodeAuthUsage {
+  http_auth_success_count: number;
+  websocket_auth_success_count: number;
+  last_used_at: string | null;
 }
 
 export interface NodeAgentSettingsInput {

@@ -113,6 +113,15 @@ the database stores only its SHA-256 digest and a short display prefix.
 Machine credentials remain the recommended least-privilege mode. Rotating or
 clearing the global token revokes legacy HTTP authentication immediately and
 fences legacy WebSocket connections without revoking machine credentials.
+The same administrator-only response persists four aggregate migration
+counters (legacy or machine credential, HTTP or WebSocket), their last-use
+times, and the observation start. Authentication performs only atomic memory
+updates; the process coalesces database writes once per minute and flushes on
+administrative reads and graceful shutdown. No token, machine/node identity,
+IP address, or request content is part of this telemetry. Use at least 30 days
+of representative observation before deciding the legacy-token retirement
+window; schema v60 starts a new observation period and does not invent
+historical usage.
 
 Node HTTP and WebSocket handshake rate limits always retain independent
 client, direct-peer, and credential buckets. A deployment behind a shared
