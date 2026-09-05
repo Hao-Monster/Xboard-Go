@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 59
+const currentSchemaVersion = 60
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -429,6 +429,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v59: %w", err)
 		}
 		version = 59
+	}
+	if version < 60 {
+		if _, err := tx.ExecContext(ctx, schemaV60); err != nil {
+			return fmt.Errorf("apply schema v60: %w", err)
+		}
+		version = 60
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2623,6 +2629,21 @@ WHEN NEW.traffic_u > 9223372036854775807 - NEW.traffic_d
 BEGIN
     SELECT RAISE(ABORT, 'user traffic total overflow');
 END;
+`
+
+const schemaV60 = `
+CREATE TABLE IF NOT EXISTS node_auth_telemetry_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    observed_since INTEGER NOT NULL CHECK (observed_since >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS node_auth_telemetry (
+    auth_kind TEXT NOT NULL CHECK (auth_kind IN ('legacy_global_token', 'machine_credential')),
+    transport TEXT NOT NULL CHECK (transport IN ('http', 'websocket')),
+    success_count INTEGER NOT NULL CHECK (success_count >= 0),
+    last_used_at INTEGER NOT NULL CHECK (last_used_at >= 0),
+    PRIMARY KEY (auth_kind, transport)
+) STRICT, WITHOUT ROWID;
 `
 
 func applySchemaV59(ctx context.Context, tx *sql.Tx) error {

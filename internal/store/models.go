@@ -1442,6 +1442,34 @@ type NodeAgentSettingsDefaults struct {
 	WebSocketURL     string
 }
 
+const (
+	NodeAuthKindLegacyGlobalToken = "legacy_global_token"
+	NodeAuthKindMachineCredential = "machine_credential"
+	NodeAuthTransportHTTP         = "http"
+	NodeAuthTransportWebSocket    = "websocket"
+)
+
+type NodeAuthUsage struct {
+	HTTPAuthSuccess      uint64     `json:"http_auth_success_count"`
+	WebSocketAuthSuccess uint64     `json:"websocket_auth_success_count"`
+	LastUsedAt           *time.Time `json:"last_used_at"`
+}
+
+// NodeAuthTelemetry is a bounded, aggregate-only migration signal. It never
+// contains credential, machine, node, network, or request identities.
+type NodeAuthTelemetry struct {
+	ObservedSince     time.Time     `json:"observed_since"`
+	LegacyGlobalToken NodeAuthUsage `json:"legacy_global_token"`
+	MachineCredential NodeAuthUsage `json:"machine_credential"`
+}
+
+type NodeAuthUsageIncrement struct {
+	AuthKind     string
+	Transport    string
+	SuccessCount uint64
+	LastUsedAt   time.Time
+}
+
 type UpdateNodeAgentSettingsInput struct {
 	Revision         int64
 	ServerToken      *string
