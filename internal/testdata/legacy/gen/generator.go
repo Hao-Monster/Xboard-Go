@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,16 +60,13 @@ func DefaultConfig(outputPath string) Config {
 // Generator builds a representative, anonymized legacy Xboard dataset.
 type Generator struct {
 	cfg  Config
-	rng  *rand.Rand
 	rows map[string]int
 }
 
 // New creates a new Generator with the given config.
 func New(cfg Config) *Generator {
-	src := rand.NewPCG(cfg.Seed, cfg.Seed^0xdeadbeef)
 	return &Generator{
 		cfg:  cfg,
-		rng:  rand.New(src),
 		rows: make(map[string]int),
 	}
 }
@@ -124,7 +120,7 @@ func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
 		DomainRows:  g.rows,
 		Notes: []string{
 			"All data is synthetically generated. No real users, emails, passwords, or tokens.",
-			"D-013 domains (stats, failed_jobs, stat_server) are excluded pending decision.",
+			"D-013 data (stats, failed_jobs, stat_server rows) is excluded pending decision; the required v2_stat_server schema is empty.",
 		},
 	}
 	completed = true
@@ -165,28 +161,6 @@ func WriteManifest(manifest DatasetManifest, manifestPath string) error {
 	if err := enc.Encode(manifest); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
-	return nil
-}
-
-// buildSchema creates the legacy Xboard table structure.
-// This mirrors the pre-migration source schema (not the current Go schema).
-//
-// NOTE: The exact schema version and table set to simulate depends on D-006
-// (target production database type). Until D-006 is resolved, we use SQLite
-// with a representative pre-migration schema (user_version = 22, the last
-// version before Go migration baseline).
-func (g *Generator) buildSchema(ctx context.Context, db *sql.DB) error {
-	// Minimal legacy schema placeholder — full schema TBD after D-006 decision.
-	// Each domain's buildSchema* function will be added in domains/*.go files.
-	_, err := db.ExecContext(ctx, `PRAGMA user_version = 22`)
-	return err
-}
-
-// populateDomains writes representative rows for each covered domain.
-// D-013-gated domains (stats, failed_jobs) are excluded.
-func (g *Generator) populateDomains(_ context.Context, _ *sql.DB) error {
-	// Placeholder: actual domain generators will be implemented in domains/*.go
-	// after the schema is finalized (D-006) and this design is approved.
 	return nil
 }
 

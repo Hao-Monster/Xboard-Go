@@ -191,8 +191,21 @@ jobs:
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
+  migration-drill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Reconcile and roll back representative legacy migration
+        run: >-
+          go test -timeout=10m ./internal/testdata/legacy/drill
+          -run TestRepresentativeLegacyMigrationDrill -count=1 -v
+
   go:
-    needs: [go-race, go-static]
+    needs: [go-race, go-static, migration-drill]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -200,9 +213,10 @@ jobs:
         env:
           GO_RACE_RESULT: ${{ needs.go-race.result }}
           GO_STATIC_RESULT: ${{ needs.go-static.result }}
+          MIGRATION_DRILL_RESULT: ${{ needs.migration-drill.result }}
         run: |
-          if [ "$GO_RACE_RESULT" != "success" ] || [ "$GO_STATIC_RESULT" != "success" ]; then
-            echo "Go verification failed: race=$GO_RACE_RESULT static=$GO_STATIC_RESULT" >&2
+          if [ "$GO_RACE_RESULT" != "success" ] || [ "$GO_STATIC_RESULT" != "success" ] || [ "$MIGRATION_DRILL_RESULT" != "success" ]; then
+            echo "Go verification failed: race=$GO_RACE_RESULT static=$GO_STATIC_RESULT migration_drill=$MIGRATION_DRILL_RESULT" >&2
             exit 1
           fi
 

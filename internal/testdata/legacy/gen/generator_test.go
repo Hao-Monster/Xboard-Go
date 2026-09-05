@@ -1,23 +1,28 @@
 package gen_test
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/legacymigration"
 	"github.com/Hao-Monster/Xboard-Go/internal/testdata/legacy/gen"
 )
 
 // TestGeneratorProducesDeterministicDataset verifies that the same seed
-// always produces the same manifest (same domain row counts).
-//
-// The database SHA-256 is NOT yet pinned here because the schema is a
-// placeholder pending D-006 decision. Once the schema is finalized, a
-// TestPinDatasetSHA256 test should be added that fails if the SHA changes.
+// always produces the same database and pins the current SQLite-candidate
+// evidence identity. Schema or fixture changes must update this value
+// deliberately after cross-platform review; the pin does not resolve D-006.
 func TestGeneratorProducesDeterministicDataset(t *testing.T) {
+	const expectedSHA256 = "e179d5ce428d0983451b951ad00ef642f28cb930c0726bd3d5a1dc35d255f3f6"
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "legacy.db")
 	manifestPath := filepath.Join(dir, "manifest.json")
@@ -35,6 +40,9 @@ func TestGeneratorProducesDeterministicDataset(t *testing.T) {
 	if manifest.Seed != gen.DefaultSeed {
 		t.Fatalf("Generate() seed = %d, want %d", manifest.Seed, gen.DefaultSeed)
 	}
+	if manifest.DatabaseSHA != expectedSHA256 {
+		t.Fatalf("Generate() sha256 = %s, want pinned %s", manifest.DatabaseSHA, expectedSHA256)
+	}
 
 	if err := gen.WriteManifest(manifest, manifestPath); err != nil {
 		t.Fatalf("WriteManifest() error = %v", err)
@@ -50,6 +58,207 @@ func TestGeneratorProducesDeterministicDataset(t *testing.T) {
 	}
 	if manifest.DatabaseSHA != manifest2.DatabaseSHA {
 		t.Errorf("non-deterministic: sha1=%s sha2=%s", manifest.DatabaseSHA, manifest2.DatabaseSHA)
+	}
+}
+
+func TestGeneratorProducesRepresentativeMigrationDomains(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+	manifest, err := gen.New(gen.DefaultConfig(dbPath)).Generate(context.Background())
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	for domain, minimum := range map[string]int{
+		"settings":         1,
+		"notices":          1,
+		"server_groups":    1,
+		"server_routes":    1,
+		"plans":            1,
+		"human_users":      2,
+		"access_tokens":    1,
+		"invitation_codes": 1,
+		"coupons":          1,
+		"payments":         1,
+		"orders":           1,
+		"tickets":          1,
+		"ticket_messages":  1,
+		"server_machines":  1,
+		"servers":          1,
+	} {
+		if got := manifest.DomainRows[domain]; got < minimum {
+			t.Errorf("manifest domain %q rows = %d, want >= %d", domain, got, minimum)
+		}
+	}
+
+	database, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, table := range []string{
+		"v2_settings", "v2_notice", "v2_server_group", "v2_server_route", "v2_plan", "v2_user",
+		"personal_access_tokens", "v2_invite_code", "v2_coupon", "v2_payment", "v2_order",
+		"v2_ticket", "v2_ticket_message", "v2_server_machine", "v2_server",
+	} {
+		var objectType string
+		if err := database.QueryRow(`SELECT type FROM sqlite_schema WHERE name = ?`, table).Scan(&objectType); err != nil {
+			t.Errorf("required representative table %q: %v", table, err)
+		} else if objectType != "table" {
+			t.Errorf("sqlite object %q type = %q, want table", table, objectType)
+		}
+	}
+	for _, excluded := range []string{"failed_jobs", "stats_daily"} {
+		var count int
+		if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_schema WHERE name = ?`, excluded).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Errorf("D-013-gated table %q must be absent", excluded)
+		}
+	}
+	var statRows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM v2_stat_server`).Scan(&statRows); err != nil {
+		t.Fatal(err)
+	}
+	if statRows != 0 {
+		t.Errorf("D-013-gated v2_stat_server rows = %d, want 0", statRows)
+	}
+}
+
+func TestGeneratedDatasetSatisfiesImplementedMigrationReaders(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	if _, err := gen.New(gen.DefaultConfig(dbPath)).Generate(context.Background()); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	readers := []struct {
+		name string
+		read func(context.Context, string) error
+	}{
+		{"content", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadContentSnapshot(ctx, path)
+			return err
+		}},
+		{"groups-routes", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadGroupsRoutesSnapshot(ctx, path)
+			return err
+		}},
+		{"plans", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadPlansSnapshot(ctx, path)
+			return err
+		}},
+		{"human-users", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadHumanUsersSnapshot(ctx, path)
+			return err
+		}},
+		{"access-tokens", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadAccessTokensSnapshot(ctx, path)
+			return err
+		}},
+		{"invitation-codes", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadInvitationCodesSnapshot(ctx, path)
+			return err
+		}},
+		{"coupons", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadCouponsSnapshot(ctx, path)
+			return err
+		}},
+		{"payments", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadPaymentsSnapshot(ctx, path)
+			return err
+		}},
+		{"orders", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadOrdersSnapshot(ctx, path)
+			return err
+		}},
+		{"tickets", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadTicketsSnapshot(ctx, path)
+			return err
+		}},
+		{"nodes", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadNodesSnapshot(ctx, path)
+			return err
+		}},
+		{"currency-settings", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadCurrencySettingsSnapshot(ctx, path)
+			return err
+		}},
+		{"public-origin-settings", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadPublicOriginSettingsSnapshot(ctx, path)
+			return err
+		}},
+		{"safe-access-settings", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadSafeAccessSettingsSnapshot(ctx, path)
+			return err
+		}},
+	}
+	for _, reader := range readers {
+		t.Run(reader.name, func(t *testing.T) {
+			if err := reader.read(t.Context(), dbPath); err != nil {
+				t.Fatalf("reader rejected generated dataset: %v", err)
+			}
+		})
+	}
+}
+
+func TestGeneratedDatabaseContainsOnlySyntheticIdentitiesAndHashedBearerTokens(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	if _, err := gen.New(gen.DefaultConfig(dbPath)).Generate(context.Background()); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	encoded, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"@gmail.com", "@qq.com", "@163.com", "@outlook.com",
+		fmt.Sprintf("synthetic-access-token-%d-", gen.DefaultSeed),
+	} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Errorf("generated database contains forbidden identity or plaintext token marker %q", forbidden)
+		}
+	}
+
+	database, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	emailRows, err := database.Query(`SELECT email FROM v2_user ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for emailRows.Next() {
+		var email string
+		if err := emailRows.Scan(&email); err != nil {
+			_ = emailRows.Close()
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(email, "@example.test") {
+			t.Errorf("generated email %q does not use the reserved synthetic domain", email)
+		}
+	}
+	if err := emailRows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	tokenRows, err := database.Query(`SELECT token FROM personal_access_tokens ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tokenRows.Next() {
+		var tokenHash string
+		if err := tokenRows.Scan(&tokenHash); err != nil {
+			_ = tokenRows.Close()
+			t.Fatal(err)
+		}
+		decoded, err := hex.DecodeString(tokenHash)
+		if err != nil || len(decoded) != 32 {
+			t.Errorf("generated bearer token is not a SHA-256 digest")
+		}
+	}
+	if err := tokenRows.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
