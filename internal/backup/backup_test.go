@@ -170,6 +170,46 @@ func TestReplicateRejectsInvalidArchiveAndCancellationWithoutPublishing(t *testi
 	}
 }
 
+func TestReplicatePreservesExistingDestinationDirectoryMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose POSIX directory permission semantics")
+	}
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "source.db")
+	database, err := store.OpenSQLite("file:" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(directory, "source.xbbackup")
+	if _, err := Create(t.Context(), "file:"+databasePath, source, "replication-mode-test", time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	destinationDirectory := filepath.Join(directory, "operator-mounted-storage")
+	if err := os.Mkdir(destinationDirectory, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(destinationDirectory, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Replicate(t.Context(), source, filepath.Join(destinationDirectory, "replica.xbbackup")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(destinationDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o750 {
+		t.Fatalf("destination directory mode = %04o, want 0750", mode)
+	}
+}
+
 func TestAttachmentBundleCreateVerifyAndRestoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	directory := t.TempDir()
