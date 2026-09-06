@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	yaml "go.yaml.in/yaml/v3"
 )
 
 const clientCompatOutputEnv = "XBOARD_CLIENT_COMPAT_OUTPUT_DIR"
@@ -91,6 +93,41 @@ func TestSingBoxRealityDefaultsToRequiredUTLS(t *testing.T) {
 			}
 			t.Fatalf("%s Reality outbound is missing", protocol)
 		})
+	}
+}
+
+func TestMihomoMieruIncludesLegacyUsername(t *testing.T) {
+	account := oracleAccount()
+	response, err := Render(RenderInput{
+		Account: account,
+		Nodes: []PreparedNode{{
+			ID: 91, Type: "mieru", Name: "Mieru TCP", Host: "mieru.example.test", Port: 443,
+			Ports: "443-445", Password: account.UUID,
+			ProtocolSettings: map[string]any{"transport": "tcp"},
+		}},
+		Client: ClientInfo{Kind: KindClashMeta, Name: "meta", Version: "1.19.30"},
+	})
+	if err != nil {
+		t.Fatalf("render Clash Meta Mieru: %v", err)
+	}
+	var config struct {
+		Proxies []map[string]any `yaml:"proxies"`
+	}
+	if err := yaml.Unmarshal(response.Body, &config); err != nil {
+		t.Fatalf("decode Clash Meta Mieru: %v", err)
+	}
+	if len(config.Proxies) != 1 {
+		t.Fatalf("Mieru proxies = %d, want 1", len(config.Proxies))
+	}
+	proxy := config.Proxies[0]
+	if proxy["username"] != account.UUID || proxy["password"] != account.UUID {
+		t.Fatalf("Mieru credentials = username %#v password %#v, want legacy UUID for both", proxy["username"], proxy["password"])
+	}
+	if proxy["transport"] != "TCP" || proxy["port-range"] != "443-445" {
+		t.Fatalf("Mieru transport fields = %#v", proxy)
+	}
+	if _, exists := proxy["port"]; exists {
+		t.Fatalf("Mieru ranged proxy includes mutually exclusive port: %#v", proxy)
 	}
 }
 

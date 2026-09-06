@@ -295,7 +295,13 @@ func mihomoProxy(node PreparedNode, kind Kind, selectFingerprint func() string) 
 		if kind != KindClashMeta {
 			return nil, false
 		}
-		base["type"], base["password"], base["port-range"] = "mieru", node.Password, node.Ports
+		base["type"], base["username"], base["password"] = "mieru", node.Password, node.Password
+		if node.Ports != "" {
+			// Mihomo rejects a Mieru proxy when port and port-range are both set.
+			// Xboard emitted both; prefer the configured range so the result is usable.
+			delete(base, "port")
+			base["port-range"] = node.Ports
+		}
 		transport := strings.ToUpper(stringSetting(settings, "transport"))
 		if transport == "" {
 			transport = "TCP"

@@ -1,6 +1,98 @@
 {
   "schema_version": 1,
   "as_of": "2026-09-07",
+  "node_protocol_catalog": [
+    "vmess",
+    "vless",
+    "trojan",
+    "shadowsocks",
+    "hysteria",
+    "tuic",
+    "anytls",
+    "socks",
+    "http",
+    "naive",
+    "mieru"
+  ],
+  "subscription_outputs": [
+    {
+      "output": "general",
+      "protocols": ["vmess", "vless", "shadowsocks", "trojan", "hysteria", "anytls", "socks", "tuic", "http"],
+      "evidence": "independent-parser",
+      "tested_versions": ["v2rayn-7.12.3-render-contract"],
+      "status": "automated"
+    },
+    {
+      "output": "shadowsocks",
+      "protocols": ["shadowsocks"],
+      "evidence": "independent-parser",
+      "tested_versions": ["SIP008-schema"],
+      "status": "automated"
+    },
+    {
+      "output": "clash",
+      "protocols": ["shadowsocks", "vmess", "trojan", "socks", "http"],
+      "evidence": "real-client",
+      "tested_versions": ["mihomo-1.19.30", "mihomo-1.19.29"],
+      "status": "automated"
+    },
+    {
+      "output": "clashmeta",
+      "protocols": ["shadowsocks", "vmess", "trojan", "vless", "hysteria", "tuic", "anytls", "socks", "http", "mieru"],
+      "evidence": "real-client",
+      "tested_versions": ["mihomo-1.19.30", "mihomo-1.19.29"],
+      "status": "automated"
+    },
+    {
+      "output": "stash",
+      "protocols": ["shadowsocks", "vmess", "vless", "hysteria", "trojan", "tuic", "anytls", "socks", "http"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    },
+    {
+      "output": "singbox",
+      "protocols": ["shadowsocks", "trojan", "vmess", "vless", "hysteria", "tuic", "anytls", "socks", "http"],
+      "evidence": "real-client",
+      "tested_versions": ["sing-box-1.14.0", "sing-box-1.13.21"],
+      "status": "automated"
+    },
+    {
+      "output": "surge",
+      "protocols": ["shadowsocks", "vmess", "trojan", "hysteria", "anytls", "socks", "http"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    },
+    {
+      "output": "surfboard",
+      "protocols": ["shadowsocks", "vmess", "trojan", "anytls"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    },
+    {
+      "output": "shadowrocket",
+      "protocols": ["shadowsocks", "vmess", "vless", "trojan", "hysteria", "tuic", "anytls", "socks"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    },
+    {
+      "output": "quantumultx",
+      "protocols": ["shadowsocks", "vmess", "vless", "trojan", "anytls", "socks", "http"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    },
+    {
+      "output": "loon",
+      "protocols": ["shadowsocks", "vmess", "trojan", "hysteria", "vless", "anytls"],
+      "evidence": "legacy-oracle-only",
+      "tested_versions": [],
+      "status": "not_run"
+    }
+  ],
   "automated_clients": [
     {
       "client": "sing-box",
@@ -24,7 +116,7 @@
       "channel": "current-stable",
       "asset_url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.30/mihomo-linux-amd64-compatible-v1.19.30.gz",
       "asset_sha256": "db214c7a2517e63c150d123178d16d102e03a241ccdae4e5e07ffbe9cf56c6f9",
-      "fixtures": ["clash-1.19.30.yaml", "clashmeta-1.19.30.yaml"]
+      "fixtures": ["clash-1.19.30.yaml", "clashmeta-1.19.30.yaml", "clashmeta-mieru-1.19.30.yaml"]
     },
     {
       "client": "mihomo",
@@ -32,7 +124,7 @@
       "channel": "previous-stable",
       "asset_url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.29/mihomo-linux-amd64-compatible-v1.19.29.gz",
       "asset_sha256": "5612e698e96c8b8ad15abc4c0a4f098eba9234354b4f248cb97f2528e215b094",
-      "fixtures": ["clash-1.19.29.yaml", "clashmeta-1.19.29.yaml"]
+      "fixtures": ["clash-1.19.29.yaml", "clashmeta-1.19.29.yaml", "clashmeta-mieru-1.19.29.yaml"]
     }
   ],
   "independent_parsers": [
