@@ -13,6 +13,8 @@ jq -e '
   .schema_version == 1 and
   ([.automated_clients[].channel] | sort == ["current-stable", "current-stable", "previous-stable", "previous-stable"]) and
   ([.automated_clients[].client] | sort == ["mihomo", "mihomo", "sing-box", "sing-box"]) and
+  ([.node_agents[].channel] | sort == ["current-stable", "previous-stable"]) and
+  ([.node_agents[].client] | unique == ["Xboard-Node"]) and
   ([.not_run_clients[].client] | unique | length == 6) and
   all(.automated_clients[];
     (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
@@ -78,6 +80,7 @@ while IFS= read -r entry; do
   done < <(jq -r '.fixtures[]' <<<"$entry")
 done < <(jq -c '.automated_clients[]' "$matrix")
 
+"$repository_root/.github/scripts/check-real-node-compat.sh" "$artifact_directory/xboard-node"
 cp "$matrix" "$artifact_directory/client-compatibility.json"
-find "$artifact_directory" -type f -print0 | sort -z | xargs -0 sha256sum > "$artifact_directory/manifest.sha256"
+find "$artifact_directory" -type f ! -name manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$artifact_directory/manifest.sha256"
 cat "$artifact_directory/results.tsv"
