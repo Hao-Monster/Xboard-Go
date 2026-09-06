@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -218,12 +220,19 @@ func TestAdministratorDistributorOrderManagementAndSettlement(t *testing.T) {
 		strings.Contains(listed.Body.String(), created.Subscription.SubscriptionToken) || strings.Contains(listed.Body.String(), created.Subscription.SubscriberUUID) {
 		t.Fatalf("distributor list status=%d body=%s", listed.Code, listed.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, listed.Body.Bytes(), created)
 	detailPath := fmt.Sprintf("/api/v1/admin/admin/distributor-orders/%d", created.Order.ID)
 	detail := admin.request(t, api, http.MethodGet, detailPath, "")
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(), created.Order.TradeNo, `"registered_count":0`,
 		`"subscribe_url":"https://distributor-subscriptions.example.test/s/`) || strings.Contains(detail.Body.String(), `internal.invalid`) ||
 		strings.Contains(detail.Body.String(), `"subscription_token"`) {
 		t.Fatalf("distributor detail status=%d body=%s", detail.Code, detail.Body)
+	}
+	assertDistributorPayloadHasNoInternalFields(t, detail.Body.Bytes())
+	for _, secret := range []string{created.Subscription.SubscriberUUID, created.Subscription.ClaimToken} {
+		if secret != "" && strings.Contains(detail.Body.String(), secret) {
+			t.Fatalf("administrator detail exposed non-delivery credential %q", secret)
+		}
 	}
 
 	remark := admin.request(t, api, http.MethodPatch, detailPath+"/remark", `{"remark":"  =FORMULA  "}`)
@@ -300,11 +309,18 @@ func TestLegacyAdministratorDistributorManagementRoutes(t *testing.T) {
 		`"is_distributor_order":true`, `"distributor_name":"直连渠道"`, `"subscription_entitlement"`) {
 		t.Fatalf("legacy distributor fetch status=%d body=%s", fetched.Code, fetched.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, fetched.Body.Bytes(), created)
 	detail := bearerRequest(api, http.MethodPost, orderPrefix+"/detail", authorization, fmt.Sprintf(`{"id":%d}`, created.Order.ID))
 	if detail.Code != http.StatusOK || !containsAll(detail.Body.String(), created.Order.TradeNo,
 		`"subscribe_url":"https://panel.example.test/s/`, `"subscription_entitlement"`, `"hwid":{"enabled":true`) ||
 		strings.Contains(detail.Body.String(), `internal.invalid`) || strings.Contains(detail.Body.String(), `"subscription_token"`) {
 		t.Fatalf("legacy distributor detail status=%d body=%s", detail.Code, detail.Body)
+	}
+	assertDistributorPayloadHasNoInternalFields(t, detail.Body.Bytes())
+	for _, secret := range []string{created.Subscription.SubscriberUUID, created.Subscription.ClaimToken} {
+		if secret != "" && strings.Contains(detail.Body.String(), secret) {
+			t.Fatalf("legacy administrator detail exposed non-delivery credential %q", secret)
+		}
 	}
 	preview := bearerRequest(api, http.MethodGet, fmt.Sprintf("%s/settlement/preview?distributor_user_id=%d", orderPrefix, distributor.ID), authorization, "")
 	if preview.Code != http.StatusOK || !containsAll(preview.Body.String(), `"count":1`, `"total_amount":1000`, `"total_amount_yuan":10`) {
@@ -391,25 +407,50 @@ func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 	}
 	decodeResponse(t, created, &createdPayload)
 	order := createdPayload.Data
-	if strings.Contains(created.Body.String(), `"subscription_token"`) || strings.Contains(created.Body.String(), `"subscriber_uuid"`) ||
-		strings.Contains(created.Body.String(), `"subscribe_url"`) {
-		t.Fatalf("portal create exposed secret: %s", created.Body)
+	stored, err := database.GetDistributorOrderByTradeNo(t.Context(), order.Subscription.DistributorUserID, order.Order.TradeNo, fixedNow())
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, created.Body.Bytes(), stored)
 	detailPath := "/api/v1/distributor/orders/" + order.Order.TradeNo
 	detail := dealer.request(t, api, http.MethodGet, detailPath, "")
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), order.Order.TradeNo) {
 		t.Fatalf("portal detail status=%d body=%s", detail.Code, detail.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, detail.Body.Bytes(), stored)
+
+	otherUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
+		"email":"other-portal-dealer@example.test","password":"other-portal-dealer-password-123","group_id":null,
+		"transfer_enable":0,"expired_at":null,"speed_limit":0,"device_limit":0,"banned":false,
+		"is_distributor":true,"distributor_name":"其他渠道"
+	}`)
+	if otherUser.Code != http.StatusCreated {
+		t.Fatalf("create other distributor status=%d body=%s", otherUser.Code, otherUser.Body)
+	}
+	otherDealer := loginAs(t, api, "other-portal-dealer@example.test", "other-portal-dealer-password-123")
+	foreign := otherDealer.request(t, api, http.MethodGet, detailPath, "")
+	if foreign.Code != http.StatusNotFound {
+		t.Fatalf("foreign distributor detail status=%d body=%s", foreign.Code, foreign.Body)
+	}
+	assertDistributorPayloadHasNoInternalCredentials(t, foreign.Body.Bytes(), stored)
+	adminPathFromDistributor := dealer.request(t, api, http.MethodGet,
+		fmt.Sprintf("/api/v1/admin/admin/distributor-orders/%d", order.Order.ID), "")
+	if adminPathFromDistributor.Code != http.StatusForbidden {
+		t.Fatalf("non-administrator distributor detail status=%d body=%s", adminPathFromDistributor.Code, adminPathFromDistributor.Body)
+	}
+	assertDistributorPayloadHasNoInternalCredentials(t, adminPathFromDistributor.Body.Bytes(), stored)
 	qr := dealer.request(t, api, http.MethodGet, detailPath+"/qr", "")
 	if qr.Code != http.StatusOK || !strings.Contains(qr.Body.String(), `"qr_code":"data:image/svg+xml`) || strings.Contains(qr.Body.String(), `"subscribe_url"`) {
 		t.Fatalf("portal QR status=%d body=%s", qr.Code, qr.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, qr.Body.Bytes(), stored)
 	const renewalKey = "c90c31c9-18e9-4e4c-a75d-838c71a5327e" // gitleaks:allow -- deterministic UUID fixture
 	renewed := dealer.request(t, api, http.MethodPost, detailPath+"/renew",
 		fmt.Sprintf(`{"period":"quarterly","idempotency_key":%q}`, renewalKey))
 	if renewed.Code != http.StatusOK || !containsAll(renewed.Body.String(), `"period":"quarterly"`, `"settlement_status":0`) {
 		t.Fatalf("portal renew status=%d body=%s", renewed.Code, renewed.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, renewed.Body.Bytes(), stored)
 	replayed := dealer.request(t, api, http.MethodPost, detailPath+"/renew",
 		fmt.Sprintf(`{"period":"quarterly","idempotency_key":%q}`, renewalKey))
 	var first, second struct {
@@ -424,6 +465,7 @@ func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 	if listed.Code != http.StatusOK || !containsAll(listed.Body.String(), `"total":2`, `"is_subscription_origin":true`, `"is_subscription_origin":false`, `"bound_devices":[]`) {
 		t.Fatalf("portal orders status=%d body=%s", listed.Code, listed.Body)
 	}
+	assertDistributorPayloadHasNoInternalCredentials(t, listed.Body.Bytes(), stored)
 	remark := admin.request(t, api, http.MethodPatch,
 		fmt.Sprintf("/api/v1/admin/admin/distributor-orders/%d/remark", order.Order.ID), `{"remark":"=WEBSERVICE(\"https://attacker.invalid\")"}`)
 	if remark.Code != http.StatusOK {
@@ -431,9 +473,123 @@ func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 	}
 	exported := dealer.request(t, api, http.MethodGet, "/api/v1/distributor/orders/export", "")
 	assertDistributorXLSX(t, exported, "G2", "50.00", "&#39;=WEBSERVICE")
+	assertDistributorPayloadHasNoInternalCredentials(t, exported.Body.Bytes(), stored)
 	adminExport := admin.request(t, api, http.MethodGet,
 		fmt.Sprintf("/api/v1/admin/admin/distributor-orders/export?distributor_user_id=%d", order.Subscription.DistributorUserID), "")
 	assertDistributorXLSX(t, adminExport, "H2", "50.00", "门户渠道")
+	assertDistributorPayloadHasNoInternalCredentials(t, adminExport.Body.Bytes(), stored)
+}
+
+func TestDistributorOrderResponseIsExplicitAndContractCompatible(t *testing.T) {
+	now := fixedNow()
+	customer, remark, nodeName := "客户", "备注", "节点"
+	nodeID, paymentID, handling, couponID, commissionStatus, inviteUserID := int64(8), int64(9), int64(10), int64(11), 3, int64(12)
+	actualCommission, commissionRate, autoCheck := int64(13), 14, true
+	value := store.DistributorOrder{
+		Order: store.Order{
+			ID: 1, UserID: 2, PlanID: 3, PaymentID: &paymentID, Period: "monthly", TradeNo: "2026090600000000000000001",
+			OriginalAmount: 100, TotalAmount: 90, HandlingAmount: &handling, BalanceAmount: 4, SurplusCredit: 5,
+			SurplusAmount: 6, Type: store.OrderTypeNew, Status: store.OrderStatusCompleted, SurplusOrderIDs: []int64{7},
+			CouponID: &couponID, CommissionStatus: &commissionStatus, InviteUserID: &inviteUserID,
+			ActualCommissionBalance: &actualCommission, CommissionRate: &commissionRate, CommissionAutoCheck: &autoCheck,
+			CommissionBalance: 15, DiscountAmount: 16, PaidAt: &now, CallbackNo: "callback",
+			EntitlementExpiredAtBefore: &now, EntitlementExpiredAtAfter: &now, CreatedAt: now, UpdatedAt: now,
+		},
+		PlanName: "套餐", DistributorEmail: "dealer@example.test", DistributorName: "渠道",
+		Subscription: store.DistributorSubscription{
+			ID: 17, OriginalOrderID: 1, OriginalTradeNo: "2026090600000000000000001", DistributorUserID: 2,
+			SubscriberUserID: 18, CustomerName: &customer, Remark: &remark,
+			DeliveryStatus: store.DistributorDeliveryPending, SettlementStatus: store.DistributorSettlementUnsettled,
+			ConfigIssuedAt: &now, ConnectedAt: &now, ConnectedNodeID: &nodeID, ConnectedNodeName: &nodeName,
+			ClaimedAt: &now, ClosedAt: &now, HWIDEnabled: true, HWIDLimit: 2, Revision: 3, CreatedAt: now, UpdatedAt: now,
+			SubscriptionToken: "subscription-secret", SubscriberUUID: "subscriber-secret", ClaimToken: "claim-secret",
+		},
+		SettlementStatus: store.DistributorSettlementUnsettled,
+		Entitlement: store.DistributorEntitlement{
+			PlanID: 3, PlanName: "套餐", TransferEnable: 1000, UsedTraffic: 10, RemainingTraffic: 990,
+			ExpiredAt: &now, SpeedLimit: 100, DeviceLimit: 2,
+		},
+		BoundDevices: []string{"DEVICE (Desktop)"}, IsSubscriptionOrigin: true, CanViewSubscriptionQR: true, CanRenew: true,
+	}
+
+	want, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(distributorOrderResponseOf(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wantJSON, gotJSON any
+	if err := json.Unmarshal(want, &wantJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got, &gotJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotJSON, wantJSON) {
+		t.Fatalf("public DTO changed the existing JSON contract\nwant=%s\n got=%s", want, got)
+	}
+	assertDistributorPayloadHasNoInternalCredentials(t, got, value)
+}
+
+var benchmarkDistributorOrderPage distributorOrderPageResponse
+
+func BenchmarkDistributorOrderPageResponseProjection(b *testing.B) {
+	page := store.DistributorOrderPage{Items: make([]store.DistributorOrder, 200), Total: 100_000, Page: 1, PageSize: 200}
+	for index := range page.Items {
+		page.Items[index].Order.ID = int64(index + 1)
+		page.Items[index].Order.TradeNo = fmt.Sprintf("%025d", index+1)
+		page.Items[index].Subscription.SubscriptionToken = fmt.Sprintf("%032x", index+1)
+		page.Items[index].Subscription.SubscriberUUID = fmt.Sprintf("00000000-0000-4000-8000-%012x", index+1)
+		page.Items[index].Subscription.ClaimToken = strings.Repeat("a", 64)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		benchmarkDistributorOrderPage = distributorOrderPageResponseOf(page)
+	}
+}
+
+func assertDistributorPayloadHasNoInternalCredentials(t *testing.T, payload []byte, value store.DistributorOrder) {
+	t.Helper()
+	for _, secret := range []string{value.Subscription.SubscriptionToken, value.Subscription.SubscriberUUID, value.Subscription.ClaimToken} {
+		if secret != "" && bytes.Contains(payload, []byte(secret)) {
+			t.Fatalf("distributor payload exposed internal credential %q", secret)
+		}
+	}
+	assertDistributorPayloadHasNoInternalFields(t, payload)
+}
+
+func assertDistributorPayloadHasNoInternalFields(t *testing.T, payload []byte) {
+	t.Helper()
+	if !json.Valid(payload) {
+		return
+	}
+	var decoded any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	forbidden := map[string]struct{}{
+		"subscription_token": {}, "subscriber_uuid": {}, "claim_token": {}, "subscriber_user_id": {},
+	}
+	var inspect func(any)
+	inspect = func(candidate any) {
+		switch typed := candidate.(type) {
+		case map[string]any:
+			for key, child := range typed {
+				if _, blocked := forbidden[strings.ToLower(key)]; blocked {
+					t.Fatalf("distributor payload exposed internal field %q", key)
+				}
+				inspect(child)
+			}
+		case []any:
+			for _, child := range typed {
+				inspect(child)
+			}
+		}
+	}
+	inspect(decoded)
 }
 
 func assertDistributorXLSX(t *testing.T, response *httptest.ResponseRecorder, amountCell, amount string, expectedText string) {

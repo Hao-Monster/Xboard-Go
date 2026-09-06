@@ -30,7 +30,7 @@ Baseline: `M0` · as of 2026-09-06 · verification target `06fba845398797db58dce
 ## Control summary
 
 - Decisions: 7 resolved, 11 pending (18 total).
-- Risks: 1 open Critical, 12 open High, 23 total.
+- Risks: 1 open Critical, 11 open High, 23 total.
 - Compatibility exceptions: 5 accepted, 1 proposed.
 - Current-head verification: 76/80; accepted: 76/80. Historical evidence is not current acceptance.
 
