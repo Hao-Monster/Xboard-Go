@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -103,6 +104,8 @@ type server struct {
 	invitationViewRequests     *requestLimiter
 	mailLoginRequests          *requestLimiter
 	subscriptionFailures       *attemptLimiter
+	subscriptionRequests       *requestLimiter
+	subscriptionRenderSlots    chan struct{}
 	subscriptionResetRequests  *requestLimitGroup
 	passwordHashSlots          chan struct{}
 	adminUserGenerationSlots   chan struct{}
@@ -141,6 +144,12 @@ type server struct {
 	ticketRegionResolver       ticketRegionResolver
 	deviceState                devicestate.Service
 }
+
+const (
+	subscriptionRequestsPerMinute = 120
+	minSubscriptionRenderSlots    = 4
+	maxSubscriptionRenderSlots    = 16
+)
 
 type contextKey int
 
@@ -253,6 +262,8 @@ func New(dependencies Dependencies) http.Handler {
 		invitationViewRequests:     newRequestLimiter(60, 15*time.Minute),
 		mailLoginRequests:          newRequestLimiter(10, 15*time.Minute),
 		subscriptionFailures:       newAttemptLimiter(1_200, 15*time.Minute),
+		subscriptionRequests:       newRequestLimiter(subscriptionRequestsPerMinute, time.Minute),
+		subscriptionRenderSlots:    make(chan struct{}, subscriptionRenderConcurrency()),
 		subscriptionResetRequests:  newRequestLimitGroup(60, 6),
 		passwordHashSlots:          make(chan struct{}, 2),
 		adminUserGenerationSlots:   make(chan struct{}, 1),
@@ -734,6 +745,17 @@ func New(dependencies Dependencies) http.Handler {
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
 	return api.securityHeaders(api.recoverPanic(root))
+}
+
+func subscriptionRenderConcurrency() int {
+	concurrency := runtime.GOMAXPROCS(0) * 2
+	if concurrency < minSubscriptionRenderSlots {
+		return minSubscriptionRenderSlots
+	}
+	if concurrency > maxSubscriptionRenderSlots {
+		return maxSubscriptionRenderSlots
+	}
+	return concurrency
 }
 
 func validLegacyAdminPath(value string) bool {

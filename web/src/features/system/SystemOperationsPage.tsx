@@ -108,6 +108,8 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
         <Metric label="失败邮件" value={String(status.mail_queue.failed)} hint={status.mail_queue.oldest_pending_at === null ? "当前无待发送任务" : `最早待发送 ${formatDate(status.mail_queue.oldest_pending_at)}`} tone={status.mail_queue.failed > 0 ? "danger" : "good"} />
         <Metric label="Telegram 队列" value={`待处理 ${status.telegram_queue.pending}`} hint={`执行中 ${status.telegram_queue.claimed} · 已发送 ${status.telegram_queue.sent}`} tone={status.telegram_queue.pending > 0 ? "warning" : "good"} />
         <Metric label="Telegram 失败" value={String(status.telegram_queue.failed)} hint={status.telegram_queue.oldest_pending_at === null ? "当前无待发送任务" : `最早待发送 ${formatDate(status.telegram_queue.oldest_pending_at)}`} tone={status.telegram_queue.failed > 0 ? "danger" : "good"} />
+        <Metric label="订阅生成并发" value={String(status.subscription.in_flight)} hint={`进程峰值 ${status.subscription.peak_in_flight}`} tone={status.subscription.in_flight > 0 ? "warning" : "good"} />
+        <Metric label="订阅保护拒绝" value={String(status.subscription.rate_limited + status.subscription.busy)} hint={`账户限流 ${status.subscription.rate_limited} · 服务繁忙 ${status.subscription.busy}`} tone={status.subscription.rate_limited + status.subscription.busy > 0 ? "warning" : "good"} />
       </section>
     </>}
 

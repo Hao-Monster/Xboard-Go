@@ -10,17 +10,59 @@ type ComponentStatus struct {
 	LastRunAt *time.Time `json:"last_run_at"`
 }
 
+type SubscriptionLoad struct {
+	InFlight     int64  `json:"in_flight"`
+	PeakInFlight int64  `json:"peak_in_flight"`
+	RateLimited  uint64 `json:"rate_limited"`
+	Busy         uint64 `json:"busy"`
+}
+
 type Snapshot struct {
-	StartedAt  time.Time       `json:"started_at"`
-	Uptime     time.Duration   `json:"-"`
-	Scheduler  ComponentStatus `json:"scheduler"`
-	MailWorker ComponentStatus `json:"mail_worker"`
+	StartedAt    time.Time        `json:"started_at"`
+	Uptime       time.Duration    `json:"-"`
+	Scheduler    ComponentStatus  `json:"scheduler"`
+	MailWorker   ComponentStatus  `json:"mail_worker"`
+	Subscription SubscriptionLoad `json:"subscription"`
 }
 
 type Tracker struct {
-	startedAt        time.Time
-	schedulerLastRun atomic.Int64
-	mailLastRun      atomic.Int64
+	startedAt                time.Time
+	schedulerLastRun         atomic.Int64
+	mailLastRun              atomic.Int64
+	subscriptionInFlight     atomic.Int64
+	subscriptionPeakInFlight atomic.Int64
+	subscriptionRateLimited  atomic.Uint64
+	subscriptionBusy         atomic.Uint64
+}
+
+func (t *Tracker) BeginSubscriptionRender() {
+	if t == nil {
+		return
+	}
+	current := t.subscriptionInFlight.Add(1)
+	for peak := t.subscriptionPeakInFlight.Load(); current > peak; peak = t.subscriptionPeakInFlight.Load() {
+		if t.subscriptionPeakInFlight.CompareAndSwap(peak, current) {
+			break
+		}
+	}
+}
+
+func (t *Tracker) EndSubscriptionRender() {
+	if t != nil {
+		t.subscriptionInFlight.Add(-1)
+	}
+}
+
+func (t *Tracker) MarkSubscriptionRateLimited() {
+	if t != nil {
+		t.subscriptionRateLimited.Add(1)
+	}
+}
+
+func (t *Tracker) MarkSubscriptionBusy() {
+	if t != nil {
+		t.subscriptionBusy.Add(1)
+	}
 }
 
 func NewTracker(startedAt time.Time) *Tracker {
@@ -62,6 +104,10 @@ func (t *Tracker) Snapshot(now time.Time, healthyWithin time.Duration) Snapshot 
 		Uptime:     uptime,
 		Scheduler:  componentSnapshot(t.schedulerLastRun.Load(), now, healthyWithin),
 		MailWorker: componentSnapshot(t.mailLastRun.Load(), now, healthyWithin),
+		Subscription: SubscriptionLoad{
+			InFlight: t.subscriptionInFlight.Load(), PeakInFlight: t.subscriptionPeakInFlight.Load(),
+			RateLimited: t.subscriptionRateLimited.Load(), Busy: t.subscriptionBusy.Load(),
+		},
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -85,7 +86,8 @@ func TestValidSubscriptionDoesNotEraseFailedTokenRateLimit(t *testing.T) {
 	valid := createSubscriptionTestAccount(t, database, "limiter-subscriber@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
 	api := &server{
 		store: database, now: fixedNow, panelURL: "https://panel.example.test", logger: slog.Default(),
-		subscriptionFailures: newAttemptLimiter(2, time.Minute),
+		subscriptionFailures: newAttemptLimiter(2, time.Minute), subscriptionRequests: newRequestLimiter(10, time.Minute),
+		subscriptionRenderSlots: make(chan struct{}, 1),
 	}
 	request := func(token string) int {
 		r := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscribe?token="+token, nil)
@@ -106,6 +108,109 @@ func TestValidSubscriptionDoesNotEraseFailedTokenRateLimit(t *testing.T) {
 	}
 	if got := request(strings.Repeat("c", 32)); got != http.StatusTooManyRequests {
 		t.Fatalf("bad token after valid-token interleave status = %d, want 429", got)
+	}
+}
+
+func TestValidSubscriptionRequestCostLimitIsAccountScoped(t *testing.T) {
+	_, database := newTestAPI(t)
+	first := createSubscriptionTestAccount(t, database, "cost-limited@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
+	second := createSubscriptionTestAccount(t, database, "cost-independent@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
+	tracker := operations.NewTracker(fixedNow())
+	api := &server{
+		store: database, now: fixedNow, panelURL: "https://panel.example.test", logger: slog.Default(),
+		subscriptionFailures: newAttemptLimiter(100, time.Minute), subscriptionRequests: newRequestLimiter(2, time.Minute),
+		subscriptionRenderSlots: make(chan struct{}, 1), runtimeTracker: tracker,
+	}
+	request := func(token string, headers map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscribe?token="+token, nil)
+		r.RemoteAddr = "192.0.2.45:12345"
+		for name, value := range headers {
+			r.Header.Set(name, value)
+		}
+		w := httptest.NewRecorder()
+		api.clientSubscription(w, r)
+		return w
+	}
+
+	if got := request(first.SubscriptionToken, map[string]string{"Purpose": "prefetch"}); got.Code != http.StatusTooEarly {
+		t.Fatalf("prefetch status=%d, want %d", got.Code, http.StatusTooEarly)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if got := request(first.SubscriptionToken, nil); got.Code != http.StatusOK {
+			t.Fatalf("allowed request %d status=%d, want %d; body=%s", attempt, got.Code, http.StatusOK, got.Body)
+		}
+	}
+	limited := request(first.SubscriptionToken, nil)
+	if limited.Code != http.StatusTooManyRequests || limited.Header().Get("Retry-After") != "60" ||
+		limited.Header().Get("Cache-Control") != "no-store, private" ||
+		!strings.Contains(limited.Body.String(), `"code":"subscription_rate_limited"`) {
+		t.Fatalf("limited response status=%d headers=%v body=%s", limited.Code, limited.Header(), limited.Body)
+	}
+	if independent := request(second.SubscriptionToken, nil); independent.Code != http.StatusOK {
+		t.Fatalf("independent account status=%d, want %d; body=%s", independent.Code, http.StatusOK, independent.Body)
+	}
+	load := tracker.Snapshot(fixedNow(), time.Minute).Subscription
+	if load.InFlight != 0 || load.PeakInFlight != 1 || load.RateLimited != 1 || load.Busy != 0 {
+		t.Fatalf("subscription cost metrics = %#v", load)
+	}
+}
+
+func TestSubscriptionRenderConcurrencyFailsFastAndReleasesSlot(t *testing.T) {
+	_, database := newTestAPI(t)
+	account := createSubscriptionTestAccount(t, database, "render-slots@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
+	independent := createSubscriptionTestAccount(t, database, "render-slots-independent@example.test", false, timePointerHTTP(fixedNow().Add(time.Hour)))
+	slots := make(chan struct{}, 1)
+	tracker := operations.NewTracker(fixedNow())
+	api := &server{
+		store: database, now: fixedNow, panelURL: "https://panel.example.test", logger: slog.Default(),
+		subscriptionFailures: newAttemptLimiter(100, time.Minute), subscriptionRequests: newRequestLimiter(2, time.Minute),
+		subscriptionRenderSlots: slots, runtimeTracker: tracker,
+	}
+	request := func(token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscribe?token="+token, nil)
+		r.RemoteAddr = "192.0.2.46:12345"
+		w := httptest.NewRecorder()
+		api.clientSubscription(w, r)
+		return w
+	}
+
+	slots <- struct{}{}
+	for attempt := 1; attempt <= 2; attempt++ {
+		busy := request(account.SubscriptionToken)
+		if busy.Code != http.StatusServiceUnavailable || busy.Header().Get("Retry-After") != "1" ||
+			busy.Header().Get("Cache-Control") != "no-store, private" ||
+			!strings.Contains(busy.Body.String(), `"code":"subscription_busy"`) {
+			t.Fatalf("busy response %d status=%d headers=%v body=%s", attempt, busy.Code, busy.Header(), busy.Body)
+		}
+	}
+	limited := request(account.SubscriptionToken)
+	if limited.Code != http.StatusTooManyRequests || !strings.Contains(limited.Body.String(), `"code":"subscription_rate_limited"`) {
+		t.Fatalf("busy retry limit status=%d headers=%v body=%s", limited.Code, limited.Header(), limited.Body)
+	}
+	<-slots
+	for attempt := 1; attempt <= 2; attempt++ {
+		if got := request(independent.SubscriptionToken); got.Code != http.StatusOK {
+			t.Fatalf("request after slot release %d status=%d, want %d; body=%s", attempt, got.Code, http.StatusOK, got.Body)
+		}
+	}
+	load := tracker.Snapshot(fixedNow(), time.Minute).Subscription
+	if load.InFlight != 0 || load.PeakInFlight != 1 || load.RateLimited != 1 || load.Busy != 2 {
+		t.Fatalf("subscription concurrency metrics = %#v", load)
+	}
+}
+
+func BenchmarkR013SubscriptionCostGuard(b *testing.B) {
+	now := fixedNow()
+	limiter := newRequestLimiter(int(^uint(0)>>1), time.Minute)
+	slots := make(chan struct{}, maxSubscriptionRenderSlots)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		slots <- struct{}{}
+		if !limiter.take("42", now) {
+			b.Fatal("unbounded benchmark limiter rejected a request")
+		}
+		<-slots
 	}
 }
 

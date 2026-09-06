@@ -10,7 +10,8 @@ const status: SystemStatus = {
   scheduler: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
   mail_worker: { healthy: true, last_run_at: "2026-08-24T11:01:00Z" },
   mail_queue: { pending: 2, claimed: 1, sent: 12, failed: 1, oldest_pending_at: "2026-08-24T11:00:00Z" },
-  telegram_queue: { pending: 3, claimed: 1, sent: 20, failed: 2, oldest_pending_at: "2026-08-24T11:02:00Z" }
+  telegram_queue: { pending: 3, claimed: 1, sent: 20, failed: 2, oldest_pending_at: "2026-08-24T11:02:00Z" },
+  subscription: { in_flight: 2, peak_in_flight: 8, rate_limited: 3, busy: 1 }
 };
 
 const audit: AdminAuditPage = {
@@ -53,6 +54,10 @@ describe("SystemOperationsPage", () => {
     expect(screen.getByText("待处理 2", { exact: true })).toBeVisible();
     expect(screen.getByText("待处理 3", { exact: true })).toBeVisible();
     expect(screen.getByText("Telegram 失败", { exact: true })).toBeVisible();
+    expect(screen.getByText("订阅生成并发", { exact: true })).toBeVisible();
+    expect(screen.getByText("进程峰值 8", { exact: true })).toBeVisible();
+    expect(screen.getByText("订阅保护拒绝", { exact: true })).toBeVisible();
+    expect(screen.getByText("账户限流 3 · 服务繁忙 1", { exact: true })).toBeVisible();
     expect(screen.getByText("Unable to connect", { exact: true })).toBeVisible();
     expect(screen.getByText("登录链接", { exact: true })).toBeVisible();
     expect(screen.getByText("到期提醒", { exact: true })).toBeVisible();

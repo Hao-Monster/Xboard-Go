@@ -1566,6 +1566,12 @@ export interface SystemStatus {
   mail_worker: WorkerStatus;
   mail_queue: SystemQueueStats;
   telegram_queue: SystemQueueStats;
+  subscription: {
+    in_flight: number;
+    peak_in_flight: number;
+    rate_limited: number;
+    busy: number;
+  };
 }
 
 export type AuditMethod = "POST" | "PUT" | "PATCH" | "DELETE";

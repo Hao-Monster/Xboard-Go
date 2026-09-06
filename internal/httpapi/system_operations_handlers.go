@@ -12,13 +12,14 @@ import (
 const workerHealthyWindow = 2 * time.Minute
 
 type systemStatusResponse struct {
-	StartedAt     time.Time                  `json:"started_at"`
-	UptimeSeconds int64                      `json:"uptime_seconds"`
-	SchemaVersion int                        `json:"schema_version"`
-	Scheduler     operations.ComponentStatus `json:"scheduler"`
-	MailWorker    operations.ComponentStatus `json:"mail_worker"`
-	MailQueue     store.SystemQueueStats     `json:"mail_queue"`
-	TelegramQueue store.SystemQueueStats     `json:"telegram_queue"`
+	StartedAt     time.Time                   `json:"started_at"`
+	UptimeSeconds int64                       `json:"uptime_seconds"`
+	SchemaVersion int                         `json:"schema_version"`
+	Scheduler     operations.ComponentStatus  `json:"scheduler"`
+	MailWorker    operations.ComponentStatus  `json:"mail_worker"`
+	MailQueue     store.SystemQueueStats      `json:"mail_queue"`
+	TelegramQueue store.SystemQueueStats      `json:"telegram_queue"`
+	Subscription  operations.SubscriptionLoad `json:"subscription"`
 }
 
 func (s *server) getSystemStatus(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +42,7 @@ func (s *server) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, systemStatusResponse{
 		StartedAt: snapshot.StartedAt, UptimeSeconds: int64(snapshot.Uptime / time.Second),
 		SchemaVersion: schemaVersion, Scheduler: snapshot.Scheduler, MailWorker: snapshot.MailWorker,
-		MailQueue: queue, TelegramQueue: telegramQueue,
+		MailQueue: queue, TelegramQueue: telegramQueue, Subscription: snapshot.Subscription,
 	})
 }
 
