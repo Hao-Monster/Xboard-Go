@@ -89,7 +89,11 @@ while IFS= read -r entry; do
   app_pid=$!
 
   ready=0
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 300); do
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      printf 'Xboard-Go exited before readiness for Xboard-Node %s\n' "$version" >&2
+      exit 1
+    fi
     if curl --fail --silent --max-time 1 "$base/healthz" >/dev/null; then
       ready=1
       break
