@@ -16,8 +16,8 @@ jq -e '
   ([.automated_clients[].client] | sort == ["mihomo", "mihomo", "sing-box", "sing-box"]) and
   ([.node_agents[].channel] | sort == ["current-stable", "previous-stable"]) and
   ([.node_agents[].client] | unique == ["Xboard-Node"]) and
-  ([.node_protocol_catalog[]] | unique | length == 11) and
-  ([.subscription_outputs[].output] | unique | length == 11) and
+  ([.node_protocol_catalog[]] | sort == ["anytls", "http", "hysteria", "mieru", "naive", "shadowsocks", "socks", "trojan", "tuic", "vless", "vmess"]) and
+  ([.subscription_outputs[].output] | sort == ["clash", "clashmeta", "general", "loon", "quantumultx", "shadowrocket", "shadowsocks", "singbox", "stash", "surfboard", "surge"]) and
   ([.subscription_outputs[] | select(.status == "automated")] | length == 5) and
   ([.subscription_outputs[] | select(.status == "not_run")] | length == 6) and
   ([.subscription_outputs[] | select(.evidence == "real-client") | .output] | sort == ["clash", "clashmeta", "singbox"]) and
@@ -31,7 +31,8 @@ jq -e '
     (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
     (.asset_sha256 | test("^[0-9a-f]{64}$")) and
     (.asset_url | startswith("https://github.com/")) and
-    (.fixtures | length > 0))
+    (.fixtures | length > 0) and
+    all(.fixtures[]; test("^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")))
 ' "$matrix" >/dev/null
 
 XBOARD_CLIENT_COMPAT_OUTPUT_DIR="$artifact_directory/fixtures" \
