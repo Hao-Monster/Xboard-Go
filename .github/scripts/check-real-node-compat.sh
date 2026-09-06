@@ -31,6 +31,7 @@ trap cleanup EXIT
 
 mkdir -p "$artifact_directory"
 umask 077
+mkdir -p "$temporary_root/web"
 go build -trimpath -o "$temporary_root/xboard" ./cmd/xboard
 printf 'client\tversion\tchannel\tenrollment\tnode-list\tlistener\tsecret-scan\tresult\n' > "$artifact_directory/results.tsv"
 printf 'client\tversion\tsha256\n' > "$artifact_directory/asset-checksums.tsv"
@@ -84,7 +85,7 @@ while IFS= read -r entry; do
   XBOARD_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
   XBOARD_SETTINGS_ENCRYPTION_KEY="$settings_key" \
   XBOARD_LEGACY_ADMIN_PATH=e2e-admin-secure \
-  XBOARD_WEB_ROOT="$repository_root/web/dist" \
+  XBOARD_WEB_ROOT="$temporary_root/web" \
     "$temporary_root/xboard" >"$run_directory/app.log" 2>&1 &
   app_pid=$!
 
