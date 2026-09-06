@@ -14,7 +14,7 @@
     {"id":"R-010","severity":"high","status":"open","milestone":"M4","title":"双系统并行期间数据漂移或双写不一致","mitigation":"单写主、事件/outbox、可重放增量与对账。"},
     {"id":"R-011","severity":"high","status":"controlled","milestone":"M3","title":"附件数据库与文件存储部分失败产生丢失或孤儿","mitigation":"上传状态机、隔离临时对象、最终对象哈希校验、失败补偿与有界清理；已覆盖提交完成后残留分片的崩溃恢复、活动上传路径保护、1 GiB 附件、并发 race、三轮桌面/移动浏览器附件生命周期及精确候选证据。"},
     {"id":"R-012","severity":"medium","status":"controlled","milestone":"M3","title":"过早性能复杂化引入竞态和安全缺陷","mitigation":"先 benchmark/pprof；复杂优化必须有收益和回归证据。"},
-    {"id":"R-013","severity":"high","status":"open","milestone":"M3","title":"API 与订阅入口滥用造成资源耗尽","mitigation":"分层限流、请求响应上限、成本配额、监控和压测。"},
+    {"id":"R-013","severity":"high","status":"controlled","milestone":"M3","title":"API 与订阅入口滥用造成资源耗尽","mitigation":"订阅入口对已认证账号实施每分钟 120 次的进程内成本配额，并以 4～16 个全局渲染槽限制并发；429/503 提供有界 Retry-After 且不缓存，管理端暴露脱敏的在途、峰值、限流与繁忙计数。精确提交 a051b5a0e072bb443ac8a77da84eed612ad106f9 已在 bingo-dev 完成 race、基准、完整回归、浏览器与旧 Xboard 差分、安全扫描及 256 并发真实 HTTP 压测，证据清单为 bingo-dev:sha256:18cdbf6e0ec29c10ac7d080e67a5718d3905b79aa6d32768ef058abfda3ea550。"},
     {"id":"R-014","severity":"medium","status":"open","milestone":"M3","title":"WebSocket 单进程容量与单点风险","mitigation":"多实例所有权、容量测试、优雅重启和重连抖动。"},
     {"id":"R-015","severity":"high","status":"open","milestone":"M3","title":"历史协议和真实客户端兼容存在未知","mitigation":"真实客户端矩阵、兼容层、遥测和退役窗口。"},
     {"id":"R-016","severity":"medium","status":"open","milestone":"M3","title":"许可证、字体、图标、主题或编译资产权利不清","mitigation":"许可证清单、重写而非复制和自动化审查。"},
