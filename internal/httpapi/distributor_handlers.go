@@ -48,7 +48,7 @@ func (s *server) listDistributorOrders(w http.ResponseWriter, r *http.Request) {
 		handleModernDistributorError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, result)
+	writeSuccess(w, http.StatusOK, distributorOrderPageResponseOf(result))
 }
 
 func (s *server) createDistributorOrder(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +76,7 @@ func (s *server) createDistributorOrder(w http.ResponseWriter, r *http.Request) 
 		handleModernDistributorError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusCreated, value)
+	writeSuccess(w, http.StatusCreated, distributorOrderResponseOf(value))
 }
 
 func (s *server) getDistributorOrder(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (s *server) getDistributorOrder(w http.ResponseWriter, r *http.Request) {
 		handleModernDistributorError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, value)
+	writeSuccess(w, http.StatusOK, distributorOrderResponseOf(value))
 }
 
 func (s *server) renewDistributorOrder(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +113,7 @@ func (s *server) renewDistributorOrder(w http.ResponseWriter, r *http.Request) {
 		handleModernDistributorError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, value)
+	writeSuccess(w, http.StatusOK, distributorOrderResponseOf(value))
 }
 
 func (s *server) getDistributorOrderQR(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +185,7 @@ func (s *server) listAdminDistributorOrders(w http.ResponseWriter, r *http.Reque
 		handleStoreError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, result)
+	writeSuccess(w, http.StatusOK, distributorOrderPageResponseOf(result))
 }
 
 func (s *server) getAdminDistributorOrder(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +208,7 @@ func (s *server) getAdminDistributorOrder(w http.ResponseWriter, r *http.Request
 		handleStoreError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, map[string]any{"order": value, "hwid": hwid, "subscribe_url": subscribeURL})
+	writeSuccess(w, http.StatusOK, map[string]any{"order": distributorOrderResponseOf(value), "hwid": hwid, "subscribe_url": subscribeURL})
 }
 
 func (s *server) updateAdminDistributorRemark(w http.ResponseWriter, r *http.Request) {
