@@ -40,8 +40,17 @@ while IFS= read -r entry; do
   tool_directory="$temporary_root/$client-$version"
   mkdir -p "$tool_directory"
 
-  curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 180 \
-    --output "$archive" "$asset_url"
+  cache_extension=gz
+  if [ "$client" = "sing-box" ]; then
+    cache_extension=tar.gz
+  fi
+  cache_candidate="${XBOARD_CLIENT_COMPAT_CACHE_DIR:-}/$client-$version.$cache_extension"
+  if [ -n "${XBOARD_CLIENT_COMPAT_CACHE_DIR:-}" ] && [ -f "$cache_candidate" ]; then
+    cp "$cache_candidate" "$archive"
+  else
+    curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 180 \
+      --output "$archive" "$asset_url"
+  fi
   printf '%s  %s\n' "$asset_sha256" "$archive" | sha256sum --check --strict
   printf '%s\t%s\t%s\n' "$client" "$version" "$asset_sha256" >> "$artifact_directory/asset-checksums.tsv"
 
@@ -81,5 +90,5 @@ while IFS= read -r entry; do
 done < <(jq -c '.automated_clients[]' "$matrix")
 
 cp "$matrix" "$artifact_directory/client-compatibility.json"
-find "$artifact_directory" -type f ! -name manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$artifact_directory/manifest.sha256"
+find "$artifact_directory" -type f ! -name manifest.sha256 ! -name runner.log -print0 | sort -z | xargs -0 sha256sum > "$artifact_directory/manifest.sha256"
 cat "$artifact_directory/results.tsv"
