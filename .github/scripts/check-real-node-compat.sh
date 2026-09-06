@@ -32,6 +32,7 @@ trap cleanup EXIT
 mkdir -p "$artifact_directory"
 umask 077
 mkdir -p "$temporary_root/web"
+printf '<!doctype html><title>Xboard-Node compatibility harness</title>\n' > "$temporary_root/web/index.html"
 go build -trimpath -o "$temporary_root/xboard" ./cmd/xboard
 printf 'client\tversion\tchannel\tenrollment\tnode-list\tlistener\tsecret-scan\tresult\n' > "$artifact_directory/results.tsv"
 printf 'client\tversion\tsha256\n' > "$artifact_directory/asset-checksums.tsv"
