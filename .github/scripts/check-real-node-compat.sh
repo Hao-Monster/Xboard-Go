@@ -39,6 +39,7 @@ index=0
 while IFS= read -r entry; do
   version="$(jq -r '.version' <<<"$entry")"
   channel="$(jq -r '.channel' <<<"$entry")"
+  binary_env="$(jq -r '.binary_env' <<<"$entry")"
   asset_url="$(jq -r '.asset_url' <<<"$entry")"
   asset_sha256="$(jq -r '.asset_sha256' <<<"$entry")"
   binary="$temporary_root/xboard-node-$version"
@@ -52,8 +53,19 @@ while IFS= read -r entry; do
     printf 'required compatibility test port is already in use: app=%s node=%s\n' "$app_port" "$node_port" >&2
     exit 1
   fi
-  curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 180 \
-    --output "$binary" "$asset_url"
+  source_binary="${!binary_env:-}"
+  if [ -n "$source_binary" ]; then
+    test -f "$source_binary"
+    cp "$source_binary" "$binary"
+  elif [ -n "${XBOARD_NODE_RELEASE_TOKEN:-}" ]; then
+    curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 180 \
+      -H 'Accept: application/octet-stream' -H "Authorization: Bearer $XBOARD_NODE_RELEASE_TOKEN" \
+      --output "$binary" "$asset_url"
+  else
+    printf 'Xboard-Node %s requires %s or XBOARD_NODE_RELEASE_TOKEN; refusing an unauthenticated private asset download\n' \
+      "$version" "$binary_env" >&2
+    exit 1
+  fi
   printf '%s  %s\n' "$asset_sha256" "$binary" | sha256sum --check --strict
   chmod 0755 "$binary"
   "$binary" -v 2>&1 | tee "$artifact_directory/xboard-node-$version.version.log"

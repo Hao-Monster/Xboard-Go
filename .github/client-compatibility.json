@@ -52,14 +52,16 @@
       "client": "Xboard-Node",
       "version": "1.14.3",
       "channel": "current-stable",
-      "asset_url": "https://github.com/Hao-Monster/Xboard-Node/releases/download/v1.14.3/xboard-node-linux-amd64",
+      "binary_env": "XBOARD_NODE_BINARY_1_14_3",
+      "asset_url": "https://api.github.com/repos/Hao-Monster/Xboard-Node/releases/assets/526570068",
       "asset_sha256": "4eff2c9a04c33744d679ed8336e9fab359db506ab973c0a86edc07c58b8ae2c3"
     },
     {
       "client": "Xboard-Node",
       "version": "1.14.2",
       "channel": "previous-stable",
-      "asset_url": "https://github.com/Hao-Monster/Xboard-Node/releases/download/v1.14.2/xboard-node-linux-amd64",
+      "binary_env": "XBOARD_NODE_BINARY_1_14_2",
+      "asset_url": "https://api.github.com/repos/Hao-Monster/Xboard-Node/releases/assets/526496527",
       "asset_sha256": "a23b515a9e1501346eb3f6e80f6d2f6261202de3025e0de5850947d8b378bcd3"
     }
   ],

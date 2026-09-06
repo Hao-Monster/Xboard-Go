@@ -80,7 +80,6 @@ while IFS= read -r entry; do
   done < <(jq -r '.fixtures[]' <<<"$entry")
 done < <(jq -c '.automated_clients[]' "$matrix")
 
-"$repository_root/.github/scripts/check-real-node-compat.sh" "$artifact_directory/xboard-node"
 cp "$matrix" "$artifact_directory/client-compatibility.json"
 find "$artifact_directory" -type f ! -name manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$artifact_directory/manifest.sha256"
 cat "$artifact_directory/results.tsv"
