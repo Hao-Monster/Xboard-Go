@@ -26,7 +26,7 @@ func TestGenerateRealClientCompatibilityFixtures(t *testing.T) {
 	}
 
 	account := oracleAccount()
-	nodes := oracleRepresentativeNodes(account.UUID)
+	nodes := realClientCompatibilityNodes(account.UUID)
 	fixtures := []struct {
 		name   string
 		client ClientInfo
@@ -54,6 +54,76 @@ func TestGenerateRealClientCompatibilityFixtures(t *testing.T) {
 		if err := os.WriteFile(path, response.Body, 0o600); err != nil {
 			t.Fatalf("write %s: %v", fixture.name, err)
 		}
+	}
+}
+
+func TestSingBoxRealityDefaultsToRequiredUTLS(t *testing.T) {
+	account := oracleAccount()
+	for _, protocol := range []string{"trojan", "vless"} {
+		t.Run(protocol, func(t *testing.T) {
+			node := realClientRealityNode(90, protocol, account.UUID)
+			response, err := Render(RenderInput{
+				Account: account,
+				Nodes:   []PreparedNode{node},
+				Client:  ClientInfo{Kind: KindSingBox, Name: "sing-box", Version: "1.14.0"},
+			})
+			if err != nil {
+				t.Fatalf("render %s Reality: %v", protocol, err)
+			}
+			var config struct {
+				Outbounds []struct {
+					Type string         `json:"type"`
+					TLS  map[string]any `json:"tls"`
+				} `json:"outbounds"`
+			}
+			if err := json.Unmarshal(response.Body, &config); err != nil {
+				t.Fatalf("decode sing-box %s Reality: %v", protocol, err)
+			}
+			for _, outbound := range config.Outbounds {
+				if outbound.Type != protocol {
+					continue
+				}
+				utls, _ := outbound.TLS["utls"].(map[string]any)
+				if utls["enabled"] != true || utls["fingerprint"] != "chrome" {
+					t.Fatalf("%s Reality uTLS = %#v, want required chrome default", protocol, utls)
+				}
+				return
+			}
+			t.Fatalf("%s Reality outbound is missing", protocol)
+		})
+	}
+}
+
+func realClientCompatibilityNodes(password string) []PreparedNode {
+	nodes := oracleRepresentativeNodes(password)
+	for index := range nodes {
+		if nodes[index].Type == "trojan" {
+			nodes[index] = realClientRealityNode(nodes[index].ID, "trojan", password)
+		}
+	}
+	return append(nodes, realClientRealityNode(51, "vless", password))
+}
+
+func realClientRealityNode(id int64, protocol, password string) PreparedNode {
+	settings := map[string]any{
+		"tls":              float64(2),
+		"network":          "tcp",
+		"network_settings": map[string]any{},
+		"reality_settings": map[string]any{
+			"server_name":    "reality.example.test",
+			"public_key":     "2PQIcd7-CLWvFrmbodbY1peb4uwI1QicSq-cBwmgRic",
+			"short_id":       "0123456789abcdef",
+			"allow_insecure": false,
+		},
+		"utls":      map[string]any{"enabled": false, "fingerprint": "chrome"},
+		"multiplex": map[string]any{"enabled": false},
+	}
+	if protocol == "vless" {
+		settings["flow"] = "xtls-rprx-vision"
+	}
+	return PreparedNode{
+		ID: id, Type: protocol, Name: strings.ToUpper(protocol[:1]) + protocol[1:] + " Reality",
+		Host: protocol + "-reality.example.test", Port: 443, Password: password, ProtocolSettings: settings,
 	}
 }
 
