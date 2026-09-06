@@ -77,4 +77,19 @@ describe("SystemOperationsPage", () => {
     await user.click(screen.getByRole("button", { name: "失败任务下一页" }));
     await waitFor(() => expect(api.listTicketMailFailures).toHaveBeenLastCalledWith(2, 20));
   });
+
+  it("keeps a frontend-only rollout compatible with a backend that predates subscription load telemetry", async () => {
+    const previousBackendStatus = { ...status };
+    delete previousBackendStatus.subscription;
+    const api = {
+      getSystemStatus: vi.fn().mockResolvedValue(previousBackendStatus),
+      listAdminAudit: vi.fn().mockResolvedValue(audit),
+      listTicketMailFailures: vi.fn().mockResolvedValue(failures)
+    };
+    render(<SystemOperationsPage api={api} />);
+
+    expect(await screen.findByText("订阅生成并发", { exact: true })).toBeVisible();
+    expect(screen.getByText("进程峰值 0", { exact: true })).toBeVisible();
+    expect(screen.getByText("账户限流 0 · 服务繁忙 0", { exact: true })).toBeVisible();
+  });
 });

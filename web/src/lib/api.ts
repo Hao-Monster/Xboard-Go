@@ -1566,7 +1566,7 @@ export interface SystemStatus {
   mail_worker: WorkerStatus;
   mail_queue: SystemQueueStats;
   telegram_queue: SystemQueueStats;
-  subscription: {
+  subscription?: {
     in_flight: number;
     peak_in_flight: number;
     rate_limited: number;
