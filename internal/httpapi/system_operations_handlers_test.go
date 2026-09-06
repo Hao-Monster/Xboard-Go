@@ -34,9 +34,18 @@ func TestAdministratorSystemOperationsAndAuditEndpoints(t *testing.T) {
 			MailWorker    map[string]any         `json:"mail_worker"`
 			MailQueue     store.SystemQueueStats `json:"mail_queue"`
 			TelegramQueue store.SystemQueueStats `json:"telegram_queue"`
+			Subscription  struct {
+				InFlight     int64  `json:"in_flight"`
+				PeakInFlight int64  `json:"peak_in_flight"`
+				RateLimited  uint64 `json:"rate_limited"`
+				Busy         uint64 `json:"busy"`
+			} `json:"subscription"`
 		} `json:"data"`
 	}
 	decodeResponse(t, statusResponse, &statusPayload)
+	if statusPayload.Data.Subscription.InFlight != 0 || statusPayload.Data.Subscription.PeakInFlight != 0 || statusPayload.Data.Subscription.RateLimited != 0 || statusPayload.Data.Subscription.Busy != 0 {
+		t.Fatalf("unexpected subscription load = %#v", statusPayload.Data.Subscription)
+	}
 	if statusPayload.Data.SchemaVersion != store.CurrentSchemaVersion() || statusPayload.Data.Scheduler["healthy"] != true || statusPayload.Data.MailWorker["healthy"] != true || statusPayload.Data.TelegramQueue.Pending != 0 {
 		t.Fatalf("system status payload = %#v", statusPayload.Data)
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -74,6 +75,25 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	if !s.subscriptionRequests.take(strconv.FormatInt(account.ID, 10), s.now()) {
+		s.runtimeTracker.MarkSubscriptionRateLimited()
+		w.Header().Set("Cache-Control", "no-store, private")
+		w.Header().Set("Retry-After", "60")
+		writeAPIError(w, http.StatusTooManyRequests, "subscription_rate_limited", "订阅请求过于频繁，请稍后重试", nil)
+		return
+	}
+	select {
+	case s.subscriptionRenderSlots <- struct{}{}:
+		defer func() { <-s.subscriptionRenderSlots }()
+	default:
+		s.runtimeTracker.MarkSubscriptionBusy()
+		w.Header().Set("Cache-Control", "no-store, private")
+		w.Header().Set("Retry-After", "1")
+		writeAPIError(w, http.StatusServiceUnavailable, "subscription_busy", "订阅服务繁忙，请稍后重试", nil)
+		return
+	}
+	s.runtimeTracker.BeginSubscriptionRender()
+	defer s.runtimeTracker.EndSubscriptionRender()
 	hwid, err := s.store.AuthorizeDistributorHWID(r.Context(), store.AuthorizeDistributorHWIDInput{
 		SubscriberUserID: account.ID, HWID: r.Header.Get("x-hwid"), DeviceOS: r.Header.Get("x-device-os"),
 		OSVersion: r.Header.Get("x-ver-os"), DeviceModel: r.Header.Get("x-device-model"),
