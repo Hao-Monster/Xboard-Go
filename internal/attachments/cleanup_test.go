@@ -1,6 +1,7 @@
 package attachments
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -79,5 +80,84 @@ func TestCleanupRemovesOldOrphansButPreservesReferencedObjects(t *testing.T) {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("orphan remains at %s: %v", path, err)
 		}
+	}
+}
+
+func TestCleanupRemovesChunksLeftAfterCommittedCompletion(t *testing.T) {
+	service, _, adminID, now := newAttachmentTestService(t, 1<<20)
+	content := []byte("done")
+	upload, err := service.Initialize(context.Background(), adminID, InitializeInput{
+		OriginalName: "completed.bin", Size: int64(len(content)), DraftToken: testDraftToken("8"),
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StoreChunk(context.Background(), adminID, upload.UUID, 0, hexSHA256(content), bytes.NewReader(content), int64(len(content)), now); err != nil {
+		t.Fatal(err)
+	}
+	attachment, err := service.Complete(context.Background(), adminID, upload.UUID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectPath, err := service.safePath(attachment.StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Model a process exit after the completion transaction commits but before
+	// the best-effort removal of the now-unneeded chunk directory.
+	leftover, err := service.safePath(filepath.ToSlash(filepath.Join(upload.TemporaryPath, "chunks", "0.part")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(leftover), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leftover, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(leftover, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := service.Cleanup(context.Background(), now.Add(25*time.Hour), 100)
+	if err != nil || report.OrphanFiles != 1 {
+		t.Fatalf("Cleanup() report=%#v error=%v", report, err)
+	}
+	if _, err := os.Stat(leftover); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("completed upload chunk remains: %v", err)
+	}
+	if _, err := os.Stat(objectPath); err != nil {
+		t.Fatalf("completed attachment object was removed: %v", err)
+	}
+}
+
+func TestCleanupPreservesChunksForActiveUpload(t *testing.T) {
+	service, _, adminID, now := newAttachmentTestService(t, 1<<20)
+	content := []byte("live")
+	upload, err := service.Initialize(context.Background(), adminID, InitializeInput{
+		OriginalName: "active.bin", Size: int64(len(content)), DraftToken: testDraftToken("9"),
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StoreChunk(context.Background(), adminID, upload.UUID, 0, hexSHA256(content), bytes.NewReader(content), int64(len(content)), now); err != nil {
+		t.Fatal(err)
+	}
+	chunkPath, err := service.safePath(filepath.ToSlash(filepath.Join(upload.TemporaryPath, "chunks", "0.part")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-48 * time.Hour)
+	if err := os.Chtimes(chunkPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := service.Cleanup(context.Background(), now, 100)
+	if err != nil || report.OrphanFiles != 0 {
+		t.Fatalf("Cleanup() report=%#v error=%v", report, err)
+	}
+	if _, err := os.Stat(chunkPath); err != nil {
+		t.Fatalf("active upload chunk was removed: %v", err)
 	}
 }
