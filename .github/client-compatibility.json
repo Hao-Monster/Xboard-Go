@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-07",
+  "automated_clients": [
+    {
+      "client": "sing-box",
+      "version": "1.14.0",
+      "channel": "current-stable",
+      "asset_url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz",
+      "asset_sha256": "2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63",
+      "fixtures": ["sing-box-1.14.0.json"]
+    },
+    {
+      "client": "sing-box",
+      "version": "1.13.21",
+      "channel": "previous-stable",
+      "asset_url": "https://github.com/SagerNet/sing-box/releases/download/v1.13.21/sing-box-1.13.21-linux-amd64.tar.gz",
+      "asset_sha256": "24f9ef8e7234e13e71e74c3598a4164c5fe07b7b67ccc6e96cf68b54789f72cd",
+      "fixtures": ["sing-box-1.13.21.json"]
+    },
+    {
+      "client": "mihomo",
+      "version": "1.19.30",
+      "channel": "current-stable",
+      "asset_url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.30/mihomo-linux-amd64-compatible-v1.19.30.gz",
+      "asset_sha256": "db214c7a2517e63c150d123178d16d102e03a241ccdae4e5e07ffbe9cf56c6f9",
+      "fixtures": ["clash-1.19.30.yaml", "clashmeta-1.19.30.yaml"]
+    },
+    {
+      "client": "mihomo",
+      "version": "1.19.29",
+      "channel": "previous-stable",
+      "asset_url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.29/mihomo-linux-amd64-compatible-v1.19.29.gz",
+      "asset_sha256": "5612e698e96c8b8ad15abc4c0a4f098eba9234354b4f248cb97f2528e215b094",
+      "fixtures": ["clash-1.19.29.yaml", "clashmeta-1.19.29.yaml"]
+    }
+  ],
+  "independent_parsers": [
+    {
+      "output": "general-share-uris",
+      "coverage": ["vmess", "vless", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls", "socks", "http", "ipv6", "tls", "reality", "transport", "invalid-input"],
+      "test": "TestGeneralOutputPassesIndependentURIParser"
+    },
+    {
+      "output": "sip008",
+      "coverage": ["schema", "legacy-cipher", "ss-2022-exclusion"],
+      "test": "TestRenderShadowsocksUsesSIP008AndExcludes2022Ciphers"
+    }
+  ],
+  "not_run_clients": [
+    {"client": "Stash", "reason": "proprietary client; no authorized automatable Linux importer"},
+    {"client": "Surge", "reason": "proprietary client; no authorized automatable Linux importer"},
+    {"client": "Surfboard", "reason": "no pinned maintained importer in the isolated Linux test environment"},
+    {"client": "Shadowrocket", "reason": "proprietary client; no authorized automatable Linux importer"},
+    {"client": "Quantumult X", "reason": "proprietary client; no authorized automatable Linux importer"},
+    {"client": "Loon", "reason": "proprietary client; no authorized automatable Linux importer"}
+  ]
+}
