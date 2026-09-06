@@ -667,7 +667,8 @@ func (s *Store) KnowledgeAttachmentTemporaryPathExists(ctx context.Context, rela
 	err := s.db.QueryRowContext(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM knowledge_attachment_uploads
-			WHERE ? = temporary_path OR ? LIKE temporary_path || '/%'
+			WHERE status != 'completed'
+			AND (? = temporary_path OR ? LIKE temporary_path || '/%')
 		)
 	`, relativeFilePath, relativeFilePath).Scan(&exists)
 	if err != nil {
