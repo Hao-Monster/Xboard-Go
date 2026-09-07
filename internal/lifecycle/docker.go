@@ -778,15 +778,26 @@ func (r *DoctorReport) addRuntimeEnvDirectoryCheck(path string) {
 		r.addCheck("runtime_env_dir", "fail", fmt.Sprintf("inspect %s: %v", path, err))
 		return
 	}
-	parent := filepath.Dir(path)
-	if info, err := os.Stat(parent); err == nil && info.IsDir() {
-		r.addCheck("runtime_env_dir", "pass", "will be created under "+parent)
-		return
-	} else if err != nil {
-		r.addCheck("runtime_env_dir", "fail", fmt.Sprintf("inspect parent %s: %v", parent, err))
-		return
+	for ancestor := filepath.Dir(path); ancestor != "." && ancestor != string(filepath.Separator); ancestor = filepath.Dir(ancestor) {
+		info, err := os.Stat(ancestor)
+		if err == nil {
+			if info.IsDir() {
+				r.addCheck("runtime_env_dir", "pass", "will be created under "+ancestor)
+				return
+			}
+			r.addCheck("runtime_env_dir", "fail", "ancestor is not a directory: "+ancestor)
+			return
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			r.addCheck("runtime_env_dir", "fail", fmt.Sprintf("inspect ancestor %s: %v", ancestor, err))
+			return
+		}
+		next := filepath.Dir(ancestor)
+		if next == ancestor {
+			break
+		}
 	}
-	r.addCheck("runtime_env_dir", "fail", "parent is not a directory: "+parent)
+	r.addCheck("runtime_env_dir", "fail", "no existing parent directory for "+path)
 }
 
 func (r *DoctorReport) addPathCheck(name string, lookup func(string) (string, error)) {
