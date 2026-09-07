@@ -1,7 +1,7 @@
 ARG APP_REVISION=local
 ARG GO_MODULE_PROXY=https://proxy.golang.org,direct
 
-FROM golang:1.25.13-bookworm@sha256:e401dae1bf814e29204a8cb7915682e1780951e609ca0dd8865ee1937f510c48 AS go-build
+FROM golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS go-build
 ARG APP_REVISION
 ARG GO_MODULE_PROXY
 WORKDIR /src

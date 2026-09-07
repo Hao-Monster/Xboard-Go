@@ -64,11 +64,11 @@ jobs:
       - name: Configure the pinned server toolchain
         run: |
           echo '/opt/xboard-go-ci-tools/node-v24.20.0-linux-x64/bin' >> "$GITHUB_PATH"
-          echo '/opt/xboard-go-ci-tools/go1.26.6/bin' >> "$GITHUB_PATH"
+          echo '/opt/xboard-go-ci-tools/go1.26.8/bin' >> "$GITHUB_PATH"
       - name: Verify the isolated runner and legacy Oracle
         run: |
           test "$(node --version)" = v24.20.0
-          test "$(go version)" = 'go version go1.26.6 linux/amd64'
+          test "$(go version)" = 'go version go1.26.8 linux/amd64'
           test "$(pnpm --version)" = 11.10.0
           test ! -w /opt/xboard-go-ci-tools
           docker info --format '{{json .SecurityOptions}}' | grep -q rootless
