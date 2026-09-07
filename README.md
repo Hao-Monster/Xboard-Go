@@ -123,6 +123,21 @@ of representative observation before deciding the legacy-token retirement
 window; schema v60 starts a new observation period and does not invent
 historical usage.
 
+Operators can export that aggregate decision signal without exposing
+credentials or high-cardinality request data:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance node-auth-retirement-readiness \
+  --min-observation-days 30
+```
+
+The command is read-only. It reports whether the minimum observation window has
+elapsed, whether legacy global-token traffic is still present, and whether
+machine-credential traffic has been observed. It does not rotate, clear, or
+retire the legacy global token; the retirement window remains an explicit
+operator decision.
+
 Node HTTP and WebSocket handshake rate limits always retain independent
 client, direct-peer, and credential buckets. A deployment behind a shared
 reverse proxy must set `XBOARD_TRUSTED_PROXY_CIDRS` to the proxy network CIDRs
