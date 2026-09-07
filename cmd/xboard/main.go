@@ -385,6 +385,14 @@ type nodeAuthRetirementReadinessCommandResult struct {
 	Result              maintenance.NodeAuthRetirementReadiness `json:"result"`
 }
 
+type operationalRetentionReadinessCommandResult struct {
+	Status        string                                       `json:"status"`
+	Action        string                                       `json:"action"`
+	AsOf          time.Time                                    `json:"as_of"`
+	RetentionDays int                                          `json:"retention_days"`
+	Result        legacymigration.OperationalRetentionSnapshot `json:"result"`
+}
+
 type attachmentStatusCommandResult struct {
 	Status string                   `json:"status"`
 	Action string                   `json:"action"`
@@ -2574,13 +2582,15 @@ func hashMigrationArtifact(ctx context.Context, path string) (string, int64, err
 
 func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("maintenance subcommand is required: cleanup-expired or node-auth-retirement-readiness")
+		return true, errors.New("maintenance subcommand is required: cleanup-expired, node-auth-retirement-readiness, or operational-retention-readiness")
 	}
 	switch arguments[0] {
 	case "cleanup-expired":
 		return runMaintenanceCleanupExpiredCommand(ctx, arguments[1:], stdout, stderr, now)
 	case "node-auth-retirement-readiness":
 		return runMaintenanceNodeAuthRetirementReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
+	case "operational-retention-readiness":
+		return runMaintenanceOperationalRetentionReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
 	default:
 		return true, fmt.Errorf("unknown maintenance subcommand %q", arguments[0])
 	}
@@ -2694,6 +2704,36 @@ func runMaintenanceNodeAuthRetirementReadinessCommand(ctx context.Context, argum
 	return true, encoder.Encode(nodeAuthRetirementReadinessCommandResult{
 		Status: "success", Action: "maintenance.node-auth-retirement-readiness",
 		AsOf: asOf, MinimumObservedDays: *minimumObservedDays, Result: result,
+	})
+}
+
+func runMaintenanceOperationalRetentionReadinessCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	flags := flag.NewFlagSet("maintenance operational-retention-readiness", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	sourcePath := flags.String("source", "", "standalone legacy Xboard SQLite snapshot path")
+	retentionDays := flags.Int("retention-days", legacymigration.DefaultOperationalRetentionDays, "whole days of operational statistics to retain for migration evidence")
+	if err := flags.Parse(arguments); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance operational-retention-readiness does not accept positional arguments")
+	}
+	if strings.TrimSpace(*sourcePath) == "" {
+		return true, errors.New("maintenance operational-retention-readiness requires --source")
+	}
+	if *retentionDays < 1 || *retentionDays > legacymigration.MaxOperationalRetentionDays {
+		return true, fmt.Errorf("maintenance operational-retention-readiness --retention-days must be between 1 and %d", legacymigration.MaxOperationalRetentionDays)
+	}
+	asOf := now().UTC()
+	result, err := legacymigration.ReadOperationalRetentionSnapshot(ctx, *sourcePath, asOf, *retentionDays)
+	if err != nil {
+		return true, err
+	}
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(operationalRetentionReadinessCommandResult{
+		Status: "success", Action: "maintenance.operational-retention-readiness",
+		AsOf: asOf, RetentionDays: *retentionDays, Result: result,
 	})
 }
 
