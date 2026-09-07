@@ -15,7 +15,7 @@
     ]},
     {"id":"M2","name":"Migration & Operations","status":"blocked","gates":[
       {"id":"M2-G01","title":"D-006、D-009、D-013 及相关迁移边界已解决","status":"blocked"},
-      {"id":"M2-G02","title":"代表性迁移、对账、备份恢复和回滚演练通过","status":"not_run"}
+      {"id":"M2-G02","title":"代表性迁移、对账、备份恢复和回滚演练通过","status":"pass"}
     ]},
     {"id":"M3","name":"Release Candidate","status":"blocked","gates":[
       {"id":"M3-G01","title":"80/80 需求在同一候选提交 accepted","status":"blocked"},

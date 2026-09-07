@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-08",
-  "baseline_commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+  "baseline_commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -32,7 +32,7 @@
             "e2e/login-links.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -45,7 +45,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -58,7 +58,7 @@
             "migration/AUTH-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -73,7 +73,7 @@
             "parity/admin-surface.spec.ts:2082"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -104,7 +104,7 @@
             "e2e/registration-policies.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -117,7 +117,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -130,7 +130,7 @@
             "migration/AUTH-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -143,7 +143,7 @@
             "parity/admin-surface.spec.ts:1341"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -174,7 +174,7 @@
             "e2e/login-lockout.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -187,7 +187,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -200,7 +200,7 @@
             "migration/AUTH-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -214,7 +214,7 @@
             "parity/admin-surface.spec.ts:1823"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -227,7 +227,7 @@
             "security/AUTH-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -258,7 +258,7 @@
             "e2e/users.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -271,7 +271,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -284,7 +284,7 @@
             "migration/AUTH-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -297,7 +297,7 @@
             "security/AUTH-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -329,7 +329,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -342,7 +342,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -355,7 +355,7 @@
             "migration/AUTH-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -369,7 +369,7 @@
             "parity/admin-surface.spec.ts:2016"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -382,7 +382,7 @@
             "security/AUTH-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -414,7 +414,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -427,7 +427,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -440,7 +440,7 @@
             "migration/AUTH-006"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -472,7 +472,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -485,7 +485,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -498,7 +498,7 @@
             "migration/AUTH-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -511,7 +511,7 @@
             "security/AUTH-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -542,7 +542,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -555,7 +555,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -568,7 +568,7 @@
             "migration/AUTH-008"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -581,7 +581,7 @@
             "security/AUTH-008"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -613,7 +613,7 @@
             "e2e/login-lockout.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -626,7 +626,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -639,7 +639,7 @@
             "migration/AUTH-009"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -652,7 +652,7 @@
             "security/AUTH-009"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -702,7 +702,7 @@
             "e2e/users.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -715,7 +715,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -728,7 +728,7 @@
             "migration/USER-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -742,7 +742,7 @@
             "parity/admin-surface.spec.ts:443"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -792,7 +792,7 @@
             "e2e/plans.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -805,7 +805,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -818,7 +818,7 @@
             "migration/PLAN-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -849,7 +849,7 @@
             "e2e/plans.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -862,7 +862,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -875,7 +875,7 @@
             "migration/PLAN-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -906,7 +906,7 @@
             "e2e/plans.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -919,7 +919,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -932,7 +932,7 @@
             "migration/PLAN-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -963,7 +963,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -976,7 +976,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -989,7 +989,7 @@
             "migration/SUB-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1002,7 +1002,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1015,7 +1015,7 @@
             "security/SUB-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1046,7 +1046,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1059,7 +1059,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1072,7 +1072,7 @@
             "migration/SUB-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1085,7 +1085,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1098,7 +1098,7 @@
             "security/SUB-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1129,7 +1129,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1142,7 +1142,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1155,7 +1155,7 @@
             "migration/SUB-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1168,7 +1168,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1188,7 +1188,7 @@
             "client/mihomo-1.19.29-mieru"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pinned sing-box and Mihomo current/previous real-client parse matrix with SHA-256 verified release assets",
           "result": "pass"
@@ -1219,7 +1219,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1232,7 +1232,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1245,7 +1245,7 @@
             "migration/SUB-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1258,7 +1258,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1290,7 +1290,7 @@
             "e2e/users.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1303,7 +1303,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1316,7 +1316,7 @@
             "migration/SUB-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1329,7 +1329,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1342,7 +1342,7 @@
             "security/SUB-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1374,7 +1374,7 @@
             "e2e/zz-payments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1387,7 +1387,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1400,7 +1400,7 @@
             "migration/ORD-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1413,7 +1413,7 @@
             "TestCreateOrderUsesServerPriceBalanceAndDatabaseActiveOrderInvariant"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1426,7 +1426,7 @@
             "BenchmarkListAdminOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1457,7 +1457,7 @@
             "e2e/zz-orders.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1470,7 +1470,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1483,7 +1483,7 @@
             "migration/ORD-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1497,7 +1497,7 @@
             "TestJSONWritesRequireAnExactJSONMediaType"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1510,7 +1510,7 @@
             "BenchmarkListAdminOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1543,7 +1543,7 @@
             "e2e/zz-coupons.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1556,7 +1556,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1569,7 +1569,7 @@
             "migration/ORD-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1583,7 +1583,7 @@
             "TestParseProviderAmountRejectsFloatAmbiguityAndOverflow"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1596,7 +1596,7 @@
             "BenchmarkPaymentHandlingFee"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1628,7 +1628,7 @@
             "e2e/zz-payments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1641,7 +1641,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1654,7 +1654,7 @@
             "migration/ORD-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1668,7 +1668,7 @@
             "TestCompletePaymentWebhookValidatesBindingAndIsExactlyOnceUnderConcurrency"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1681,7 +1681,7 @@
             "BenchmarkDuplicatePaymentWebhook"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1712,7 +1712,7 @@
             "e2e/zz-payments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1725,7 +1725,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1738,7 +1738,7 @@
             "migration/PAY-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1751,7 +1751,7 @@
             "parity/admin-surface.spec.ts:561"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1765,7 +1765,7 @@
             "TestCoinPaymentsWebhookRequiresSignatureAndExactOrderBindingAndIsIdempotent"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1778,7 +1778,7 @@
             "BenchmarkDuplicatePaymentWebhook"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1809,7 +1809,7 @@
             "e2e/zz-payments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1822,7 +1822,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1835,7 +1835,7 @@
             "migration/PAY-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1848,7 +1848,7 @@
             "parity/admin-surface.spec.ts:561"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1862,7 +1862,7 @@
             "TestPaymentAdministratorAPIsEncryptMaskUpdateSortAndRestrictSecrets"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1875,7 +1875,7 @@
             "BenchmarkListPaymentsTenThousand"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -1906,7 +1906,7 @@
             "e2e/zz-coupons.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -1919,7 +1919,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -1932,7 +1932,7 @@
             "migration/COUP-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -1945,7 +1945,7 @@
             "parity/admin-surface.spec.ts:621"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -1959,7 +1959,7 @@
             "TestCouponAdministratorAPIsValidatePermissionsLegacyContractAndSafeCSV"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -1973,7 +1973,7 @@
             "BenchmarkListCouponsAtHundredThousandRows"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2004,7 +2004,7 @@
             "e2e/zz-gift-cards.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2017,7 +2017,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2030,7 +2030,7 @@
             "migration/GIFT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2043,7 +2043,7 @@
             "parity/admin-surface.spec.ts:682"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -2056,7 +2056,7 @@
             "TestGiftCardConcurrentRedeemHasExactlyOneWinnerAcrossConnections"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2070,7 +2070,7 @@
             "BenchmarkListGiftCardCodesAtHundredThousandRows"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2101,7 +2101,7 @@
             "e2e/zz-gift-cards.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2114,7 +2114,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2127,7 +2127,7 @@
             "migration/GIFT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2140,7 +2140,7 @@
             "parity/admin-surface.spec.ts:682"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -2154,7 +2154,7 @@
             "TestGiftCardMaximumInviterRewardDoesNotOverflow"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2167,7 +2167,7 @@
             "BenchmarkCheckGiftCardAtHundredThousandRows"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2198,7 +2198,7 @@
             "e2e/commissions.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2211,7 +2211,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2224,7 +2224,7 @@
             "migration/INV-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2239,7 +2239,7 @@
             "parity/admin-surface.spec.ts:2530"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -2253,7 +2253,7 @@
             "TestWorkerPaysMatureInvitationCommissionExactlyOnceAtLegacyMinuteCadence"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2268,7 +2268,7 @@
             "BenchmarkInvitationProtector"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2318,7 +2318,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2331,7 +2331,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2344,7 +2344,7 @@
             "migration/DIST-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2358,7 +2358,7 @@
             "parity/admin-surface.spec.ts:443"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -2371,7 +2371,7 @@
             "TestDistributorAccessIsAnExplicitServerSideAllowlist"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2384,7 +2384,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2415,7 +2415,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2428,7 +2428,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2441,7 +2441,7 @@
             "migration/DIST-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2454,7 +2454,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2485,7 +2485,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2498,7 +2498,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2511,7 +2511,7 @@
             "migration/DIST-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2524,7 +2524,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2555,7 +2555,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2568,7 +2568,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2581,7 +2581,7 @@
             "migration/DIST-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2594,7 +2594,7 @@
             "TestDistributorAccessIsAnExplicitServerSideAllowlist"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2607,7 +2607,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2638,7 +2638,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2651,7 +2651,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2664,7 +2664,7 @@
             "migration/DIST-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2677,7 +2677,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2708,7 +2708,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2721,7 +2721,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2734,7 +2734,7 @@
             "migration/DIST-006"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2747,7 +2747,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2778,7 +2778,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2791,7 +2791,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2804,7 +2804,7 @@
             "migration/DIST-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2817,7 +2817,7 @@
             "TestRenewDistributorOrderIsNoOverflowOwnedAndIdempotent"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2830,7 +2830,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2861,7 +2861,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2874,7 +2874,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2887,7 +2887,7 @@
             "migration/DIST-008"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2900,7 +2900,7 @@
             "TestRenewDistributorOrderIsNoOverflowOwnedAndIdempotent"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2913,7 +2913,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -2944,7 +2944,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -2957,7 +2957,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -2970,7 +2970,7 @@
             "migration/DIST-009"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -2983,7 +2983,7 @@
             "TestRenewDistributorOrderIsNoOverflowOwnedAndIdempotent"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -2996,7 +2996,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3027,7 +3027,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3040,7 +3040,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3053,7 +3053,7 @@
             "migration/DIST-010"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3066,7 +3066,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3097,7 +3097,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3110,7 +3110,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3123,7 +3123,7 @@
             "migration/DIST-011"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3136,7 +3136,7 @@
             "TestConcurrentDistributorMutationsRemainAtomicAcrossConnections"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -3149,7 +3149,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3180,7 +3180,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3193,7 +3193,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3206,7 +3206,7 @@
             "migration/DIST-012"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3220,7 +3220,7 @@
             "TestAdministratorDistributorOrderManagementAndSettlement"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-finance-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -3233,7 +3233,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3264,7 +3264,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3277,7 +3277,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3290,7 +3290,7 @@
             "migration/DIST-013"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3303,7 +3303,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3334,7 +3334,7 @@
             "e2e/distributor.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3347,7 +3347,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3360,7 +3360,7 @@
             "migration/DIST-014"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3373,7 +3373,7 @@
             "BenchmarkDistributorOrders100K"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(GetCommissionSettings|CheckCouponAtHundredThousandRows|ListCouponsAtHundredThousandRows|DistributorOrders100K|CheckGiftCardAtHundredThousandRows|ListGiftCardCodesAtHundredThousandRows|ListAdminOrders100K|PaymentHandlingFee|ListPaymentsTenThousand|DuplicatePaymentWebhook|InvitationCodeLookup|InvitationProtector)' -benchmem -count=3 ./internal/store ./internal/security",
           "result": "pass"
@@ -3404,7 +3404,7 @@
             "e2e/machine-management.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3417,7 +3417,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3430,7 +3430,7 @@
             "migration/MACH-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3443,7 +3443,7 @@
             "parity/admin-surface.spec.ts:131"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -3474,7 +3474,7 @@
             "e2e/machine-management.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3487,7 +3487,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3500,7 +3500,7 @@
             "migration/MACH-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3513,7 +3513,7 @@
             "security/MACH-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -3526,7 +3526,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3557,7 +3557,7 @@
             "e2e/machine-management.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3570,7 +3570,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3583,7 +3583,7 @@
             "migration/MACH-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3596,7 +3596,7 @@
             "parity/admin-surface.spec.ts:131"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -3609,7 +3609,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3640,7 +3640,7 @@
             "e2e/machine-management.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3653,7 +3653,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3666,7 +3666,7 @@
             "migration/MACH-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3679,7 +3679,7 @@
             "security/MACH-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -3692,7 +3692,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3723,7 +3723,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3736,7 +3736,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3749,7 +3749,7 @@
             "migration/NODE-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3762,7 +3762,7 @@
             "parity/admin-surface.spec.ts:131"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -3775,7 +3775,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3806,7 +3806,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3819,7 +3819,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3832,7 +3832,7 @@
             "migration/NODE-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -3845,7 +3845,7 @@
             "parity/admin-surface.spec.ts:131"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -3858,7 +3858,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3889,7 +3889,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -3902,7 +3902,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -3915,7 +3915,7 @@
             "security/NODE-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -3928,7 +3928,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -3941,7 +3941,7 @@
             "performance/NODE-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -3954,7 +3954,7 @@
             "redis-performance/NODE-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines|TIMENODE006ReplaceSnapshot500Users|TIMENODE006List500Users)' -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
           "result": "pass"
@@ -3969,7 +3969,7 @@
             "TestINTR014DrainWaitsForInFlightClaimAndReleasesOwnership"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/0 go test -race ./internal/httpapi -run R014 -count=10",
           "result": "pass"
@@ -3984,7 +3984,7 @@
             "TestCAPR014WebSocketConnectionDrain/1000"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "XBOARD_TEST_REDIS_URL=redis://127.0.0.1:16379/0 XBOARD_WS_CAPACITY_WORKERS=64 XBOARD_WS_CAPACITY_CONNECTIONS={256,512,1000} go test ./internal/httpapi -run '^TestCAPR014WebSocketConnectionDrain$' -count=1 -v",
           "result": "pass"
@@ -4017,7 +4017,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4030,7 +4030,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4043,7 +4043,7 @@
             "migration/NODE-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4056,7 +4056,7 @@
             "security/NODE-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4069,7 +4069,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -4083,7 +4083,7 @@
             "TestWSClient_ReconnectOnDisconnect"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pinned Xboard-Node v1.14.3 a95b06fb6d517328018df388cfe8c8e90590d4be: go test -race ./internal/panel -run '^(TestR014ReconnectJitterDistribution|TestWSClient_ReconnectOnDisconnect)$' -count=5 -v",
           "result": "pass"
@@ -4114,7 +4114,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4127,7 +4127,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4140,7 +4140,7 @@
             "security/NODE-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4153,7 +4153,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -4184,7 +4184,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4197,7 +4197,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4210,7 +4210,7 @@
             "security/NODE-006"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4223,7 +4223,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -4236,7 +4236,7 @@
             "performance/NODE-006"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -4249,7 +4249,7 @@
             "redis-performance/NODE-006"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines|TIMENODE006ReplaceSnapshot500Users|TIMENODE006List500Users)' -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
           "result": "pass"
@@ -4280,7 +4280,7 @@
             "e2e/nodes.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4293,7 +4293,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4306,7 +4306,7 @@
             "migration/NODE-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4319,7 +4319,7 @@
             "security/NODE-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4332,7 +4332,7 @@
             "REAL-NODE-CLIENT-SMOKE"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "isolated Xboard-Node v1.14.3 and v1.14.2 enrollment, assignment, SOCKS listener, node-list, and secret-scan contract smoke",
           "result": "pass"
@@ -4345,7 +4345,7 @@
             "performance/NODE-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -4358,7 +4358,7 @@
             "redis-performance/NODE-007"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RedisCoordinatorClaimMachine100Nodes|RedisCoordinatorVerifyMachineNode|RedisCoordinatorRenew1000Machines|TIMENODE006ReplaceSnapshot500Users|TIMENODE006List500Users)' -benchmem -count=3 ./internal/nodecoord ./internal/devicestate",
           "result": "pass"
@@ -4389,7 +4389,7 @@
             "e2e/server-schedule.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4402,7 +4402,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4415,7 +4415,7 @@
             "migration/SCH-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4446,7 +4446,7 @@
             "e2e/server-schedule.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4459,7 +4459,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4472,7 +4472,7 @@
             "migration/SCH-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4503,7 +4503,7 @@
             "e2e/server-schedule.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4516,7 +4516,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4529,7 +4529,7 @@
             "migration/SCH-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4560,7 +4560,7 @@
             "e2e/server-schedule.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4573,7 +4573,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4604,7 +4604,7 @@
             "e2e/knowledge.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4617,7 +4617,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4630,7 +4630,7 @@
             "migration/CONT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4643,7 +4643,7 @@
             "parity/admin-surface.spec.ts:2789"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -4674,7 +4674,7 @@
             "e2e/knowledge.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4687,7 +4687,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4700,7 +4700,7 @@
             "migration/CONT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4713,7 +4713,7 @@
             "parity/admin-surface.spec.ts:2789"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -4726,7 +4726,7 @@
             "performance/CONT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -4757,7 +4757,7 @@
             "e2e/knowledge.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4770,7 +4770,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4783,7 +4783,7 @@
             "migration/CONT-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4796,7 +4796,7 @@
             "parity/admin-surface.spec.ts:2789"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -4827,7 +4827,7 @@
             "e2e/knowledge-attachments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4840,7 +4840,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4853,7 +4853,7 @@
             "migration/ATT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4866,7 +4866,7 @@
             "security/ATT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4879,7 +4879,7 @@
             "performance/ATT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -4892,7 +4892,7 @@
             "TestOneGiBAttachmentCompletesWithChunkBoundedMemory"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run TestOneGiBAttachmentCompletesWithChunkBoundedMemory ./internal/attachments",
           "result": "pass"
@@ -4923,7 +4923,7 @@
             "e2e/knowledge-attachments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -4936,7 +4936,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -4949,7 +4949,7 @@
             "migration/ATT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -4962,7 +4962,7 @@
             "security/ATT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -4975,7 +4975,7 @@
             "performance/ATT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -4988,7 +4988,7 @@
             "TestOneGiBAttachmentCompletesWithChunkBoundedMemory"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run TestOneGiBAttachmentCompletesWithChunkBoundedMemory ./internal/attachments",
           "result": "pass"
@@ -5019,7 +5019,7 @@
             "e2e/knowledge-attachments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5032,7 +5032,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5045,7 +5045,7 @@
             "migration/ATT-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5058,7 +5058,7 @@
             "security/ATT-003"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5089,7 +5089,7 @@
             "e2e/knowledge-attachments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5102,7 +5102,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5115,7 +5115,7 @@
             "migration/ATT-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5128,7 +5128,7 @@
             "security/ATT-004"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5159,7 +5159,7 @@
             "e2e/knowledge-attachments.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5172,7 +5172,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5185,7 +5185,7 @@
             "migration/ATT-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5198,7 +5198,7 @@
             "security/ATT-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5211,7 +5211,7 @@
             "performance/ATT-005"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(RenderKnowledgeBody100Attachments|ListVisibleKnowledge10000|ListKnowledgeAttachments10000Rows|ListPurgeableKnowledgeAttachments10000Rows|AdminTicketListTenThousand|ImportLegacyKnowledgeTenThousandRows|ApplyNodeReport)' -benchmem -count=3",
           "result": "pass"
@@ -5242,7 +5242,7 @@
             "e2e/client-catalog.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5255,7 +5255,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5268,7 +5268,7 @@
             "migration/CLIENT-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5299,7 +5299,7 @@
             "e2e/client-catalog.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5312,7 +5312,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5325,7 +5325,7 @@
             "migration/CLIENT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5338,7 +5338,7 @@
             "security/CLIENT-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5370,7 +5370,7 @@
             "e2e/ticket-settings-mail.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5383,7 +5383,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5396,7 +5396,7 @@
             "migration/TICKET-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5412,7 +5412,7 @@
             "parity/admin-surface.spec.ts:2722"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5425,7 +5425,7 @@
             "security/TICKET-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-core-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5456,7 +5456,7 @@
             "e2e/notices.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5469,7 +5469,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5482,7 +5482,7 @@
             "migration/NOTICE-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5519,7 +5519,7 @@
             "e2e/subscription.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5532,7 +5532,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5545,7 +5545,7 @@
             "migration/CFG-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5564,7 +5564,7 @@
             "parity/admin-surface.spec.ts:2927"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5578,7 +5578,7 @@
             "TestThemeLayoutSettingsAreRevisionSafeAndRefreshAppearance"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5594,7 +5594,7 @@
             "BenchmarkRenderNotifyTemplate"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
           "result": "pass"
@@ -5628,7 +5628,7 @@
             "e2e/telegram-settings.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5641,7 +5641,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5654,7 +5654,7 @@
             "migration/CFG-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5669,7 +5669,7 @@
             "parity/admin-surface.spec.ts:1088"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5686,7 +5686,7 @@
             "TestLegacyConfigurationCompatibilityPartialWritesAreAtomic"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5701,7 +5701,7 @@
             "BenchmarkUserCatalogCachedConfig"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
           "result": "pass"
@@ -5732,7 +5732,7 @@
             "e2e/zy-plugins.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5745,7 +5745,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5758,7 +5758,7 @@
             "migration/PLUG-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5771,7 +5771,7 @@
             "parity/admin-surface.spec.ts:32"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5785,7 +5785,7 @@
             "TestLegacyTrustedPluginEnableDisableAndTelegramConfigUseTheVersionedStore"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5816,7 +5816,7 @@
             "e2e/zy-plugins.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5829,7 +5829,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5842,7 +5842,7 @@
             "migration/PLUG-002"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5855,7 +5855,7 @@
             "parity/admin-surface.spec.ts:32"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5868,7 +5868,7 @@
             "TestLegacyRuntimePluginMutationRoutesFailClosedWithoutReadingTheBody"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5899,7 +5899,7 @@
             "e2e/theme-management.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -5912,7 +5912,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -5925,7 +5925,7 @@
             "migration/THEME-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -5938,7 +5938,7 @@
             "parity/admin-surface.spec.ts:3010"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -5955,7 +5955,7 @@
             "TestThemeUploadRejectsUnsafeArchiveBeforePersistence"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -5968,7 +5968,7 @@
             "BenchmarkParseArchive"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -run '^$' -bench 'Benchmark(LegacyConfigurationFullFetch|LegacyConfigurationProjections|ParseArchive|UserCatalogCachedConfig|RenderNotifyTemplate)' -benchmem -count=3 ./internal/httpapi ./internal/store ./internal/theme ./internal/clientcatalog ./internal/mailtemplate",
           "result": "pass"
@@ -5999,7 +5999,7 @@
             "e2e/system-operations.spec.ts"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -6012,7 +6012,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -6025,7 +6025,7 @@
             "migration/OPS-001"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=60m -count=1 ./internal/legacymigration ./internal/store",
           "result": "pass"
@@ -6038,7 +6038,7 @@
             "parity/admin-surface.spec.ts:2362"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "pnpm exec playwright test --config playwright.parity.config.ts admin-surface.spec.ts",
           "result": "pass"
@@ -6051,7 +6051,7 @@
             "TestAdministratorSystemOperationsAndAuditEndpoints"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
@@ -6155,9 +6155,23 @@
             "cmd/xboard:TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race ./internal/backup -run \"TestHTTPReplica|TestEncryptVerifyAndDecryptRoundTrip|TestEncryptedBackupRejects\" -count=5 -v; go test ./cmd/xboard -run \"TestRunCommandBackup\" -count=5 -v",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-002-FULL-ROLLBACK-DRILL",
+          "kind": "migration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "internal/testdata/legacy/drill:TestRepresentativeLegacyMigrationDrill",
+            "internal/backup:package"
+          ],
+          "artifact": "bingo-dev:sha256:1cde0781b8fd38f5cce74a3d0435d97c59c9f71c4faaf0d1a697d5f77e0819dd",
+          "commit": "a2b1097964c7240c8100dd01c2c33f0f7074b862",
+          "observed_at": "2026-09-07T21:31:38Z",
+          "command": "go test -timeout=10m ./internal/testdata/legacy/drill -run TestRepresentativeLegacyMigrationDrill -count=1 -v; go test -timeout=10m ./internal/backup -count=1; go run ./cmd/projectctl check",
           "result": "pass"
         }
       ]
@@ -6186,7 +6200,7 @@
             "environment/bingo-dev-isolated-compose"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "rootless Docker Compose packaged browser acceptance with temporary Docker Hub digest fallback: maintenance verify plus Chromium desktop/mobile standard and fresh-server suites",
           "result": "pass"
@@ -6199,7 +6213,7 @@
             "go/all-packages"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "go test -race -timeout=90m -cover ./...",
           "result": "pass"
@@ -6213,7 +6227,7 @@
             "TestFrontendAccessCheckerFailsClosedOnSettingsError"
           ],
           "artifact": "bingo-dev:sha256:bf8b6084a23b455a0167f6c876fa9326fee9e3c1ad299cb2cb5ef8eecc995e7a",
-          "commit": "8afd48f14fe5385c43ded4b81bc5f1aed9ef4419",
+          "commit": "e4297e1c81ddabcd2dbedb05de614e6e5ee14fa8",
           "observed_at": "2026-09-07T20:50:01Z",
           "command": "exact R-015 security-config-current selection (race, count=5); runnable command recorded in the SHA-256 artifact",
           "result": "pass"
