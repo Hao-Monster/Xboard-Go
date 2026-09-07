@@ -57,6 +57,9 @@ type wsHub struct {
 	mu             sync.RWMutex
 	machines       map[int64]*wsConnection
 	nodes          map[int64]*wsConnection
+	draining       bool
+	connections    sync.WaitGroup
+	drainDone      chan struct{}
 	store          *store.Store
 	now            func() time.Time
 	logger         *slog.Logger
@@ -92,6 +95,7 @@ func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, 
 	return &wsHub{
 		machines:       make(map[int64]*wsConnection),
 		nodes:          make(map[int64]*wsConnection),
+		drainDone:      make(chan struct{}),
 		store:          database,
 		now:            now,
 		logger:         logger,
@@ -136,6 +140,7 @@ func (h *wsHub) clearDevices(ctx context.Context, nodeIDs []int64, now time.Time
 }
 
 func (h *wsHub) runUntil(ctx context.Context) {
+	defer close(h.drainDone)
 	reconcileTicker := time.NewTicker(time.Second)
 	defer reconcileTicker.Stop()
 	var renewTicker *time.Ticker
@@ -158,6 +163,7 @@ func (h *wsHub) runUntil(ctx context.Context) {
 
 shutdown:
 	h.mu.Lock()
+	h.draining = true
 	unique := make(map[*wsConnection]struct{}, len(h.machines)+len(h.nodes))
 	for _, connection := range h.machines {
 		unique[connection] = struct{}{}
@@ -165,12 +171,20 @@ shutdown:
 	for _, connection := range h.nodes {
 		unique[connection] = struct{}{}
 	}
-	h.machines = make(map[int64]*wsConnection)
-	h.nodes = make(map[int64]*wsConnection)
 	h.mu.Unlock()
+	h.logger.Info("draining node websockets", "connections", len(unique))
 	for connection := range unique {
-		connection.close(websocket.CloseGoingAway, "server shutdown")
+		connection.close(websocket.CloseServiceRestart, "server restart")
 	}
+	h.connections.Wait()
+	h.logger.Info("node websocket drain complete", "connections", len(unique))
+}
+
+func (h *wsHub) isDraining() bool {
+	h.mu.RLock()
+	draining := h.draining
+	h.mu.RUnlock()
+	return draining
 }
 
 func (h *wsHub) reconcileConnections(ctx context.Context) {
@@ -237,6 +251,11 @@ func sameNodeIDs(left, right []int64) bool {
 func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 	if !s.webSocketEnabled || s.hub == nil {
 		http.NotFound(w, r)
+		return
+	}
+	if s.hub.isDraining() {
+		w.Header().Set("Retry-After", "1")
+		writeAPIError(w, http.StatusServiceUnavailable, "service_restarting", "服务正在重启，请稍后重连", nil)
 		return
 	}
 	settings, err := s.store.GetNodeAgentSettings(r.Context())
@@ -339,7 +358,13 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	replaced := s.hub.register(client)
+	replaced, registered := s.hub.register(client)
+	if !registered {
+		registrationLock.Unlock()
+		client.close(websocket.CloseServiceRestart, "server restart")
+		return
+	}
+	defer s.hub.connections.Done()
 	registrationLock.Unlock()
 	for _, old := range replaced {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
@@ -497,8 +522,13 @@ func (h *wsHub) hasNode(nodeID int64) bool {
 	return connection != nil && connection.hasNode(nodeID)
 }
 
-func (h *wsHub) register(connection *wsConnection) []*wsConnection {
+func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 	h.mu.Lock()
+	if h.draining {
+		h.mu.Unlock()
+		return nil, false
+	}
+	h.connections.Add(1)
 	replaced := make(map[*wsConnection]struct{})
 	if !connection.legacy {
 		if old := h.machines[connection.machineID]; old != nil && old != connection {
@@ -517,7 +547,7 @@ func (h *wsHub) register(connection *wsConnection) []*wsConnection {
 	for old := range replaced {
 		result = append(result, old)
 	}
-	return result
+	return result, true
 }
 
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {

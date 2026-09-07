@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,65 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+func TestR014WebSocketGracefulDrainSignalsRestartAndRejectsLateAdmission(t *testing.T) {
+	database := cloneHTTPAPITestDatabase(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := New(Dependencies{
+		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
+		PanelURL: "https://panel.example.test", AllowedOrigins: []string{"https://panel.example.test"},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{Name: "drain-machine", IsActive: true}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer connection.Close()
+	if event := readWSEvent(t, connection); event.Event != "auth.success" {
+		t.Fatalf("initial event = %q, want auth.success", event.Event)
+	}
+
+	cancel()
+	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err = connection.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != websocket.CloseServiceRestart {
+		t.Fatalf("shutdown read error = %v, want close code %d", err, websocket.CloseServiceRestart)
+	}
+
+	drainer, ok := handler.(ShutdownWaiter)
+	if !ok {
+		t.Fatal("HTTP handler does not expose WebSocket drain completion")
+	}
+	drainContext, stopWaiting := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopWaiting()
+	if err := drainer.WaitForShutdown(drainContext); err != nil {
+		t.Fatalf("wait for WebSocket drain: %v", err)
+	}
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/ws?machine_id=%d", machine.ID)
+	late, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + credential.Token}})
+	if late != nil {
+		_ = late.Close()
+	}
+	if err == nil || response == nil || response.StatusCode != http.StatusServiceUnavailable {
+		status := 0
+		if response != nil {
+			status = response.StatusCode
+			_ = response.Body.Close()
+		}
+		t.Fatalf("late admission error=%v status=%d, want HTTP %d", err, status, http.StatusServiceUnavailable)
+	}
+	_ = response.Body.Close()
+}
 
 func TestDIFFNODE004MachineWebSocketAuthenticatesSyncsAndFencesReplacedConnection(t *testing.T) {
 	api, database, cancel := newWebSocketTestAPI(t)
@@ -1134,7 +1194,10 @@ func newWebSocketTestAPI(t *testing.T) (http.Handler, *store.Store, context.Canc
 		AllowedOrigins: []string{"https://panel.example.test"},
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
 	})
-	return handler, database, cancel
+	return handler, database, func() {
+		cancel()
+		waitForHTTPAPIShutdown(t, handler, 3*time.Second)
+	}
 }
 
 func createWebSocketReportingNode(t *testing.T, database *store.Store, now time.Time) (store.Machine, store.Node) {

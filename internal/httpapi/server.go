@@ -78,6 +78,36 @@ type paymentGateway interface {
 	VerifyWebhook(context.Context, payment.WebhookRequest) (payment.VerifiedWebhook, error)
 }
 
+// ShutdownWaiter lets the process lifecycle wait for background flushes and
+// hijacked WebSocket handlers, which net/http.Server.Shutdown does not track.
+type ShutdownWaiter interface {
+	WaitForShutdown(context.Context) error
+}
+
+type lifecycleHandler struct {
+	handler            http.Handler
+	webSocketDrainDone <-chan struct{}
+	authTelemetryDone  <-chan struct{}
+}
+
+func (h *lifecycleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.handler.ServeHTTP(w, r)
+}
+
+func (h *lifecycleHandler) WaitForShutdown(ctx context.Context) error {
+	for _, done := range []<-chan struct{}{h.webSocketDrainDone, h.authTelemetryDone} {
+		if done == nil {
+			continue
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
 type passwordService interface {
 	Hash(password string) (string, error)
 	Verify(password, encoded string) bool
@@ -303,8 +333,13 @@ func New(dependencies Dependencies) http.Handler {
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
 	}
+	var authTelemetryDone chan struct{}
 	if runBackgroundTelemetry {
-		go api.nodeAuthTelemetry.run(dependencies.Context, dependencies.Logger)
+		authTelemetryDone = make(chan struct{})
+		go func() {
+			defer close(authTelemetryDone)
+			api.nodeAuthTelemetry.run(dependencies.Context, dependencies.Logger)
+		}()
 	}
 	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)
@@ -744,7 +779,15 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
-	return api.securityHeaders(api.recoverPanic(root))
+	handler := api.securityHeaders(api.recoverPanic(root))
+	if !dependencies.WebSocketEnabled && authTelemetryDone == nil {
+		return handler
+	}
+	lifecycle := &lifecycleHandler{handler: handler, authTelemetryDone: authTelemetryDone}
+	if dependencies.WebSocketEnabled {
+		lifecycle.webSocketDrainDone = api.hub.drainDone
+	}
+	return lifecycle
 }
 
 func subscriptionRenderConcurrency() int {
