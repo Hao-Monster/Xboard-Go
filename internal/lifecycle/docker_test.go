@@ -29,6 +29,58 @@ func TestDockerPlatformRejectsImagesWithoutTrustedIdentityLabels(t *testing.T) {
 	}
 }
 
+func TestDockerPlatformDoctorPassesRootfulDockerWithoutUIDMap(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	runner.outputs = []runnerResult{
+		{stdout: "29.7.2\n"},
+		{stdout: "Docker Compose version v2.40.3\n"},
+		{stdout: `["name=seccomp,profile=builtin","name=cgroupns"]`},
+	}
+
+	report, err := platform.Doctor(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != "success" || report.Action != "lifecycle.doctor" {
+		t.Fatalf("Doctor() report = %#v", report)
+	}
+	for _, forbidden := range []string{"newuidmap", "newgidmap"} {
+		if doctorCheckStatus(report, forbidden) != "" {
+			t.Fatalf("rootful doctor unexpectedly checked %s: %#v", forbidden, report.Checks)
+		}
+	}
+	if !reflect.DeepEqual(runner.calls, []commandCall{
+		{name: "docker", arguments: []string{"version", "--format", "{{.Server.Version}}"}},
+		{name: "docker", arguments: []string{"compose", "version"}},
+		{name: "docker", arguments: []string{"info", "--format", "{{json .SecurityOptions}}"}},
+	}) {
+		t.Fatalf("Doctor() calls = %#v", runner.calls)
+	}
+}
+
+func TestDockerPlatformDoctorRequiresUIDMapForRootlessDocker(t *testing.T) {
+	platform, runner := newDockerTestPlatform(t)
+	platform.config.PathLookup = func(name string) (string, error) {
+		if name == "newuidmap" {
+			return "/usr/bin/newuidmap", nil
+		}
+		return "", errors.New("executable file not found in PATH")
+	}
+	runner.outputs = []runnerResult{
+		{stdout: "29.7.2\n"},
+		{stdout: "Docker Compose version v2.40.3\n"},
+		{stdout: `["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]`},
+	}
+
+	report, err := platform.Doctor(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed checks") {
+		t.Fatalf("Doctor() error = %v", err)
+	}
+	if report.Status != "failed" || doctorCheckStatus(report, "newuidmap") != "pass" || doctorCheckStatus(report, "newgidmap") != "fail" {
+		t.Fatalf("Doctor() report = %#v", report)
+	}
+}
+
 func TestDockerPlatformResolvesExactDeploymentComponent(t *testing.T) {
 	platform, runner := newDockerTestPlatform(t)
 	revision := strings.Repeat("a", 40)
@@ -438,6 +490,15 @@ func slicesContain(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func doctorCheckStatus(report DoctorReport, name string) string {
+	for _, check := range report.Checks {
+		if check.Name == name {
+			return check.Status
+		}
+	}
+	return ""
 }
 
 func (r *queueRunner) Run(_ context.Context, name string, arguments ...string) (CommandOutput, error) {

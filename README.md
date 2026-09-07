@@ -187,16 +187,25 @@ secrets, mounts the Docker socket into the application, or deletes an unknown
 container or data volume.
 
 For a fresh Compose project, create the file-backed secrets shown above, build
-an exact-revision image, and install it:
+an exact-revision image, run the host preflight, and install it:
 
 ```bash
 revision="$(git rev-parse HEAD)"
 docker build --build-arg "APP_REVISION=${revision}" -t "xboard-go:${revision}" .
+go run ./cmd/xboard-lifecycle doctor \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml
 go run ./cmd/xboard-lifecycle install \
   --project xboard-go-local \
   --compose-file compose.local.yaml \
   --image "xboard-go:${revision}"
 ```
+
+`doctor` checks the operator host without starting or stopping application
+containers. It verifies Docker daemon access, the Docker Compose plugin, the
+Compose file, the lifecycle environment directory, and, when Docker reports
+rootless mode, the `newuidmap` and `newgidmap` helpers required by uid-mapped
+rootless containers.
 
 An upgrade requires the active container to be healthy. Before stopping it,
 the tool creates and verifies an online `.xbbackup`, records the exact current
