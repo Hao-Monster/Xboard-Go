@@ -6168,9 +6168,9 @@
             "internal/testdata/legacy/drill:TestRepresentativeLegacyMigrationDrill",
             "internal/backup:package"
           ],
-          "artifact": "bingo-dev:sha256:caa58bd833054479ef0840422824a6d423fa2d082c77e5bf2ef4c561381d88f0",
-          "commit": "4177cfebcca044a90a963133c1b1129dc541dcc4",
-          "observed_at": "2026-09-07T21:25:06Z",
+          "artifact": "bingo-dev:sha256:1cde0781b8fd38f5cce74a3d0435d97c59c9f71c4faaf0d1a697d5f77e0819dd",
+          "commit": "a2b1097964c7240c8100dd01c2c33f0f7074b862",
+          "observed_at": "2026-09-07T21:31:38Z",
           "command": "go test -timeout=10m ./internal/testdata/legacy/drill -run TestRepresentativeLegacyMigrationDrill -count=1 -v; go test -timeout=10m ./internal/backup -count=1; go run ./cmd/projectctl check",
           "result": "pass"
         }
