@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,10 +25,11 @@ import (
 func TestR014WebSocketGracefulDrainSignalsRestartAndRejectsLateAdmission(t *testing.T) {
 	database := cloneHTTPAPITestDatabase(t)
 	ctx, cancel := context.WithCancel(context.Background())
+	var logs bytes.Buffer
 	handler := New(Dependencies{
 		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
 		PanelURL: "https://panel.example.test", AllowedOrigins: []string{"https://panel.example.test"},
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)), WebSocketEnabled: true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -40,10 +42,21 @@ func TestR014WebSocketGracefulDrainSignalsRestartAndRejectsLateAdmission(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	replaced := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
+	defer replaced.Close()
+	if event := readWSEvent(t, replaced); event.Event != "auth.success" {
+		t.Fatalf("initial event = %q, want auth.success", event.Event)
+	}
 	connection := dialMachineWebSocket(t, server.URL, machine.ID, credential.Token, "")
 	defer connection.Close()
 	if event := readWSEvent(t, connection); event.Event != "auth.success" {
-		t.Fatalf("initial event = %q, want auth.success", event.Event)
+		t.Fatalf("replacement event = %q, want auth.success", event.Event)
+	}
+	_ = replaced.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err = replaced.ReadMessage()
+	var replacedError *websocket.CloseError
+	if !errors.As(err, &replacedError) || replacedError.Code != websocket.ClosePolicyViolation {
+		t.Fatalf("replaced connection error = %v, want close code %d", err, websocket.ClosePolicyViolation)
 	}
 
 	cancel()
@@ -62,6 +75,12 @@ func TestR014WebSocketGracefulDrainSignalsRestartAndRejectsLateAdmission(t *test
 	defer stopWaiting()
 	if err := drainer.WaitForShutdown(drainContext); err != nil {
 		t.Fatalf("wait for WebSocket drain: %v", err)
+	}
+	logOutput := logs.String()
+	for _, field := range []string{"active_connections=1", "peak_connections=2", "active_connections=0", "replacements=1"} {
+		if !strings.Contains(logOutput, field) {
+			t.Fatalf("shutdown logs missing %q: %s", field, logOutput)
+		}
 	}
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/ws?machine_id=%d", machine.ID)

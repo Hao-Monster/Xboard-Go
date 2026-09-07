@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
@@ -54,20 +55,23 @@ type removedRuntimeUser struct {
 }
 
 type wsHub struct {
-	mu             sync.RWMutex
-	machines       map[int64]*wsConnection
-	nodes          map[int64]*wsConnection
-	draining       bool
-	connections    sync.WaitGroup
-	drainDone      chan struct{}
-	store          *store.Store
-	now            func() time.Time
-	logger         *slog.Logger
-	allowedOrigins map[string]struct{}
-	deviceSyncMu   sync.Mutex
-	coordinator    nodecoord.Coordinator
-	deviceState    devicestate.Service
-	registrationMu [64]sync.Mutex
+	mu                sync.RWMutex
+	machines          map[int64]*wsConnection
+	nodes             map[int64]*wsConnection
+	draining          bool
+	connections       sync.WaitGroup
+	drainDone         chan struct{}
+	activeConnections atomic.Int64
+	peakConnections   atomic.Int64
+	replacementCount  atomic.Int64
+	store             *store.Store
+	now               func() time.Time
+	logger            *slog.Logger
+	allowedOrigins    map[string]struct{}
+	deviceSyncMu      sync.Mutex
+	coordinator       nodecoord.Coordinator
+	deviceState       devicestate.Service
+	registrationMu    [64]sync.Mutex
 }
 
 type wsConnection struct {
@@ -172,12 +176,22 @@ shutdown:
 		unique[connection] = struct{}{}
 	}
 	h.mu.Unlock()
-	h.logger.Info("draining node websockets", "connections", len(unique))
+	h.logger.Info("draining node websockets",
+		"connections", len(unique),
+		"active_connections", h.activeConnections.Load(),
+		"peak_connections", h.peakConnections.Load(),
+		"replacements", h.replacementCount.Load(),
+	)
 	for connection := range unique {
 		connection.close(websocket.CloseServiceRestart, "server restart")
 	}
 	h.connections.Wait()
-	h.logger.Info("node websocket drain complete", "connections", len(unique))
+	h.logger.Info("node websocket drain complete",
+		"connections", len(unique),
+		"active_connections", h.activeConnections.Load(),
+		"peak_connections", h.peakConnections.Load(),
+		"replacements", h.replacementCount.Load(),
+	)
 }
 
 func (h *wsHub) isDraining() bool {
@@ -364,7 +378,10 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		client.close(websocket.CloseServiceRestart, "server restart")
 		return
 	}
-	defer s.hub.connections.Done()
+	defer func() {
+		s.hub.activeConnections.Add(-1)
+		s.hub.connections.Done()
+	}()
 	registrationLock.Unlock()
 	for _, old := range replaced {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
@@ -412,7 +429,8 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 			client.enqueue(devicesSyncEnvelope(snapshot))
 		}
 	}
-	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "nodes", len(snapshots))
+	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "nodes", len(snapshots),
+		"active_connections", s.hub.activeConnections.Load(), "peak_connections", s.hub.peakConnections.Load(), "replacements", s.hub.replacementCount.Load())
 	client.readLoop()
 	current, affectedUsers, clearErr := s.hub.unregisterAndClear(client)
 	client.close(websocket.CloseNormalClosure, "")
@@ -542,6 +560,13 @@ func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 		}
 		h.nodes[nodeID] = connection
 	}
+	active := h.activeConnections.Add(1)
+	for peak := h.peakConnections.Load(); active > peak; peak = h.peakConnections.Load() {
+		if h.peakConnections.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	h.replacementCount.Add(int64(len(replaced)))
 	h.mu.Unlock()
 	result := make([]*wsConnection, 0, len(replaced))
 	for old := range replaced {

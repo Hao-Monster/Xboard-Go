@@ -64,12 +64,9 @@ func TestINTR014GracefulDrainReleasesRedisOwnershipBeforeReconnect(t *testing.T)
 		t.Fatalf("drain close error = %v, want close code %d", err, websocket.CloseServiceRestart)
 	}
 	waitForHTTPAPIShutdown(t, firstAPI, 3*time.Second)
-	owned, err := firstCoordinator.OwnsMachine(context.Background(), machine.ID, "first:invalid")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if owned {
-		t.Fatal("drained instance left machine ownership behind")
+	keys := redisKeysForPrefix(t, redisURL, prefix)
+	if len(keys) != 0 {
+		t.Fatalf("drained instance left coordination keys behind: %v", keys)
 	}
 
 	second := dialMachineWebSocket(t, secondServer.URL, machine.ID, credential.Token, "")
