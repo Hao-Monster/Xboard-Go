@@ -51,6 +51,7 @@ type DockerConfig struct {
 	RuntimeEnvDir string
 	HealthTimeout time.Duration
 	PollInterval  time.Duration
+	PathLookup    func(string) (string, error)
 }
 
 type DockerPlatform struct {
@@ -102,7 +103,64 @@ func NewDockerPlatform(config DockerConfig, runner CommandRunner) (*DockerPlatfo
 	if runner == nil {
 		runner = ExecRunner{}
 	}
+	if config.PathLookup == nil {
+		config.PathLookup = exec.LookPath
+	}
 	return &DockerPlatform{config: config, runner: runner}, nil
+}
+
+type DoctorReport struct {
+	Status string        `json:"status"`
+	Action string        `json:"action"`
+	Checks []DoctorCheck `json:"checks"`
+}
+
+type DoctorCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
+}
+
+func (p *DockerPlatform) Doctor(ctx context.Context) (DoctorReport, error) {
+	report := DoctorReport{Status: "success", Action: "lifecycle.doctor"}
+	report.addCheck("compose_file", "pass", p.config.ComposeFile)
+	if p.config.BaseEnvFile != "" {
+		report.addCheck("base_env_file", "pass", p.config.BaseEnvFile)
+	}
+	report.addRuntimeEnvDirectoryCheck(p.config.RuntimeEnvDir)
+
+	version, versionErr := p.runner.Run(ctx, "docker", "version", "--format", "{{.Server.Version}}")
+	if versionErr != nil {
+		report.addCheck("docker_daemon", "fail", commandFailure("inspect Docker daemon", versionErr).Error())
+	} else {
+		report.addCheck("docker_daemon", "pass", strings.TrimSpace(version.Stdout))
+	}
+	compose, composeErr := p.runner.Run(ctx, "docker", "compose", "version")
+	if composeErr != nil {
+		report.addCheck("docker_compose", "fail", commandFailure("inspect Docker Compose plugin", composeErr).Error())
+	} else {
+		report.addCheck("docker_compose", "pass", strings.TrimSpace(compose.Stdout))
+	}
+	info, infoErr := p.runner.Run(ctx, "docker", "info", "--format", "{{json .SecurityOptions}}")
+	if infoErr != nil {
+		report.addCheck("docker_security_options", "fail", commandFailure("inspect Docker security options", infoErr).Error())
+	} else {
+		securityOptions, err := decodeDockerSecurityOptions(info.Stdout)
+		if err != nil {
+			report.addCheck("docker_security_options", "fail", err.Error())
+		} else if dockerRunsRootless(securityOptions) {
+			report.addCheck("docker_rootless", "pass", "rootless")
+			report.addPathCheck("newuidmap", p.config.PathLookup)
+			report.addPathCheck("newgidmap", p.config.PathLookup)
+		} else {
+			report.addCheck("docker_rootless", "pass", "rootful")
+		}
+	}
+	if report.failed() {
+		report.Status = "failed"
+		return report, errors.New("lifecycle doctor found failed checks")
+	}
+	return report, nil
 }
 
 func (p *DockerPlatform) Current(ctx context.Context) (Application, error) {
@@ -702,6 +760,72 @@ func (p *DockerPlatform) deploymentRuntimeImageTag(component Component) string {
 
 func (p *DockerPlatform) runtimeImageTag() string {
 	return runtimeImageTagPrefix + p.config.Project
+}
+
+func (r *DoctorReport) addCheck(name, status, detail string) {
+	r.Checks = append(r.Checks, DoctorCheck{Name: name, Status: status, Detail: detail})
+}
+
+func (r *DoctorReport) addRuntimeEnvDirectoryCheck(path string) {
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			r.addCheck("runtime_env_dir", "pass", path)
+			return
+		}
+		r.addCheck("runtime_env_dir", "fail", "path exists but is not a directory: "+path)
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		r.addCheck("runtime_env_dir", "fail", fmt.Sprintf("inspect %s: %v", path, err))
+		return
+	}
+	parent := filepath.Dir(path)
+	if info, err := os.Stat(parent); err == nil && info.IsDir() {
+		r.addCheck("runtime_env_dir", "pass", "will be created under "+parent)
+		return
+	} else if err != nil {
+		r.addCheck("runtime_env_dir", "fail", fmt.Sprintf("inspect parent %s: %v", parent, err))
+		return
+	}
+	r.addCheck("runtime_env_dir", "fail", "parent is not a directory: "+parent)
+}
+
+func (r *DoctorReport) addPathCheck(name string, lookup func(string) (string, error)) {
+	path, err := lookup(name)
+	if err != nil {
+		r.addCheck(name, "fail", err.Error())
+		return
+	}
+	r.addCheck(name, "pass", path)
+}
+
+func (r DoctorReport) failed() bool {
+	for _, check := range r.Checks {
+		if check.Status == "fail" {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeDockerSecurityOptions(output string) ([]string, error) {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return nil, errors.New("Docker security options output is empty")
+	}
+	var options []string
+	if err := json.Unmarshal([]byte(output), &options); err != nil {
+		return nil, fmt.Errorf("decode Docker security options: %w", err)
+	}
+	return options, nil
+}
+
+func dockerRunsRootless(options []string) bool {
+	for _, option := range options {
+		if option == "name=rootless" || option == "rootless" {
+			return true
+		}
+	}
+	return false
 }
 
 func validateImageLabels(labels map[string]string) error {
