@@ -8,6 +8,7 @@ temporary_root="$(mktemp -d)"
 trap 'rm -rf "$temporary_root"' EXIT
 
 mkdir -p "$artifact_directory/fixtures" "$artifact_directory/logs"
+artifact_directory="$(cd "$artifact_directory" && pwd -P)"
 
 jq -e '
   .node_protocol_catalog as $catalog |
