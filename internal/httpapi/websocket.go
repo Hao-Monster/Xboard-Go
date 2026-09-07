@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
@@ -54,17 +55,23 @@ type removedRuntimeUser struct {
 }
 
 type wsHub struct {
-	mu             sync.RWMutex
-	machines       map[int64]*wsConnection
-	nodes          map[int64]*wsConnection
-	store          *store.Store
-	now            func() time.Time
-	logger         *slog.Logger
-	allowedOrigins map[string]struct{}
-	deviceSyncMu   sync.Mutex
-	coordinator    nodecoord.Coordinator
-	deviceState    devicestate.Service
-	registrationMu [64]sync.Mutex
+	mu                sync.RWMutex
+	machines          map[int64]*wsConnection
+	nodes             map[int64]*wsConnection
+	draining          bool
+	connections       sync.WaitGroup
+	drainDone         chan struct{}
+	activeConnections atomic.Int64
+	peakConnections   atomic.Int64
+	replacementCount  atomic.Int64
+	store             *store.Store
+	now               func() time.Time
+	logger            *slog.Logger
+	allowedOrigins    map[string]struct{}
+	deviceSyncMu      sync.Mutex
+	coordinator       nodecoord.Coordinator
+	deviceState       devicestate.Service
+	registrationMu    [64]sync.Mutex
 }
 
 type wsConnection struct {
@@ -92,6 +99,7 @@ func newWSHub(database *store.Store, now func() time.Time, logger *slog.Logger, 
 	return &wsHub{
 		machines:       make(map[int64]*wsConnection),
 		nodes:          make(map[int64]*wsConnection),
+		drainDone:      make(chan struct{}),
 		store:          database,
 		now:            now,
 		logger:         logger,
@@ -136,6 +144,7 @@ func (h *wsHub) clearDevices(ctx context.Context, nodeIDs []int64, now time.Time
 }
 
 func (h *wsHub) runUntil(ctx context.Context) {
+	defer close(h.drainDone)
 	reconcileTicker := time.NewTicker(time.Second)
 	defer reconcileTicker.Stop()
 	var renewTicker *time.Ticker
@@ -158,6 +167,7 @@ func (h *wsHub) runUntil(ctx context.Context) {
 
 shutdown:
 	h.mu.Lock()
+	h.draining = true
 	unique := make(map[*wsConnection]struct{}, len(h.machines)+len(h.nodes))
 	for _, connection := range h.machines {
 		unique[connection] = struct{}{}
@@ -165,12 +175,33 @@ shutdown:
 	for _, connection := range h.nodes {
 		unique[connection] = struct{}{}
 	}
-	h.machines = make(map[int64]*wsConnection)
-	h.nodes = make(map[int64]*wsConnection)
 	h.mu.Unlock()
+	h.logger.Info("draining node websockets",
+		"connections", len(unique),
+		"active_connections", h.activeConnections.Load(),
+		"peak_connections", h.peakConnections.Load(),
+		"replacements", h.replacementCount.Load(),
+	)
 	for connection := range unique {
-		connection.close(websocket.CloseGoingAway, "server shutdown")
+		connection.close(websocket.CloseServiceRestart, "server restart")
 	}
+	h.connections.Wait()
+	h.logger.Info("node websocket drain complete",
+		"connections", len(unique),
+		"active_connections", h.activeConnections.Load(),
+		"peak_connections", h.peakConnections.Load(),
+		"replacements", h.replacementCount.Load(),
+	)
+}
+
+func (h *wsHub) beginConnection() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.draining {
+		return false
+	}
+	h.connections.Add(1)
+	return true
 }
 
 func (h *wsHub) reconcileConnections(ctx context.Context) {
@@ -239,6 +270,12 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if !s.hub.beginConnection() {
+		w.Header().Set("Retry-After", "1")
+		writeAPIError(w, http.StatusServiceUnavailable, "service_restarting", "服务正在重启，请稍后重连", nil)
+		return
+	}
+	defer s.hub.connections.Done()
 	settings, err := s.store.GetNodeAgentSettings(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
@@ -339,7 +376,20 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	replaced := s.hub.register(client)
+	replaced, registered := s.hub.register(client)
+	if !registered {
+		registrationLock.Unlock()
+		if s.hub.coordinator != nil {
+			releaseContext, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
+			if releaseErr := s.hub.releaseUnregisteredClaim(releaseContext, client); releaseErr != nil {
+				s.hub.logger.Warn("release draining node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", releaseErr)
+			}
+			cancelRelease()
+		}
+		client.close(websocket.CloseServiceRestart, "server restart")
+		return
+	}
+	defer s.hub.activeConnections.Add(-1)
 	registrationLock.Unlock()
 	for _, old := range replaced {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
@@ -387,7 +437,8 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 			client.enqueue(devicesSyncEnvelope(snapshot))
 		}
 	}
-	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "nodes", len(snapshots))
+	s.hub.logger.Info("node websocket connected", "machine_id", machineID, "node_id", nodeID, "legacy", legacy, "nodes", len(snapshots),
+		"active_connections", s.hub.activeConnections.Load(), "peak_connections", s.hub.peakConnections.Load(), "replacements", s.hub.replacementCount.Load())
 	client.readLoop()
 	current, affectedUsers, clearErr := s.hub.unregisterAndClear(client)
 	client.close(websocket.CloseNormalClosure, "")
@@ -497,8 +548,12 @@ func (h *wsHub) hasNode(nodeID int64) bool {
 	return connection != nil && connection.hasNode(nodeID)
 }
 
-func (h *wsHub) register(connection *wsConnection) []*wsConnection {
+func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 	h.mu.Lock()
+	if h.draining {
+		h.mu.Unlock()
+		return nil, false
+	}
 	replaced := make(map[*wsConnection]struct{})
 	if !connection.legacy {
 		if old := h.machines[connection.machineID]; old != nil && old != connection {
@@ -512,12 +567,34 @@ func (h *wsHub) register(connection *wsConnection) []*wsConnection {
 		}
 		h.nodes[nodeID] = connection
 	}
+	active := h.activeConnections.Add(1)
+	for peak := h.peakConnections.Load(); active > peak; peak = h.peakConnections.Load() {
+		if h.peakConnections.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	h.replacementCount.Add(int64(len(replaced)))
 	h.mu.Unlock()
 	result := make([]*wsConnection, 0, len(replaced))
 	for old := range replaced {
 		result = append(result, old)
 	}
-	return result
+	return result, true
+}
+
+func (h *wsHub) releaseUnregisteredClaim(ctx context.Context, connection *wsConnection) error {
+	var releaseErrors []error
+	for _, nodeID := range connection.nodeIDList() {
+		if _, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id); err != nil {
+			releaseErrors = append(releaseErrors, err)
+		}
+	}
+	if !connection.legacy {
+		if _, err := h.coordinator.ReleaseMachineIfOwned(ctx, connection.machineID, connection.id); err != nil {
+			releaseErrors = append(releaseErrors, err)
+		}
+	}
+	return errors.Join(releaseErrors...)
 }
 
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {

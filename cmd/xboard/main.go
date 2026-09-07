@@ -247,7 +247,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var handler http.Handler = httpapi.New(httpapi.Dependencies{
+	apiHandler := httpapi.New(httpapi.Dependencies{
 		Store:                      database,
 		PasswordHasher:             passwordHasher,
 		PanelURL:                   settings.PanelURL,
@@ -279,6 +279,7 @@ func main() {
 		LegacyAppClashRenderer:     legacyAppClashRenderer,
 		TicketRegionResolver:       ticketRegionResolver,
 	})
+	var handler http.Handler = apiHandler
 	if settings.WebRoot != "" || settings.FrontendOrigin != "" {
 		resolveFrontendAccess := func(request *http.Request) (webui.FrontendAccess, error) {
 			access, accessErr := database.GetSiteAccessSettings(request.Context())
@@ -320,8 +321,18 @@ func main() {
 	}()
 
 	logger.Info("Xboard-Go API listening", "address", settings.Address)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("serve HTTP", "error", err)
+	serveErr := server.ListenAndServe()
+	if ctx.Err() != nil {
+		if waiter, ok := apiHandler.(httpapi.ShutdownWaiter); ok {
+			drainContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := waiter.WaitForShutdown(drainContext); err != nil {
+				logger.Error("wait for HTTP API shutdown", "error", err)
+			}
+			cancel()
+		}
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		logger.Error("serve HTTP", "error", serveErr)
 		os.Exit(1)
 	}
 }

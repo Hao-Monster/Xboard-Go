@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,7 +22,175 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
+
+func TestINTR014GracefulDrainReleasesRedisOwnershipBeforeReconnect(t *testing.T) {
+	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
+	if redisURL == "" {
+		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
+	}
+	database := cloneHTTPAPITestDatabase(t)
+	prefix := "xboard-go-r014-drain:" + uuid.NewString() + ":"
+	firstCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "first")
+	secondCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "second")
+	firstAPI, firstCancel := newCoordinatedWebSocketAPI(t, database, firstCoordinator)
+	secondAPI, secondCancel := newCoordinatedWebSocketAPI(t, database, secondCoordinator)
+	defer secondCancel()
+	firstServer := httptest.NewServer(firstAPI)
+	defer firstServer.Close()
+	secondServer := httptest.NewServer(secondAPI)
+	defer secondServer.Close()
+
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{Name: "drain-owner", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := dialMachineWebSocket(t, firstServer.URL, machine.ID, credential.Token, "")
+	defer first.Close()
+	if event := readWSEvent(t, first); event.Event != "auth.success" {
+		t.Fatalf("initial event = %q, want auth.success", event.Event)
+	}
+
+	firstCancel()
+	_ = first.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, _, err = first.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != websocket.CloseServiceRestart {
+		t.Fatalf("drain close error = %v, want close code %d", err, websocket.CloseServiceRestart)
+	}
+	waitForHTTPAPIShutdown(t, firstAPI, 3*time.Second)
+	keys := redisKeysForPrefix(t, redisURL, prefix)
+	if len(keys) != 0 {
+		t.Fatalf("drained instance left coordination keys behind: %v", keys)
+	}
+
+	second := dialMachineWebSocket(t, secondServer.URL, machine.ID, credential.Token, "")
+	defer second.Close()
+	if event := readWSEvent(t, second); event.Event != "auth.success" {
+		t.Fatalf("reconnect event = %q, want auth.success", event.Event)
+	}
+}
+
+func TestINTR014DrainWaitsForInFlightClaimAndReleasesOwnership(t *testing.T) {
+	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
+	if redisURL == "" {
+		t.Skip("XBOARD_TEST_REDIS_URL is not configured")
+	}
+	database := cloneHTTPAPITestDatabase(t)
+	prefix := "xboard-go-r014-inflight:" + uuid.NewString() + ":"
+	redisCoordinator := newHTTPAPITestCoordinator(t, redisURL, prefix, "inflight")
+	coordinator := &blockingMachineClaimCoordinator{
+		Coordinator: redisCoordinator,
+		claimed:     make(chan struct{}),
+		unblock:     make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := New(Dependencies{
+		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
+		PanelURL: "https://panel.example.test", NodeRelease: "v1.14.3",
+		AllowedOrigins: []string{"https://panel.example.test"},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
+		NodeCoordinator: coordinator,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	t.Cleanup(func() {
+		cancel()
+		coordinator.Unblock()
+		waitForHTTPAPIShutdown(t, handler, 3*time.Second)
+	})
+
+	now := fixedNow()
+	machine, enrollment, err := database.CreateMachine(context.Background(), store.CreateMachineInput{Name: "inflight-owner", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(context.Background(), machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + fmt.Sprintf("/ws?machine_id=%d", machine.ID)
+	connection, response, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + credential.Token}})
+	if err != nil {
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		t.Fatalf("dial in-flight websocket: %v", err)
+	}
+	defer connection.Close()
+	select {
+	case <-coordinator.claimed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("coordinator claim did not reach the test barrier")
+	}
+
+	cancel()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		request, requestErr := http.NewRequest(http.MethodGet, server.URL+fmt.Sprintf("/ws?machine_id=%d", machine.ID), nil)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		request.Header.Set("Authorization", "Bearer "+credential.Token)
+		lateResponse, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			t.Fatalf("probe draining admission: %v", requestErr)
+		}
+		_ = lateResponse.Body.Close()
+		if lateResponse.StatusCode == http.StatusServiceUnavailable {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("draining admission status = %d, want %d", lateResponse.StatusCode, http.StatusServiceUnavailable)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	coordinator.Unblock()
+	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, _, err = connection.ReadMessage()
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != websocket.CloseServiceRestart {
+		t.Fatalf("in-flight close error = %v, want close code %d", err, websocket.CloseServiceRestart)
+	}
+	waitForHTTPAPIShutdown(t, handler, 3*time.Second)
+	if keys := redisKeysForPrefix(t, redisURL, prefix); len(keys) != 0 {
+		t.Fatalf("in-flight drain left coordination keys behind: %v", keys)
+	}
+}
+
+type blockingMachineClaimCoordinator struct {
+	nodecoord.Coordinator
+	claimed     chan struct{}
+	unblock     chan struct{}
+	claimOnce   sync.Once
+	unblockOnce sync.Once
+}
+
+func (c *blockingMachineClaimCoordinator) ClaimMachine(ctx context.Context, machineID int64, nodeIDs []int64, connectionID string) error {
+	if err := c.Coordinator.ClaimMachine(ctx, machineID, nodeIDs, connectionID); err != nil {
+		return err
+	}
+	blocked := false
+	c.claimOnce.Do(func() {
+		blocked = true
+		close(c.claimed)
+	})
+	if blocked {
+		<-c.unblock
+	}
+	return nil
+}
+
+func (c *blockingMachineClaimCoordinator) Unblock() {
+	c.unblockOnce.Do(func() { close(c.unblock) })
+}
 
 func TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications(t *testing.T) {
 	redisURL := os.Getenv("XBOARD_TEST_REDIS_URL")
@@ -671,5 +841,21 @@ func newCoordinatedWebSocketAPI(t *testing.T, database *store.Store, coordinator
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)), WebSocketEnabled: true,
 		NodeCoordinator: coordinator, DeviceState: deviceState,
 	})
-	return handler, cancel
+	return handler, func() {
+		cancel()
+		waitForHTTPAPIShutdown(t, handler, 3*time.Second)
+	}
+}
+
+func waitForHTTPAPIShutdown(t *testing.T, handler http.Handler, timeout time.Duration) {
+	t.Helper()
+	drainer, ok := handler.(ShutdownWaiter)
+	if !ok {
+		t.Fatal("HTTP handler does not expose WebSocket drain completion")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := drainer.WaitForShutdown(ctx); err != nil {
+		t.Fatalf("wait for WebSocket drain: %v", err)
+	}
 }
