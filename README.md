@@ -318,13 +318,37 @@ docker compose -f compose.local.yaml run --rm --no-deps maintenance backup verif
   --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup
 ```
 
-After verification, an operator can atomically copy the archive to a mounted
-independent storage target. Replication never overwrites an existing object,
-streams within the archive size limit, verifies the copied archive before it is
-published, and checks the published SHA-256. The confirmation flag is an
-explicit operator assertion; the process cannot prove that two paths belong to
-different failure domains. The destination filesystem must support atomic hard
-links within the mounted directory; replication fails closed when it does not.
+After verification, an operator can create an application-encrypted copy for a
+mounted independent storage target. Encryption uses a private 32-byte key file,
+refuses to overwrite existing output, authenticates every bounded chunk, records
+the plaintext archive SHA-256, and re-verifies the encrypted artifact after it
+is published. Store this backup-encryption key outside the archive and outside
+the application settings key.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup encrypt \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --output /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --key-file /run/secrets/backup_replica_key
+
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup verify-encrypted \
+  --input /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --key-file /run/secrets/backup_replica_key
+```
+
+Plaintext replication is still available for operator-managed encrypted storage.
+Replication never overwrites an existing object, streams within the archive size
+limit, verifies the copied archive before it is published, and checks the
+published SHA-256. The confirmation flag is an explicit operator assertion; the
+process cannot prove that two paths belong to different failure domains. The
+destination filesystem must support atomic hard links within the mounted
+directory; replication fails closed when it does not.
 
 ```bash
 docker compose -f compose.local.yaml run --rm --no-deps \
@@ -345,9 +369,17 @@ existing path. Stop the application, restore into a new file, then explicitly
 select that file. Returning to the original DSN is the rollback path.
 
 ```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup decrypt \
+  --input /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --output /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.restored.xbbackup \
+  --key-file /run/secrets/backup_replica_key
+
 docker compose -f compose.local.yaml stop xboard-go
 docker compose -f compose.local.yaml run --rm --no-deps maintenance backup restore \
-  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.restored.xbbackup \
   --output /var/lib/xboard/restored.db \
   --attachment-output /var/lib/xboard/restored-attachments
 XBOARD_DATABASE_DSN=file:/var/lib/xboard/restored.db \
@@ -355,11 +387,12 @@ XBOARD_ATTACHMENT_ROOT=/var/lib/xboard/restored-attachments \
   docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
-The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`; retain
-that secret independently for as long as encrypted settings or pending tokens
-exist. Copy verified archives to independently protected storage when testing
-a real disaster-recovery plan. These commands are currently intended only for
-local and isolated test environments.
+The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`, and an
+encrypted backup does not contain its backup-encryption key. Retain those
+secrets independently for as long as encrypted settings, pending tokens, or
+encrypted backup replicas exist. Copy verified archives to independently
+protected storage when testing a real disaster-recovery plan. These commands are
+currently intended only for local and isolated test environments.
 
 ## Local bounded maintenance
 

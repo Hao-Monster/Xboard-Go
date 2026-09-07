@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -356,13 +359,14 @@ func runAttachmentCleanup(ctx context.Context, service *attachments.Service, log
 }
 
 type commandResult struct {
-	Status         string          `json:"status"`
-	Action         string          `json:"action"`
-	Path           string          `json:"path"`
-	AttachmentPath string          `json:"attachment_path,omitempty"`
-	Bytes          int64           `json:"bytes,omitempty"`
-	SHA256         string          `json:"sha256,omitempty"`
-	Manifest       backup.Manifest `json:"manifest"`
+	Status            string                    `json:"status"`
+	Action            string                    `json:"action"`
+	Path              string                    `json:"path"`
+	AttachmentPath    string                    `json:"attachment_path,omitempty"`
+	Bytes             int64                     `json:"bytes,omitempty"`
+	SHA256            string                    `json:"sha256,omitempty"`
+	Manifest          backup.Manifest           `json:"manifest"`
+	EncryptedManifest *backup.EncryptedManifest `json:"encrypted_manifest,omitempty"`
 }
 
 type maintenanceCommandResult struct {
@@ -507,7 +511,7 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, fmt.Errorf("unknown command %q", arguments[0])
 	}
 	if len(arguments) < 2 {
-		return true, errors.New("backup subcommand is required: create, verify, replicate, or restore")
+		return true, errors.New("backup subcommand is required: create, verify, replicate, encrypt, verify-encrypted, decrypt, or restore")
 	}
 
 	switch arguments[1] {
@@ -582,6 +586,101 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 			Bytes: replicated.Size, SHA256: replicated.SHA256, Manifest: replicated.Manifest,
 		})
 
+	case "encrypt":
+		flags := flag.NewFlagSet("backup encrypt", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "verified plaintext backup archive path")
+		output := flags.String("output", "", "new encrypted backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup encrypt requires --input, --output, and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.Encrypt(ctx, *input, *output, key, now())
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.encrypt", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
+	case "verify-encrypted":
+		flags := flag.NewFlagSet("backup verify-encrypted", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "encrypted backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup verify-encrypted requires --input and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.VerifyEncrypted(ctx, *input, key)
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.verify-encrypted", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
+	case "decrypt":
+		flags := flag.NewFlagSet("backup decrypt", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "encrypted backup archive path")
+		output := flags.String("output", "", "new plaintext backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup decrypt requires --input, --output, and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.Decrypt(ctx, *input, *output, key)
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.decrypt", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
 	case "restore":
 		flags := flag.NewFlagSet("backup restore", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -614,6 +713,41 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	default:
 		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
 	}
+}
+
+func readBackupEncryptionKey(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, errors.New("backup encryption key file is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect backup encryption key file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("backup encryption key file must be a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("backup encryption key file must not be readable by group or others")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read backup encryption key file: %w", err)
+	}
+	if len(content) == 32 {
+		return append([]byte(nil), content...), nil
+	}
+	trimmed := strings.TrimSpace(string(content))
+	if decoded, err := base64.StdEncoding.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	return nil, errors.New("backup encryption key file must contain exactly 32 raw bytes, or a base64/hex encoded 32-byte key")
 }
 
 func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
