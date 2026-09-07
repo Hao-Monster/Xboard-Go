@@ -93,7 +93,7 @@ jobs:
           allow-licenses: Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MPL-2.0, Python-2.0, Unicode-3.0, Zlib, 0BSD, CC0-1.0, Unlicense
       - name: Upload supply-chain evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: supply-chain-${{ github.sha }}
           path: artifacts/
@@ -171,7 +171,7 @@ jobs:
           -count=1
       - name: Upload grouped Go coverage
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: go-coverage-${{ matrix.group }}-${{ github.sha }}
           path: coverage-${{ matrix.group }}.out
@@ -217,7 +217,7 @@ jobs:
         run: .github/scripts/check-real-client-compat.sh artifacts/client-compat
       - name: Upload real-client compatibility evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: real-client-compat-${{ github.sha }}
           path: artifacts/client-compat/
