@@ -377,6 +377,14 @@ type maintenanceCommandResult struct {
 	Result maintenance.CleanupResult `json:"result"`
 }
 
+type nodeAuthRetirementReadinessCommandResult struct {
+	Status              string                                  `json:"status"`
+	Action              string                                  `json:"action"`
+	AsOf                time.Time                               `json:"as_of"`
+	MinimumObservedDays int                                     `json:"minimum_observed_days"`
+	Result              maintenance.NodeAuthRetirementReadiness `json:"result"`
+}
+
 type attachmentStatusCommandResult struct {
 	Status string                   `json:"status"`
 	Action string                   `json:"action"`
@@ -2566,15 +2574,23 @@ func hashMigrationArtifact(ctx context.Context, path string) (string, int64, err
 
 func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("maintenance subcommand is required: cleanup-expired")
+		return true, errors.New("maintenance subcommand is required: cleanup-expired or node-auth-retirement-readiness")
 	}
-	if arguments[0] != "cleanup-expired" {
+	switch arguments[0] {
+	case "cleanup-expired":
+		return runMaintenanceCleanupExpiredCommand(ctx, arguments[1:], stdout, stderr, now)
+	case "node-auth-retirement-readiness":
+		return runMaintenanceNodeAuthRetirementReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
+	default:
 		return true, fmt.Errorf("unknown maintenance subcommand %q", arguments[0])
 	}
+}
+
+func runMaintenanceCleanupExpiredCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	flags := flag.NewFlagSet("maintenance cleanup-expired", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	limit := flags.Int("limit", maintenance.DefaultCleanupLimit, "maximum rows processed per cleanup category")
-	if err := flags.Parse(arguments[1:]); err != nil {
+	if err := flags.Parse(arguments); err != nil {
 		return true, err
 	}
 	if flags.NArg() != 0 {
@@ -2622,6 +2638,62 @@ func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stde
 	encoder.SetEscapeHTML(false)
 	return true, encoder.Encode(maintenanceCommandResult{
 		Status: "success", Action: "maintenance.cleanup-expired", AsOf: asOf, Limit: *limit, Result: result,
+	})
+}
+
+func runMaintenanceNodeAuthRetirementReadinessCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	flags := flag.NewFlagSet("maintenance node-auth-retirement-readiness", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	minimumObservedDays := flags.Int("min-observation-days", maintenance.DefaultNodeAuthRetirementObservationDays, "minimum whole days of representative node authentication telemetry")
+	if err := flags.Parse(arguments); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance node-auth-retirement-readiness does not accept positional arguments")
+	}
+	if *minimumObservedDays < 1 || *minimumObservedDays > maintenance.MaxNodeAuthRetirementObservationDays {
+		return true, fmt.Errorf("maintenance node-auth-retirement-readiness --min-observation-days must be between 1 and %d", maintenance.MaxNodeAuthRetirementObservationDays)
+	}
+
+	dsn := config.DatabaseDSN()
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
+		return true, errors.New("maintenance node-auth-retirement-readiness requires a file-backed SQLite database")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return true, fmt.Errorf("inspect maintenance database: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return true, errors.New("maintenance database must be a regular file")
+	}
+	database, err := store.OpenSQLite(dsn)
+	if err != nil {
+		return true, err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = database.Close()
+		}
+	}()
+	if err := database.ValidateCurrentSchema(ctx); err != nil {
+		return true, fmt.Errorf("maintenance node-auth-retirement-readiness schema validation failed: %w; run the versioned migration workflow first", err)
+	}
+	asOf := now().UTC()
+	result, err := maintenance.CheckNodeAuthRetirementReadiness(ctx, database, asOf, *minimumObservedDays)
+	if err != nil {
+		return true, err
+	}
+	if err := database.Close(); err != nil {
+		return true, fmt.Errorf("close maintenance database: %w", err)
+	}
+	closed = true
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(nodeAuthRetirementReadinessCommandResult{
+		Status: "success", Action: "maintenance.node-auth-retirement-readiness",
+		AsOf: asOf, MinimumObservedDays: *minimumObservedDays, Result: result,
 	})
 }
 
