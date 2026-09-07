@@ -6111,6 +6111,22 @@
           "observed_at": "2026-09-05T01:50:44Z",
           "command": "isolated Docker Compose same-host mounted-target backup, replicate, verify, no-overwrite, restore, and health drill",
           "result": "pass"
+        },
+        {
+          "id": "EV-OPS-002-ENCRYPTED-ARCHIVE",
+          "kind": "security",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "internal/backup:TestEncryptVerifyAndDecryptRoundTrip",
+            "internal/backup:TestEncryptedBackupRejectsTamperingWrongKeyAndOverwrite",
+            "cmd/xboard:TestRunCommandBackupCreateVerifyAndRestore",
+            "cmd/xboard:TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments"
+          ],
+          "artifact": "bingo-dev:sha256:de2c9dc179e4331f08319a983011d6c7e2571d592738fa72550042a82b454371",
+          "commit": "b9d1f6f15b855173e3bedd184942f95bdaefdcb7",
+          "observed_at": "2026-09-07T11:43:37Z",
+          "command": "go test -race ./internal/backup -run \"TestEncrypt|TestEncrypted\" -count=5; go test ./cmd/xboard -run \"TestRunCommandBackup\" -count=5; go test ./internal/backup ./cmd/xboard -count=1",
+          "result": "pass"
         }
       ]
     },
