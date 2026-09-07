@@ -511,7 +511,7 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, fmt.Errorf("unknown command %q", arguments[0])
 	}
 	if len(arguments) < 2 {
-		return true, errors.New("backup subcommand is required: create, verify, replicate, encrypt, verify-encrypted, decrypt, or restore")
+		return true, errors.New("backup subcommand is required: create, verify, replicate, upload-http, download-http, encrypt, verify-encrypted, decrypt, or restore")
 	}
 
 	switch arguments[1] {
@@ -584,6 +584,65 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, encodeCommandResult(stdout, commandResult{
 			Status: "success", Action: "backup.replicate", Path: absolute,
 			Bytes: replicated.Size, SHA256: replicated.SHA256, Manifest: replicated.Manifest,
+		})
+
+	case "upload-http":
+		flags := flag.NewFlagSet("backup upload-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "backup or encrypted-backup archive path")
+		putURLFile := flags.String("put-url-file", "", "private file containing an HTTPS pre-signed PUT URL")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP only for isolated local disaster-recovery drills")
+		confirm := flags.Bool("confirm-independent-storage", false, "confirm the destination is a separately protected failure domain")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*putURLFile) == "" || !*confirm {
+			return true, errors.New("backup upload-http requires --input, --put-url-file, and --confirm-independent-storage and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*putURLFile)
+		if err != nil {
+			return true, err
+		}
+		uploaded, err := backup.UploadHTTP(ctx, *input, replicaURL, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.upload-http", Path: absolute,
+			Bytes: uploaded.Size, SHA256: uploaded.SHA256,
+		})
+
+	case "download-http":
+		flags := flag.NewFlagSet("backup download-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		getURLFile := flags.String("get-url-file", "", "private file containing an HTTPS pre-signed GET URL")
+		output := flags.String("output", "", "new downloaded backup or encrypted-backup archive path")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP only for isolated local disaster-recovery drills")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*getURLFile) == "" || strings.TrimSpace(*output) == "" {
+			return true, errors.New("backup download-http requires --get-url-file and --output and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*getURLFile)
+		if err != nil {
+			return true, err
+		}
+		downloaded, err := backup.DownloadHTTP(ctx, replicaURL, *output, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.download-http", Path: absolute,
+			Bytes: downloaded.Size, SHA256: downloaded.SHA256,
 		})
 
 	case "encrypt":
@@ -748,6 +807,32 @@ func readBackupEncryptionKey(path string) ([]byte, error) {
 		return decoded, nil
 	}
 	return nil, errors.New("backup encryption key file must contain exactly 32 raw bytes, or a base64/hex encoded 32-byte key")
+}
+
+func readBackupReplicaURL(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("backup replica URL file is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect backup replica URL file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("backup replica URL file must be a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("backup replica URL file must not be readable by group or others")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read backup replica URL file: %w", err)
+	}
+	replicaURL := strings.TrimSpace(string(content))
+	if replicaURL == "" {
+		return "", errors.New("backup replica URL file is empty")
+	}
+	return replicaURL, nil
 }
 
 func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {

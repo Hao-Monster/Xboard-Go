@@ -351,6 +351,25 @@ docker compose -f compose.local.yaml run --rm --no-deps \
   --key-file /run/secrets/backup_replica_key
 ```
 
+For storage providers that support pre-signed HTTPS object URLs, use the HTTP
+transport commands instead of mounting the target inside the maintenance
+container. Put and get URLs must be stored in private files rather than command
+arguments or logs. Redirects are not followed, URLs with user-info or fragments
+are rejected, plaintext HTTP is refused unless `--allow-insecure-http` is used
+for an isolated local drill, and both upload and download stream within the
+bounded backup size limit while recording the transferred SHA-256.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup upload-http \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --put-url-file /run/secrets/offsite_put_url \
+  --confirm-independent-storage
+
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup download-http \
+  --get-url-file /run/secrets/offsite_get_url \
+  --output /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.remote.xbbackup.enc
+```
+
 Plaintext replication is still available for operator-managed encrypted storage.
 Replication never overwrites an existing object, streams within the archive size
 limit, verifies the copied archive before it is published, and checks the
