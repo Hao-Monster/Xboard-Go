@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -27,18 +28,39 @@ func cloneHTTPAPITestDatabase(t testing.TB) *store.Store {
 	if httpAPITestDatabaseErr != nil {
 		t.Fatalf("create HTTP API test database template: %v", httpAPITestDatabaseErr)
 	}
-	path := filepath.Join(t.TempDir(), "xboard-httpapi-test.db")
+	directory, err := os.MkdirTemp("", "xboard-go-httpapi-test-")
+	if err != nil {
+		t.Fatalf("create HTTP API test database directory: %v", err)
+	}
+	path := filepath.Join(directory, "xboard-httpapi-test.db")
 	if err := os.WriteFile(path, httpAPITestDatabase, 0o600); err != nil {
+		_ = os.RemoveAll(directory)
 		t.Fatalf("clone HTTP API test database template: %v", err)
 	}
 	database, err := store.OpenSQLite(sqliteHTTPAPITestDSN(path))
 	if err != nil {
+		_ = os.RemoveAll(directory)
 		t.Fatalf("open HTTP API test database clone: %v", err)
 	}
-	t.Cleanup(func() { _ = database.Close() })
 	if err := database.Migrate(context.Background()); err != nil {
+		_ = database.Close()
+		_ = os.RemoveAll(directory)
 		t.Fatalf("validate HTTP API test database clone: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Errorf("close HTTP API test database clone: %v", err)
+		}
+		removeErr := os.RemoveAll(directory)
+		if errors.Is(removeErr, syscall.ENOTEMPTY) {
+			// SQLite may finish unlinking a transient journal between directory
+			// enumeration and removal. Retry once, but keep persistent writers visible.
+			removeErr = os.RemoveAll(directory)
+		}
+		if removeErr != nil {
+			t.Errorf("remove HTTP API test database directory: %v", removeErr)
+		}
+	})
 	return database
 }
 

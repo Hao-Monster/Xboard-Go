@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-06",
+  "as_of": "2026-09-07",
   "risks": [
     {"id":"R-001","severity":"high","status":"open","milestone":"M3","title":"旧前端源码缺失导致漏页面、漏状态或误判行为","mitigation":"多证据取证、网络清单、黄金主和逐需求验收。"},
     {"id":"R-002","severity":"high","status":"controlled","milestone":"M0","title":"完全一致被解释为复制缺陷或顺手重做业务","mitigation":"D-001 与兼容性例外登记；所有差异有批准记录。"},
@@ -16,7 +16,7 @@
     {"id":"R-012","severity":"medium","status":"controlled","milestone":"M3","title":"过早性能复杂化引入竞态和安全缺陷","mitigation":"先 benchmark/pprof；复杂优化必须有收益和回归证据。"},
     {"id":"R-013","severity":"high","status":"controlled","milestone":"M3","title":"API 与订阅入口滥用造成资源耗尽","mitigation":"订阅入口对已认证账号实施每分钟 120 次的进程内成本配额，并以 4～16 个全局渲染槽限制并发；429/503 提供有界 Retry-After 且不缓存，管理端暴露脱敏的在途、峰值、限流与繁忙计数。精确提交 9639ea30822a5ea8a4f5e1f074b45ee67f2d8310 已在 bingo-dev 完成 race、基准、完整回归、浏览器与旧 Xboard 差分、安全扫描及 256 并发真实 HTTP 压测，证据清单为 bingo-dev:sha256:42b841850d69259fe6d7e0679560ac7d0afa7677d596da8f592272870f2891dc。"},
     {"id":"R-014","severity":"medium","status":"open","milestone":"M3","title":"WebSocket 单进程容量与单点风险","mitigation":"多实例所有权、容量测试、优雅重启和重连抖动。"},
-    {"id":"R-015","severity":"high","status":"open","milestone":"M3","title":"历史协议和真实客户端兼容存在未知","mitigation":"真实客户端矩阵、兼容层、遥测和退役窗口。"},
+    {"id":"R-015","severity":"high","status":"controlled","milestone":"M3","title":"历史协议和真实客户端兼容存在未知","mitigation":"精确提交 71bafa80723f07537bf9ccc6b7ad3365fde07e37 已由固定 SHA-256 的 sing-box 1.14.0/1.13.21、Mihomo 1.19.30/1.19.29 和 Xboard-Node 1.14.3/1.14.2 完成真实解析/运行契约，并通过独立 URI/SIP008 解析、旧 Xboard 39 项差分、Go race、桌面/移动打包浏览器、安全和性能回归；不可变证据为 bingo-dev:sha256:230d73ae969122764735b3781ba58c5fd17d4d5b57be62c6a0406979f0d92c4b。Stash、Surge、Surfboard、Shadowrocket、Quantumult X、Loon 因隔离 Linux 环境无获授权的自动化导入器继续明确标记 NOT RUN，不冒充真实客户端验证。"},
     {"id":"R-016","severity":"medium","status":"open","milestone":"M3","title":"许可证、字体、图标、主题或编译资产权利不清","mitigation":"许可证清单、重写而非复制和自动化审查。"},
     {"id":"R-017","severity":"high","status":"open","milestone":"M0","title":"需求与决策只存在于被忽略的 docs-dev，缺少版本历史","mitigation":"重新打开风险；以 docs/project 为版本化事实源并由 CI 防漂移。"},
     {"id":"R-018","severity":"medium","status":"open","milestone":"M3","title":"仅本地通过与隔离环境或真实客户端存在差异","mitigation":"可重复容器、当前提交证据和 NOT RUN 披露。"},

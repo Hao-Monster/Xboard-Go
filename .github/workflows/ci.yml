@@ -204,8 +204,28 @@ jobs:
           go test -timeout=10m ./internal/testdata/legacy/drill
           -run TestRepresentativeLegacyMigrationDrill -count=1 -v
 
+  real-client-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate generated subscriptions with pinned real clients
+        run: .github/scripts/check-real-client-compat.sh artifacts/client-compat
+      - name: Upload real-client compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: real-client-compat-${{ github.sha }}
+          path: artifacts/client-compat/
+          if-no-files-found: error
+          retention-days: 30
+
   go:
-    needs: [go-race, go-static, migration-drill]
+    needs: [go-race, go-static, migration-drill, real-client-compat]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -214,9 +234,10 @@ jobs:
           GO_RACE_RESULT: ${{ needs.go-race.result }}
           GO_STATIC_RESULT: ${{ needs.go-static.result }}
           MIGRATION_DRILL_RESULT: ${{ needs.migration-drill.result }}
+          REAL_CLIENT_COMPAT_RESULT: ${{ needs.real-client-compat.result }}
         run: |
-          if [ "$GO_RACE_RESULT" != "success" ] || [ "$GO_STATIC_RESULT" != "success" ] || [ "$MIGRATION_DRILL_RESULT" != "success" ]; then
-            echo "Go verification failed: race=$GO_RACE_RESULT static=$GO_STATIC_RESULT migration_drill=$MIGRATION_DRILL_RESULT" >&2
+          if [ "$GO_RACE_RESULT" != "success" ] || [ "$GO_STATIC_RESULT" != "success" ] || [ "$MIGRATION_DRILL_RESULT" != "success" ] || [ "$REAL_CLIENT_COMPAT_RESULT" != "success" ]; then
+            echo "Go verification failed: race=$GO_RACE_RESULT static=$GO_STATIC_RESULT migration_drill=$MIGRATION_DRILL_RESULT real_client_compat=$REAL_CLIENT_COMPAT_RESULT" >&2
             exit 1
           fi
 

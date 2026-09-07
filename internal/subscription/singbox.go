@@ -216,8 +216,12 @@ func singBoxTLS(settings map[string]any, prefix string, reality bool) map[string
 			"enabled": true, "public_key": nilIfEmpty(stringSetting(settings, "reality_settings.public_key")), "short_id": nilIfEmpty(stringSetting(settings, "reality_settings.short_id")),
 		}
 	}
-	if object, ok := nested(settings, "utls").(map[string]any); ok && boolSetting(object, "enabled") {
-		tls["utls"] = map[string]any{"enabled": true, "fingerprint": defaultString(stringSetting(object, "fingerprint"), "chrome")}
+	utls, _ := nested(settings, "utls").(map[string]any)
+	if reality || boolSetting(utls, "enabled") {
+		// sing-box rejects every Reality client without uTLS. Preserve the
+		// configured fingerprint when present and make legacy/disabled values
+		// usable with the same chrome default applied by Xboard's data backfill.
+		tls["utls"] = map[string]any{"enabled": true, "fingerprint": defaultString(stringSetting(utls, "fingerprint"), "chrome")}
 	}
 	if ech, ok := nested(settings, prefix+".ech").(map[string]any); ok && boolSetting(ech, "enabled") {
 		value := map[string]any{"enabled": true}
