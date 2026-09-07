@@ -6122,8 +6122,8 @@
             "cmd/xboard:TestRunCommandBackupCreateVerifyAndRestore",
             "cmd/xboard:TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments"
           ],
-          "artifact": "bingo-dev:sha256:de2c9dc179e4331f08319a983011d6c7e2571d592738fa72550042a82b454371",
-          "commit": "b9d1f6f15b855173e3bedd184942f95bdaefdcb7",
+          "artifact": "bingo-dev:sha256:84cb94912453f279ad2ccf992d25ec0ca60908c8bb8cd617ed17af081277452f",
+          "commit": "83f4a56c2acfb1808e9ead80f8707d9738aa7a0e",
           "observed_at": "2026-09-07T11:43:37Z",
           "command": "go test -race ./internal/backup -run \"TestEncrypt|TestEncrypted\" -count=5; go test ./cmd/xboard -run \"TestRunCommandBackup\" -count=5; go test ./internal/backup ./cmd/xboard -count=1",
           "result": "pass"
