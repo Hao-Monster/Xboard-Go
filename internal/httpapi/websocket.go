@@ -194,11 +194,14 @@ shutdown:
 	)
 }
 
-func (h *wsHub) isDraining() bool {
-	h.mu.RLock()
-	draining := h.draining
-	h.mu.RUnlock()
-	return draining
+func (h *wsHub) beginConnection() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.draining {
+		return false
+	}
+	h.connections.Add(1)
+	return true
 }
 
 func (h *wsHub) reconcileConnections(ctx context.Context) {
@@ -267,11 +270,12 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if s.hub.isDraining() {
+	if !s.hub.beginConnection() {
 		w.Header().Set("Retry-After", "1")
 		writeAPIError(w, http.StatusServiceUnavailable, "service_restarting", "服务正在重启，请稍后重连", nil)
 		return
 	}
+	defer s.hub.connections.Done()
 	settings, err := s.store.GetNodeAgentSettings(r.Context())
 	if err != nil {
 		handleStoreError(w, err)
@@ -375,13 +379,17 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 	replaced, registered := s.hub.register(client)
 	if !registered {
 		registrationLock.Unlock()
+		if s.hub.coordinator != nil {
+			releaseContext, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
+			if releaseErr := s.hub.releaseUnregisteredClaim(releaseContext, client); releaseErr != nil {
+				s.hub.logger.Warn("release draining node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", releaseErr)
+			}
+			cancelRelease()
+		}
 		client.close(websocket.CloseServiceRestart, "server restart")
 		return
 	}
-	defer func() {
-		s.hub.activeConnections.Add(-1)
-		s.hub.connections.Done()
-	}()
+	defer s.hub.activeConnections.Add(-1)
 	registrationLock.Unlock()
 	for _, old := range replaced {
 		old.close(websocket.ClosePolicyViolation, "connection replaced")
@@ -546,7 +554,6 @@ func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 		h.mu.Unlock()
 		return nil, false
 	}
-	h.connections.Add(1)
 	replaced := make(map[*wsConnection]struct{})
 	if !connection.legacy {
 		if old := h.machines[connection.machineID]; old != nil && old != connection {
@@ -573,6 +580,21 @@ func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 		result = append(result, old)
 	}
 	return result, true
+}
+
+func (h *wsHub) releaseUnregisteredClaim(ctx context.Context, connection *wsConnection) error {
+	var releaseErrors []error
+	for _, nodeID := range connection.nodeIDList() {
+		if _, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id); err != nil {
+			releaseErrors = append(releaseErrors, err)
+		}
+	}
+	if !connection.legacy {
+		if _, err := h.coordinator.ReleaseMachineIfOwned(ctx, connection.machineID, connection.id); err != nil {
+			releaseErrors = append(releaseErrors, err)
+		}
+	}
+	return errors.Join(releaseErrors...)
 }
 
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {
