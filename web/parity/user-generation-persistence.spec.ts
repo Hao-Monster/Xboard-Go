@@ -216,8 +216,8 @@ function normalizeGeneratedUser(user: Record<string, unknown>, source: "legacy" 
     trafficDownload: readNumber(user, source === "legacy" ? "d" : "traffic_download"),
     trafficUsed: readNumber(user, source === "legacy" ? "total_used" : "traffic_used"),
     expiredAt: source === "legacy" ? readNullableNumber(user, "expired_at") : toUnixSeconds(readString(user, "expired_at")),
-    speedLimit: readNumber(user, "speed_limit"),
-    deviceLimit: readNumber(user, "device_limit")
+    speedLimit: readLegacyNullableNumberAsZero(user, "speed_limit", source),
+    deviceLimit: readLegacyNullableNumberAsZero(user, "device_limit", source)
   };
 }
 
@@ -298,6 +298,12 @@ function readNullableNumber(value: Record<string, unknown>, key: string): number
   const number = Number(result);
   if (!Number.isSafeInteger(number)) throw new Error(`response property ${key} is not an integer or null`);
   return number;
+}
+
+function readLegacyNullableNumberAsZero(value: Record<string, unknown>, key: string, source: "legacy" | "go"): number {
+  if (source === "go") return readNumber(value, key);
+  const result = readNullableNumber(value, key);
+  return result ?? 0;
 }
 
 function readBoolean(value: Record<string, unknown>, key: string): boolean {
