@@ -27,7 +27,31 @@ evidence_dir="output/local-parity-${run_id}"
 runtime_env="${run_dir}/runtime.env"
 project="xboard-user-parity-${run_id}"
 candidate_image="xboard-go:user-parity-${run_id}"
-compose=(docker compose -p "$project" -f compose.local.yaml -f tools/local-parity/compose.user-parity.yaml --profile e2e)
+if [[ -n "${LOCAL_PARITY_EXPECTED_PROJECT:-}" && "$LOCAL_PARITY_EXPECTED_PROJECT" != "$project" ]]; then
+  echo 'LOCAL_PARITY_EXPECTED_PROJECT does not match the run ID-derived project' >&2
+  exit 2
+fi
+
+compose_files=(-f compose.local.yaml -f tools/local-parity/compose.user-parity.yaml)
+if [[ -n "${LOCAL_PARITY_COMPOSE_OVERLAY:-}" ]]; then
+  overlay_rel="$LOCAL_PARITY_COMPOSE_OVERLAY"
+  if [[ "$overlay_rel" = /* || ! "$overlay_rel" =~ ^tools/local-parity/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+    echo 'LOCAL_PARITY_COMPOSE_OVERLAY must name a YAML file directly under tools/local-parity' >&2
+    exit 2
+  fi
+  overlay_path="$root_dir/$overlay_rel"
+  if [[ ! -f "$overlay_path" || -L "$overlay_path" ]]; then
+    echo 'LOCAL_PARITY_COMPOSE_OVERLAY must be an existing non-symlink file' >&2
+    exit 2
+  fi
+  overlay_real="$(realpath -e -- "$overlay_path")"
+  if [[ "$(dirname -- "$overlay_real")" != "$root_dir/tools/local-parity" ]]; then
+    echo 'LOCAL_PARITY_COMPOSE_OVERLAY resolved outside tools/local-parity' >&2
+    exit 2
+  fi
+  compose_files+=(-f "$overlay_real")
+fi
+compose=(docker compose -p "$project" "${compose_files[@]}" --profile e2e)
 
 git_in_tree() {
   if ! git -C "$root_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -199,7 +223,31 @@ build_candidate() {
   fi
   pnpm --dir web build
   cp -a web/dist "$run_dir/image-context/web-dist"
-  docker build --file tools/local-parity/Dockerfile.candidate --build-arg "APP_REVISION=$revision" --tag "$XBOARD_GO_IMAGE" "$run_dir/image-context"
+  local -a candidate_build_args=(--build-arg "APP_REVISION=$revision")
+  if [[ -n "${LOCAL_PARITY_CANDIDATE_BASE_IMAGE:-}" ]]; then
+    if [[ ! "${LOCAL_PARITY_CANDIDATE_BASE_IMAGE_ID:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      echo 'an explicit candidate base image requires its exact sha256 image ID' >&2
+      exit 2
+    fi
+    local actual_base_id
+    actual_base_id="$(docker image inspect --format '{{.Id}}' "$LOCAL_PARITY_CANDIDATE_BASE_IMAGE")" || {
+      echo 'unable to inspect the explicit candidate base image' >&2
+      exit 2
+    }
+    if [[ "$actual_base_id" != "$LOCAL_PARITY_CANDIDATE_BASE_IMAGE_ID" ]]; then
+      echo 'explicit candidate base image ID mismatch' >&2
+      exit 2
+    fi
+    candidate_build_args+=(--build-arg "BASE_IMAGE=$LOCAL_PARITY_CANDIDATE_BASE_IMAGE")
+    {
+      printf 'candidate_base_image=%s\n' "$LOCAL_PARITY_CANDIDATE_BASE_IMAGE"
+      printf 'candidate_base_image_id=%s\n' "$actual_base_id"
+    } >>"$evidence_dir/source-identity.txt"
+  elif [[ -n "${LOCAL_PARITY_CANDIDATE_BASE_IMAGE_ID:-}" ]]; then
+    echo 'candidate base image ID was set without a base image reference' >&2
+    exit 2
+  fi
+  docker build --file tools/local-parity/Dockerfile.candidate "${candidate_build_args[@]}" --tag "$XBOARD_GO_IMAGE" "$run_dir/image-context"
   test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$XBOARD_GO_IMAGE")" = "$revision"
 }
 
