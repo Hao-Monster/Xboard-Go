@@ -666,8 +666,13 @@ func TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers(t *testi
 		t.Fatalf("write report during Redis pause: %v", err)
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(8 * time.Second))
-	if _, _, err := connection.ReadMessage(); err == nil {
+	_, _, readErr := connection.ReadMessage()
+	if readErr == nil {
 		t.Fatal("connection remained open after ownership verification could not reach Redis")
+	}
+	var networkErr net.Error
+	if errors.As(readErr, &networkErr) && (networkErr.Timeout() || errors.Is(readErr, os.ErrDeadlineExceeded)) {
+		t.Fatalf("Redis fault proxy did not close the connection before the read deadline: %T", readErr)
 	}
 	devices, err := database.ListUserDevices(context.Background(), []int64{user.ID}, now)
 	if err != nil {

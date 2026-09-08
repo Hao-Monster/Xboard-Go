@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 
 import { adminEntryPath, adminEmail, adminPassword, createAdminUserFixture, expectLoginPage, logoutAndWait } from "./support";
 
@@ -7,6 +7,7 @@ interface DistributorOrderSnapshot {
   tradeNo: string;
   type: number;
   planID: number;
+  status: number;
   period: string;
   subscriptionID: number;
   originalOrderID: number;
@@ -20,7 +21,15 @@ interface DistributorOrderSnapshot {
     speedLimit: number;
     deviceLimit: number;
   };
+  delivery: {
+    status: number;
+    closedAt: string | null;
+    revision: number;
+    updatedAt: string;
+  };
 }
+
+const legacyCloseDeliveryPaths = new Set(["/api/v1/user/distributor/close", "/api/v1/user/distributor/delivery/close"]);
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
@@ -84,10 +93,33 @@ test("repeat purchase creates a second independent distributor subscription with
   expect(second.entitlement.speedLimit).toBe(firstAfterRepeat.entitlement.speedLimit);
   expect(second.entitlement.deviceLimit).toBe(firstAfterRepeat.entitlement.deviceLimit);
 
+  const beforeClose = [firstAfterRepeat, second];
+  const observedLegacyCloseRequests: string[] = [];
+  const observeLegacyCloseRequest = (request: Request) => {
+    if (request.method() !== "POST") return;
+    const path = new URL(request.url()).pathname;
+    if (legacyCloseDeliveryPaths.has(path)) observedLegacyCloseRequests.push(path);
+  };
+  page.on("request", observeLegacyCloseRequest);
+
   await dialog.getByRole("button", { name: "关闭订阅交付", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const afterDialogClose = await listSafeOrderSnapshots(page);
+  expect([orderByTradeNo(afterDialogClose, firstTradeNo), orderByTradeNo(afterDialogClose, secondTradeNo)]).toEqual(beforeClose);
+
+  const ordersLoaded = page.waitForResponse((response) => {
+    return response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v1/distributor/orders";
+  });
   await page.getByRole("button", { name: "我的订单", exact: true }).click();
+  const ordersResponse = await ordersLoaded;
+  expect(ordersResponse.ok()).toBe(true);
   await expect(newOrderRow(page, firstTradeNo)).toBeVisible();
   await expect(newOrderRow(page, secondTradeNo)).toBeVisible();
+
+  const afterOrdersPageSettled = await listSafeOrderSnapshots(page);
+  expect([orderByTradeNo(afterOrdersPageSettled, firstTradeNo), orderByTradeNo(afterOrdersPageSettled, secondTradeNo)]).toEqual(beforeClose);
+  page.off("request", observeLegacyCloseRequest);
+  expect(observedLegacyCloseRequests, "closing the QR dialog must not call either legacy close-delivery route").toEqual([]);
 });
 
 async function deliveryTradeNo(dialog: Locator): Promise<string> {
@@ -103,8 +135,16 @@ async function listSafeOrderSnapshots(page: Page): Promise<DistributorOrderSnaps
     const payload = await response.json() as {
       data?: {
         items?: Array<{
-          order: { id: number; trade_no: string; type: number; plan_id: number; period: string };
-          subscription: { id: number; original_order_id: number; trade_no: string };
+          order: { id: number; trade_no: string; type: number; plan_id: number; status: number; period: string };
+          subscription: {
+            id: number;
+            original_order_id: number;
+            trade_no: string;
+            delivery_status: number;
+            closed_at: string | null;
+            revision: number;
+            updated_at: string;
+          };
           subscription_entitlement: {
             plan_id: number;
             transfer_enable: number;
@@ -122,6 +162,7 @@ async function listSafeOrderSnapshots(page: Page): Promise<DistributorOrderSnaps
       tradeNo: item.order.trade_no,
       type: item.order.type,
       planID: item.order.plan_id,
+      status: item.order.status,
       period: item.order.period,
       subscriptionID: item.subscription.id,
       originalOrderID: item.subscription.original_order_id,
@@ -134,6 +175,12 @@ async function listSafeOrderSnapshots(page: Page): Promise<DistributorOrderSnaps
         expiredAt: item.subscription_entitlement.expired_at,
         speedLimit: item.subscription_entitlement.speed_limit,
         deviceLimit: item.subscription_entitlement.device_limit
+      },
+      delivery: {
+        status: item.subscription.delivery_status,
+        closedAt: item.subscription.closed_at,
+        revision: item.subscription.revision,
+        updatedAt: item.subscription.updated_at
       }
     }));
   });
