@@ -254,10 +254,10 @@ async function fetchLegacyUserByEmail(page: Page, authorization: string, email: 
     }
   });
   const body = await expectResponseStatus(response, 200, "legacy user fetch");
-  const items = readArray(readJSON(body)["data"]);
-  const user = items.find((item) => readRecord(item).email === email);
-  if (user === undefined) throw new Error(`legacy generated user ${email} was not returned by /user/fetch`);
-  return readRecord(user);
+  const items = readArray(readJSON(body)["data"]).map((item) => readRecord(item));
+  const matches = items.filter((item) => item.email === email);
+  expect(matches, `legacy /user/fetch must return exactly one row for ${email}`).toHaveLength(1);
+  return matches[0];
 }
 
 async function getGoUser(page: Page, userID: number): Promise<Record<string, unknown>> {
