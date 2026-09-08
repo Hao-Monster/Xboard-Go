@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const legacyURL = requiredEnv("LEGACY_ADMIN_URL");
 const legacyEmail = requiredEnv("LEGACY_ADMIN_EMAIL");
@@ -225,6 +225,140 @@ test("[DIFF-USER-006] legacy and Go banned updates are readable from independent
   }
 });
 
+test("[DIFF-USER-007] legacy and Go banned login gates only block new sessions until unbanned", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyReadContext = await browser.newContext({ locale: "zh-CN" });
+  const goReadContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyActiveLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const goActiveLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyBannedLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const goBannedLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyRestoredLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const goRestoredLoginContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const legacyReadPage = await legacyReadContext.newPage();
+  const goReadPage = await goReadContext.newPage();
+  const unique = `${Date.now()}-${randomBytes(4).toString("hex")}`;
+  const emailDomain = "diff.local";
+  const legacyPrefix = `lb-${unique}`;
+  const legacyUserEmail = `${legacyPrefix}@${emailDomain}`;
+  const goUserEmail = `gb-${unique}@${emailDomain}`;
+  const password = `Ban-${unique}-pw`;
+  const expiredAt = Math.floor(Date.now() / 1000) + 31 * 24 * 60 * 60;
+  let legacyAuthorization = "";
+  let legacyReadAuthorization = "";
+  let legacyUserID: number | undefined;
+  let goUserID: number | undefined;
+  let goUser: Record<string, unknown> | undefined;
+
+  try {
+    legacyAuthorization = await loginLegacyBearer(legacyPage);
+    const legacyGenerated = await legacyPage.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization: legacyAuthorization },
+      data: {
+        email_prefix: legacyPrefix,
+        email_suffix: emailDomain,
+        password,
+        expired_at: expiredAt,
+        plan_id: null,
+        is_distributor: 0,
+        distributor_name: ""
+      }
+    });
+    await expectResponseStatus(legacyGenerated, 200, "legacy user generation for banned login gate");
+    legacyReadAuthorization = await loginLegacyBearer(legacyReadPage);
+    const legacyUser = await fetchLegacyUserByEmail(legacyReadPage, legacyReadAuthorization, legacyUserEmail);
+    legacyUserID = readNumber(legacyUser, "id");
+    expect(readBoolean(legacyUser, "banned")).toBe(false);
+
+    await loginGoAdministrator(goPage);
+    const goGenerated = await goAdminRequest(goPage, "/api/v1/admin/users/generate", "POST", {
+      mode: "single",
+      email: goUserEmail,
+      password,
+      plan_id: null,
+      expired_at: new Date(expiredAt * 1000).toISOString(),
+      is_distributor: false,
+      distributor_name: ""
+    });
+    expectGoStatus(goGenerated, 201, "Go user generation for banned login gate");
+    const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
+    expect(generatedItems).toHaveLength(1);
+    goUserID = readNumber(readRecord(generatedItems[0]), "id");
+    await loginGoAdministrator(goReadPage);
+    goUser = await getGoUser(goReadPage, goUserID);
+    expect(readBoolean(goUser, "banned")).toBe(false);
+
+    const legacyActiveLogin = await loginUserResponse(legacyActiveLoginContext.request, legacyURL, legacyUserEmail, password);
+    const goActiveLogin = await loginUserResponse(goActiveLoginContext.request, goURL, goUserEmail, password);
+    expectUserLoginAccepted(legacyActiveLogin, "legacy user login before ban");
+    expectUserLoginAccepted(goActiveLogin, "Go user login before ban");
+
+    const legacyBanned = await legacyPage.request.post(legacyAdminAPI("/user/update"), {
+      headers: { authorization: legacyAuthorization },
+      data: { id: legacyUserID, banned: 1 }
+    });
+    await expectResponseStatus(legacyBanned, 200, "legacy user ban before login rejection");
+    const goBanned = await goAdminRequest(goPage, `/api/v1/admin/users/${goUserID}`, "PATCH", {
+      ...goUserUpdatePayload(goUser),
+      banned: true
+    });
+    expectGoStatus(goBanned, 200, "Go user ban before login rejection");
+    goUser = readObject(readJSON(goBanned.body), "data");
+
+    const legacyBannedLogin = await loginUserResponse(legacyBannedLoginContext.request, legacyURL, legacyUserEmail, password);
+    const goBannedLogin = await loginUserResponse(goBannedLoginContext.request, goURL, goUserEmail, password);
+    expectUserLoginRejected(legacyBannedLogin, "legacy banned user login");
+    expectUserLoginRejected(goBannedLogin, "Go banned user login");
+    expect(readString(readObject(readJSON(goBannedLogin.body), "error"), "code")).toBe("invalid_credentials");
+
+    const legacyRestored = await legacyPage.request.post(legacyAdminAPI("/user/update"), {
+      headers: { authorization: legacyAuthorization },
+      data: { id: legacyUserID, banned: 0 }
+    });
+    await expectResponseStatus(legacyRestored, 200, "legacy user unban before login restore");
+    const restoredLegacyUser = await fetchLegacyUserByEmail(legacyReadPage, legacyReadAuthorization, legacyUserEmail);
+    expect(readBoolean(restoredLegacyUser, "banned")).toBe(false);
+    const goRestored = await goAdminRequest(goPage, `/api/v1/admin/users/${goUserID}`, "PATCH", {
+      ...goUserUpdatePayload(goUser),
+      banned: false
+    });
+    expectGoStatus(goRestored, 200, "Go user unban before login restore");
+    goUser = readObject(readJSON(goRestored.body), "data");
+    expect(readBoolean(goUser, "banned")).toBe(false);
+
+    const legacyRestoredLogin = await loginUserResponse(legacyRestoredLoginContext.request, legacyURL, legacyUserEmail, password);
+    const goRestoredLogin = await loginUserResponse(goRestoredLoginContext.request, goURL, goUserEmail, password);
+    expectUserLoginAccepted(legacyRestoredLogin, "legacy user login after unban");
+    expectUserLoginAccepted(goRestoredLogin, "Go user login after unban");
+  } finally {
+    const cleanupFailures = await cleanupGeneratedUsers(
+      legacyPage,
+      legacyAuthorization || legacyReadAuthorization,
+      legacyUserID,
+      legacyUserEmail,
+      goPage,
+      goUserID
+    );
+    const closeFailures = await closeContexts([
+      legacyContext,
+      goContext,
+      legacyReadContext,
+      goReadContext,
+      legacyActiveLoginContext,
+      goActiveLoginContext,
+      legacyBannedLoginContext,
+      goBannedLoginContext,
+      legacyRestoredLoginContext,
+      goRestoredLoginContext
+    ]);
+    expect([...cleanupFailures, ...closeFailures]).toEqual([]);
+  }
+});
+
 async function loginLegacyBearer(page: Page): Promise<string> {
   const response = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
     data: { email: legacyEmail, password: legacyPassword }
@@ -328,12 +462,25 @@ async function closeContexts(contexts: Array<{ close(): Promise<void> }>): Promi
 }
 
 async function loginUser(page: Page, baseURL: string, email: string, password: string): Promise<string> {
-  const response = await page.request.post(new URL("/api/v1/passport/auth/login", baseURL).toString(), {
+  const response = await loginUserResponse(page.request, baseURL, email, password);
+  expectUserLoginAccepted(response, "user login");
+  return response.body;
+}
+
+async function loginUserResponse(request: APIRequestContext, baseURL: string, email: string, password: string): Promise<{ status: number; body: string }> {
+  const response = await request.post(new URL("/api/v1/passport/auth/login", baseURL).toString(), {
     data: { email, password }
   });
   const body = await response.text();
-  expect(response.status(), safeResponseMessage("user login", response.status(), body)).toBe(200);
-  return body;
+  return { status: response.status(), body };
+}
+
+function expectUserLoginAccepted(response: { status: number; body: string }, label: string): void {
+  expect(response.status, safeResponseMessage(label, response.status, response.body)).toBe(200);
+}
+
+function expectUserLoginRejected(response: { status: number; body: string }, label: string): void {
+  expect(response.status, safeResponseMessage(label, response.status, response.body)).not.toBe(200);
 }
 
 async function goAdminRequest(page: Page, path: string, method: string, body?: unknown): Promise<{ status: number; body: string }> {
