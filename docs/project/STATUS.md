@@ -8,58 +8,135 @@ Baseline: `M0` · as of 2026-09-08 · verification target `ca2f280ce75eaf13697c9
 
 | Dimension | Status | Count |
 | --- | --- | ---: |
-| Scope | `decided` | 76 |
-| Scope | `blocked` | 4 |
+| Scope | `decided` | 80 |
+| Scope | `blocked` | 0 |
 | Implementation | `implemented` | 76 |
 | Implementation | `partial` | 2 |
-| Implementation | `blocked` | 2 |
-| Implementation | `not_started` | 0 |
-| Verification | `current` | 76 |
+| Implementation | `blocked` | 0 |
+| Implementation | `not_started` | 2 |
+| Verification | `current` | 0 |
 | Verification | `historical` | 0 |
-| Verification | `partial` | 2 |
+| Verification | `partial` | 78 |
 | Verification | `none` | 2 |
 | Migration | `current` | 71 |
 | Migration | `historical` | 1 |
 | Migration | `partial` | 1 |
 | Migration | `not_assessed` | 1 |
 | Migration | `not_applicable` | 6 |
-| Acceptance | `accepted` | 76 |
-| Acceptance | `pending` | 4 |
+| Acceptance | `accepted` | 0 |
+| Acceptance | `pending` | 80 |
 | Acceptance | `rejected` | 0 |
 
 ## Control summary
 
-- Decisions: 7 resolved, 11 pending (18 total).
+- Decisions: 10 resolved, 8 pending (18 total).
 - Risks: 1 open Critical, 8 open High, 23 total.
-- Compatibility exceptions: 6 accepted, 1 proposed.
-- Current-head verification: 76/80; accepted: 76/80. Historical evidence is not current acceptance.
+- Compatibility exceptions: 9 accepted, 0 proposed.
+- Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
+- Recorded evidence: 199 pass, 0 fail, 164 not_run. A not_run record preserves the unsupported claim and its explanation; it cannot support current acceptance.
 
 ## Blocked or partial requirements
 
 | ID | Milestone | Scope | Implementation | Verification | Decisions | Work items |
 | --- | --- | --- | --- | --- | --- | --- |
-| `USER-001` | M1 | blocked | partial | partial | `D-012` | `FUNC-002` |
-| `USER-003` | M1 | blocked | blocked | none | `D-012` | `FUNC-002` |
-| `FIN-001` | M1 | blocked | blocked | none | `D-011` | `FUNC-001` |
-| `OPS-002` | M2 | blocked | partial | partial | `D-012`, `D-013` | `OPS-001`, `OPS-002`, `MIG-001` |
+| `AUTH-001` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-002` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-003` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-004` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-005` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-006` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-007` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-008` | M3 | decided | implemented | partial | — | `VER-001` |
+| `AUTH-009` | M3 | decided | implemented | partial | — | `VER-001` |
+| `USER-001` | M1 | decided | partial | partial | `D-012` | `FUNC-002` |
+| `USER-002` | M3 | decided | implemented | partial | — | `VER-001` |
+| `USER-003` | M1 | decided | not_started | none | `D-012` | `FUNC-002` |
+| `PLAN-001` | M3 | decided | implemented | partial | — | `VER-001` |
+| `PLAN-002` | M3 | decided | implemented | partial | — | `VER-001` |
+| `PLAN-003` | M3 | decided | implemented | partial | — | `VER-001` |
+| `SUB-001` | M3 | decided | implemented | partial | — | `VER-001` |
+| `SUB-002` | M3 | decided | implemented | partial | — | `VER-001` |
+| `SUB-003` | M3 | decided | implemented | partial | — | `VER-001` |
+| `SUB-004` | M3 | decided | implemented | partial | — | `VER-001` |
+| `SUB-005` | M3 | decided | implemented | partial | — | `VER-001` |
+| `ORD-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `ORD-002` | M3 | decided | implemented | partial | — | `VER-002` |
+| `ORD-003` | M3 | decided | implemented | partial | — | `VER-002` |
+| `ORD-004` | M3 | decided | implemented | partial | — | `VER-002` |
+| `PAY-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `PAY-002` | M3 | decided | implemented | partial | — | `VER-002` |
+| `COUP-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `GIFT-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `GIFT-002` | M3 | decided | implemented | partial | — | `VER-002` |
+| `INV-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `FIN-001` | M1 | decided | not_started | none | `D-011` | `FUNC-001` |
+| `DIST-001` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-002` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-003` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-004` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-005` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-006` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-007` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-008` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-009` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-010` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-011` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-012` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-013` | M3 | decided | implemented | partial | — | `VER-002` |
+| `DIST-014` | M3 | decided | implemented | partial | — | `VER-002` |
+| `MACH-001` | M3 | decided | implemented | partial | — | `VER-003` |
+| `MACH-002` | M3 | decided | implemented | partial | — | `VER-003` |
+| `MACH-003` | M3 | decided | implemented | partial | — | `VER-003` |
+| `MACH-004` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-001` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-002` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-003` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-004` | M3 | decided | implemented | partial | `D-001` | `VER-003` |
+| `NODE-005` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-006` | M3 | decided | implemented | partial | — | `VER-003` |
+| `NODE-007` | M3 | decided | implemented | partial | — | `VER-003` |
+| `SCH-001` | M3 | decided | implemented | partial | — | `VER-003` |
+| `SCH-002` | M3 | decided | implemented | partial | — | `VER-003` |
+| `SCH-003` | M3 | decided | implemented | partial | — | `VER-003` |
+| `SCH-004` | M3 | decided | implemented | partial | — | `VER-003` |
+| `CONT-001` | M3 | decided | implemented | partial | — | `VER-004` |
+| `CONT-002` | M3 | decided | implemented | partial | — | `VER-004` |
+| `CONT-003` | M3 | decided | implemented | partial | — | `VER-004` |
+| `ATT-001` | M3 | decided | implemented | partial | — | `VER-004` |
+| `ATT-002` | M3 | decided | implemented | partial | — | `VER-004` |
+| `ATT-003` | M3 | decided | implemented | partial | — | `VER-004` |
+| `ATT-004` | M3 | decided | implemented | partial | — | `VER-004` |
+| `ATT-005` | M3 | decided | implemented | partial | — | `VER-004` |
+| `CLIENT-001` | M3 | decided | implemented | partial | — | `VER-004` |
+| `CLIENT-002` | M3 | decided | implemented | partial | — | `VER-004` |
+| `TICKET-001` | M3 | decided | implemented | partial | — | `VER-004` |
+| `NOTICE-001` | M3 | decided | implemented | partial | — | `VER-004` |
+| `CFG-001` | M3 | decided | implemented | partial | — | `VER-005` |
+| `CFG-002` | M3 | decided | implemented | partial | — | `VER-005` |
+| `PLUG-001` | M3 | decided | implemented | partial | — | `VER-005` |
+| `PLUG-002` | M3 | decided | implemented | partial | — | `VER-005` |
+| `THEME-001` | M3 | decided | implemented | partial | — | `VER-005` |
+| `OPS-001` | M3 | decided | implemented | partial | — | `VER-005` |
+| `OPS-002` | M2 | decided | partial | partial | `D-012`, `D-013` | `OPS-001`, `OPS-002`, `MIG-001` |
+| `OPS-003` | M3 | decided | implemented | partial | — | `VER-005` |
 
 ## Work items
 
 | ID | Milestone | Status | Issue | Title |
 | --- | --- | --- | ---: | --- |
 | `GOV-001` | M0 | done | [#113](https://github.com/Hao-Monster/Xboard-Go/issues/113) | 建立 M0 项目治理基线 |
-| `FUNC-001` | M1 | blocked | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
-| `FUNC-002` | M1 | blocked | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
+| `FUNC-001` | M1 | in_progress | [#114](https://github.com/Hao-Monster/Xboard-Go/issues/114) | 确定并实现原子佣金提现账本 |
+| `FUNC-002` | M1 | in_progress | [#115](https://github.com/Hao-Monster/Xboard-Go/issues/115) | 确定并实现用户停用、恢复与匿名化 |
 | `FUNC-003` | M1 | done | [#145](https://github.com/Hao-Monster/Xboard-Go/issues/145) | 恢复管理员安全路径完整语义 |
-| `OPS-001` | M2 | blocked | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
+| `OPS-001` | M2 | in_progress | [#116](https://github.com/Hao-Monster/Xboard-Go/issues/116) | 确定并实施日志与统计迁移保留策略 |
 | `OPS-002` | M2 | open | [#117](https://github.com/Hao-Monster/Xboard-Go/issues/117) | 完成备份、异地副本和恢复演练 |
 | `MIG-001` | M2 | open | [#118](https://github.com/Hao-Monster/Xboard-Go/issues/118) | 完成代表性旧数据迁移、对账和回滚证据 |
-| `VER-001` | M3 | done | [#119](https://github.com/Hao-Monster/Xboard-Go/issues/119) | 验收身份、用户、套餐与订阅需求 |
-| `VER-002` | M3 | done | [#120](https://github.com/Hao-Monster/Xboard-Go/issues/120) | 验收订单、支付、营销与分销需求 |
-| `VER-003` | M3 | done | [#121](https://github.com/Hao-Monster/Xboard-Go/issues/121) | 验收机器、节点、实时上报与计划需求 |
-| `VER-004` | M3 | done | [#122](https://github.com/Hao-Monster/Xboard-Go/issues/122) | 验收内容、附件、客户端与支持需求 |
-| `VER-005` | M3 | done | [#123](https://github.com/Hao-Monster/Xboard-Go/issues/123) | 验收配置、扩展、主题与运维需求 |
-| `CI-001` | M3 | done | [#127](https://github.com/Hao-Monster/Xboard-Go/issues/127) | 将差分验证纳入 CI 并缩短长链路反馈时间 |
+| `VER-001` | M3 | open | [#119](https://github.com/Hao-Monster/Xboard-Go/issues/119) | 验收身份、用户、套餐与订阅需求 |
+| `VER-002` | M3 | open | [#120](https://github.com/Hao-Monster/Xboard-Go/issues/120) | 验收订单、支付、营销与分销需求 |
+| `VER-003` | M3 | open | [#121](https://github.com/Hao-Monster/Xboard-Go/issues/121) | 验收机器、节点、实时上报与计划需求 |
+| `VER-004` | M3 | open | [#122](https://github.com/Hao-Monster/Xboard-Go/issues/122) | 验收内容、附件、客户端与支持需求 |
+| `VER-005` | M3 | open | [#123](https://github.com/Hao-Monster/Xboard-Go/issues/123) | 验收配置、扩展、主题与运维需求 |
+| `CI-001` | M3 | in_progress | [#127](https://github.com/Hao-Monster/Xboard-Go/issues/127) | 将差分验证纳入 CI 并缩短长链路反馈时间 |
 | `SEC-001` | M3 | done | [#128](https://github.com/Hao-Monster/Xboard-Go/issues/128) | 建立 Actions 固定、SBOM、许可证和供应链门禁 |
 | `DEP-001` | M0 | done | [#129](https://github.com/Hao-Monster/Xboard-Go/issues/129) | 分类并处理现有 Dependabot 更新积压 |
 | `PERF-001` | M4 | blocked | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
@@ -71,11 +148,11 @@ Baseline: `M0` · as of 2026-09-08 · verification target `ca2f280ce75eaf13697c9
 | Milestone | Status | Passed | Blocked/failed | Not run |
 | --- | --- | ---: | ---: | ---: |
 | M0 — Project Governance Baseline | complete | 5 | 0 | 0 |
-| M1 — Functional Parity | blocked | 0 | 2 | 0 |
-| M2 — Migration & Operations | blocked | 1 | 1 | 0 |
+| M1 — Functional Parity | in_progress | 1 | 0 | 1 |
+| M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
 | M4 — Production Ready | blocked | 1 | 2 | 1 |
 
 ## Interpretation
 
-Current-head verification is 76/80 and formal acceptance is 76/80. Release readiness still depends on the milestone gates above; M0 establishes the control plane, and M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.
+Current-head verification is 0/80 and formal acceptance is 0/80. Release readiness still depends on the milestone gates above; M0 establishes the control plane, and M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.

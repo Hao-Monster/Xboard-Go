@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-02",
+  "as_of": "2026-09-08",
   "milestones": [
     {"id":"M0","name":"Project Governance Baseline","status":"complete","gates":[
       {"id":"M0-G01","title":"版本化事实源与 80 项需求完整性校验","status":"pass"},
@@ -9,13 +9,13 @@
       {"id":"M0-G04","title":"M0 PR 合并后精确 main 的治理检查与全部必需检查通过","status":"pass"},
       {"id":"M0-G05","title":"v0.1.0-alpha.0 annotated Tag 和 GitHub Pre-release 已创建","status":"pass"}
     ]},
-    {"id":"M1","name":"Functional Parity","status":"blocked","gates":[
-      {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"blocked"},
-      {"id":"M1-G02","title":"FIN-001、USER-001、USER-003 当前证据与验收完成","status":"blocked"}
+    {"id":"M1","name":"Functional Parity","status":"in_progress","gates":[
+      {"id":"M1-G01","title":"D-011 与 D-012 已解决","status":"pass"},
+      {"id":"M1-G02","title":"FIN-001、USER-001、USER-003 当前证据与验收完成","status":"not_run"}
     ]},
     {"id":"M2","name":"Migration & Operations","status":"blocked","gates":[
       {"id":"M2-G01","title":"D-006、D-009、D-013 及相关迁移边界已解决","status":"blocked"},
-      {"id":"M2-G02","title":"代表性迁移、对账、备份恢复和回滚演练通过","status":"pass"}
+      {"id":"M2-G02","title":"代表性迁移、对账、备份恢复和回滚演练通过","status":"not_run"}
     ]},
     {"id":"M3","name":"Release Candidate","status":"blocked","gates":[
       {"id":"M3-G01","title":"80/80 需求在同一候选提交 accepted","status":"blocked"},

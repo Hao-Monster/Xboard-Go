@@ -180,6 +180,12 @@ func TestRenderStatusInterpretationUsesCurrentCounts(t *testing.T) {
 	}
 	state.Requirements.Requirements[0].VerificationStatus = "current"
 	state.Requirements.Requirements[0].AcceptanceStatus = "accepted"
+	state.Requirements.Requirements[0].Evidence = []Evidence{validTestEvidence(state)}
+	for index := range state.WorkItems.WorkItems {
+		if state.WorkItems.WorkItems[index].ID == state.Requirements.Requirements[0].WorkItemIDs[0] {
+			state.WorkItems.WorkItems[index].Status = "done"
+		}
+	}
 
 	status, err := RenderStatus(state)
 	if err != nil {

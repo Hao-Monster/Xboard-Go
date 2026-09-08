@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-02",
+  "as_of": "2026-09-08",
   "decisions": [
     {"id":"D-001","title":"兼容正确业务意图，不复制已确认缺陷","status":"resolved","milestone":"M0","resolution":"保留正确业务意图；批准的修复登记为兼容性例外。","blocks":[]},
     {"id":"D-002","title":"staff-only 权限与普通用户一致","status":"resolved","milestone":"M0","resolution":"staff 标志本身不授予额外入口或权限；admin/reseller 分别授权。","blocks":[]},
@@ -12,9 +12,9 @@
     {"id":"D-008","title":"订阅协议和客户端兼容范围","status":"resolved","milestone":"M0","resolution":"保持固定旧版完整 11 类输出器、已发现 User-Agent 与版本过滤规则。","blocks":[]},
     {"id":"D-009","title":"V1 节点全局 token 退役窗口","status":"pending","milestone":"M2","recommended":"先遥测 V1/V2 使用率，再双栈迁移到机器凭据。","blocks":[]},
     {"id":"D-010","title":"一次性 claim 与交付状态兼容","status":"resolved","milestone":"M0","resolution":"保留旧 claim 读取/消费和迁移；新购二维码直接承载长期订阅地址且不返回明文。","blocks":["DIST-014"]},
-    {"id":"D-011","title":"财务与佣金提现语义","status":"pending","milestone":"M1","recommended":"原子冻结账本；pending→approved→paid 或 rejected 退回冻结金额。","blocks":["FIN-001"]},
-    {"id":"D-012","title":"用户删除与数据保留策略","status":"pending","milestone":"M1","recommended":"停用、30 天恢复窗口、不可逆匿名化墓碑；保留业务事实。","blocks":["USER-001","USER-003","OPS-002"]},
-    {"id":"D-013","title":"统计与日志迁移窗口","status":"pending","milestone":"M2","recommended":"迁移最近 90 天脱敏安全元数据，从事实表重建聚合；不执行旧 PHP 失败任务。","blocks":["OPS-002"]},
+    {"id":"D-011","title":"财务与佣金提现语义","status":"resolved","milestone":"M1","resolution":"2026-09-08 用户确认三项均按上述规则开发：提现申请原子冻结佣金；pending→approved→paid，或 rejected 退回冻结金额；状态变更幂等并记录审计。","blocks":["FIN-001"]},
+    {"id":"D-012","title":"用户删除与数据保留策略","status":"resolved","milestone":"M1","resolution":"2026-09-08 用户确认三项均按上述规则开发：先停用，30 天内可恢复；满 30 天后仅由管理员显式执行不可逆匿名化，保留订单等业务事实，禁止自动清除。","blocks":["USER-001","USER-003","OPS-002"]},
+    {"id":"D-013","title":"统计与日志迁移窗口","status":"resolved","milestone":"M2","resolution":"2026-09-08 用户确认三项均按上述规则开发：仅迁移最近 90 天脱敏日志元数据，从业务事实重建统计；不导入或执行旧 PHP 失败任务载荷。","blocks":["OPS-002"]},
     {"id":"D-014","title":"支付、邮件、Telegram 与存储沙箱","status":"pending","milestone":"M3","recommended":"所有外部服务使用隔离账号和端点，不调用生产。","blocks":[]},
     {"id":"D-015","title":"目标 SLO、容量增长与硬件预算","status":"pending","milestone":"M4","recommended":"取得至少 30 天代表性基线后量化。","blocks":[]},
     {"id":"D-016","title":"新旧系统并行与切换策略","status":"pending","milestone":"M4","recommended":"读影子验证与分领域切换，避免无协议双写。","blocks":[]},
