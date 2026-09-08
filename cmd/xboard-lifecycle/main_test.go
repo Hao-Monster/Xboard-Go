@@ -20,6 +20,7 @@ func TestRunRejectsInvalidCommandsBeforeDockerAccess(t *testing.T) {
 		{name: "missing", message: "subcommand is required"},
 		{name: "unknown", arguments: []string{"destroy"}, message: "unknown lifecycle subcommand"},
 		{name: "install image", arguments: []string{"install"}, message: "requires --image"},
+		{name: "doctor image", arguments: []string{"doctor", "--image", "candidate"}, message: "does not accept --image"},
 		{name: "status image", arguments: []string{"status", "--image", "candidate"}, message: "does not accept --image"},
 		{name: "timeout", arguments: []string{"status", "--health-timeout", "0s"}, message: "health-timeout"},
 		{name: "topology", arguments: []string{"status", "--topology", "cluster"}, message: "topology must"},
@@ -62,6 +63,22 @@ func TestEncodeDeploymentResultPreservesFailedMachineResultAndExitError(t *testi
 		t.Fatalf("encodeDeploymentResult() error = %v", err)
 	}
 	if !strings.Contains(output.String(), `"status":"failed"`) || !strings.Contains(output.String(), `"action":"lifecycle.deployment.upgrade"`) {
+		t.Fatalf("encoded result = %q", output.String())
+	}
+}
+
+func TestEncodeDoctorResultPreservesFailedMachineResultAndExitError(t *testing.T) {
+	var output bytes.Buffer
+	operationErr := errors.New("lifecycle doctor found failed checks")
+	result := lifecycle.DoctorReport{
+		Status: "failed",
+		Action: "lifecycle.doctor",
+		Checks: []lifecycle.DoctorCheck{{Name: "newgidmap", Status: "fail", Detail: "not found"}},
+	}
+	if err := encodeDoctorResult(&output, result, operationErr); !errors.Is(err, operationErr) {
+		t.Fatalf("encodeDoctorResult() error = %v", err)
+	}
+	if !strings.Contains(output.String(), `"status":"failed"`) || !strings.Contains(output.String(), `"action":"lifecycle.doctor"`) {
 		t.Fatalf("encoded result = %q", output.String())
 	}
 }

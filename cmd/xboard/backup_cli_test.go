@@ -3,8 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +58,87 @@ func TestRunCommandBackupCreateVerifyAndRestore(t *testing.T) {
 		replicated.Manifest != created.Manifest || replicated.Bytes <= 0 || len(replicated.SHA256) != 64 {
 		t.Fatalf("replicate output = %#v, want manifest %#v", replicated, created.Manifest)
 	}
+
+	keyPath := filepath.Join(directory, "backup-key.txt")
+	if err := os.WriteFile(keyPath, []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x44}, 32))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(keyPath, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	encryptedPath := filepath.Join(directory, "offsite", "backup.xbbackup.enc")
+	encrypted := runBackupCommand(t, []string{"backup", "encrypt", "--input", archivePath, "--output", encryptedPath, "--key-file", keyPath}, now)
+	if encrypted.Action != "backup.encrypt" || encrypted.Path != encryptedPath || encrypted.Manifest != created.Manifest ||
+		encrypted.EncryptedManifest == nil || encrypted.EncryptedManifest.BackupManifest != created.Manifest {
+		t.Fatalf("encrypt output = %#v, want manifest %#v", encrypted, created.Manifest)
+	}
+	verifiedEncrypted := runBackupCommand(t, []string{"backup", "verify-encrypted", "--input", encryptedPath, "--key-file", keyPath}, now)
+	if verifiedEncrypted.Action != "backup.verify-encrypted" || verifiedEncrypted.Manifest != created.Manifest ||
+		verifiedEncrypted.EncryptedManifest == nil || *verifiedEncrypted.EncryptedManifest != *encrypted.EncryptedManifest {
+		t.Fatalf("verify-encrypted output = %#v, want encrypted manifest %#v", verifiedEncrypted, encrypted.EncryptedManifest)
+	}
+	decryptedPath := filepath.Join(directory, "decrypted.xbbackup")
+	decrypted := runBackupCommand(t, []string{"backup", "decrypt", "--input", encryptedPath, "--output", decryptedPath, "--key-file", keyPath}, now)
+	if decrypted.Action != "backup.decrypt" || decrypted.Path != decryptedPath || decrypted.Manifest != created.Manifest ||
+		decrypted.EncryptedManifest == nil || *decrypted.EncryptedManifest != *encrypted.EncryptedManifest {
+		t.Fatalf("decrypt output = %#v, want encrypted manifest %#v", decrypted, encrypted.EncryptedManifest)
+	}
+
+	var remoteReplica []byte
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodPut:
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				http.Error(response, "read body", http.StatusInternalServerError)
+				return
+			}
+			remoteReplica = append(remoteReplica[:0], body...)
+			response.WriteHeader(http.StatusCreated)
+		case http.MethodGet:
+			if len(remoteReplica) == 0 {
+				http.NotFound(response, request)
+				return
+			}
+			_, _ = response.Write(remoteReplica)
+		default:
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+	putURLFile := filepath.Join(directory, "put-url.txt")
+	getURLFile := filepath.Join(directory, "get-url.txt")
+	for _, file := range []string{putURLFile, getURLFile} {
+		if err := os.WriteFile(file, []byte(server.URL+"/replica"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(file, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	uploaded := runBackupCommand(t, []string{
+		"backup", "upload-http", "--input", encryptedPath, "--put-url-file", putURLFile,
+		"--allow-insecure-http", "--confirm-independent-storage",
+	}, now)
+	if uploaded.Action != "backup.upload-http" || uploaded.Path != encryptedPath || uploaded.Bytes <= 0 || len(uploaded.SHA256) != 64 {
+		t.Fatalf("upload-http output = %#v", uploaded)
+	}
+	downloadedPath := filepath.Join(directory, "remote.xbbackup.enc")
+	downloaded := runBackupCommand(t, []string{
+		"backup", "download-http", "--get-url-file", getURLFile, "--output", downloadedPath, "--allow-insecure-http",
+	}, now)
+	if downloaded.Action != "backup.download-http" || downloaded.Path != downloadedPath ||
+		downloaded.Bytes != uploaded.Bytes || downloaded.SHA256 != uploaded.SHA256 {
+		t.Fatalf("download-http output = %#v, want transfer %#v", downloaded, uploaded)
+	}
+	downloadVerified := runBackupCommand(t, []string{"backup", "verify-encrypted", "--input", downloadedPath, "--key-file", keyPath}, now)
+	if downloadVerified.EncryptedManifest == nil || *downloadVerified.EncryptedManifest != *encrypted.EncryptedManifest {
+		t.Fatalf("downloaded encrypted manifest = %#v, want %#v", downloadVerified.EncryptedManifest, encrypted.EncryptedManifest)
+	}
 }
 
 func TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments(t *testing.T) {
@@ -79,6 +166,11 @@ func TestRunCommandBackupUsesPrivateTimestampedDefaultAndRejectsInvalidArguments
 		{"backup"}, {"backup", "unknown"}, {"backup", "verify"}, {"backup", "restore", "--input", result.Path},
 		{"backup", "replicate"},
 		{"backup", "replicate", "--input", result.Path, "--output", filepath.Join(directory, "copy.xbbackup")},
+		{"backup", "upload-http", "--input", result.Path, "--put-url-file", filepath.Join(directory, "url.txt")},
+		{"backup", "download-http", "--output", filepath.Join(directory, "copy.xbbackup")},
+		{"backup", "encrypt", "--input", result.Path, "--output", filepath.Join(directory, "copy.xbbackup.enc")},
+		{"backup", "verify-encrypted", "--input", filepath.Join(directory, "copy.xbbackup.enc")},
+		{"backup", "decrypt", "--input", filepath.Join(directory, "copy.xbbackup.enc"), "--output", filepath.Join(directory, "copy.xbbackup")},
 		{"backup", "create", "unexpected"}, {"unknown"},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -110,10 +202,11 @@ func runBackupCommand(t *testing.T, arguments []string, now time.Time) commandOu
 }
 
 type commandOutput struct {
-	Status   string          `json:"status"`
-	Action   string          `json:"action"`
-	Path     string          `json:"path"`
-	Bytes    int64           `json:"bytes"`
-	SHA256   string          `json:"sha256"`
-	Manifest backup.Manifest `json:"manifest"`
+	Status            string                    `json:"status"`
+	Action            string                    `json:"action"`
+	Path              string                    `json:"path"`
+	Bytes             int64                     `json:"bytes"`
+	SHA256            string                    `json:"sha256"`
+	Manifest          backup.Manifest           `json:"manifest"`
+	EncryptedManifest *backup.EncryptedManifest `json:"encrypted_manifest"`
 }

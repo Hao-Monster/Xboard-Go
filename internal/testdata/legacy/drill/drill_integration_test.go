@@ -82,6 +82,7 @@ func TestRepresentativeLegacyMigrationDrill(t *testing.T) {
 		{name: "safe-access-settings"},
 	}
 	results := make(map[string]commandResult, len(steps))
+	initialRollbackBackup := filepath.Join(directory, "01-pre-content.xbbackup")
 	for index, step := range steps {
 		backupPath := filepath.Join(directory, fmt.Sprintf("%02d-pre-%s.xbbackup", index+1, step.name))
 		result, raw := runMigration(t, ctx, binaryPath, environment, sourcePath, step, backupPath)
@@ -123,6 +124,19 @@ func TestRepresentativeLegacyMigrationDrill(t *testing.T) {
 		"users": 2, "plans": 2, "coupons": 2, "payments": 1,
 		"orders": 0, "nodes": 0, "legacy_migration_runs": 9,
 	})
+
+	restoredInitialPath := filepath.Join(directory, "restored-initial-target.db")
+	if _, err := backup.Restore(ctx, initialRollbackBackup, restoredInitialPath); err != nil {
+		t.Fatalf("restore initial rollback: %v", err)
+	}
+	assertMigratableTarget(t, ctx, restoredInitialPath)
+	assertTargetCounts(t, restoredInitialPath, map[string]int{
+		"users": 1, "plans": 0, "access_tokens": 0, "invitation_codes": 0,
+		"coupons": 0, "payments": 0, "orders": 0, "tickets": 0,
+		"ticket_messages": 0, "server_machines": 0, "nodes": 0,
+		"legacy_migration_runs": 0,
+	})
+	assertLegacyIdentitiesAbsent(t, restoredInitialPath)
 }
 
 func initializeTarget(t *testing.T, ctx context.Context, targetPath string) {
@@ -157,6 +171,18 @@ func buildMaintenanceBinary(t *testing.T, ctx context.Context, directory string)
 		t.Fatalf("build maintenance binary: %v\n%s", err, output)
 	}
 	return path
+}
+
+func assertMigratableTarget(t *testing.T, ctx context.Context, path string) {
+	t.Helper()
+	database, err := store.OpenSQLite("file:" + path)
+	if err != nil {
+		t.Fatalf("open restored target: %v", err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("migrate restored target: %v", err)
+	}
 }
 
 func runMigration(t *testing.T, ctx context.Context, binaryPath string, environment []string, sourcePath string, step migrationStep, backupPath string) (commandResult, string) {
@@ -242,6 +268,29 @@ func assertTargetCounts(t *testing.T, path string, expected map[string]int) {
 		if got != want {
 			t.Errorf("%s rows = %d, want %d", table, got, want)
 		}
+	}
+}
+
+func assertLegacyIdentitiesAbsent(t *testing.T, path string) {
+	t.Helper()
+	database, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var importedUsers int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM users WHERE email IN (?, ?)`, "admin-one@example.test", "member-two@example.test").Scan(&importedUsers); err != nil {
+		t.Fatalf("count restored legacy user identities: %v", err)
+	}
+	if importedUsers != 0 {
+		t.Errorf("restored initial target contains %d imported legacy user identities", importedUsers)
+	}
+	var bootstrapUsers int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM users WHERE email = ?`, "bootstrap@example.test").Scan(&bootstrapUsers); err != nil {
+		t.Fatalf("count restored bootstrap user: %v", err)
+	}
+	if bootstrapUsers != 1 {
+		t.Errorf("restored initial target bootstrap users = %d, want 1", bootstrapUsers)
 	}
 }
 

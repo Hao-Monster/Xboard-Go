@@ -210,6 +210,86 @@ func TestReplicatePreservesExistingDestinationDirectoryMode(t *testing.T) {
 	}
 }
 
+func TestEncryptVerifyAndDecryptRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	directory := t.TempDir()
+	archivePath := createTestBackup(t, directory)
+	key := bytes.Repeat([]byte{0x42}, 32)
+	encryptedPath := filepath.Join(directory, "offsite", "xboard.xbbackup.enc")
+	decryptedPath := filepath.Join(directory, "decrypted.xbbackup")
+
+	plainManifest, err := Verify(ctx, archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := Encrypt(ctx, archivePath, encryptedPath, key, time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encrypted.Algorithm != encryptedArchiveAlgorithm || encrypted.BackupManifest != plainManifest ||
+		encrypted.PlaintextSize <= 0 || len(encrypted.PlaintextSHA256) != sha256.Size*2 {
+		t.Fatalf("Encrypt() = %#v, want verified manifest %#v", encrypted, plainManifest)
+	}
+	assertPrivateFile(t, encryptedPath)
+	if _, err := Verify(ctx, encryptedPath); err == nil {
+		t.Fatal("Verify() accepted an encrypted archive as a plaintext backup")
+	}
+	verified, err := VerifyEncrypted(ctx, encryptedPath, key)
+	if err != nil {
+		t.Fatalf("VerifyEncrypted() error = %v", err)
+	}
+	if verified != encrypted {
+		t.Fatalf("VerifyEncrypted() = %#v, want %#v", verified, encrypted)
+	}
+	decrypted, err := Decrypt(ctx, encryptedPath, decryptedPath, key)
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if decrypted != encrypted {
+		t.Fatalf("Decrypt() = %#v, want %#v", decrypted, encrypted)
+	}
+	if restored, err := Verify(ctx, decryptedPath); err != nil || restored != plainManifest {
+		t.Fatalf("Verify(decrypted) = (%#v, %v), want %#v", restored, err, plainManifest)
+	}
+	assertPrivateFile(t, decryptedPath)
+}
+
+func TestEncryptedBackupRejectsTamperingWrongKeyAndOverwrite(t *testing.T) {
+	directory := t.TempDir()
+	archivePath := createTestBackup(t, directory)
+	key := bytes.Repeat([]byte{0x11}, 32)
+	wrongKey := bytes.Repeat([]byte{0x12}, 32)
+	encryptedPath := filepath.Join(directory, "backup.xbbackup.enc")
+	if _, err := Encrypt(t.Context(), archivePath, encryptedPath, key, time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Encrypt(t.Context(), archivePath, encryptedPath, key, time.Unix(2, 0)); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Encrypt(existing destination) error = %v", err)
+	}
+	if _, err := VerifyEncrypted(t.Context(), encryptedPath, wrongKey); err == nil {
+		t.Fatal("VerifyEncrypted() accepted the wrong key")
+	}
+	tamperedPath := filepath.Join(directory, "tampered.xbbackup.enc")
+	content, err := os.ReadFile(encryptedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content[len(content)-1] ^= 0xff
+	if err := os.WriteFile(tamperedPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyEncrypted(t.Context(), tamperedPath, key); err == nil {
+		t.Fatal("VerifyEncrypted() accepted tampered ciphertext")
+	}
+	decryptedPath := filepath.Join(directory, "existing.xbbackup")
+	if err := os.WriteFile(decryptedPath, []byte("do-not-overwrite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decrypt(t.Context(), encryptedPath, decryptedPath, key); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Decrypt(existing destination) error = %v", err)
+	}
+}
+
 func TestAttachmentBundleCreateVerifyAndRestoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	directory := t.TempDir()

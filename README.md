@@ -123,6 +123,40 @@ of representative observation before deciding the legacy-token retirement
 window; schema v60 starts a new observation period and does not invent
 historical usage.
 
+Operators can export that aggregate decision signal without exposing
+credentials or high-cardinality request data:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance node-auth-retirement-readiness \
+  --min-observation-days 30
+```
+
+The command is read-only. It reports whether the minimum observation window has
+elapsed, whether legacy global-token traffic is still present, and whether
+machine-credential traffic has been observed. It does not rotate, clear, or
+retire the legacy global token; the retirement window remains an explicit
+operator decision.
+
+The D-013 statistics and log-retention decision can be prepared from a
+standalone legacy SQLite snapshot without reading failed-job payloads or
+exceptions:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance operational-retention-readiness \
+  --source /data/legacy-xboard.sqlite \
+  --retention-days 90
+```
+
+The command is read-only. It reports aggregate node-traffic rows inside and
+outside the selected retention window, future or invalid rows that would block
+a safe offline migration, pending legacy queue rows that must be drained, and
+whether legacy `failed_jobs` payload columns exist. It deliberately outputs no
+raw job payload, exception, request body, credential, IP address, user email, or
+node host data. Legacy PHP failed jobs remain non-executable evidence unless
+the compatibility exception for D-013 is explicitly accepted.
+
 Node HTTP and WebSocket handshake rate limits always retain independent
 client, direct-peer, and credential buckets. A deployment behind a shared
 reverse proxy must set `XBOARD_TRUSTED_PROXY_CIDRS` to the proxy network CIDRs
@@ -187,16 +221,25 @@ secrets, mounts the Docker socket into the application, or deletes an unknown
 container or data volume.
 
 For a fresh Compose project, create the file-backed secrets shown above, build
-an exact-revision image, and install it:
+an exact-revision image, run the host preflight, and install it:
 
 ```bash
 revision="$(git rev-parse HEAD)"
 docker build --build-arg "APP_REVISION=${revision}" -t "xboard-go:${revision}" .
+go run ./cmd/xboard-lifecycle doctor \
+  --project xboard-go-local \
+  --compose-file compose.local.yaml
 go run ./cmd/xboard-lifecycle install \
   --project xboard-go-local \
   --compose-file compose.local.yaml \
   --image "xboard-go:${revision}"
 ```
+
+`doctor` checks the operator host without starting or stopping application
+containers. It verifies Docker daemon access, the Docker Compose plugin, the
+Compose file, the lifecycle environment directory, and, when Docker reports
+rootless mode, the `newuidmap` and `newgidmap` helpers required by uid-mapped
+rootless containers.
 
 An upgrade requires the active container to be healthy. Before stopping it,
 the tool creates and verifies an online `.xbbackup`, records the exact current
@@ -318,13 +361,56 @@ docker compose -f compose.local.yaml run --rm --no-deps maintenance backup verif
   --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup
 ```
 
-After verification, an operator can atomically copy the archive to a mounted
-independent storage target. Replication never overwrites an existing object,
-streams within the archive size limit, verifies the copied archive before it is
-published, and checks the published SHA-256. The confirmation flag is an
-explicit operator assertion; the process cannot prove that two paths belong to
-different failure domains. The destination filesystem must support atomic hard
-links within the mounted directory; replication fails closed when it does not.
+After verification, an operator can create an application-encrypted copy for a
+mounted independent storage target. Encryption uses a private 32-byte key file,
+refuses to overwrite existing output, authenticates every bounded chunk, records
+the plaintext archive SHA-256, and re-verifies the encrypted artifact after it
+is published. Store this backup-encryption key outside the archive and outside
+the application settings key.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup encrypt \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --output /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --key-file /run/secrets/backup_replica_key
+
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup verify-encrypted \
+  --input /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --key-file /run/secrets/backup_replica_key
+```
+
+For storage providers that support pre-signed HTTPS object URLs, use the HTTP
+transport commands instead of mounting the target inside the maintenance
+container. Put and get URLs must be stored in private files rather than command
+arguments or logs. Redirects are not followed, URLs with user-info or fragments
+are rejected, plaintext HTTP is refused unless `--allow-insecure-http` is used
+for an isolated local drill, and both upload and download stream within the
+bounded backup size limit while recording the transferred SHA-256.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup upload-http \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --put-url-file /run/secrets/offsite_put_url \
+  --confirm-independent-storage
+
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup download-http \
+  --get-url-file /run/secrets/offsite_get_url \
+  --output /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.remote.xbbackup.enc
+```
+
+Plaintext replication is still available for operator-managed encrypted storage.
+Replication never overwrites an existing object, streams within the archive size
+limit, verifies the copied archive before it is published, and checks the
+published SHA-256. The confirmation flag is an explicit operator assertion; the
+process cannot prove that two paths belong to different failure domains. The
+destination filesystem must support atomic hard links within the mounted
+directory; replication fails closed when it does not.
 
 ```bash
 docker compose -f compose.local.yaml run --rm --no-deps \
@@ -345,9 +431,17 @@ existing path. Stop the application, restore into a new file, then explicitly
 select that file. Returning to the original DSN is the rollback path.
 
 ```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  --volume /mnt/protected-offsite:/offsite \
+  --volume /mnt/protected-offsite/xboard-backup-key:/run/secrets/backup_replica_key:ro \
+  maintenance backup decrypt \
+  --input /offsite/xboard-YYYYMMDDTHHMMSSZ.xbbackup.enc \
+  --output /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.restored.xbbackup \
+  --key-file /run/secrets/backup_replica_key
+
 docker compose -f compose.local.yaml stop xboard-go
 docker compose -f compose.local.yaml run --rm --no-deps maintenance backup restore \
-  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.restored.xbbackup \
   --output /var/lib/xboard/restored.db \
   --attachment-output /var/lib/xboard/restored-attachments
 XBOARD_DATABASE_DSN=file:/var/lib/xboard/restored.db \
@@ -355,11 +449,12 @@ XBOARD_ATTACHMENT_ROOT=/var/lib/xboard/restored-attachments \
   docker compose -f compose.local.yaml up -d --wait xboard-go
 ```
 
-The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`; retain
-that secret independently for as long as encrypted settings or pending tokens
-exist. Copy verified archives to independently protected storage when testing
-a real disaster-recovery plan. These commands are currently intended only for
-local and isolated test environments.
+The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`, and an
+encrypted backup does not contain its backup-encryption key. Retain those
+secrets independently for as long as encrypted settings, pending tokens, or
+encrypted backup replicas exist. Copy verified archives to independently
+protected storage when testing a real disaster-recovery plan. These commands are
+currently intended only for local and isolated test environments.
 
 ## Local bounded maintenance
 

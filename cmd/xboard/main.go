@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -247,7 +250,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var handler http.Handler = httpapi.New(httpapi.Dependencies{
+	apiHandler := httpapi.New(httpapi.Dependencies{
 		Store:                      database,
 		PasswordHasher:             passwordHasher,
 		PanelURL:                   settings.PanelURL,
@@ -279,6 +282,7 @@ func main() {
 		LegacyAppClashRenderer:     legacyAppClashRenderer,
 		TicketRegionResolver:       ticketRegionResolver,
 	})
+	var handler http.Handler = apiHandler
 	if settings.WebRoot != "" || settings.FrontendOrigin != "" {
 		resolveFrontendAccess := func(request *http.Request) (webui.FrontendAccess, error) {
 			access, accessErr := database.GetSiteAccessSettings(request.Context())
@@ -320,8 +324,18 @@ func main() {
 	}()
 
 	logger.Info("Xboard-Go API listening", "address", settings.Address)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("serve HTTP", "error", err)
+	serveErr := server.ListenAndServe()
+	if ctx.Err() != nil {
+		if waiter, ok := apiHandler.(httpapi.ShutdownWaiter); ok {
+			drainContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := waiter.WaitForShutdown(drainContext); err != nil {
+				logger.Error("wait for HTTP API shutdown", "error", err)
+			}
+			cancel()
+		}
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		logger.Error("serve HTTP", "error", serveErr)
 		os.Exit(1)
 	}
 }
@@ -345,13 +359,14 @@ func runAttachmentCleanup(ctx context.Context, service *attachments.Service, log
 }
 
 type commandResult struct {
-	Status         string          `json:"status"`
-	Action         string          `json:"action"`
-	Path           string          `json:"path"`
-	AttachmentPath string          `json:"attachment_path,omitempty"`
-	Bytes          int64           `json:"bytes,omitempty"`
-	SHA256         string          `json:"sha256,omitempty"`
-	Manifest       backup.Manifest `json:"manifest"`
+	Status            string                    `json:"status"`
+	Action            string                    `json:"action"`
+	Path              string                    `json:"path"`
+	AttachmentPath    string                    `json:"attachment_path,omitempty"`
+	Bytes             int64                     `json:"bytes,omitempty"`
+	SHA256            string                    `json:"sha256,omitempty"`
+	Manifest          backup.Manifest           `json:"manifest"`
+	EncryptedManifest *backup.EncryptedManifest `json:"encrypted_manifest,omitempty"`
 }
 
 type maintenanceCommandResult struct {
@@ -360,6 +375,22 @@ type maintenanceCommandResult struct {
 	AsOf   time.Time                 `json:"as_of"`
 	Limit  int                       `json:"limit"`
 	Result maintenance.CleanupResult `json:"result"`
+}
+
+type nodeAuthRetirementReadinessCommandResult struct {
+	Status              string                                  `json:"status"`
+	Action              string                                  `json:"action"`
+	AsOf                time.Time                               `json:"as_of"`
+	MinimumObservedDays int                                     `json:"minimum_observed_days"`
+	Result              maintenance.NodeAuthRetirementReadiness `json:"result"`
+}
+
+type operationalRetentionReadinessCommandResult struct {
+	Status        string                                       `json:"status"`
+	Action        string                                       `json:"action"`
+	AsOf          time.Time                                    `json:"as_of"`
+	RetentionDays int                                          `json:"retention_days"`
+	Result        legacymigration.OperationalRetentionSnapshot `json:"result"`
 }
 
 type attachmentStatusCommandResult struct {
@@ -496,7 +527,7 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, fmt.Errorf("unknown command %q", arguments[0])
 	}
 	if len(arguments) < 2 {
-		return true, errors.New("backup subcommand is required: create, verify, replicate, or restore")
+		return true, errors.New("backup subcommand is required: create, verify, replicate, upload-http, download-http, encrypt, verify-encrypted, decrypt, or restore")
 	}
 
 	switch arguments[1] {
@@ -571,6 +602,160 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 			Bytes: replicated.Size, SHA256: replicated.SHA256, Manifest: replicated.Manifest,
 		})
 
+	case "upload-http":
+		flags := flag.NewFlagSet("backup upload-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "backup or encrypted-backup archive path")
+		putURLFile := flags.String("put-url-file", "", "private file containing an HTTPS pre-signed PUT URL")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP only for isolated local disaster-recovery drills")
+		confirm := flags.Bool("confirm-independent-storage", false, "confirm the destination is a separately protected failure domain")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*putURLFile) == "" || !*confirm {
+			return true, errors.New("backup upload-http requires --input, --put-url-file, and --confirm-independent-storage and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*putURLFile)
+		if err != nil {
+			return true, err
+		}
+		uploaded, err := backup.UploadHTTP(ctx, *input, replicaURL, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.upload-http", Path: absolute,
+			Bytes: uploaded.Size, SHA256: uploaded.SHA256,
+		})
+
+	case "download-http":
+		flags := flag.NewFlagSet("backup download-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		getURLFile := flags.String("get-url-file", "", "private file containing an HTTPS pre-signed GET URL")
+		output := flags.String("output", "", "new downloaded backup or encrypted-backup archive path")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP only for isolated local disaster-recovery drills")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*getURLFile) == "" || strings.TrimSpace(*output) == "" {
+			return true, errors.New("backup download-http requires --get-url-file and --output and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*getURLFile)
+		if err != nil {
+			return true, err
+		}
+		downloaded, err := backup.DownloadHTTP(ctx, replicaURL, *output, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.download-http", Path: absolute,
+			Bytes: downloaded.Size, SHA256: downloaded.SHA256,
+		})
+
+	case "encrypt":
+		flags := flag.NewFlagSet("backup encrypt", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "verified plaintext backup archive path")
+		output := flags.String("output", "", "new encrypted backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup encrypt requires --input, --output, and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.Encrypt(ctx, *input, *output, key, now())
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.encrypt", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
+	case "verify-encrypted":
+		flags := flag.NewFlagSet("backup verify-encrypted", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "encrypted backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup verify-encrypted requires --input and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.VerifyEncrypted(ctx, *input, key)
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.verify-encrypted", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
+	case "decrypt":
+		flags := flag.NewFlagSet("backup decrypt", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "encrypted backup archive path")
+		output := flags.String("output", "", "new plaintext backup archive path")
+		keyFile := flags.String("key-file", "", "private 32-byte backup encryption key file")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*output) == "" || strings.TrimSpace(*keyFile) == "" {
+			return true, errors.New("backup decrypt requires --input, --output, and --key-file and accepts no positional arguments")
+		}
+		key, err := readBackupEncryptionKey(*keyFile)
+		if err != nil {
+			return true, err
+		}
+		encrypted, err := backup.Decrypt(ctx, *input, *output, key)
+		for index := range key {
+			key[index] = 0
+		}
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.decrypt", Path: absolute,
+			Manifest: encrypted.BackupManifest, EncryptedManifest: &encrypted,
+		})
+
 	case "restore":
 		flags := flag.NewFlagSet("backup restore", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -603,6 +788,67 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	default:
 		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
 	}
+}
+
+func readBackupEncryptionKey(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, errors.New("backup encryption key file is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect backup encryption key file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("backup encryption key file must be a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("backup encryption key file must not be readable by group or others")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read backup encryption key file: %w", err)
+	}
+	if len(content) == 32 {
+		return append([]byte(nil), content...), nil
+	}
+	trimmed := strings.TrimSpace(string(content))
+	if decoded, err := base64.StdEncoding.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	return nil, errors.New("backup encryption key file must contain exactly 32 raw bytes, or a base64/hex encoded 32-byte key")
+}
+
+func readBackupReplicaURL(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("backup replica URL file is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect backup replica URL file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("backup replica URL file must be a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("backup replica URL file must not be readable by group or others")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read backup replica URL file: %w", err)
+	}
+	replicaURL := strings.TrimSpace(string(content))
+	if replicaURL == "" {
+		return "", errors.New("backup replica URL file is empty")
+	}
+	return replicaURL, nil
 }
 
 func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
@@ -2336,15 +2582,25 @@ func hashMigrationArtifact(ctx context.Context, path string) (string, int64, err
 
 func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("maintenance subcommand is required: cleanup-expired")
+		return true, errors.New("maintenance subcommand is required: cleanup-expired, node-auth-retirement-readiness, or operational-retention-readiness")
 	}
-	if arguments[0] != "cleanup-expired" {
+	switch arguments[0] {
+	case "cleanup-expired":
+		return runMaintenanceCleanupExpiredCommand(ctx, arguments[1:], stdout, stderr, now)
+	case "node-auth-retirement-readiness":
+		return runMaintenanceNodeAuthRetirementReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
+	case "operational-retention-readiness":
+		return runMaintenanceOperationalRetentionReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
+	default:
 		return true, fmt.Errorf("unknown maintenance subcommand %q", arguments[0])
 	}
+}
+
+func runMaintenanceCleanupExpiredCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	flags := flag.NewFlagSet("maintenance cleanup-expired", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	limit := flags.Int("limit", maintenance.DefaultCleanupLimit, "maximum rows processed per cleanup category")
-	if err := flags.Parse(arguments[1:]); err != nil {
+	if err := flags.Parse(arguments); err != nil {
 		return true, err
 	}
 	if flags.NArg() != 0 {
@@ -2392,6 +2648,92 @@ func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stde
 	encoder.SetEscapeHTML(false)
 	return true, encoder.Encode(maintenanceCommandResult{
 		Status: "success", Action: "maintenance.cleanup-expired", AsOf: asOf, Limit: *limit, Result: result,
+	})
+}
+
+func runMaintenanceNodeAuthRetirementReadinessCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	flags := flag.NewFlagSet("maintenance node-auth-retirement-readiness", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	minimumObservedDays := flags.Int("min-observation-days", maintenance.DefaultNodeAuthRetirementObservationDays, "minimum whole days of representative node authentication telemetry")
+	if err := flags.Parse(arguments); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance node-auth-retirement-readiness does not accept positional arguments")
+	}
+	if *minimumObservedDays < 1 || *minimumObservedDays > maintenance.MaxNodeAuthRetirementObservationDays {
+		return true, fmt.Errorf("maintenance node-auth-retirement-readiness --min-observation-days must be between 1 and %d", maintenance.MaxNodeAuthRetirementObservationDays)
+	}
+
+	dsn := config.DatabaseDSN()
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
+		return true, errors.New("maintenance node-auth-retirement-readiness requires a file-backed SQLite database")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return true, fmt.Errorf("inspect maintenance database: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return true, errors.New("maintenance database must be a regular file")
+	}
+	database, err := store.OpenSQLite(dsn)
+	if err != nil {
+		return true, err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = database.Close()
+		}
+	}()
+	if err := database.ValidateCurrentSchema(ctx); err != nil {
+		return true, fmt.Errorf("maintenance node-auth-retirement-readiness schema validation failed: %w; run the versioned migration workflow first", err)
+	}
+	asOf := now().UTC()
+	result, err := maintenance.CheckNodeAuthRetirementReadiness(ctx, database, asOf, *minimumObservedDays)
+	if err != nil {
+		return true, err
+	}
+	if err := database.Close(); err != nil {
+		return true, fmt.Errorf("close maintenance database: %w", err)
+	}
+	closed = true
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(nodeAuthRetirementReadinessCommandResult{
+		Status: "success", Action: "maintenance.node-auth-retirement-readiness",
+		AsOf: asOf, MinimumObservedDays: *minimumObservedDays, Result: result,
+	})
+}
+
+func runMaintenanceOperationalRetentionReadinessCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	flags := flag.NewFlagSet("maintenance operational-retention-readiness", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	sourcePath := flags.String("source", "", "standalone legacy Xboard SQLite snapshot path")
+	retentionDays := flags.Int("retention-days", legacymigration.DefaultOperationalRetentionDays, "whole days of operational statistics to retain for migration evidence")
+	if err := flags.Parse(arguments); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance operational-retention-readiness does not accept positional arguments")
+	}
+	if strings.TrimSpace(*sourcePath) == "" {
+		return true, errors.New("maintenance operational-retention-readiness requires --source")
+	}
+	if *retentionDays < 1 || *retentionDays > legacymigration.MaxOperationalRetentionDays {
+		return true, fmt.Errorf("maintenance operational-retention-readiness --retention-days must be between 1 and %d", legacymigration.MaxOperationalRetentionDays)
+	}
+	asOf := now().UTC()
+	result, err := legacymigration.ReadOperationalRetentionSnapshot(ctx, *sourcePath, asOf, *retentionDays)
+	if err != nil {
+		return true, err
+	}
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(operationalRetentionReadinessCommandResult{
+		Status: "success", Action: "maintenance.operational-retention-readiness",
+		AsOf: asOf, RetentionDays: *retentionDays, Result: result,
 	})
 }
 

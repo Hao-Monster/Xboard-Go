@@ -28,10 +28,10 @@ func main() {
 
 func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) error {
 	if len(arguments) == 0 {
-		return errors.New("lifecycle subcommand is required: status, install, upgrade, or rollback")
+		return errors.New("lifecycle subcommand is required: doctor, status, install, upgrade, or rollback")
 	}
 	command := arguments[0]
-	if command != "status" && command != "install" && command != "upgrade" && command != "rollback" {
+	if command != "doctor" && command != "status" && command != "install" && command != "upgrade" && command != "rollback" {
 		return fmt.Errorf("unknown lifecycle subcommand %q", command)
 	}
 
@@ -54,7 +54,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, now 
 	if *topology != "combined" && *topology != "split" {
 		return errors.New("topology must be combined or split")
 	}
-	if (command == "status" || command == "rollback") && (strings.TrimSpace(*imageReference) != "" || strings.TrimSpace(*manifestPath) != "") {
+	if (command == "doctor" || command == "status" || command == "rollback") && (strings.TrimSpace(*imageReference) != "" || strings.TrimSpace(*manifestPath) != "") {
 		return fmt.Errorf("lifecycle %s does not accept --image", command)
 	}
 	if *topology == "combined" && strings.TrimSpace(*manifestPath) != "" {
@@ -84,6 +84,10 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, now 
 	}, nil)
 	if err != nil {
 		return err
+	}
+	if command == "doctor" {
+		result, err := platform.Doctor(ctx)
+		return encodeDoctorResult(stdout, result, err)
 	}
 	journal := lifecycle.NewJournal(filepath.Join(absoluteStateDirectory, *project+".jsonl"))
 	orchestrator := lifecycle.NewOrchestrator(platform, journal, now)
@@ -159,6 +163,17 @@ func encodeDeploymentResult(output io.Writer, result lifecycle.DeploymentResult,
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(result); err != nil {
 			return fmt.Errorf("encode deployment lifecycle result: %w", err)
+		}
+	}
+	return operationErr
+}
+
+func encodeDoctorResult(output io.Writer, result lifecycle.DoctorReport, operationErr error) error {
+	if result.Action != "" {
+		encoder := json.NewEncoder(output)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(result); err != nil {
+			return fmt.Errorf("encode lifecycle doctor result: %w", err)
 		}
 	}
 	return operationErr
