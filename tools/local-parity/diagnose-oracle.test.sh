@@ -43,7 +43,12 @@ case "${1:-}" in
   compose)
     args=" $* "
     if [[ "$args" == *' logs '* ]]; then
-      printf '%s\n' 'App\Domain\QuotedException at /www/app/Http/Test.php:42'
+      if [[ "${MOCK_DOCKER_LOG_SCENARIO:-normal}" == hang ]]; then
+        printf '%s\n' 'mock-sensitive-raw-log-must-not-escape' >&2
+        sleep 30
+      else
+        printf '%s\n' 'App\Domain\QuotedException at /www/app/Http/Test.php:42'
+      fi
     elif [[ "$args" == *' exec '* && "$args" == *'curl -sS'* ]]; then
       printf '%s' '200,21'
     elif [[ "$args" == *' run '* ]]; then
@@ -76,12 +81,14 @@ MOCK_CURL
 
 run_diag() {
   local fixture="$1" id="$2" scenario="$3" out="$4" stdout_file="$5"
+  local log_scenario="${6:-normal}"
   (
     cd "$fixture"
     PATH="$fixture/mock-bin:/usr/bin:/bin" \
     MOCK_DOCKER_LOG="$fixture/mock-docker.log" \
     MOCK_CURL_LOG="$fixture/mock-curl.log" \
     MOCK_CURL_SCENARIO="$scenario" \
+    MOCK_DOCKER_LOG_SCENARIO="$log_scenario" \
     LOCAL_PARITY_RUN_ID="$id" \
     XBOARD_LEGACY_PORT=18781 \
     LOCAL_PARITY_DIAGNOSTIC_OUTPUT="$out" \
@@ -104,6 +111,27 @@ grep -F 'outer=0,200,17' "$out/probe.txt" >/dev/null
 grep -Fx 'driver_exit=0' "$out/exit.txt" >/dev/null
 assert_mock_cleanup "$fixture" success-json "$out"
 echo 'PASS success requires transport exit 0 plus HTTP 200; backslash JSON is parseable'
+
+fixture="$(make_fixture logs-hang)"
+out="$fixture/diagnostic-logs-hang"
+started=$SECONDS
+set +e
+run_diag "$fixture" logs-hang success "$out" "$fixture/stdout.log" hang
+rc=$?
+set -e
+elapsed=$((SECONDS - started))
+[[ "$rc" -ne 0 ]]
+(( elapsed >= 4 && elapsed <= 12 ))
+jq -e '
+  .source == "container-stdout" and
+  .exception_category == "unavailable" and
+  .stack_location == "unavailable"
+' "$out/redacted.json" >/dev/null
+grep -Fx 'container_logs_exit=124' "$out/probe.txt" >/dev/null
+grep -Fx 'driver_exit=1' "$out/exit.txt" >/dev/null
+! grep -R -F 'mock-sensitive-raw-log-must-not-escape' "$out" "$fixture/stdout.log" >/dev/null
+assert_mock_cleanup "$fixture" logs-hang "$out"
+printf 'PASS hanging mock log collection returns nonzero in bounded time elapsed=%ss and retains valid JSON/cleanup\n' "$elapsed"
 
 run_failure_case() {
   local scenario="$1" expected_probe="$2"

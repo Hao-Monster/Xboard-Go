@@ -132,6 +132,7 @@ done
   timeout --signal=TERM --kill-after=1s 4s "${c[@]}" exec -T legacy-oracle sh -c 'ps -o pid,stat,comm; ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null || true' || true
 } >>"$out_abs/probe.txt" 2>&1
 set +e
+# This in-container probe is diagnostic only; it never changes the readiness decision.
 inner_metrics="$(timeout --signal=TERM --kill-after=1s 7s "${c[@]}" exec -T legacy-oracle sh -c \
   "curl -sS --connect-timeout 5 --max-time 5 -o /dev/null -w '%{http_code},%{size_download}' http://127.0.0.1:7002/" 2>>"$out_abs/probe.txt")"
 inner_rc=$?
@@ -139,7 +140,14 @@ set -e
 [[ "$inner_metrics" =~ ^[0-9]{3},[0-9]+$ ]] || inner_metrics='000,0'
 printf 'inner=%s,%s\n' "$inner_rc" "$inner_metrics" >>"$out_abs/probe.txt"
 
-logs="$("${c[@]}" logs --no-color --tail=250 legacy-oracle || true)"
+set +e
+logs="$(timeout --signal=TERM --kill-after=1s 5s "${c[@]}" logs --no-color --tail=250 legacy-oracle 2>&1)"
+logs_rc=$?
+set -e
+printf 'container_logs_exit=%s\n' "$logs_rc" >>"$out_abs/probe.txt"
+if [[ "$logs_rc" -ne 0 ]]; then
+  logs=''
+fi
 exception_category="$(printf '%s\n' "$logs" | grep -Eo '[A-Za-z_\\][A-Za-z0-9_\\]*(Exception|Error)|Fatal error' | tail -1 || true)"
 stack_location="$(printf '%s\n' "$logs" | grep -Eo '/www/(app|vendor)/[^[:space:]:]+:[0-9]+' | head -1 || true)"
 [[ -n "$exception_category" ]] || exception_category=unavailable
@@ -159,5 +167,9 @@ jq -e '
 
 if [[ "$ready" -ne 1 ]]; then
   echo "legacy Oracle root did not return HTTP 200 within ${readiness_seconds}s" >&2
+  exit 1
+fi
+if [[ "$logs_rc" -ne 0 ]]; then
+  echo "bounded container log collection failed with exit ${logs_rc}" >&2
   exit 1
 fi
