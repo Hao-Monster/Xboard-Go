@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-08",
-  "baseline_commit": "ca2f280ce75eaf13697c9fd13007eb985e53003c",
+  "baseline_commit": "48db5761879e68aa9fc50718c674365e726364ed",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -689,7 +689,60 @@
       "work_item_ids": [
         "FUNC-002"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-USER-001-48-LIFECYCLE-STORE",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestUserLifecycleRevokesCredentialsAndPreservesRecovery",
+            "TestUserLifecycleUnsettledWithdrawalBlocksAnonymization",
+            "TestUserLifecycleCancelsNotificationsAndInvalidatesInFlightCSV",
+            "TestUserLifecycleBoundaryExplicitAnonymizationAndFactRetention",
+            "TestUserLifecycleAuthorizationAndRollback",
+            "TestUserLifecycleIndependentWritersRestoreOriginalBan",
+            "TestUserLifecycleAnonymizesHistoricalTicketMailWithoutChangingOtherRecipients",
+            "TestUserLifecycleAnonymizesNotificationErrorsAndOnlyOwnedBulkFailure",
+            "TestUserLifecycleHistoricalClaimAndReassignedMailboxUseTicketOwnership",
+            "TestUserLifecycleAuthMailOwnershipSurvivesEmailChange",
+            "TestUserLifecycleRegistrationMailboxReuseDoesNotAdoptUnknownHistory",
+            "TestUserLifecycleMailOwnershipMigrationOnlyBackfillsProvenLatestReset",
+            "TestUserLifecycleMailOwnershipSchemaRejectsWeakenedProtection"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:30:43Z",
+          "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-001-48-LIFECYCLE-HTTP",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestUserLifecycleHTTPPermissionsSessionsAndLegacyDestroy",
+            "TestUserLifecycleHTTPExplicitAnonymizationAfterDeadline"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:19:03Z",
+          "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-001-48-LIFECYCLE-BROWSER",
+          "kind": "browser",
+          "environment": "github-actions",
+          "case_ids": [
+            "e2e/user-lifecycle.spec.ts:4"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:22:46Z",
+          "command": "pnpm --dir web test:e2e",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "USER-002",
@@ -770,9 +823,9 @@
       "domain": "用户、套餐与订阅",
       "title": "删除用户会影响订单、邀请码、统计和工单；新系统必须在删除前展示影响并使用事务/软删除或经确认的保留策略。",
       "scope_status": "decided",
-      "implementation_status": "not_started",
-      "verification_status": "none",
-      "migration_status": "not_assessed",
+      "implementation_status": "implemented",
+      "verification_status": "current",
+      "migration_status": "current",
       "acceptance_status": "pending",
       "milestone": "M1",
       "decision_ids": [
@@ -781,7 +834,101 @@
       "work_item_ids": [
         "FUNC-002"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-USER-003-48-STORE",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestUserLifecycleRevokesCredentialsAndPreservesRecovery",
+            "TestUserLifecycleUnsettledWithdrawalBlocksAnonymization",
+            "TestUserLifecycleCancelsNotificationsAndInvalidatesInFlightCSV",
+            "TestUserLifecycleBoundaryExplicitAnonymizationAndFactRetention",
+            "TestUserLifecycleAuthorizationAndRollback",
+            "TestUserLifecycleIndependentWritersRestoreOriginalBan",
+            "TestUserLifecycleAnonymizesHistoricalTicketMailWithoutChangingOtherRecipients",
+            "TestUserLifecycleAnonymizesNotificationErrorsAndOnlyOwnedBulkFailure",
+            "TestUserLifecycleHistoricalClaimAndReassignedMailboxUseTicketOwnership",
+            "TestUserLifecycleAuthMailOwnershipSurvivesEmailChange",
+            "TestUserLifecycleRegistrationMailboxReuseDoesNotAdoptUnknownHistory",
+            "TestUserLifecycleMailOwnershipMigrationOnlyBackfillsProvenLatestReset",
+            "TestUserLifecycleMailOwnershipSchemaRejectsWeakenedProtection"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:30:43Z",
+          "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-003-48-HTTP",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestUserLifecycleHTTPPermissionsSessionsAndLegacyDestroy",
+            "TestUserLifecycleHTTPExplicitAnonymizationAfterDeadline"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:19:03Z",
+          "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-003-48-MAIL-BULK",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestClaimedMailIsNotSentAfterUserLifecycleCancellation",
+            "TestUserLifecycleCancelledBulkMailNeverReachesSender"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865221",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:18:51Z",
+          "command": "GO_TEST_GROUP=services-b; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-003-48-TELEGRAM",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestUserLifecycleCancelledTelegramSnapshotNeverReachesTransport"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865003",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:16:25Z",
+          "command": "GO_TEST_GROUP=remainder; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-003-48-UI",
+          "kind": "unit",
+          "environment": "github-actions",
+          "case_ids": [
+            "src/features/users/UsersPage.test.tsx:32",
+            "src/features/users/UsersPage.test.tsx:50"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004864986",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:17:29Z",
+          "command": "pnpm --dir web test:coverage",
+          "result": "pass"
+        },
+        {
+          "id": "EV-USER-003-48-BROWSER",
+          "kind": "browser",
+          "environment": "github-actions",
+          "case_ids": [
+            "e2e/user-lifecycle.spec.ts:4"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:22:46Z",
+          "command": "pnpm --dir web test:e2e",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "PLAN-001",
@@ -2336,8 +2483,8 @@
       "domain": "订单、支付与营销",
       "title": "币种、金额单位、舍入、税费、退款、冲正和对账保留期限需用运营流程确认。",
       "scope_status": "decided",
-      "implementation_status": "not_started",
-      "verification_status": "none",
+      "implementation_status": "partial",
+      "verification_status": "partial",
       "migration_status": "not_applicable",
       "acceptance_status": "pending",
       "milestone": "M1",
@@ -2347,7 +2494,69 @@
       "work_item_ids": [
         "FUNC-001"
       ],
-      "evidence": []
+      "evidence": [
+        {
+          "id": "EV-FIN-001-48-STORE",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestCommissionWithdrawalApprovalPaymentAndReceiptIdempotency",
+            "TestCommissionWithdrawalRejectionRefundsOnceAndTicketClosureNeverSettles",
+            "TestCommissionWithdrawalAuditFailuresRollBackEveryFinancialMutation",
+            "TestCommissionWithdrawalIndependentWritersConserveFundsAndRefundOnce",
+            "TestCommissionWithdrawalPaymentAndRejectionRaceHasOnlyOneTerminalOutcome",
+            "TestCommissionWithdrawalRejectsStaleAdministratorFunds",
+            "TestCommissionWithdrawalMoneyRevisionProtectsEveryWriter",
+            "TestCommissionWithdrawalReceiptDeduplicationSurvivesAccountAnonymization",
+            "TestCommissionWithdrawalMigrationDoesNotSettleHistoricalTicket",
+            "TestCommissionWithdrawalSchemaRejectsMissingOrWeakenedFinancialProtection"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:30:43Z",
+          "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-FIN-001-48-HTTP",
+          "kind": "integration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestCommissionWithdrawalHTTPFreezesApprovesPaysAndRejectsWithAuthorization"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:19:03Z",
+          "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-FIN-001-48-UI",
+          "kind": "unit",
+          "environment": "github-actions",
+          "case_ids": [
+            "src/features/tickets/CommissionWithdrawalPanel.test.tsx"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004864986",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:17:29Z",
+          "command": "pnpm --dir web test:coverage",
+          "result": "pass"
+        },
+        {
+          "id": "EV-FIN-001-48-BROWSER",
+          "kind": "browser",
+          "environment": "github-actions",
+          "case_ids": [
+            "e2e/commissions.spec.ts:31"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:22:46Z",
+          "command": "pnpm --dir web test:e2e",
+          "result": "pass"
+        }
+      ]
     },
     {
       "id": "DIST-001",
@@ -6242,6 +6451,72 @@
         "MIG-001"
       ],
       "evidence": [
+        {
+          "id": "EV-OPS-002-48-OPLOG-SOURCE",
+          "kind": "migration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestReadOperationalLogsSnapshotRetainsOnlyWindowAndSafeMetadata",
+            "TestReadOperationalLogsSnapshotRejectsQueuedFutureAndAmbiguousRows",
+            "TestReadOperationalLogsSnapshotCountsAllUserFactsWithoutIdentities"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865221",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:18:51Z",
+          "command": "GO_TEST_GROUP=services-b; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-002-48-OPLOG-STORE",
+          "kind": "migration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestOperationalImportReadsBackTargetAndRejectsMutatedRows",
+            "TestOperationalImportReplaysFixedWindowAndDetectsTargetDrift",
+            "TestOperationalImportStatisticsUseBusinessFactsAndShanghaiDays",
+            "TestOperationalImportStatisticsPreserveHistoricalShanghaiMidnight",
+            "TestOperationalImportFailureRollsBackLogsStatisticsAndReceipt",
+            "TestOperationalImportRequiresCompleteSameSourceUserDomain",
+            "TestOperationalImportIncludesMigratedInternalSubscriberRegistration",
+            "TestOperationalImportRejectsSourceUserFactMismatch",
+            "TestOperationalImportRejectsMissingPrerequisiteAndDuplicateMetadata",
+            "TestOperationalImportRejectsStatisticsMutationAndOverflow",
+            "TestOperationalImportConcurrentConnectionsCommitOneReceipt"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:30:43Z",
+          "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-002-48-OPLOG-CLI",
+          "kind": "migration",
+          "environment": "github-actions",
+          "case_ids": [
+            "TestOperationalLogsCLIImportsOfflineWithFixedReplayAndRestorableBackup",
+            "TestOperationalLogsCLIRejectsUnsafeArgumentsWithoutSuccessOutput",
+            "TestOperationalLogsCLIRejectsCorruptedRecordedBackupAndTarget"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865145",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:24:16Z",
+          "command": "GO_TEST_GROUP=xboard; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
+          "result": "pass"
+        },
+        {
+          "id": "EV-OPS-002-48-REPRESENTATIVE-DRILL",
+          "kind": "migration",
+          "environment": "github-actions",
+          "case_ids": [
+            "internal/testdata/legacy/drill:TestRepresentativeLegacyMigrationDrill"
+          ],
+          "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865096",
+          "commit": "48db5761879e68aa9fc50718c674365e726364ed",
+          "observed_at": "2026-09-08T09:15:52Z",
+          "command": "go test -timeout=10m ./internal/testdata/legacy/drill -run TestRepresentativeLegacyMigrationDrill -count=1 -v",
+          "result": "pass"
+        },
         {
           "id": "EV-OPS-002-GO",
           "kind": "integration",
