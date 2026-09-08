@@ -18,6 +18,10 @@ revalidate before asserting a new result.
 `tools/local-parity/` now contains a persistent, no-secret reconstruction
 template. It is labelled transcript-reconstructed and remains pending
 revalidation; it is not the deleted original overlay or initialization script.
+The runner binds its candidate label to a clean current Git HEAD, records the
+runtime and test-source identities separately, cross-compiles Linux/amd64 with
+`CGO_ENABLED=0`, and supports a hash- and manifest-bound prebuilt Linux binary
+when a local Go 1.26.8 toolchain is unavailable.
 
 No production data, credentials, or application key is part of this recipe.
 Every attempt generates its own synthetic `APP_KEY`, administrator passwords,

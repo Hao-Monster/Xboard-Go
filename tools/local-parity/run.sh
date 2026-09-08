@@ -39,6 +39,20 @@ load_runtime() {
   export LOCAL_LEGACY_APP_KEY="$(<"$run_dir/local-legacy-app-key.txt")"
 }
 
+require_clean_head() {
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo 'refusing to build from a dirty tracked source tree; commit or discard tracked changes first' >&2
+    exit 2
+  fi
+  local head
+  head="$(git rev-parse HEAD)"
+  if [[ -n "${XBOARD_GO_REVISION:-}" && "$XBOARD_GO_REVISION" != "$head" ]]; then
+    echo 'XBOARD_GO_REVISION must equal the current clean HEAD; building arbitrary source under another revision label is forbidden' >&2
+    exit 2
+  fi
+  printf '%s' "$head"
+}
+
 prepare() {
   if [[ -e "$run_dir" || -e "$evidence_dir" ]]; then
     echo "refusing to reuse existing run path for $run_id" >&2
@@ -52,13 +66,14 @@ prepare() {
   printf '%s@parity.test' "legacy-admin-$(openssl rand -hex 8)" >"$run_dir/legacy-admin-email.txt"
   printf '%s' "$(openssl rand -hex 24)" >"$run_dir/legacy-admin-password.txt"
   printf '%s' 'e2e-admin-secure' >"$run_dir/legacy-admin-path.txt"
-  chmod 600 "$run_dir"/*.txt
+  # Docker Compose exposes these two file secrets as root-owned read-only files
+  # in a process running as UID 65532. Keep the parent private and make only
+  # these required files readable; do not relax the other generated secrets.
+  chmod 444 "$run_dir/bootstrap-password.txt" "$run_dir/settings-encryption-key.txt"
+  chmod 600 "$run_dir/local-legacy-app-key.txt" "$run_dir/legacy-admin-email.txt" "$run_dir/legacy-admin-password.txt" "$run_dir/legacy-admin-path.txt"
 
-  local revision="${XBOARD_GO_REVISION:-$(git rev-parse HEAD)}"
-  if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
-    echo 'XBOARD_GO_REVISION must be an exact lowercase Git SHA' >&2
-    exit 2
-  fi
+  local revision
+  revision="$(require_clean_head)"
   cat >"$runtime_env" <<EOF
 export COMPOSE_PROJECT_NAME='$project'
 export XBOARD_GO_IMAGE='$candidate_image'
@@ -78,15 +93,49 @@ export XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL='http://captcha-stub:4199/turnstile'
 export XBOARD_LEGACY_IMAGE='${XBOARD_LEGACY_IMAGE:-xboard-legacy-parity:8065164}'
 EOF
   chmod 600 "$runtime_env"
+  {
+    printf 'runtime_head=%s\n' "$revision"
+    printf 'tracked_status=%s\n' "$(git status --porcelain --untracked-files=no)"
+    if [[ -f web/parity/user-generation-persistence.spec.ts ]]; then
+      printf 'user_parity_source_sha256=%s\n' "$(sha256sum web/parity/user-generation-persistence.spec.ts | awk '{print $1}')"
+    else
+      printf 'user_parity_source_sha256=MISSING\n'
+    fi
+  } >"$evidence_dir/source-identity.txt"
   load_runtime
   "${compose[@]}" config --quiet
   echo "prepared $run_id; Compose is syntactically valid and no containers were started"
 }
 
 build_candidate() {
-  local revision="${XBOARD_GO_REVISION#refs/heads/}"
-  test "$(go env GOVERSION)" = 'go1.26.8'
-  go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${revision}" -o "$run_dir/image-context/xboard" ./cmd/xboard
+  local revision
+  revision="$(require_clean_head)"
+  if [[ "$revision" != "$XBOARD_GO_REVISION" ]]; then
+    echo 'runtime source HEAD changed after prepare; start a new run' >&2
+    exit 2
+  fi
+  if [[ -n "${LOCAL_PARITY_PREBUILT_XBOARD:-}" ]]; then
+    if [[ ! -f "$LOCAL_PARITY_PREBUILT_XBOARD" || -z "${LOCAL_PARITY_PREBUILT_XBOARD_SHA256:-}" || -z "${LOCAL_PARITY_PREBUILT_XBOARD_SOURCE:-}" ]]; then
+      echo 'prebuilt candidate requires LOCAL_PARITY_PREBUILT_XBOARD, its SHA-256, and a source-manifest reference' >&2
+      exit 2
+    fi
+    local actual_sha
+    actual_sha="$(sha256sum "$LOCAL_PARITY_PREBUILT_XBOARD" | awk '{print $1}')"
+    if [[ "$actual_sha" != "$LOCAL_PARITY_PREBUILT_XBOARD_SHA256" ]]; then
+      echo 'prebuilt candidate SHA-256 did not match LOCAL_PARITY_PREBUILT_XBOARD_SHA256' >&2
+      exit 2
+    fi
+    cp "$LOCAL_PARITY_PREBUILT_XBOARD" "$run_dir/image-context/xboard"
+    printf 'prebuilt_xboard_sha256=%s\nprebuilt_xboard_source=%s\n' "$actual_sha" "$LOCAL_PARITY_PREBUILT_XBOARD_SOURCE" >>"$evidence_dir/source-identity.txt"
+  else
+    test "$(go env GOVERSION)" = 'go1.26.8'
+    {
+      go version
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${revision}" -o "$run_dir/image-context/xboard" ./cmd/xboard
+      go version -m "$run_dir/image-context/xboard"
+      sha256sum "$run_dir/image-context/xboard"
+    } >>"$evidence_dir/source-identity.txt"
+  fi
   pnpm --dir web build
   cp -a web/dist "$run_dir/image-context/web-dist"
   docker build --file tools/local-parity/Dockerfile.candidate --build-arg "APP_REVISION=$revision" --tag "$XBOARD_GO_IMAGE" "$run_dir/image-context"

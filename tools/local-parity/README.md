@@ -24,6 +24,29 @@ to loopback. `cleanup` destroys only that run's Compose resources, candidate
 image, and generated `.local` directory; it retains deidentified logs in
 `output/local-parity-<run-id>/`.
 
+The source tree must have no tracked modifications. `prepare` records its exact
+HEAD and the user-parity test-file SHA-256; `start` rejects a different runtime
+HEAD, so an arbitrary revision label cannot be attached to dirty source. The
+candidate binary is built with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64`, and its
+Go version/build metadata are retained in the run evidence.
+
+This workstation's WSL environment may not have Go 1.26.8. Do not download a
+replacement automatically. Instead either run with an already verified Go
+1.26.8 toolchain, or supply a precompiled Linux binary together with its hash
+and immutable source-manifest reference:
+
+```bash
+export LOCAL_PARITY_PREBUILT_XBOARD=/absolute/path/to/xboard-linux-amd64
+export LOCAL_PARITY_PREBUILT_XBOARD_SHA256=<lowercase-sha256>
+export LOCAL_PARITY_PREBUILT_XBOARD_SOURCE=<manifest-or-artifact-reference>
+```
+
+Set a distinct `LOCAL_PARITY_RUN_ID` and loopback ports before `prepare` when
+another executor is active. For example, one executor may use 18780–18782 and
+another 18880–18882; candidate image tags are derived from the run ID. Do not
+rebuild or retag the shared `xboard-go:local` base image while another local
+run uses it.
+
 The overlay sends the local Oracle to an internal Redis service called
 `legacy-redis` and uses `redis-server --dir /tmp --save "" --appendonly no`.
 This avoids the prior `/data` tmpfs-permission failure. The Oracle schema is
