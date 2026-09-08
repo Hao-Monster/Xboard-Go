@@ -69,7 +69,7 @@ test("[DIFF-USER-005] legacy and Go user generation is readable from independent
     });
     expectGoStatus(goGenerated, 201, "Go user generation");
     const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
-    expect(generatedItems).toHaveLength(1);
+    expect(generatedItems.length, "Go generated item count").toBe(1);
     const generated = readRecord(generatedItems[0]);
     goUserID = readNumber(generated, "id");
     await loginGoAdministrator(goReadPage);
@@ -180,7 +180,7 @@ test("[DIFF-USER-006] legacy and Go banned updates are readable from independent
     });
     expectGoStatus(goGenerated, 201, "Go user generation for update");
     const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
-    expect(generatedItems).toHaveLength(1);
+    expect(generatedItems.length, "Go generated item count").toBe(1);
     goUserID = readNumber(readRecord(generatedItems[0]), "id");
     await loginGoAdministrator(goReadPage);
     goUser = await getGoUser(goReadPage, goUserID);
@@ -225,7 +225,7 @@ test("[DIFF-USER-006] legacy and Go banned updates are readable from independent
   }
 });
 
-test("[DIFF-USER-007] legacy and Go banned login gates only block new sessions until unbanned", async ({ browser }) => {
+test("[DIFF-USER-007] legacy and Go fresh-session login is rejected while banned and restored after unban", async ({ browser }) => {
   test.setTimeout(90_000);
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
@@ -286,7 +286,7 @@ test("[DIFF-USER-007] legacy and Go banned login gates only block new sessions u
     });
     expectGoStatus(goGenerated, 201, "Go user generation for banned login gate");
     const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
-    expect(generatedItems).toHaveLength(1);
+    expect(generatedItems.length, "Go generated item count").toBe(1);
     goUserID = readNumber(readRecord(generatedItems[0]), "id");
     await loginGoAdministrator(goReadPage);
     goUser = await getGoUser(goReadPage, goUserID);
@@ -311,9 +311,8 @@ test("[DIFF-USER-007] legacy and Go banned login gates only block new sessions u
 
     const legacyBannedLogin = await loginUserResponse(legacyBannedLoginContext.request, legacyURL, legacyUserEmail, password);
     const goBannedLogin = await loginUserResponse(goBannedLoginContext.request, goURL, goUserEmail, password);
-    expectUserLoginRejected(legacyBannedLogin, "legacy banned user login");
-    expectUserLoginRejected(goBannedLogin, "Go banned user login");
-    expect(readString(readObject(readJSON(goBannedLogin.body), "error"), "code")).toBe("invalid_credentials");
+    expectLegacyBannedLoginRejected(legacyBannedLogin);
+    expectGoBannedLoginRejected(goBannedLogin);
 
     const legacyRestored = await legacyPage.request.post(legacyAdminAPI("/user/update"), {
       headers: { authorization: legacyAuthorization },
@@ -479,8 +478,29 @@ function expectUserLoginAccepted(response: { status: number; body: string }, lab
   expect(response.status, safeResponseMessage(label, response.status, response.body)).toBe(200);
 }
 
-function expectUserLoginRejected(response: { status: number; body: string }, label: string): void {
-  expect(response.status, safeResponseMessage(label, response.status, response.body)).not.toBe(200);
+function expectLegacyBannedLoginRejected(response: { status: number; body: string }): void {
+  expect(response.status, safeResponseMessage("legacy banned user login", response.status, response.body)).toBe(400);
+  const body = readJSON(response.body);
+  expect(readString(body, "status")).toBe("fail");
+  expect(readString(body, "message")).toBe("该账户已被停止使用");
+  expect(readRequired(body, "data")).toBeNull();
+  expect(readRequired(body, "error")).toBeNull();
+  expectNoAuthData(body);
+}
+
+function expectGoBannedLoginRejected(response: { status: number; body: string }): void {
+  expect(response.status, safeResponseMessage("Go banned user login", response.status, response.body)).toBe(401);
+  const body = readJSON(response.body);
+  expect(readString(body, "status")).toBe("fail");
+  expect(readString(body, "message")).toBe("邮箱或密码错误");
+  const error = readObject(body, "error");
+  expect(readString(error, "code")).toBe("invalid_credentials");
+  expect(readString(error, "message")).toBe("邮箱或密码错误");
+  expectNoAuthData(body);
+}
+
+function expectNoAuthData(body: Record<string, unknown>): void {
+  expect(JSON.stringify(body).includes("auth_data")).toBe(false);
 }
 
 async function goAdminRequest(page: Page, path: string, method: string, body?: unknown): Promise<{ status: number; body: string }> {
