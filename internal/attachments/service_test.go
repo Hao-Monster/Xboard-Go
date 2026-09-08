@@ -137,6 +137,30 @@ func TestListDraftKnowledgeAttachmentsUsesDraftScopeWithoutArticleID(t *testing.
 	}
 }
 
+func TestAttachmentDraftOwnershipAndPublicBindingAreEnforced(t *testing.T) {
+	service, database, adminID, now := newAttachmentTestService(t, 32)
+	draftToken := testDraftToken("e")
+	attachment := uploadTestAttachment(t, service, adminID, draftToken, "private.txt", []byte("private"), now)
+
+	other, err := database.CreateAdminUser(context.Background(), store.CreateAdminUserInput{
+		Email: "other-attachment-owner@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page, err := service.List(context.Background(), other.ID, nil, draftToken, 1, 100); err != nil {
+		t.Fatalf("List(other owner) error = %v", err)
+	} else if page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("List(other owner) exposed draft attachment: %#v", page)
+	}
+	if err := service.DropDraft(context.Background(), other.ID, attachment.UUID, draftToken); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DropDraft(other owner) error = %v, want ErrNotFound", err)
+	}
+	if _, _, err := service.OpenPublic(context.Background(), attachment.UUID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("OpenPublic(unbound draft) error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestConcurrentQuotaReservationsAndCompletionAreSerialized(t *testing.T) {
 	service, _, adminID, now := newAttachmentTestService(t, 8)
 	var wait sync.WaitGroup
