@@ -684,7 +684,13 @@ func removeSchemaV34ForMigrationTest(t *testing.T, database *Store) {
 func removeSchemaV39ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	removeSchemaV40ForMigrationTest(t, database)
+	// These later user triggers reference identity/money columns and mail
+	// tables removed by older fixtures. They did not exist in those versions;
+	// Migrate must recreate and validate them after the historical upgrade.
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER IF EXISTS users_lifecycle_identity_guard;
+		DROP TRIGGER IF EXISTS users_money_admin_revision;
+		DROP TRIGGER IF EXISTS users_registration_mail_owner;
 		DROP TABLE IF EXISTS admin_user_bulk_targets;
 		DROP TABLE IF EXISTS admin_user_bulk_jobs;
 	`); err != nil {
