@@ -22,8 +22,11 @@ interface DistributorOrderSnapshot {
   };
 }
 
+test.use({ trace: "off", screenshot: "off", video: "off" });
+
 test("repeat purchase creates a second independent distributor subscription without overwriting the first", async ({ page }) => {
   test.setTimeout(90_000);
+  const expectedTransferEnable = 100 * 1024 ** 3;
   const unique = `${Date.now()}-${test.info().project.name}`;
   const distributorEmail = `repeat-distributor-${unique}@example.test`;
   const distributorPassword = "repeat-distributor-password-123";
@@ -71,9 +74,12 @@ test("repeat purchase creates a second independent distributor subscription with
   expect(second.planID).toBe(firstAfterRepeat.planID);
   expect(second.period).toBe(firstAfterRepeat.period);
   expect(second.entitlement.planID).toBe(firstAfterRepeat.entitlement.planID);
-  expect(second.entitlement.transferEnable).toBe(firstAfterRepeat.entitlement.transferEnable);
+  expect(firstAfterRepeat.entitlement.transferEnable).toBe(expectedTransferEnable);
+  expect(firstAfterRepeat.entitlement.usedTraffic).toBe(0);
+  expect(firstAfterRepeat.entitlement.remainingTraffic).toBe(expectedTransferEnable);
+  expect(second.entitlement.transferEnable).toBe(expectedTransferEnable);
   expect(second.entitlement.usedTraffic).toBe(0);
-  expect(second.entitlement.remainingTraffic).toBe(second.entitlement.transferEnable);
+  expect(second.entitlement.remainingTraffic).toBe(expectedTransferEnable);
   expect(second.entitlement.expiredAt).not.toBeNull();
   expect(second.entitlement.speedLimit).toBe(firstAfterRepeat.entitlement.speedLimit);
   expect(second.entitlement.deviceLimit).toBe(firstAfterRepeat.entitlement.deviceLimit);
