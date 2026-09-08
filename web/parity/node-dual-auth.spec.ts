@@ -360,7 +360,7 @@ function probeWebSocket(baseURL: string, query: Record<string, number>, credenti
         `Authorization: Bearer ${credential}`, "", ""
       ].join("\r\n"));
     });
-    socket.on("data", (chunk) => {
+    socket.on("data", (chunk: Buffer | string) => {
       const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
       response = Buffer.concat([response, data]);
       if (!upgraded) {

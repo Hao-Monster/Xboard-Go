@@ -949,6 +949,10 @@ export interface ClientCatalogQR {
 }
 
 export interface AdminUser {
+	lifecycle_status?: "active" | "deactivated" | "anonymized";
+	deactivated_at?: string | null;
+	restore_until?: string | null;
+	anonymized_at?: string | null;
   id: number;
   email: string;
   is_admin: boolean;
@@ -1117,7 +1121,21 @@ export interface TicketMessage {
   updated_at: string;
 }
 
+export interface CommissionWithdrawal {
+  id: number;
+  user_id: number;
+  ticket_id: number;
+  amount: number;
+  status: "pending" | "approved" | "paid" | "rejected";
+  method: string;
+  account: string;
+  payment_reference: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Ticket {
+  withdrawal?: CommissionWithdrawal;
   id: number;
   user_id: number;
   user_email?: string;
@@ -1785,6 +1803,9 @@ export interface AdminAPI {
   updateRoutingRule: (id: number, input: RoutingRuleInput) => Promise<RoutingRule>;
   deleteRoutingRule: (id: number) => Promise<void>;
   listAdminUsers: (query?: AdminUserQuery) => Promise<AdminUserPage>;
+  deactivateAdminUser?: (id: number, revision: number) => Promise<AdminUser>;
+  restoreAdminUser?: (id: number, revision: number) => Promise<AdminUser>;
+  anonymizeAdminUser?: (id: number, revision: number) => Promise<AdminUser>;
   getAdminUser: (id: number) => Promise<AdminUser>;
   createAdminUser: (input: AdminUserCreateInput) => Promise<AdminUser>;
   generateAdminUsers: (input: AdminUserGenerateInput) => Promise<AdminUserGenerationResult>;
@@ -1990,10 +2011,26 @@ export class APIClient implements AdminAPI {
     return this.request<CommissionTransferResult>("/api/v1/invitations/transfer", { method: "POST", body: { amount } });
   }
 
-  async requestCommissionWithdrawal(withdrawMethod: string, withdrawAccount: string): Promise<Ticket> {
+  async requestCommissionWithdrawal(withdrawMethod: string, withdrawAccount: string, requestKey?: string): Promise<Ticket> {
     return this.request<Ticket>("/api/v1/tickets/withdraw", {
-      method: "POST", body: { withdraw_method: withdrawMethod, withdraw_account: withdrawAccount }
+      method: "POST", body: { withdraw_method: withdrawMethod, withdraw_account: withdrawAccount, ...(requestKey ? { request_key: requestKey } : {}) }
     });
+  }
+
+  async transitionCommissionWithdrawal(id: number, status: "approved" | "paid" | "rejected", paymentReference = ""): Promise<Ticket> {
+    return this.request<Ticket>(`/api/v1/admin/tickets/${id}/withdrawal`, { method: "POST", body: { status, payment_reference: paymentReference } });
+  }
+
+  async deactivateAdminUser(id: number, revision: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/deactivate`, { method: "POST", body: { revision } });
+  }
+
+  async restoreAdminUser(id: number, revision: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/restore`, { method: "POST", body: { revision } });
+  }
+
+  async anonymizeAdminUser(id: number, revision: number): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/v1/admin/users/${id}/anonymize`, { method: "POST", body: { revision } });
   }
 
   async recordInvitationView(invitationCode: string): Promise<void> {

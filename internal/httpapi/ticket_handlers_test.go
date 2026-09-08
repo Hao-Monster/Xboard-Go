@@ -90,7 +90,7 @@ func TestTicketHTTPWorkflowEnforcesOwnershipAndLegacyClosedReplyRules(t *testing
 	}
 }
 
-func TestCommissionWithdrawalCreatesHighPriorityTicketWithoutDebitingBalance(t *testing.T) {
+func TestCommissionWithdrawalHTTPFreezesApprovesPaysAndRejectsWithAuthorization(t *testing.T) {
 	api, database := newTestAPI(t)
 	createHTTPTestUser(t, database, "withdraw-user@example.test", "withdraw-user-password-123")
 	userRecord, err := database.FindUserByEmail(t.Context(), "withdraw-user@example.test")
@@ -158,14 +158,46 @@ func TestCommissionWithdrawalCreatesHighPriorityTicketWithoutDebitingBalance(t *
 		t.Fatalf("withdrawal messages=%#v", detail.Messages)
 	}
 	after, err := database.GetAdminUser(t.Context(), user.ID)
-	if err != nil || after.CommissionBalance != balance {
+	if err != nil || after.CommissionBalance != 0 {
 		t.Fatalf("commission balance=%d err=%v", after.CommissionBalance, err)
 	}
+	if detail.Withdrawal == nil || detail.Withdrawal.Amount != balance || detail.Withdrawal.Status != "pending" {
+		t.Fatalf("withdrawal ledger missing: %#v", detail.Withdrawal)
+	}
+	for range 2 {
+		replay := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/withdraw", `{"withdraw_method":"USDT","withdraw_account":"wallet-42"}`)
+		if replay.Code != http.StatusCreated || decodeTicketEnvelope(t, replay).ID != created.ID {
+			t.Fatalf("legacy-shaped replay status=%d body=%s", replay.Code, replay.Body)
+		}
+	}
 	duplicate := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/withdraw", `{"withdraw_method":"USDT","withdraw_account":"wallet-43"}`)
-	expectAPIError(t, duplicate, http.StatusConflict, "open_ticket_exists")
+	expectAPIError(t, duplicate, http.StatusConflict, "withdrawal_request_conflict")
+	transitionPath := "/api/v1/admin/admin/tickets/" + ticketID(created.ID) + "/withdrawal"
+	forbidden := userClient.request(t, api, http.MethodPost, transitionPath, `{"status":"approved"}`)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("user approved own withdrawal: %d %s", forbidden.Code, forbidden.Body)
+	}
+	adminClient := loginAdmin(t, api)
+	adminWithoutCSRF := adminClient
+	adminWithoutCSRF.csrf = ""
+	if response := adminWithoutCSRF.request(t, api, http.MethodPost, transitionPath, `{"status":"approved"}`); response.Code != http.StatusForbidden {
+		t.Fatalf("approval accepted without CSRF: %d %s", response.Code, response.Body)
+	}
+	premature := adminClient.request(t, api, http.MethodPost, transitionPath, `{"status":"paid","payment_reference":"receipt-1"}`)
+	expectAPIError(t, premature, http.StatusConflict, "withdrawal_state_conflict")
 	closed := userClient.request(t, api, http.MethodPost, "/api/v1/tickets/"+ticketID(created.ID)+"/close", `{}`)
 	if closed.Code != http.StatusOK {
 		t.Fatalf("close withdrawal ticket status=%d body=%s", closed.Code, closed.Body)
+	}
+	for range 2 {
+		rejected := adminClient.request(t, api, http.MethodPost, transitionPath, `{"status":"rejected"}`)
+		if rejected.Code != http.StatusOK || decodeTicketEnvelope(t, rejected).Withdrawal.Status != "rejected" {
+			t.Fatalf("rejection status=%d body=%s", rejected.Code, rejected.Body)
+		}
+	}
+	after, err = database.GetAdminUser(t.Context(), user.ID)
+	if err != nil || after.CommissionBalance != balance {
+		t.Fatalf("refund balance=%d err=%v", after.CommissionBalance, err)
 	}
 	withoutBearer := bearerRequest(api, http.MethodPost, "/api/v1/user/ticket/withdraw", "", `{"withdraw_method":"USDT","withdraw_account":"legacy-wallet"}`)
 	if withoutBearer.Code != http.StatusForbidden {
@@ -175,6 +207,27 @@ func TestCommissionWithdrawalCreatesHighPriorityTicketWithoutDebitingBalance(t *
 	legacy := bearerRequest(api, http.MethodPost, "/api/v1/user/ticket/withdraw", authorization, `{"withdraw_method":"银行转账","withdraw_account":"legacy-account"}`)
 	if legacy.Code != http.StatusOK || !containsAll(legacy.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("legacy withdrawal status=%d body=%s", legacy.Code, legacy.Body)
+	}
+	page, err := database.ListUserTickets(t.Context(), user.ID, 1, 20)
+	if err != nil || page.Total != 2 {
+		t.Fatalf("legacy ledger tickets=%#v err=%v", page, err)
+	}
+	legacyTicket, err := database.GetUserTicket(t.Context(), user.ID, page.Items[0].ID)
+	if err != nil || legacyTicket.Withdrawal == nil || legacyTicket.Withdrawal.Status != "pending" {
+		t.Fatalf("legacy request did not freeze funds=%#v err=%v", legacyTicket, err)
+	}
+	transitionPath = "/api/v1/admin/admin/tickets/" + ticketID(legacyTicket.ID) + "/withdrawal"
+	approved := adminClient.request(t, api, http.MethodPost, transitionPath, `{"status":"approved"}`)
+	if approved.Code != http.StatusOK || decodeTicketEnvelope(t, approved).Withdrawal.Status != "approved" {
+		t.Fatalf("approval status=%d body=%s", approved.Code, approved.Body)
+	}
+	missingReceipt := adminClient.request(t, api, http.MethodPost, transitionPath, `{"status":"paid"}`)
+	expectAPIError(t, missingReceipt, http.StatusUnprocessableEntity, "validation_failed")
+	for range 2 {
+		paid := adminClient.request(t, api, http.MethodPost, transitionPath, `{"status":"paid","payment_reference":"offline-receipt-42"}`)
+		if paid.Code != http.StatusOK || decodeTicketEnvelope(t, paid).Withdrawal.Status != "paid" {
+			t.Fatalf("payment status=%d body=%s", paid.Code, paid.Body)
+		}
 	}
 }
 

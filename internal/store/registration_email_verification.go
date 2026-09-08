@@ -119,9 +119,9 @@ func (s *Store) RequestRegistrationEmailVerification(ctx context.Context, input 
 	if queued {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO registration_email_mail_outbox (
-				email_digest, recipient, code_cipher, app_name, app_url,
+				email_digest, recipient, code_cipher, app_name, app_url, owner_pending,
 				available_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
 		`, input.EmailDigest, input.Email, input.CodeCipher, appName, appURL,
 			now.Unix(), now.Unix(), now.Unix()); err != nil {
 			return false, fmt.Errorf("enqueue registration verification mail: %w", err)

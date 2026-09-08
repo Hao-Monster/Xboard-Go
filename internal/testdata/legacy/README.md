@@ -8,6 +8,7 @@ for MIG-001 migration verification.
 **NO REAL DATA.** All data in this directory and its subdirectories is
 synthetically generated using a fixed random seed. It does not contain
 and must never contain:
+
 - Real user email addresses, passwords, or tokens
 - Production database files or dumps
 - Any personally identifiable information (PII)
@@ -16,24 +17,29 @@ and must never contain:
 
 ```bash
 # Generate the legacy test dataset
-go run ./cmd/testdatagen --output ./internal/testdata/legacy/dataset_v1/
+go run ./cmd/testdatagen --output ./.local/legacy-dataset-v2/
 
 # Run the generator tests
 go test ./internal/testdata/legacy/gen/...
+
+# Exercise all 17 CLI migration steps, reconciliation and backup restoration
+go test ./internal/testdata/legacy/drill -count=1 -v
 ```
 
-## D-013 Exclusion
+## D-013 Metadata and Statistics
 
-Until D-013 (statistics/log migration window) is decided by the integrator,
-the following legacy tables are **excluded** from the generated dataset:
-- `stat_server`
-- `failed_jobs`
-- Any `stats_*` tables
+The confirmed policy retains only the last 90 days of allowlisted log metadata
+and rebuilds statistics from business facts. The fixture includes commissions,
+an internal distributor subscriber, node traffic, log retention boundaries and
+a synthetic failed-job sentinel that must never be imported or executed.
+The drill checks the original SQL counts, both retention boundaries, replay
+with the original `as-of` time, prerequisite order and restored database state.
 
 ## Determinism
 
-The generator uses seed `20260903`. The same seed always produces the same
-database SHA-256. If you change the seed or schema, update `dataset_sha256.txt`.
+The generator uses seed `20260903` and a fixed clock. The current `dataset_v2`
+SHA-256 is pinned in `gen/generator_test.go`; update it only after reviewing an
+intentional fixture change. Same-code repeat generation must be identical.
 
 ## Directory Structure
 
@@ -41,10 +47,8 @@ database SHA-256. If you change the seed or schema, update `dataset_sha256.txt`.
 gen/
   generator.go       # Dataset builder (no real data)
   generator_test.go  # Determinism and PII absence tests
-  seed.go            # (reserved) Seed constants
-  domains/           # Per-domain row builders (to be implemented)
-dataset_v1/          # Generated output (git-ignored, .gitignore excludes *.db)
-  legacy.db          # Generated legacy SQLite (git-ignored)
-  manifest.json      # Row counts and SHA-256 (committed after review)
-  dataset_sha256.txt # Pinned SHA-256 for CI verification
+  domains.go         # Fixed domain row builders
+  schema.go          # Legacy table shapes
+drill/
+  drill_integration_test.go # Real CLI migration, reconciliation and rollback
 ```

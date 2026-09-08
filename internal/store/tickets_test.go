@@ -129,7 +129,7 @@ func TestOnlyOneOpenTicketCanBeCreatedConcurrently(t *testing.T) {
 	}
 }
 
-func TestCommissionWithdrawalEnforcesPolicyAtomicallyAndPreservesBalance(t *testing.T) {
+func TestCommissionWithdrawalEnforcesPolicyAtomicallyAndFreezesBalance(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
@@ -171,11 +171,11 @@ func TestCommissionWithdrawalEnforcesPolicyAtomicallyAndPreservesBalance(t *test
 		t.Fatalf("withdrawal detail=%#v error=%v", detail, err)
 	}
 	var balance int64
-	if err := database.db.QueryRowContext(ctx, `SELECT commission_balance FROM users WHERE id = ?`, user.ID).Scan(&balance); err != nil || balance != 10000 {
+	if err := database.db.QueryRowContext(ctx, `SELECT commission_balance FROM users WHERE id = ?`, user.ID).Scan(&balance); err != nil || balance != 0 {
 		t.Fatalf("commission balance=%d error=%v", balance, err)
 	}
-	if _, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now); !errors.Is(err, ErrOpenTicketExists) {
-		t.Fatalf("duplicate withdrawal error=%v", err)
+	if duplicate, err := database.CreateCommissionWithdrawalTicket(ctx, user.ID, input, now); err != nil || duplicate.ID != ticket.ID {
+		t.Fatalf("duplicate withdrawal=%#v error=%v", duplicate, err)
 	}
 	if _, err := database.CloseTicketAsUser(ctx, user.ID, ticket.ID, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)

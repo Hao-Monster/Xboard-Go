@@ -43,6 +43,9 @@ jobs:
     env:
       COREPACK_ENABLE_NETWORK: "0"
       GOTOOLCHAIN: local
+      # The isolated server cannot reach proxy.golang.org reliably. Downloads
+      # still use go.sum and the standard checksum database for verification.
+      GOPROXY: https://goproxy.cn,direct
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test

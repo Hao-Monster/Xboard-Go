@@ -48,7 +48,7 @@ type Config struct {
 	Now time.Time
 }
 
-// DefaultConfig returns a Config with DefaultSeed and current time.
+// DefaultConfig returns a Config with DefaultSeed and a fixed reference time.
 func DefaultConfig(outputPath string) Config {
 	return Config{
 		Seed:       DefaultSeed,
@@ -113,14 +113,14 @@ func (g *Generator) Generate(ctx context.Context) (DatasetManifest, error) {
 	}
 
 	manifest := DatasetManifest{
-		Version:     "dataset_v1",
+		Version:     "dataset_v2",
 		GeneratedAt: g.cfg.Now,
 		Seed:        g.cfg.Seed,
 		DatabaseSHA: sha,
 		DomainRows:  g.rows,
 		Notes: []string{
 			"All data is synthetically generated. No real users, emails, passwords, or tokens.",
-			"D-013 data (stats, failed_jobs, stat_server rows) is excluded pending decision; the required v2_stat_server schema is empty.",
+			"D-013 includes fixed-window log metadata, one internal subscriber, commission and traffic facts; synthetic raw payloads and legacy aggregate sentinels must never be imported.",
 		},
 	}
 	completed = true

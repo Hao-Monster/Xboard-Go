@@ -3,12 +3,14 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { AdminTicketQuery, Ticket, TicketLevel, TicketPage, TicketReplyStatus, TicketSettings, TicketSettingsInput, TicketStatus } from "../../lib/api";
 import { formatDate, levelLabel, TicketDetailDialog } from "./TicketDetailDialog";
 import { TicketSettingsDialog } from "./TicketSettingsDialog";
+import type { TransitionWithdrawal } from "./CommissionWithdrawalPanel";
 
 interface TicketManagementAPI {
   listAdminTickets: (query?: AdminTicketQuery) => Promise<TicketPage>;
   getAdminTicket: (id: number) => Promise<Ticket>;
   replyAdminTicket: (id: number, message: string) => Promise<Ticket>;
   closeAdminTicket: (id: number) => Promise<Ticket>;
+  transitionCommissionWithdrawal: TransitionWithdrawal;
   getTicketSettings: () => Promise<TicketSettings>;
   updateTicketSettings: (input: TicketSettingsInput) => Promise<TicketSettings>;
 }
@@ -27,6 +29,7 @@ export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketMa
   const getTicket = useCallback((id: number) => api.getAdminTicket(id), [api]);
   const replyTicket = useCallback((id: number, message: string) => api.replyAdminTicket(id, message), [api]);
   const closeTicket = useCallback((id: number) => api.closeAdminTicket(id), [api]);
+  const transitionWithdrawal: TransitionWithdrawal = useCallback((id, nextStatus, reference) => api.transitionCommissionWithdrawal(id, nextStatus, reference), [api]);
 
   const load = useCallback(async (next: AdminTicketQuery) => {
     setLoading(true);
@@ -107,7 +110,7 @@ export function TicketManagementPage({ api, initialStatus = 0 }: { api: TicketMa
         </tr>)}</tbody></table>
       {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>上一页</button><span>第 {page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>下一页</button></div>}
     </div>}
-    {selected !== null && <TicketDetailDialog ticketID={selected} administrator load={getTicket} reply={replyTicket} close={closeTicket} onUpdated={replace} onClose={() => setSelected(null)} />}
+    {selected !== null && <TicketDetailDialog ticketID={selected} administrator load={getTicket} reply={replyTicket} close={closeTicket} transitionWithdrawal={transitionWithdrawal} onUpdated={replace} onClose={() => setSelected(null)} />}
     {settingsOpen && <TicketSettingsDialog api={api} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

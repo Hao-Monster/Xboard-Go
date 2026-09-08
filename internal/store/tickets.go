@@ -51,7 +51,7 @@ func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int
 	input.Account = strings.TrimSpace(input.Account)
 	location, validLocation := normalizeTelegramNotificationLocation(input.NotificationLocation)
 	if userID < 1 || now.Unix() < 0 || !validWithdrawalField(input.Method, 64) ||
-		!validWithdrawalField(input.Account, maxWithdrawalAccountBytes) || !validLocation {
+		!validWithdrawalField(input.Account, maxWithdrawalAccountBytes) || !validLocation || !validWithdrawalRequestKey(input.RequestKey) {
 		return Ticket{}, fmt.Errorf("%w: invalid commission withdrawal", ErrInvalidInput)
 	}
 	input.NotificationLocation = location
@@ -69,7 +69,7 @@ func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int
 		SELECT u.commission_balance, s.commission_withdraw_limit,
 		       s.commission_withdraw_method, s.withdraw_close_enable
 		FROM users u CROSS JOIN app_settings s
-		WHERE u.id = ? AND u.account_kind = 'human' AND s.id = 1
+		WHERE u.id = ? AND u.account_kind = 'human' AND u.banned = 0 AND s.id = 1
 	`, userID).Scan(&balance, &limit, &methodsJSON, &disabled); errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, ErrNotFound
 	} else if err != nil {
@@ -77,6 +77,11 @@ func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int
 	}
 	if disabled {
 		return Ticket{}, ErrCommissionWithdrawalDisabled
+	}
+	if replay, err := findCommissionWithdrawalReplay(ctx, tx, userID, input); err != nil {
+		return Ticket{}, err
+	} else if replay != nil {
+		return *replay, nil
 	}
 	var methods []string
 	if err := json.Unmarshal([]byte(methodsJSON), &methods); err != nil {
@@ -95,8 +100,11 @@ func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int
 	if !supported {
 		return Ticket{}, ErrCommissionWithdrawalMethodUnsupported
 	}
-	if balance < int64(limit) {
+	if balance < int64(limit) || balance <= 0 {
 		return Ticket{}, CommissionWithdrawalLimitError{Limit: limit}
+	}
+	if balance > maxOrderMoneyCents {
+		return Ticket{}, ErrInvalidInput
 	}
 	ticket, err := createTicketTx(ctx, tx, userID, SaveTicketInput{
 		Subject:              commissionWithdrawalSubject,
@@ -105,6 +113,9 @@ func (s *Store) CreateCommissionWithdrawalTicket(ctx context.Context, userID int
 		NotificationLocation: input.NotificationLocation,
 	}, now)
 	if err != nil {
+		return Ticket{}, err
+	}
+	if err := freezeCommissionWithdrawalTx(ctx, tx, userID, input, &ticket, balance, now); err != nil {
 		return Ticket{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -247,6 +258,9 @@ func (s *Store) GetUserTicket(ctx context.Context, userID, ticketID int64) (Tick
 	if err := s.loadTicketMessages(ctx, &ticket, userID); err != nil {
 		return Ticket{}, err
 	}
+	if err := loadTicketWithdrawal(ctx, s.db, &ticket); err != nil {
+		return Ticket{}, err
+	}
 	return ticket, nil
 }
 
@@ -267,6 +281,9 @@ func (s *Store) GetAdminTicket(ctx context.Context, ticketID int64) (Ticket, err
 		return Ticket{}, err
 	}
 	if err := s.loadTicketMessages(ctx, &ticket, ticket.UserID); err != nil {
+		return Ticket{}, err
+	}
+	if err := loadTicketWithdrawal(ctx, s.db, &ticket); err != nil {
 		return Ticket{}, err
 	}
 	return ticket, nil
@@ -475,17 +492,27 @@ func (s *Store) loadTicketMessages(ctx context.Context, ticket *Ticket, viewerUs
 }
 
 func getTicketTx(ctx context.Context, tx *sql.Tx, ticketID int64, includeEmail bool) (Ticket, error) {
+	var ticket Ticket
+	var err error
 	if includeEmail {
-		return scanTicket(tx.QueryRowContext(ctx, `
+		ticket, err = scanTicket(tx.QueryRowContext(ctx, `
 			SELECT t.id, t.user_id, u.email, t.subject, t.level, t.status, t.reply_status,
 			       t.last_reply_user_id, t.created_at, t.updated_at
 			FROM tickets t JOIN users u ON u.id = t.user_id WHERE t.id = ?
 		`, ticketID))
-	}
-	return scanTicket(tx.QueryRowContext(ctx, `
+	} else {
+		ticket, err = scanTicket(tx.QueryRowContext(ctx, `
 		SELECT id, user_id, '', subject, level, status, reply_status, last_reply_user_id, created_at, updated_at
 		FROM tickets WHERE id = ?
 	`, ticketID))
+	}
+	if err != nil {
+		return Ticket{}, err
+	}
+	if err := loadTicketWithdrawal(ctx, tx, &ticket); err != nil {
+		return Ticket{}, err
+	}
+	return ticket, nil
 }
 
 func scanTickets(rows *sql.Rows) ([]Ticket, error) {

@@ -90,10 +90,10 @@ func (s *Store) RequestPasswordReset(ctx context.Context, input PasswordResetReq
 	if queued {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO password_reset_mail_outbox (
-				email_digest, recipient, code_cipher, app_name, app_url,
+				email_digest, recipient, code_cipher, app_name, app_url, user_id,
 				available_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, input.EmailDigest, input.Email, input.CodeCipher, appName, appURL, now.Unix(), now.Unix(), now.Unix()); err != nil {
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, input.EmailDigest, input.Email, input.CodeCipher, appName, appURL, userID.Int64, now.Unix(), now.Unix(), now.Unix()); err != nil {
 			return false, fmt.Errorf("enqueue password reset mail: %w", err)
 		}
 	}

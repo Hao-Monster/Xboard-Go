@@ -11,8 +11,8 @@ import (
 
 func TestTelegramCommandSchemaMigratesAndRejectsInvalidQueueRows(t *testing.T) {
 	database := newTestStore(t)
-	if CurrentSchemaVersion() != 60 {
-		t.Fatalf("CurrentSchemaVersion()=%d, want 60", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 63 {
+		t.Fatalf("CurrentSchemaVersion()=%d, want 63", CurrentSchemaVersion())
 	}
 	for _, name := range []string{
 		"telegram_message_outbox", "idx_telegram_message_outbox_due", "idx_telegram_message_outbox_failed",
@@ -64,7 +64,7 @@ func TestSchemaV56ReplacesUnversionedTelegramOutboxWithoutDeliveringForgedRows(t
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM telegram_message_outbox`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if version != 60 || rows != 0 {
+	if version != 63 || rows != 0 {
 		t.Fatalf("migration version=%d queue rows=%d", version, rows)
 	}
 }

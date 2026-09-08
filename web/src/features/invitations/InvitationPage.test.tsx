@@ -1,10 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InvitationPage } from "./InvitationPage";
 
 describe("InvitationPage", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("loads all five legacy statistics, commission history, transfers money, and generates a code", async () => {
     const initial = {
       codes: [], invited_count: 2, valid_commission: 12_345, pending_commission: 678, commission_rate: 20,
@@ -76,7 +77,8 @@ describe("InvitationPage", () => {
     expect(api.getInvitations).toHaveBeenCalledTimes(1);
   });
 
-  it("creates a withdrawal ticket with an allowlisted method and bounded account", async () => {
+  it.each([false, true])("creates a withdrawal ticket with a secure key (UUID API unavailable: %s)", async (uuidUnavailable) => {
+    if (uuidUnavailable) vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
     const summary = {
       codes: [], invited_count: 0, valid_commission: 10_000, pending_commission: 0, commission_rate: 10,
       commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 10_000,
@@ -96,8 +98,32 @@ describe("InvitationPage", () => {
     await user.type(screen.getByLabelText("提现账号"), " account-42 ");
     await user.click(screen.getByRole("button", { name: "佣金提现" }));
 
-    await waitFor(() => expect(api.requestCommissionWithdrawal).toHaveBeenCalledWith("银行转账", "account-42"));
+    await waitFor(() => expect(api.requestCommissionWithdrawal).toHaveBeenCalledWith("银行转账", "account-42", expect.any(String)));
     expect(await screen.findByRole("status")).toHaveTextContent("提现工单已创建");
     expect(screen.getByLabelText("提现账号")).toHaveValue("");
+  });
+
+  it("reuses the request key after an uncertain withdrawal result and refreshes frozen available funds", async () => {
+    const summary = {
+      codes: [], invited_count: 0, valid_commission: 10_000, pending_commission: 0, commission_rate: 10,
+      commission_distribution_enabled: false, commission_distribution_rates: [], available_commission: 10_000,
+      withdraw_enabled: true, withdraw_limit: 50.5, withdraw_methods: ["USDT"]
+    };
+    const api = {
+      getInvitations: vi.fn().mockResolvedValueOnce(summary).mockResolvedValue({ ...summary, available_commission: 0 }), createInvitation: vi.fn(),
+      listCommissionLogs: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 }),
+      transferCommission: vi.fn(), requestCommissionWithdrawal: vi.fn().mockRejectedValueOnce(new Error("网络中断")).mockResolvedValue({})
+    };
+    const user = userEvent.setup();
+    render(<InvitationPage api={api} />);
+    await screen.findByLabelText("提现账号");
+    await user.type(screen.getByLabelText("提现账号"), "wallet-42");
+    await user.click(screen.getByRole("button", { name: "佣金提现" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("网络中断");
+    const key = api.requestCommissionWithdrawal.mock.calls[0]?.[2];
+    expect(key).toMatch(/^[a-zA-Z0-9_-]{8,128}$/);
+    await user.click(screen.getByRole("button", { name: "佣金提现" }));
+    await waitFor(() => expect(api.requestCommissionWithdrawal).toHaveBeenLastCalledWith("USDT", "wallet-42", key));
+    expect(await screen.findByText("可用佣金: ¥0.00 · 佣金提现: ≥ ¥50.50", { exact: true })).toBeVisible();
   });
 });

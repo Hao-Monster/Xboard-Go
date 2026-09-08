@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const representativeLegacyData = `
@@ -110,6 +111,22 @@ INSERT INTO v2_server VALUES
 INSERT INTO v2_server_activation_schedule VALUES
     (111, 101, 'daily', 'Asia/Singapore', 28800, 72000, 0, 0, 'synthetic-schedule-revision',
      1700003600, 0, 1700000000, NULL, 1700000000, 1700000200);
+
+UPDATE v2_user SET is_distributor=1,distributor_name='Synthetic distributor' WHERE id=2;
+INSERT INTO v2_user (id,email,password,uuid,group_id,plan_id,transfer_enable,u,d,banned,expired_at,
+    speed_limit,device_limit,online_count,reset_count,token,created_at,updated_at)
+VALUES (100,'internal-subscriber@example.test','!internal:synthetic','33333333-3333-4333-8333-333333333333',
+    5,11,107374182400,0,0,0,1800000000,100,2,0,0,'33333333333333333333333333333333',1700000400,1700000600);
+INSERT INTO v2_order VALUES
+    (63,NULL,2,11,NULL,NULL,1,'monthly','2026090312000000000000063','distributor_auto',
+     999,NULL,0,0,0,0,'[]',3,0,0,NULL,1700000600,1700000400,1700000600,
+     121,1700000400,1800000000,NULL,NULL);
+INSERT INTO v2_distributor_order VALUES
+    (121,63,2,100,NULL,NULL,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+     0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1,1,1700000400,1700000600);
+INSERT INTO v2_commission_log VALUES
+    (131,1,2,'2026090312000000000000061',524,50,1700001000,1700001000);
+INSERT INTO v2_stat_server VALUES (141,101,'vless',5,7,'d',1699920000,1700000200,1700000200);
 `
 
 func (g *Generator) populateDomains(ctx context.Context, db *sql.DB) error {
@@ -132,6 +149,23 @@ func (g *Generator) populateDomains(ctx context.Context, db *sql.DB) error {
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, data); err != nil {
 		return err
+	}
+	cutoff := g.cfg.Now.Add(-90 * 24 * time.Hour).Unix()
+	// Keep each parameterized statement separate: SQLite resets anonymous
+	// placeholder indexes per statement in a multi-statement Exec.
+	for _, seed := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO failed_jobs VALUES (1,'SYNTHETIC_RAW_PHP_PAYLOAD','SYNTHETIC_RAW_EXCEPTION'); INSERT INTO v2_stat VALUES (1,1700000000,999999); INSERT INTO stats_daily VALUES (1,1700000000,999999);`, nil},
+		{`INSERT INTO v2_admin_audit_log VALUES (151,?,'post','SYNTHETIC_RAW_REQUEST')`, []any{cutoff}},
+		{`INSERT INTO v2_log VALUES (152,?,'GET','SYNTHETIC_RAW_OLD_REQUEST'),(153,?,'GET','SYNTHETIC_RAW_REQUEST')`, []any{cutoff - 1, g.cfg.Now.Unix()}},
+		{`INSERT INTO v2_mail_log VALUES (154,?,'SYNTHETIC_RAW_RECIPIENT','SYNTHETIC_RAW_SUBJECT')`, []any{g.cfg.Now.Unix()}},
+		{`INSERT INTO v2_server_log VALUES (155,?,'SYNTHETIC_RAW_SERVER_LOG')`, []any{cutoff}},
+	} {
+		if _, err := tx.ExecContext(ctx, seed.query, seed.args...); err != nil {
+			return err
+		}
 	}
 	rows, err := countRepresentativeDomains(ctx, tx)
 	if err != nil {
@@ -166,11 +200,24 @@ func countRepresentativeDomains(ctx context.Context, tx *sql.Tx) (map[string]int
 		{"server_machine_load_history", "v2_server_machine_load_history"},
 		{"servers", "v2_server"},
 		{"server_activation_schedules", "v2_server_activation_schedule"},
+		{"users", "v2_user"},
+		{"distributor_subscriptions", "v2_distributor_order"},
+		{"commissions", "v2_commission_log"},
+		{"node_traffic_statistics", "v2_stat_server"},
+		{"admin_audit_metadata", "v2_admin_audit_log"},
+		{"request_metadata", "v2_log"},
+		{"mail_metadata", "v2_mail_log"},
+		{"server_metadata", "v2_server_log"},
+		{"excluded_failed_jobs", "failed_jobs"},
 	}
 	rows := make(map[string]int, len(domains))
 	for _, domain := range domains {
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM "`+domain.table+`"`).Scan(&count); err != nil {
+		query := `SELECT COUNT(*) FROM "` + domain.table + `"`
+		if domain.name == "human_users" {
+			query += ` WHERE NOT EXISTS (SELECT 1 FROM v2_distributor_order WHERE subscriber_user_id=v2_user.id)`
+		}
+		if err := tx.QueryRowContext(ctx, query).Scan(&count); err != nil {
 			return nil, fmt.Errorf("count representative domain %s: %w", domain.name, err)
 		}
 		rows[domain.name] = count
