@@ -25,8 +25,8 @@ fi
 run_dir=".local/local-parity-${run_id}"
 evidence_dir="output/local-parity-${run_id}"
 runtime_env="${run_dir}/runtime.env"
-project="xboard-user-parity-${run_id}"
-candidate_image="xboard-go:user-parity-${run_id}"
+readonly project="xboard-user-parity-${run_id}"
+readonly candidate_image="xboard-go:user-parity-${run_id}"
 if [[ -n "${LOCAL_PARITY_EXPECTED_PROJECT:-}" && "$LOCAL_PARITY_EXPECTED_PROJECT" != "$project" ]]; then
   echo 'LOCAL_PARITY_EXPECTED_PROJECT does not match the run ID-derived project' >&2
   exit 2
@@ -35,8 +35,14 @@ fi
 compose_files=(-f compose.local.yaml -f tools/local-parity/compose.user-parity.yaml)
 if [[ -n "${LOCAL_PARITY_COMPOSE_OVERLAY:-}" ]]; then
   overlay_rel="$LOCAL_PARITY_COMPOSE_OVERLAY"
-  if [[ "$overlay_rel" = /* || ! "$overlay_rel" =~ ^tools/local-parity/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
-    echo 'LOCAL_PARITY_COMPOSE_OVERLAY must name a YAML file directly under tools/local-parity' >&2
+  source_overlay_pattern='^tools/local-parity/[A-Za-z0-9._-]+\.ya?ml$'
+  prepared_overlay=".local/local-parity-${run_id}/compose.bingo-test.prepared.yaml"
+  if [[ "$overlay_rel" =~ $source_overlay_pattern ]]; then
+    expected_overlay_parent="$root_dir/tools/local-parity"
+  elif [[ "$overlay_rel" == "$prepared_overlay" ]]; then
+    expected_overlay_parent="$root_dir/$run_dir"
+  else
+    echo 'LOCAL_PARITY_COMPOSE_OVERLAY must be a reviewed source overlay or this run ID prepared snapshot' >&2
     exit 2
   fi
   overlay_path="$root_dir/$overlay_rel"
@@ -45,8 +51,8 @@ if [[ -n "${LOCAL_PARITY_COMPOSE_OVERLAY:-}" ]]; then
     exit 2
   fi
   overlay_real="$(realpath -e -- "$overlay_path")"
-  if [[ "$(dirname -- "$overlay_real")" != "$root_dir/tools/local-parity" ]]; then
-    echo 'LOCAL_PARITY_COMPOSE_OVERLAY resolved outside tools/local-parity' >&2
+  if [[ "$(dirname -- "$overlay_real")" != "$expected_overlay_parent" ]]; then
+    echo 'LOCAL_PARITY_COMPOSE_OVERLAY resolved outside its permitted directory' >&2
     exit 2
   fi
   compose_files+=(-f "$overlay_real")
@@ -70,6 +76,10 @@ load_runtime() {
   # It never stores a secret value.
   # shellcheck disable=SC1090
   source "$runtime_env"
+  if [[ "${COMPOSE_PROJECT_NAME:-}" != "$project" || "${XBOARD_GO_IMAGE:-}" != "$candidate_image" ]]; then
+    echo 'runtime project or candidate image does not match the run ID-derived identity' >&2
+    exit 2
+  fi
   export LOCAL_PARITY_RUN_DIR="$run_dir"
   export LOCAL_LEGACY_APP_KEY="$(<"$run_dir/local-legacy-app-key.txt")"
 }
