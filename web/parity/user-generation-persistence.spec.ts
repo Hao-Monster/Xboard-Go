@@ -11,14 +11,18 @@ const goPassword = requiredEnv("XBOARD_GO_ADMIN_PASSWORD");
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
-test("[DIFF-USER-005] legacy and Go user generation persists equivalent administrator-readable fields", async ({ browser }) => {
+test("[DIFF-USER-005] legacy and Go user generation is readable from independent admin sessions", async ({ browser }) => {
   test.setTimeout(90_000);
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyReadContext = await browser.newContext({ locale: "zh-CN" });
+  const goReadContext = await browser.newContext({ locale: "zh-CN" });
   const legacyUserContext = await browser.newContext({ locale: "zh-CN" });
   const goUserContext = await browser.newContext({ locale: "zh-CN" });
   const legacyPage = await legacyContext.newPage();
   const goPage = await goContext.newPage();
+  const legacyReadPage = await legacyReadContext.newPage();
+  const goReadPage = await goReadContext.newPage();
   const legacyUserPage = await legacyUserContext.newPage();
   const goUserPage = await goUserContext.newPage();
   const unique = `${Date.now()}-${randomBytes(4).toString("hex")}`;
@@ -29,7 +33,9 @@ test("[DIFF-USER-005] legacy and Go user generation persists equivalent administ
   const password = `Persist-${unique}-pw`;
   const expiredAt = Math.floor(Date.now() / 1000) + 31 * 24 * 60 * 60;
   let legacyAuthorization = "";
+  let legacyReadAuthorization = "";
   let legacyUserID: number | undefined;
+  let goUserID: number | undefined;
   let goUser: Record<string, unknown> | undefined;
 
   try {
@@ -47,7 +53,8 @@ test("[DIFF-USER-005] legacy and Go user generation persists equivalent administ
       }
     });
     await expectResponseStatus(legacyGenerated, 200, "legacy user generation");
-    const legacyUser = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail);
+    legacyReadAuthorization = await loginLegacyBearer(legacyReadPage);
+    const legacyUser = await fetchLegacyUserByEmail(legacyReadPage, legacyReadAuthorization, legacyUserEmail);
     legacyUserID = readNumber(legacyUser, "id");
 
     await loginGoAdministrator(goPage);
@@ -64,7 +71,9 @@ test("[DIFF-USER-005] legacy and Go user generation persists equivalent administ
     const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
     expect(generatedItems).toHaveLength(1);
     const generated = readRecord(generatedItems[0]);
-    goUser = await getGoUser(goPage, readNumber(generated, "id"));
+    goUserID = readNumber(generated, "id");
+    await loginGoAdministrator(goReadPage);
+    goUser = await getGoUser(goReadPage, goUserID);
 
     expect(readString(legacyUser, "email")).toBe(legacyUserEmail);
     expect(readString(goUser, "email")).toBe(goUserEmail);
@@ -91,56 +100,40 @@ test("[DIFF-USER-005] legacy and Go user generation persists equivalent administ
     expect(readBoolean(readObject(readJSON(legacyLogin), "data"), "is_admin")).toBe(false);
     expect(readBoolean(readObject(readJSON(goLogin), "data"), "is_admin")).toBe(false);
   } finally {
-    const cleanupFailures: string[] = [];
-    try {
-      if (legacyAuthorization && legacyUserID !== undefined) {
-        const destroyed = await legacyPage.request.post(legacyAdminAPI("/user/destroy"), {
-          headers: { authorization: legacyAuthorization },
-          data: { id: legacyUserID }
-        }).catch((error: Error) => error);
-        if (destroyed instanceof Error) {
-          cleanupFailures.push(`legacy destroy transport failed: ${destroyed.message}`);
-        } else if (destroyed.status() !== 200) {
-          cleanupFailures.push(await responseSummary(destroyed, "legacy destroy"));
-        }
-      }
-    } catch (error) {
-      cleanupFailures.push(`legacy cleanup failed: ${errorMessage(error)}`);
-    }
-    try {
-      if (goUser !== undefined) {
-        const userID = readNumber(goUser, "id");
-        const latest = await getGoUser(goPage, userID).catch((error: Error) => error);
-        if (latest instanceof Error) {
-          cleanupFailures.push(`Go cleanup read failed: ${latest.message}`);
-        } else if (readString(latest, "lifecycle_status") === "active") {
-          const deactivated = await goAdminRequest(goPage, `/api/v1/admin/users/${userID}/deactivate`, "POST", {
-            revision: readNumber(latest, "revision")
-          }).catch((error: Error) => error);
-          if (deactivated instanceof Error) {
-            cleanupFailures.push(`Go deactivate transport failed: ${deactivated.message}`);
-          } else if (deactivated.status !== 200) {
-            cleanupFailures.push(goResponseSummary(deactivated, "Go deactivate"));
-          }
-        }
-      }
-    } catch (error) {
-      cleanupFailures.push(`Go cleanup failed: ${errorMessage(error)}`);
-    }
-    await legacyContext.close();
-    await goContext.close();
-    await legacyUserContext.close();
-    await goUserContext.close();
-    expect(cleanupFailures).toEqual([]);
+    const cleanupFailures = await cleanupGeneratedUsers(
+      legacyPage,
+      legacyAuthorization || legacyReadAuthorization,
+      legacyUserID,
+      legacyUserEmail,
+      goPage,
+      goUserID
+    );
+    const closeFailures = await closeContexts([
+      legacyContext,
+      goContext,
+      legacyReadContext,
+      goReadContext,
+      legacyUserContext,
+      goUserContext
+    ]);
+    expect([...cleanupFailures, ...closeFailures]).toEqual([]);
   }
 });
 
-test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state", async ({ browser }) => {
+test("[DIFF-USER-006] legacy and Go banned updates are readable from independent admin sessions", async ({ browser }) => {
   test.setTimeout(90_000);
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyReadContext = await browser.newContext({ locale: "zh-CN" });
+  const goReadContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyEditReadContext = await browser.newContext({ locale: "zh-CN" });
+  const goEditReadContext = await browser.newContext({ locale: "zh-CN" });
   const legacyPage = await legacyContext.newPage();
   const goPage = await goContext.newPage();
+  const legacyReadPage = await legacyReadContext.newPage();
+  const goReadPage = await goReadContext.newPage();
+  const legacyEditReadPage = await legacyEditReadContext.newPage();
+  const goEditReadPage = await goEditReadContext.newPage();
   const unique = `${Date.now()}-${randomBytes(4).toString("hex")}`;
   const emailDomain = "diff.local";
   const legacyPrefix = `le-${unique}`;
@@ -149,7 +142,10 @@ test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state
   const password = `Edit-${unique}-pw`;
   const expiredAt = Math.floor(Date.now() / 1000) + 31 * 24 * 60 * 60;
   let legacyAuthorization = "";
+  let legacyReadAuthorization = "";
+  let legacyEditReadAuthorization = "";
   let legacyUserID: number | undefined;
+  let goUserID: number | undefined;
   let goUser: Record<string, unknown> | undefined;
 
   try {
@@ -167,7 +163,8 @@ test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state
       }
     });
     await expectResponseStatus(legacyGenerated, 200, "legacy user generation for update");
-    const legacyUser = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail);
+    legacyReadAuthorization = await loginLegacyBearer(legacyReadPage);
+    const legacyUser = await fetchLegacyUserByEmail(legacyReadPage, legacyReadAuthorization, legacyUserEmail);
     legacyUserID = readNumber(legacyUser, "id");
     expect(readBoolean(legacyUser, "banned")).toBe(false);
 
@@ -184,7 +181,9 @@ test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state
     expectGoStatus(goGenerated, 201, "Go user generation for update");
     const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
     expect(generatedItems).toHaveLength(1);
-    goUser = await getGoUser(goPage, readNumber(readRecord(generatedItems[0]), "id"));
+    goUserID = readNumber(readRecord(generatedItems[0]), "id");
+    await loginGoAdministrator(goReadPage);
+    goUser = await getGoUser(goReadPage, goUserID);
     expect(readBoolean(goUser, "banned")).toBe(false);
 
     const legacyUpdated = await legacyPage.request.post(legacyAdminAPI("/user/update"), {
@@ -192,22 +191,37 @@ test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state
       data: { id: legacyUserID, banned: 1 }
     });
     await expectResponseStatus(legacyUpdated, 200, "legacy user banned update");
-    const updatedLegacyUser = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail);
+    legacyEditReadAuthorization = await loginLegacyBearer(legacyEditReadPage);
+    const updatedLegacyUser = await fetchLegacyUserByEmail(legacyEditReadPage, legacyEditReadAuthorization, legacyUserEmail);
 
-    const goUpdated = await goAdminRequest(goPage, `/api/v1/admin/users/${readNumber(goUser, "id")}`, "PATCH", {
+    const goUpdated = await goAdminRequest(goPage, `/api/v1/admin/users/${goUserID}`, "PATCH", {
       ...goUserUpdatePayload(goUser),
       banned: true
     });
     expectGoStatus(goUpdated, 200, "Go user banned update");
-    goUser = await getGoUser(goPage, readNumber(goUser, "id"));
+    await loginGoAdministrator(goEditReadPage);
+    goUser = await getGoUser(goEditReadPage, goUserID);
 
     expect(readBoolean(updatedLegacyUser, "banned")).toBe(true);
     expect(readBoolean(goUser, "banned")).toBe(readBoolean(updatedLegacyUser, "banned"));
   } finally {
-    const cleanupFailures = await cleanupGeneratedUsers(legacyPage, legacyAuthorization, legacyUserID, goPage, goUser);
-    await legacyContext.close();
-    await goContext.close();
-    expect(cleanupFailures).toEqual([]);
+    const cleanupFailures = await cleanupGeneratedUsers(
+      legacyPage,
+      legacyAuthorization || legacyReadAuthorization || legacyEditReadAuthorization,
+      legacyUserID,
+      legacyUserEmail,
+      goPage,
+      goUserID
+    );
+    const closeFailures = await closeContexts([
+      legacyContext,
+      goContext,
+      legacyReadContext,
+      goReadContext,
+      legacyEditReadContext,
+      goEditReadContext
+    ]);
+    expect([...cleanupFailures, ...closeFailures]).toEqual([]);
   }
 });
 
@@ -256,46 +270,61 @@ async function cleanupGeneratedUsers(
   legacyPage: Page,
   legacyAuthorization: string,
   legacyUserID: number | undefined,
+  legacyUserEmail: string,
   goPage: Page,
-  goUser: Record<string, unknown> | undefined
+  goUserID: number | undefined
 ): Promise<string[]> {
   const cleanupFailures: string[] = [];
   try {
+    if (legacyAuthorization && legacyUserID === undefined) {
+      const found = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail).catch((error: Error) => error);
+      if (found instanceof Error) {
+        cleanupFailures.push(`legacy cleanup lookup failed: ${errorCategory(found)}`);
+      } else {
+        legacyUserID = readNumber(found, "id");
+      }
+    }
     if (legacyAuthorization && legacyUserID !== undefined) {
       const destroyed = await legacyPage.request.post(legacyAdminAPI("/user/destroy"), {
         headers: { authorization: legacyAuthorization },
         data: { id: legacyUserID }
       }).catch((error: Error) => error);
       if (destroyed instanceof Error) {
-        cleanupFailures.push(`legacy destroy transport failed: ${destroyed.message}`);
+        cleanupFailures.push(`legacy destroy transport failed: ${errorCategory(destroyed)}`);
       } else if (destroyed.status() !== 200) {
         cleanupFailures.push(await responseSummary(destroyed, "legacy destroy"));
       }
     }
   } catch (error) {
-    cleanupFailures.push(`legacy cleanup failed: ${errorMessage(error)}`);
+    cleanupFailures.push(`legacy cleanup failed: ${errorCategory(error)}`);
   }
   try {
-    if (goUser !== undefined) {
-      const userID = readNumber(goUser, "id");
-      const latest = await getGoUser(goPage, userID).catch((error: Error) => error);
+    if (goUserID !== undefined) {
+      const latest = await getGoUser(goPage, goUserID).catch((error: Error) => error);
       if (latest instanceof Error) {
-        cleanupFailures.push(`Go cleanup read failed: ${latest.message}`);
+        cleanupFailures.push(`Go cleanup read failed: ${errorCategory(latest)}`);
       } else if (readString(latest, "lifecycle_status") === "active") {
-        const deactivated = await goAdminRequest(goPage, `/api/v1/admin/users/${userID}/deactivate`, "POST", {
+        const deactivated = await goAdminRequest(goPage, `/api/v1/admin/users/${goUserID}/deactivate`, "POST", {
           revision: readNumber(latest, "revision")
         }).catch((error: Error) => error);
         if (deactivated instanceof Error) {
-          cleanupFailures.push(`Go deactivate transport failed: ${deactivated.message}`);
+          cleanupFailures.push(`Go deactivate transport failed: ${errorCategory(deactivated)}`);
         } else if (deactivated.status !== 200) {
           cleanupFailures.push(goResponseSummary(deactivated, "Go deactivate"));
         }
       }
     }
   } catch (error) {
-    cleanupFailures.push(`Go cleanup failed: ${errorMessage(error)}`);
+    cleanupFailures.push(`Go cleanup failed: ${errorCategory(error)}`);
   }
   return cleanupFailures;
+}
+
+async function closeContexts(contexts: Array<{ close(): Promise<void> }>): Promise<string[]> {
+  const settled = await Promise.allSettled(contexts.map((context) => context.close()));
+  return settled.flatMap((result, index) => result.status === "rejected"
+    ? [`context ${index} close failed: ${errorCategory(result.reason)}`]
+    : []);
 }
 
 async function loginUser(page: Page, baseURL: string, email: string, password: string): Promise<string> {
@@ -458,8 +487,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorCategory(error: unknown): string {
+  if (error instanceof Error) return error.name || "Error";
+  return typeof error;
 }
 
 async function expectResponseStatus(response: { status(): number; text(): Promise<string> }, expected: number, label: string): Promise<string> {
