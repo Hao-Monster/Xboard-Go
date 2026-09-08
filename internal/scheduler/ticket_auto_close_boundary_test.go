@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -158,32 +160,51 @@ func TestWorkerRepeatedTicketSweepIsIdempotentAndLeavesClosedTicketsUntouched(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterFirst.Status != store.TicketStatusClosed || !afterFirst.UpdatedAt.Equal(now) {
+	afterFirstState := ticketAutoCloseStateOf(afterFirst)
+	if afterFirstState.Status != store.TicketStatusClosed || afterFirstState.ReplyStatus != store.TicketReplyAnswered || afterFirstState.MessageCount != 2 || !afterFirstState.UpdatedAt.Equal(now) {
 		t.Fatalf("first sweep stale ticket status=%d updated_at=%s", afterFirst.Status, afterFirst.UpdatedAt)
 	}
 	closedAfterFirst, err := database.GetAdminTicket(ctx, closedBeforeSweep.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !closedAfterFirst.UpdatedAt.Equal(closedBefore.UpdatedAt) {
+	closedBeforeState := ticketAutoCloseStateOf(closedBefore)
+	closedAfterFirstState := ticketAutoCloseStateOf(closedAfterFirst)
+	if closedAfterFirstState != closedBeforeState {
 		t.Fatalf("first sweep rewrote closed ticket timestamp from %s to %s", closedBefore.UpdatedAt, closedAfterFirst.UpdatedAt)
 	}
 
-	worker.now = func() time.Time { return now.Add(2 * time.Minute) }
+	worker.now = func() time.Time { return now.Add(25 * time.Hour) }
 	worker.applyDue(ctx)
 
 	afterSecond, err := database.GetAdminTicket(ctx, stale.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !afterSecond.UpdatedAt.Equal(afterFirst.UpdatedAt) {
+	if ticketAutoCloseStateOf(afterSecond) != afterFirstState {
 		t.Fatalf("second sweep rewrote already closed stale ticket timestamp from %s to %s", afterFirst.UpdatedAt, afterSecond.UpdatedAt)
 	}
 	closedAfterSecond, err := database.GetAdminTicket(ctx, closedBeforeSweep.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !closedAfterSecond.UpdatedAt.Equal(closedBefore.UpdatedAt) {
+	if ticketAutoCloseStateOf(closedAfterSecond) != closedBeforeState {
 		t.Fatalf("second sweep rewrote pre-closed ticket timestamp from %s to %s", closedBefore.UpdatedAt, closedAfterSecond.UpdatedAt)
 	}
+}
+
+type ticketAutoCloseState struct {
+	Status        store.TicketStatus
+	ReplyStatus   store.TicketReplyStatus
+	MessageCount  int
+	MessageDigest string
+	UpdatedAt     time.Time
+}
+
+func ticketAutoCloseStateOf(ticket store.Ticket) ticketAutoCloseState {
+	digest := sha256.New()
+	for _, message := range ticket.Messages {
+		fmt.Fprintf(digest, "%d:%d:%d:%s\x00", message.ID, message.TicketID, message.UserID, message.Message)
+	}
+	return ticketAutoCloseState{Status: ticket.Status, ReplyStatus: ticket.ReplyStatus, MessageCount: len(ticket.Messages), MessageDigest: hex.EncodeToString(digest.Sum(nil)), UpdatedAt: ticket.UpdatedAt}
 }
