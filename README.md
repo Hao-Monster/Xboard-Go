@@ -157,6 +157,26 @@ raw job payload, exception, request body, credential, IP address, user email, or
 node host data. Legacy PHP failed jobs remain non-executable evidence unless
 the compatibility exception for D-013 is explicitly accepted.
 
+The D-006 production database compatibility decision can be prepared from a
+standalone Xboard-Go SQLite snapshot without opening the configured DSN for
+writes:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance database-compatibility-readiness \
+  --target-engine sqlite \
+  --representative-data
+```
+
+The command is read-only and opens the SQLite file in query-only mode. It
+reports the schema version, current-schema validation, SQLite integrity,
+foreign-key violations, target engine, and whether the operator has marked the
+snapshot as representative production-shaped evidence. It does not migrate the
+database, does not write WAL state, and does not convert this evidence into a
+production database decision. If the target engine is not SQLite, or the
+snapshot is not representative, the command returns a machine-readable blocking
+reason instead of pretending D-006 is resolved.
+
 Node HTTP and WebSocket handshake rate limits always retain independent
 client, direct-peer, and credential buckets. A deployment behind a shared
 reverse proxy must set `XBOARD_TRUSTED_PROXY_CIDRS` to the proxy network CIDRs
