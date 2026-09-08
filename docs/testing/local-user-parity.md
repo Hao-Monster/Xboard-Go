@@ -107,6 +107,14 @@ administrator and wrote both `secure_path` and `frontend_admin_path` as
 script itself was removed, so its exact source must be reconstructed and
 reviewed before a repeat run; do not claim it is a saved launcher.
 
+The persistent reconstruction in `tools/local-parity/init-legacy-oracle.php`
+was subsequently verified against a freshly migrated local Oracle image: it
+uses the installer-equivalent UUID/token generation for a new user, preserves
+those identities on re-entry, and writes settings by `name`. Two consecutive
+runs produced one administrator with the expected secure path; the legacy
+login API returned HTTP 200. This does not replace a full candidate or browser
+parity run.
+
 ## Candidate configuration and startup order
 
 The removed local overlay was named `.local/compose.user-parity-local.yaml`.

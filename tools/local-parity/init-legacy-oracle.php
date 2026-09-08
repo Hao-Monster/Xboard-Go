@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-// Transcript-reconstructed initialization template. The prior exact script was
-// deleted; this must be revalidated against xboard-legacy-parity:8065164 before
-// a run is recorded as evidence. It uses Laravel models after real migrations
-// and never creates tables or writes a hand-crafted schema.
+// The prior exact script was deleted, so this implementation was reconstructed
+// from the fixed image's migrations and installer. It was revalidated against
+// xboard-legacy-parity:8065164 after real migrations on 2026-09-08. It uses
+// Laravel models and never creates tables or writes a hand-crafted schema.
 
 use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\Hash;
+use App\Utils\Helper;
 
 require '/www/vendor/autoload.php';
 
@@ -41,21 +41,31 @@ if (!class_exists($userClass) || !class_exists($settingClass)) {
     throw new RuntimeException('legacy User or Setting model was not found; update this reconstructed template before retrying');
 }
 
-$user = $userClass::query()->firstOrNew(['email' => $email]);
-$user->email = $email;
-$user->password = Hash::make($password);
-$user->is_admin = 1;
-$user->save();
+$user = $userClass::byEmail($email)->first();
+if ($user === null) {
+    $user = new $userClass();
+    $user->email = $email;
+    $user->password = password_hash($password, PASSWORD_DEFAULT);
+    // These are the two non-default identity columns in the image's real
+    // v2_user migration. Match its installer instead of weakening SQLite.
+    $user->uuid = Helper::guid(true);
+    $user->token = Helper::guid();
+    $user->is_admin = 1;
+    $user->save();
+} else {
+    // Re-entry refreshes credentials/admin access but never rotates an
+    // existing user's UUID or token identity.
+    $user->password = password_hash($password, PASSWORD_DEFAULT);
+    $user->is_admin = 1;
+    $user->save();
+}
 
 foreach (['secure_path', 'frontend_admin_path'] as $key) {
-    $setting = $settingClass::query()->firstOrNew(['key' => $key]);
-    $setting->key = $key;
-    $setting->value = $adminPath;
-    $setting->save();
+    $settingClass::createOrUpdate($key, $adminPath);
 }
 
 $adminCount = $userClass::query()->where('is_admin', 1)->count();
-$securePath = $settingClass::query()->where('key', 'secure_path')->value('value');
+$securePath = $settingClass::query()->where('name', 'secure_path')->value('value');
 if ($securePath !== $adminPath) {
     throw new RuntimeException('secure_path readback did not match the generated administrator path');
 }

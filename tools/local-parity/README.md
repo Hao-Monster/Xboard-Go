@@ -87,6 +87,17 @@ The overlay sends the local Oracle to an internal Redis service called
 This avoids the prior `/data` tmpfs-permission failure. The Oracle schema is
 created only by `php /www/artisan migrate --force --no-interaction`; the PHP
 initializer uses Laravel models and never creates tables manually.
+It mirrors the image installer for a newly created administrator: only new
+rows receive `uuid=Helper::guid(true)` and `token=Helper::guid()`, the two
+non-default `v2_user` identity columns. Re-entry preserves those existing
+identities while refreshing the generated administrator credential. Settings
+are written through `Setting::createOrUpdate(name, value)`.
+
+The initializer was revalidated against `xboard-legacy-parity:8065164` on
+2026-09-08 in a fresh project using the image's real migrations: two consecutive
+initializations left one administrator and the legacy login endpoint returned
+HTTP 200. That evidence covers this Oracle initialization only; the candidate
+build and the assigned Playwright case still require their own execution.
 
 Before calling a run evidence, retain the generated overlay/config output,
 image inspection, migration/init logs, HTTP checks, target Playwright reporter
