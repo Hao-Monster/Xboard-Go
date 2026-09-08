@@ -1,0 +1,15 @@
+# Explicit bingo-dev Oracle test overlay; tools/local-parity/run.sh does not load it.
+# Add this file last to an explicit Compose invocation. Config-only example:
+# LOCAL_LEGACY_APP_KEY=base64:compose-structure-only LOCAL_PARITY_RUN_DIR=.local/local-parity-bingo-structure \
+#   docker compose -f compose.local.yaml -f tools/local-parity/compose.user-parity.yaml \
+#   -f tools/local-parity/compose.bingo-test.yaml config --quiet
+services:
+  legacy-redis:
+    image: ghcr.io/hao-monster/wechat-cardmall-redis:171a683fe5ec3d4ca5ae46f03015b518560001fc@sha256:ed89cc616884921cb64c644da053c70271da3feb9e018509db9e8dc9181fcb24
+    pull_policy: never
+    command: ["redis-server", "--dir", "/tmp", "--save", "", "--appendonly", "no", "--protected-mode", "no"]
+    ports: []
+
+  legacy-oracle:
+    environment:
+      APP_ENV: local
