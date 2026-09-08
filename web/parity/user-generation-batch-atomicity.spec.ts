@@ -57,7 +57,7 @@ async function loginBearer(request: APIRequestContext, url: string, email: strin
   const result = await responseResult(response);
   expect(result.status, responseSummary(label, result)).toBe(200);
   const authorization = readString(readObject(readJSON(result.body), "data"), "auth_data");
-  expect(authorization).toMatch(/^Bearer /);
+  expect(/^Bearer /.test(authorization), `${label} returned bearer authorization`).toBe(true);
   return authorization;
 }
 
@@ -128,7 +128,7 @@ function expectStatus(result: ResponseResult, expected: number, label: string): 
 function expectLegacyDuplicateFailure(bodyText: string): void {
   const body = readJSON(bodyText);
   expect(readString(body, "status")).toBe("fail");
-  expect(readString(body, "message")).toContain("已存在于系统中");
+  expect(readString(body, "message").includes("已存在于系统中"), "legacy duplicate failure message marker").toBe(true);
   expect(readRequired(body, "data")).toBeNull();
   expect(readRequired(body, "error")).toBeNull();
 }
@@ -136,7 +136,7 @@ function expectLegacyDuplicateFailure(bodyText: string): void {
 function expectGoLegacyDuplicateFailure(bodyText: string): void {
   const body = readJSON(bodyText);
   expect(readString(body, "status")).toBe("fail");
-  expect(readString(body, "message")).toBe("邮箱已存在于系统中");
+  expect(readString(body, "message") === "邮箱已存在于系统中", "Go duplicate failure message marker").toBe(true);
   expect(readRequired(body, "data")).toBeNull();
   expect(readRequired(body, "error")).toBeNull();
 }
@@ -219,7 +219,9 @@ function sanitizeJSONSummary(value: unknown): unknown {
   for (const [key, entry] of Object.entries(value)) {
     if (["auth_data", "password", "token", "uuid", "subscribe_url", "data"].includes(key)) {
       result[key] = "<redacted>";
-    } else if (["status", "code", "message"].includes(key)) {
+    } else if (key === "message" && typeof entry === "string") {
+      result[key] = `<string length=${entry.length}>`;
+    } else if (["status", "code"].includes(key)) {
       result[key] = typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean" || entry === null ? entry : typeof entry;
     } else {
       result[key] = Array.isArray(entry) ? `<array length=${entry.length}>` : isRecord(entry) ? "<object>" : typeof entry;
