@@ -106,7 +106,22 @@ validate_source_overlay() {
   }
 }
 
+validate_prepared_run_storage() {
+  local local_root="$root_dir/.local"
+  local run_abs="$root_dir/$run_dir"
+  if [[ ! -d "$local_root" || -L "$local_root" || "$(/usr/bin/realpath -e -- "$local_root")" != "$root_dir/.local" ]]; then
+    echo 'prepared bingo local runtime root is not a canonical non-symlink directory' >&2
+    exit 2
+  fi
+  if [[ ! -d "$run_abs" || -L "$run_abs" || "$(/usr/bin/realpath -e -- "$run_abs")" != "$root_dir/$run_dir" ]]; then
+    echo "prepared bingo run directory drifted from $root_dir/$run_dir" >&2
+    echo 'automatic cleanup will not search for or delete a moved run directory' >&2
+    exit 2
+  fi
+}
+
 validate_prepared_identity() {
+  validate_prepared_run_storage
   [[ -f "$identity_path" && ! -L "$identity_path" ]] || {
     echo 'missing or symlinked prepared bingo run identity' >&2
     exit 2
@@ -175,7 +190,7 @@ case "$action" in
     validate_build_inputs
     export LOCAL_PARITY_COMPOSE_OVERLAY="$source_overlay_rel"
     bash "$root_dir/tools/local-parity/run.sh" prepare
-    [[ -d "$root_dir/$run_dir" && ! -L "$root_dir/$run_dir" ]]
+    validate_prepared_run_storage
     [[ -d "$root_dir/$evidence_dir" && ! -L "$root_dir/$evidence_dir" ]]
     umask 077
     /usr/bin/install -m 600 "$source_overlay_path" "$prepared_overlay_path"
@@ -195,6 +210,6 @@ case "$action" in
   stop)
     validate_prepared_identity
     export LOCAL_PARITY_COMPOSE_OVERLAY="$prepared_overlay_rel"
-    exec bash "$root_dir/tools/local-parity/run.sh" cleanup
+    exec bash "$root_dir/tools/local-parity/run.sh" cleanup-safe
     ;;
 esac

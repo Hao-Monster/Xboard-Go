@@ -26,7 +26,7 @@ run_dir=".local/local-parity-$LOCAL_PARITY_RUN_ID"
 evidence_dir="output/local-parity-$LOCAL_PARITY_RUN_ID"
 case "$1" in
   prepare) mkdir -p "$run_dir" "$evidence_dir" ;;
-  cleanup) rm -rf --one-file-system -- "$run_dir" ;;
+  cleanup-safe) rm -rf --one-file-system -- "$run_dir" ;;
 esac
 fields=(
   "$1"
@@ -78,7 +78,7 @@ invoke stop
 echo 'PASS stop uses prepared identity/snapshot and cleans up despite source-overlay drift'
 
 [[ "$(wc -l <"$call_log")" -eq 4 ]]
-[[ "$(cut -d'|' -f1 "$call_log" | paste -sd, -)" == 'prepare,start,verify,cleanup' ]]
+[[ "$(cut -d'|' -f1 "$call_log" | paste -sd, -)" == 'prepare,start,verify,cleanup-safe' ]]
 line_number=0
 while IFS='|' read -r action run_id project overlay base base_id legacy go_path node_path gotoolchain goproxy gomodcache corepack_home; do
   line_number=$((line_number + 1))
@@ -137,30 +137,195 @@ LOCAL_PARITY_RUN_ID=bingo-preflight LOCAL_PARITY_EXPECTED_PROJECT=xboard-user-pa
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]]
-grep -F 'missing .local/local-parity-bingo-preflight/runtime.env' "$test_root/accepted-overlay.log" >/dev/null
-echo 'PASS stock runner accepts the reviewed source overlay and expected project'
+grep -F 'unsafe local runtime root' "$test_root/accepted-overlay.log" >/dev/null
+echo 'PASS stock runner accepts the reviewed source overlay and reaches the runtime storage boundary'
 
 set +e
 env -u LOCAL_PARITY_EXPECTED_PROJECT -u LOCAL_PARITY_COMPOSE_OVERLAY   LOCAL_PARITY_RUN_ID=bingo-preflight   bash "$repo/tools/local-parity/run.sh" verify >"$test_root/default-path.log" 2>&1
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]]
-grep -F 'missing .local/local-parity-bingo-preflight/runtime.env' "$test_root/default-path.log" >/dev/null
-echo 'PASS stock runner default path remains available without opt-in variables'
+grep -F 'unsafe local runtime root' "$test_root/default-path.log" >/dev/null
+echo 'PASS stock runner default overlay path remains available and reaches the runtime storage boundary'
 
-stock_fixture="$test_root/stock-repo"
-mkdir -p "$stock_fixture/tools/local-parity" "$stock_fixture/.local/local-parity-bingo-runtime-drift"
-cp "$repo/tools/local-parity/run.sh" "$stock_fixture/tools/local-parity/run.sh"
-cat >"$stock_fixture/.local/local-parity-bingo-runtime-drift/runtime.env" <<'RUNTIME'
-export COMPOSE_PROJECT_NAME='user-supplied-wrong-project'
-export XBOARD_GO_IMAGE='xboard-go:user-parity-bingo-runtime-drift'
+make_stock_fixture() {
+  local name="$1"
+  local stock="$test_root/$name"
+  mkdir -p "$stock/tools/local-parity" "$stock/fake-bin"
+  cp "$repo/tools/local-parity/run.sh" "$stock/tools/local-parity/run.sh"
+  cat >"$stock/fake-bin/docker" <<'DOCKER'
+#!/usr/bin/env bash
+printf '%q ' "$@" >>"$FAKE_DOCKER_LOG"
+printf '\n' >>"$FAKE_DOCKER_LOG"
+case "${1:-}" in
+  compose) printf '%s\n' '{}' ;;
+  image) printf '%s\n' 'id=fake' ;;
+esac
+exit 0
+DOCKER
+  cat >"$stock/fake-bin/curl" <<'CURL'
+#!/usr/bin/env bash
+printf '%s' '200'
+exit 0
+CURL
+  chmod 755 "$stock/fake-bin/docker" "$stock/fake-bin/curl"
+  printf '%s\n' "$stock"
+}
+
+write_valid_runtime() {
+  local stock="$1" id="$2"
+  local stock_run="$stock/.local/local-parity-$id"
+  mkdir -p "$stock_run/image-context" "$stock_run/legacy-data" "$stock/output/local-parity-$id"
+  cat >"$stock_run/runtime.env" <<RUNTIME
+export COMPOSE_PROJECT_NAME='xboard-user-parity-$id'
+export XBOARD_GO_IMAGE='xboard-go:user-parity-$id'
+export XBOARD_GO_REVISION='b4b646715b64acffd0a126c481bf2181d4957f12'
+export XBOARD_GO_PORT='18780'
+export XBOARD_LEGACY_PORT='18781'
+export XBOARD_MAILPIT_PORT='18782'
+export XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL='admin@legacy-parity.test'
+export XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE='$stock_run/bootstrap-password.txt'
+export XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE='$stock_run/settings-encryption-key.txt'
+export XBOARD_E2E_ADMIN_PATH='e2e-admin-secure'
+export XBOARD_LEGACY_ADMIN_PATH='e2e-admin-secure'
+export XBOARD_CAPTCHA_ALLOW_INSECURE='true'
+export XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL='http://captcha-stub:4199/recaptcha'
+export XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL='http://captcha-stub:4199/recaptcha-v3'
+export XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL='http://captcha-stub:4199/turnstile'
+export XBOARD_LEGACY_IMAGE='xboard-legacy-parity:8065164'
 RUNTIME
+  printf '%s' synthetic >"$stock_run/bootstrap-password.txt"
+  printf '%s' synthetic >"$stock_run/settings-encryption-key.txt"
+  printf '%s' base64:synthetic >"$stock_run/local-legacy-app-key.txt"
+  printf '%s' admin@legacy-parity.test >"$stock_run/legacy-admin-email.txt"
+  printf '%s' synthetic >"$stock_run/legacy-admin-password.txt"
+  printf '%s' e2e-admin-secure >"$stock_run/legacy-admin-path.txt"
+}
+
+stock="$(make_stock_fixture normal-runtime)"
+write_valid_runtime "$stock" normal
+FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=normal \
+  bash "$stock/tools/local-parity/run.sh" verify >"$stock/normal.log" 2>&1
+[[ -s "$stock/docker.log" ]]
+echo 'PASS normal canonical runtime data reaches the fake Docker verification boundary'
+
+stock="$(make_stock_fixture runtime-project-drift)"
+write_valid_runtime "$stock" projectdrift
+sed -i "s/export COMPOSE_PROJECT_NAME='xboard-user-parity-projectdrift'/export COMPOSE_PROJECT_NAME='user-supplied-wrong-project'/" \
+  "$stock/.local/local-parity-projectdrift/runtime.env"
 set +e
-LOCAL_PARITY_RUN_ID=bingo-runtime-drift   bash "$stock_fixture/tools/local-parity/run.sh" verify >"$test_root/runtime-drift.log" 2>&1
+FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=projectdrift \
+  bash "$stock/tools/local-parity/run.sh" verify >"$stock/runtime-project-drift.log" 2>&1
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]]
-grep -F 'runtime project or candidate image does not match' "$test_root/runtime-drift.log" >/dev/null
-echo 'PASS stock runner rejects a runtime file that tries to replace the run-derived project'
+[[ "$rc" -eq 2 && ! -e "$stock/docker.log" ]]
+grep -F 'runtime project or candidate image does not match' "$stock/runtime-project-drift.log" >/dev/null
+echo 'PASS stock runner rejects a complete runtime file that tries to replace the run-derived project'
+
+stock="$(make_stock_fixture runtime-command)"
+write_valid_runtime "$stock" runtimecommand
+marker="$stock/runtime-command-marker"
+printf '%s\n' ': >"$RUNTIME_COMMAND_MARKER"' >>"$stock/.local/local-parity-runtimecommand/runtime.env"
+set +e
+RUNTIME_COMMAND_MARKER="$marker" FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" \
+LOCAL_PARITY_RUN_ID=runtimecommand \
+  bash "$stock/tools/local-parity/run.sh" verify >"$stock/runtime-command.log" 2>&1
+rc=$?
+set -e
+[[ "$rc" -eq 2 && ! -e "$marker" && ! -e "$stock/docker.log" ]]
+grep -F 'invalid runtime line 17' "$stock/runtime-command.log" >/dev/null
+echo 'PASS strict runtime parser rejects shell commands in a regular runtime.env without executing them'
+
+stock="$(make_stock_fixture runtime-symlink)"
+write_valid_runtime "$stock" runtimesymlink
+stock_run="$stock/.local/local-parity-runtimesymlink"
+marker="$stock/runtime-marker"
+payload="$stock/runtime-payload.env"
+cp "$stock_run/runtime.env" "$payload"
+printf '%s\n' ': >"$RUNTIME_MARKER"' >>"$payload"
+rm "$stock_run/runtime.env"
+ln -s "$payload" "$stock_run/runtime.env"
+set +e
+RUNTIME_MARKER="$marker" FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=runtimesymlink \
+  bash "$stock/tools/local-parity/run.sh" verify >"$stock/runtime-symlink.log" 2>&1
+rc=$?
+set -e
+[[ "$rc" -eq 2 && ! -e "$marker" && ! -e "$stock/docker.log" ]]
+grep -F 'unsafe run file' "$stock/runtime-symlink.log" >/dev/null
+echo 'PASS runtime.env symlink is rejected before its shell marker can execute'
+
+stock="$(make_stock_fixture fixed-file-symlinks)"
+write_valid_runtime "$stock" filesymlink
+stock_run="$stock/.local/local-parity-filesymlink"
+outside="$stock/outside-marker"
+printf '%s' synthetic-outside >"$outside"
+for name in bootstrap-password.txt settings-encryption-key.txt local-legacy-app-key.txt legacy-admin-email.txt legacy-admin-password.txt legacy-admin-path.txt; do
+  original="$(<"$stock_run/$name")"
+  rm "$stock_run/$name"
+  ln -s "$outside" "$stock_run/$name"
+  rm -f "$stock/docker.log"
+  set +e
+  FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=filesymlink \
+    bash "$stock/tools/local-parity/run.sh" verify >"$stock/$name.log" 2>&1
+  rc=$?
+  set -e
+  [[ "$rc" -eq 2 && ! -e "$stock/docker.log" ]]
+  grep -F "unsafe run file; expected canonical regular non-symlink file $stock_run/$name" "$stock/$name.log" >/dev/null
+  rm "$stock_run/$name"
+  printf '%s' "$original" >"$stock_run/$name"
+done
+[[ "$(cat "$outside")" == synthetic-outside ]]
+echo 'PASS generated app-key, admin, and Docker secret files reject external symlinks before fake Docker'
+
+stock="$(make_stock_fixture local-root-symlink)"
+write_valid_runtime "$stock" rootsymlink
+outside_local="$stock/outside-local"
+mv "$stock/.local" "$outside_local"
+ln -s "$outside_local" "$stock/.local"
+marker="$stock/ancestor-marker"
+printf '%s\n' ': >"$ANCESTOR_MARKER"' >>"$outside_local/local-parity-rootsymlink/runtime.env"
+set +e
+ANCESTOR_MARKER="$marker" FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=rootsymlink \
+  bash "$stock/tools/local-parity/run.sh" verify >"$stock/local-root-symlink.log" 2>&1
+rc=$?
+set -e
+[[ "$rc" -eq 2 && ! -e "$marker" && ! -e "$stock/docker.log" ]]
+grep -F 'unsafe local runtime root' "$stock/local-root-symlink.log" >/dev/null
+echo 'PASS symlinked .local ancestor is rejected before runtime parsing'
+
+stock="$(make_stock_fixture moved-run-cleanup)"
+write_valid_runtime "$stock" moved
+original_run="$stock/.local/local-parity-moved"
+saved_run="$stock/.local/local-parity-moved.saved"
+mv "$original_run" "$saved_run"
+ln -s "$saved_run" "$original_run"
+set +e
+FAKE_DOCKER_LOG="$stock/docker.log" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=moved \
+  bash "$stock/tools/local-parity/run.sh" cleanup >"$stock/moved-cleanup.log" 2>&1
+rc=$?
+set -e
+[[ "$rc" -eq 2 && -L "$original_run" && -d "$saved_run" && ! -e "$stock/docker.log" ]]
+grep -F "expected canonical non-symlink directory $original_run" "$stock/moved-cleanup.log" >/dev/null
+grep -F 'automatic cleanup will not search for or delete a moved run directory' "$stock/moved-cleanup.log" >/dev/null
+grep -F 'use run.bingo-test.sh stop moved' "$stock/moved-cleanup.log" >/dev/null
+echo 'PASS cleanup refuses a replaced run symlink, preserves the unknown moved directory, and reports safe scope'
+
+stock="$(make_stock_fixture safe-cleanup)"
+write_valid_runtime "$stock" safecleanup
+stock_run="$stock/.local/local-parity-safecleanup"
+marker="$stock/cleanup-runtime-marker"
+payload="$stock/cleanup-runtime-payload.env"
+cp "$stock_run/runtime.env" "$payload"
+printf '%s\n' ': >"$CLEANUP_RUNTIME_MARKER"' >>"$payload"
+rm "$stock_run/runtime.env"
+ln -s "$payload" "$stock_run/runtime.env"
+printf '%s\n' 'services: {}' >"$stock_run/compose.bingo-test.prepared.yaml"
+FAKE_DOCKER_LOG="$stock/docker.log" CLEANUP_RUNTIME_MARKER="$marker" PATH="$stock/fake-bin:/usr/bin:/bin" LOCAL_PARITY_RUN_ID=safecleanup \
+LOCAL_PARITY_EXPECTED_PROJECT=xboard-user-parity-safecleanup \
+LOCAL_PARITY_COMPOSE_OVERLAY=.local/local-parity-safecleanup/compose.bingo-test.prepared.yaml \
+  bash "$stock/tools/local-parity/run.sh" cleanup-safe >"$stock/safe-cleanup.log" 2>&1
+[[ ! -e "$marker" && ! -e "$stock_run" && -s "$stock/docker.log" ]]
+grep -F 'without reading runtime.env' "$stock/safe-cleanup.log" >/dev/null
+echo 'PASS cleanup-safe removes only the canonical run/project without parsing a malicious runtime file'
 
 echo 'ALL FAKE RESTRICTED-RUNNER TESTS PASSED; no real service was started.'

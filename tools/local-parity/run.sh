@@ -6,7 +6,7 @@ set -euo pipefail
 # A completed run must be marked PENDING REVALIDATION until its evidence files
 # are retained under output/local-parity-<run-id>/.
 
-root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$root_dir"
 
 action="${1:-}"
@@ -22,9 +22,12 @@ if [[ ! "$run_id" =~ ^[a-z0-9-]+$ ]]; then
   exit 2
 fi
 
+local_root="$root_dir/.local"
 run_dir=".local/local-parity-${run_id}"
+run_abs="$root_dir/$run_dir"
 evidence_dir="output/local-parity-${run_id}"
 runtime_env="${run_dir}/runtime.env"
+runtime_abs="$root_dir/$runtime_env"
 readonly project="xboard-user-parity-${run_id}"
 readonly candidate_image="xboard-go:user-parity-${run_id}"
 if [[ -n "${LOCAL_PARITY_EXPECTED_PROJECT:-}" && "$LOCAL_PARITY_EXPECTED_PROJECT" != "$project" ]]; then
@@ -67,21 +70,112 @@ git_in_tree() {
   git -C "$root_dir" "$@"
 }
 
-load_runtime() {
-  if [[ ! -f "$runtime_env" ]]; then
-    echo "missing $runtime_env; run prepare first with LOCAL_PARITY_RUN_ID=$run_id" >&2
-    exit 2
+validate_run_storage() {
+  if [[ ! -d "$local_root" || -L "$local_root" || "$(realpath -e -- "$local_root")" != "$root_dir/.local" ]]; then
+    echo "unsafe local runtime root; expected canonical non-symlink directory $root_dir/.local" >&2
+    return 2
   fi
-  # This file contains only paths, image tags, generated identifiers, and ports.
-  # It never stores a secret value.
-  # shellcheck disable=SC1090
-  source "$runtime_env"
+  if [[ ! -d "$run_abs" || -L "$run_abs" || "$(realpath -e -- "$run_abs")" != "$root_dir/$run_dir" ]]; then
+    echo "unsafe run directory; expected canonical non-symlink directory $root_dir/$run_dir" >&2
+    echo 'automatic cleanup will not search for or delete a moved run directory' >&2
+    return 2
+  fi
+}
+
+validate_run_file() {
+  local name="$1"
+  local path="$run_abs/$name"
+  if [[ ! -f "$path" || -L "$path" || "$(realpath -e -- "$path")" != "$run_abs/$name" ]]; then
+    echo "unsafe run file; expected canonical regular non-symlink file $run_abs/$name" >&2
+    return 2
+  fi
+}
+
+validate_run_directory() {
+  local name="$1"
+  local path="$run_abs/$name"
+  if [[ ! -d "$path" || -L "$path" || "$(realpath -e -- "$path")" != "$run_abs/$name" ]]; then
+    echo "unsafe run subdirectory; expected canonical non-symlink directory $run_abs/$name" >&2
+    return 2
+  fi
+}
+
+parse_runtime_env() {
+  local line assignment key quoted value
+  local line_number=0
+  local -A runtime_values=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    if [[ "$line" != 'export '* ]]; then
+      echo "invalid runtime line $line_number: expected a fixed export assignment" >&2
+      return 2
+    fi
+    assignment="${line#export }"
+    if [[ "$assignment" != *=* ]]; then
+      echo "invalid runtime assignment on line $line_number" >&2
+      return 2
+    fi
+    key="${assignment%%=*}"
+    quoted="${assignment#*=}"
+    case "$key" in
+      COMPOSE_PROJECT_NAME|XBOARD_GO_IMAGE|XBOARD_GO_REVISION|XBOARD_GO_PORT|XBOARD_LEGACY_PORT|XBOARD_MAILPIT_PORT|XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL|XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE|XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE|XBOARD_E2E_ADMIN_PATH|XBOARD_LEGACY_ADMIN_PATH|XBOARD_CAPTCHA_ALLOW_INSECURE|XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL|XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL|XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL|XBOARD_LEGACY_IMAGE) ;;
+      *)
+        echo "unexpected runtime key on line $line_number: $key" >&2
+        return 2
+        ;;
+    esac
+    if (( ${#quoted} < 2 )) || [[ "${quoted:0:1}" != "'" || "${quoted: -1}" != "'" ]]; then
+      echo "runtime value on line $line_number must be single-quoted data" >&2
+      return 2
+    fi
+    value="${quoted:1:-1}"
+    if [[ "$value" == *"'"* || -n "${runtime_values[$key]+present}" ]]; then
+      echo "runtime value on line $line_number contains a quote or duplicates a key" >&2
+      return 2
+    fi
+    runtime_values[$key]="$value"
+  done <"$runtime_abs"
+
+  local required
+  for required in     COMPOSE_PROJECT_NAME XBOARD_GO_IMAGE XBOARD_GO_REVISION     XBOARD_GO_PORT XBOARD_LEGACY_PORT XBOARD_MAILPIT_PORT     XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE     XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE XBOARD_E2E_ADMIN_PATH     XBOARD_LEGACY_ADMIN_PATH XBOARD_CAPTCHA_ALLOW_INSECURE     XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL     XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL XBOARD_LEGACY_IMAGE; do
+    if [[ -z "${runtime_values[$required]+present}" ]]; then
+      echo "missing runtime key: $required" >&2
+      return 2
+    fi
+    export "$required=${runtime_values[$required]}"
+  done
+}
+
+validate_runtime_material() {
+  validate_run_directory image-context || return 2
+  validate_run_directory legacy-data || return 2
+  local name
+  for name in     runtime.env bootstrap-password.txt settings-encryption-key.txt     local-legacy-app-key.txt legacy-admin-email.txt     legacy-admin-password.txt legacy-admin-path.txt; do
+    validate_run_file "$name" || return 2
+  done
+  if [[ "$XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE" != "$run_abs/bootstrap-password.txt" ||
+        "$XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE" != "$run_abs/settings-encryption-key.txt" ]]; then
+    echo 'runtime Docker secret paths must name the fixed files in the canonical run directory' >&2
+    return 2
+  fi
+}
+
+load_runtime() {
+  validate_run_storage || return 2
+  validate_run_file runtime.env || return 2
+  parse_runtime_env || return 2
   if [[ "${COMPOSE_PROJECT_NAME:-}" != "$project" || "${XBOARD_GO_IMAGE:-}" != "$candidate_image" ]]; then
     echo 'runtime project or candidate image does not match the run ID-derived identity' >&2
-    exit 2
+    return 2
   fi
+  validate_runtime_material || return 2
   export LOCAL_PARITY_RUN_DIR="$run_dir"
-  export LOCAL_LEGACY_APP_KEY="$(<"$run_dir/local-legacy-app-key.txt")"
+  export LOCAL_LEGACY_APP_KEY="$(<"$run_abs/local-legacy-app-key.txt")"
+}
+
+safe_remove_run() {
+  validate_run_storage || return 2
+  rm -rf --one-file-system -- "$run_abs"
 }
 
 require_clean_head() {
@@ -157,11 +251,18 @@ validate_prebuilt_manifest() {
 }
 
 prepare() {
-  if [[ -e "$run_dir" || -e "$evidence_dir" ]]; then
+  if [[ -L "$local_root" || ( -e "$local_root" && ! -d "$local_root" ) ]]; then
+    echo "unsafe local runtime root; expected a non-symlink directory at $local_root" >&2
+    exit 2
+  fi
+  if [[ -e "$run_dir" || -L "$run_dir" || -e "$evidence_dir" || -L "$evidence_dir" ]]; then
     echo "refusing to reuse existing run path for $run_id" >&2
     exit 2
   fi
   install -d -m 700 "$run_dir/image-context" "$run_dir/legacy-data" "$evidence_dir"
+  validate_run_storage
+  validate_run_directory image-context
+  validate_run_directory legacy-data
   umask 077
   printf '%s' "$(openssl rand -hex 24)" >"$run_dir/bootstrap-password.txt"
   openssl rand -base64 32 | tr -d '\n' >"$run_dir/settings-encryption-key.txt"
@@ -174,6 +275,10 @@ prepare() {
   # these required files readable; do not relax the other generated secrets.
   chmod 444 "$run_dir/bootstrap-password.txt" "$run_dir/settings-encryption-key.txt"
   chmod 600 "$run_dir/local-legacy-app-key.txt" "$run_dir/legacy-admin-email.txt" "$run_dir/legacy-admin-password.txt" "$run_dir/legacy-admin-path.txt"
+  local generated_file
+  for generated_file in     bootstrap-password.txt settings-encryption-key.txt local-legacy-app-key.txt     legacy-admin-email.txt legacy-admin-password.txt legacy-admin-path.txt; do
+    validate_run_file "$generated_file"
+  done
 
   local revision
   revision="$(require_clean_head)"
@@ -316,12 +421,30 @@ verify() {
 }
 
 cleanup() {
-  load_runtime
+  if ! load_runtime; then
+    echo "cleanup refused unsafe runtime state for $run_abs" >&2
+    echo "for a prepared bingo run, use run.bingo-test.sh stop $run_id; it validates the prepared identity and does not parse runtime.env" >&2
+    return 2
+  fi
   "${compose[@]}" down --volumes --remove-orphans | tee "$evidence_dir/compose-down.log"
   docker image rm "$XBOARD_GO_IMAGE" >>"$evidence_dir/compose-down.log" 2>&1 || true
-  rm -rf -- "$run_dir"
+  safe_remove_run
   unset LOCAL_LEGACY_APP_KEY
   echo "removed generated runtime resources for $run_id; retained $evidence_dir"
+}
+
+cleanup_safe() {
+  validate_run_storage
+  export LOCAL_PARITY_RUN_DIR="$run_dir"
+  export LOCAL_LEGACY_APP_KEY='base64:cleanup-only-not-a-secret'
+  export XBOARD_GO_IMAGE="$candidate_image"
+  export XBOARD_GO_BOOTSTRAP_ADMIN_PASSWORD_FILE="$run_abs/bootstrap-password.txt"
+  export XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE="$run_abs/settings-encryption-key.txt"
+  "${compose[@]}" down --volumes --remove-orphans | tee "$evidence_dir/compose-down.log"
+  docker image rm "$candidate_image" >>"$evidence_dir/compose-down.log" 2>&1 || true
+  safe_remove_run
+  unset LOCAL_LEGACY_APP_KEY
+  echo "safely removed generated runtime resources for $run_id without reading runtime.env; retained $evidence_dir"
 }
 
 case "$action" in
@@ -330,12 +453,13 @@ case "$action" in
   init) initialize ;;
   verify) verify ;;
   cleanup) cleanup ;;
+  cleanup-safe) cleanup_safe ;;
   validate-prebuilt)
     validate_prebuilt_manifest "${LOCAL_PARITY_EXPECTED_REVISION:-$(git_in_tree rev-parse HEAD)}"
     printf 'validated prebuilt binary SHA-256 %s with manifest SHA-256 %s\n' "$PREBUILT_BINARY_SHA256" "$PREBUILT_MANIFEST_SHA256"
     ;;
   *)
-    echo 'usage: tools/local-parity/run.sh {prepare|start|init|verify|cleanup}' >&2
+    echo 'usage: tools/local-parity/run.sh {prepare|start|init|verify|cleanup|cleanup-safe}' >&2
     exit 2
     ;;
 esac
