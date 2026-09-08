@@ -824,7 +824,7 @@
       "title": "删除用户会影响订单、邀请码、统计和工单；新系统必须在删除前展示影响并使用事务/软删除或经确认的保留策略。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
+      "verification_status": "historical",
       "migration_status": "current",
       "acceptance_status": "pending",
       "milestone": "M1",

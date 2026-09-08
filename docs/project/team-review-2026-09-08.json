@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "purpose": "Record bounded local review without promoting Windows test runs to canonical current acceptance.",
+  "base_commit": "05d9785981aa5109ed4f2837d3307d7ef629bf39",
+  "local_test_candidate": "36834bc227b08bc7309bbe4ae3f2e1364d9652e5",
+  "work_items": ["VER-001", "VER-002", "VER-004", "OPS-002", "MIG-001"],
+  "reviewed_source_commits": [
+    "2b80872f6609b8aa46c544c4967b92e1bdca4e3a",
+    "23ca077630b7a85f670e0a207d9fda750711a42a",
+    "a6a4a6030a99e21a99321fec6889446dcb529545",
+    "45785f29b11941e77132990e4bc9093166455d8e",
+    "206421f4c84040632f7bdfd1765d72470d1902d3"
+  ],
+  "local_verification": {
+    "environment": "Windows local isolated worktree and synthetic temporary databases",
+    "command": "go test -timeout=10m ./internal/httpapi ./internal/store ./internal/attachments ./internal/testdata/legacy/drill -run '^(TestUSER001RandomBatchCredentialsPersistAndPasswordResetReauthenticates|TestFinanceSurplusCreditCompletesLegacyPlanChangeExactlyOnce|TestAttachmentDraftOwnershipAndPublicBindingAreEnforced|TestRepresentativeLegacyMigrationDrill)$' -count=1 -json",
+    "exit_code": 0,
+    "jsonl_sha256": "01903932f47c2d09f5f2abccf708f9c3e1d8a5fab98b4a1548845fd754c8b80d",
+    "top_level_passed": 4,
+    "subtests_passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "formal_current_evidence": false
+  },
+  "status_transition": {
+    "requirement": "USER-003",
+    "verification_status": "historical",
+    "reason": "The evidence-drift gate rejects test changes after the previous verification target. Preserve the original exact-source evidence and baseline instead of rebinding old executions. No product behavior changed; implementation and pending acceptance remain unchanged. Local targeted Windows tests cannot replace the required formal environment executions."
+  },
+  "limitations": [
+    "No production code changed in these five source commits.",
+    "No remote push, pull request, production deployment or production data operation was performed.",
+    "Race verification is not established by these local non-race runs.",
+    "Other team deliveries remain under review and are not covered by this candidate."
+  ]
+}
