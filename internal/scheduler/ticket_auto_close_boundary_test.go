@@ -38,11 +38,13 @@ func TestWorkerTicketAutoCloseUsesStrictAdminReplyAgeAndIgnoresRecentUserReply(t
 		wantReply    store.TicketReplyStatus
 	}
 	recentUserReplyAt := now.Add(-23 * time.Hour)
+	staleUserReplyAt := now.Add(-25 * time.Hour)
 	cases := []ticketCase{
 		{name: "one second before 24 hours", adminReplyAt: now.Add(-24*time.Hour + time.Second), wantStatus: store.TicketStatusOpen, wantReply: store.TicketReplyAnswered},
 		{name: "exactly 24 hours", adminReplyAt: now.Add(-24 * time.Hour), wantStatus: store.TicketStatusClosed, wantReply: store.TicketReplyAnswered},
 		{name: "one second beyond 24 hours", adminReplyAt: now.Add(-24*time.Hour - time.Second), wantStatus: store.TicketStatusClosed, wantReply: store.TicketReplyAnswered},
 		{name: "recent user reply is not stale", adminReplyAt: now.Add(-25 * time.Hour), userReplyAt: &recentUserReplyAt, wantStatus: store.TicketStatusOpen, wantReply: store.TicketReplyWaiting},
+		{name: "stale user reply is not auto closed", adminReplyAt: now.Add(-26 * time.Hour), userReplyAt: &staleUserReplyAt, wantStatus: store.TicketStatusOpen, wantReply: store.TicketReplyWaiting},
 	}
 
 	tickets := make([]struct {
