@@ -157,6 +157,46 @@ func TestThemeUploadRejectsUnsafeArchiveBeforePersistence(t *testing.T) {
 	}
 }
 
+func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
+	api, _ := newTestAPI(t)
+	administrator := loginAdmin(t, api)
+
+	t.Run("missing_file_field", func(t *testing.T) {
+		response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
+			if err := writer.WriteField("name", "Aurora"); err != nil {
+				t.Fatal(err)
+			}
+		})
+		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+	})
+
+	t.Run("wrong_field_name", func(t *testing.T) {
+		response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
+			file, err := writer.CreateFormFile("archive", "aurora.zip")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.Write(validThemeHTTPArchive(t, "Aurora", "1.0.0")); err != nil {
+				t.Fatal(err)
+			}
+		})
+		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+	})
+
+	t.Run("empty_filename", func(t *testing.T) {
+		response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
+			file, err := writer.CreateFormFile("file", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.Write(validThemeHTTPArchive(t, "Aurora", "1.0.0")); err != nil {
+				t.Fatal(err)
+			}
+		})
+		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+	})
+}
+
 func decodeThemeCatalogEnvelope(t *testing.T, response *httptest.ResponseRecorder) store.ThemeCatalog {
 	t.Helper()
 	var envelope struct {
@@ -170,15 +210,22 @@ func decodeThemeCatalogEnvelope(t *testing.T, response *httptest.ResponseRecorde
 
 func themeUploadRequest(t *testing.T, api http.Handler, client testClient, archive []byte, filename string) *httptest.ResponseRecorder {
 	t.Helper()
+	return themeUploadMultipartRequest(t, api, client, func(writer *multipart.Writer) {
+		file, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write(archive); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func themeUploadMultipartRequest(t *testing.T, api http.Handler, client testClient, buildForm func(writer *multipart.Writer)) *httptest.ResponseRecorder {
+	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	file, err := writer.CreateFormFile("file", filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := file.Write(archive); err != nil {
-		t.Fatal(err)
-	}
+	buildForm(writer)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +236,19 @@ func themeUploadRequest(t *testing.T, api http.Handler, client testClient, archi
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	return response
+}
+
+func TestThemeUploadMultipartPayloadOverLimit(t *testing.T) {
+	api, _ := newTestAPI(t)
+	administrator := loginAdmin(t, api)
+	response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
+		for index := 0; index < 5; index++ {
+			if err := writer.WriteField("field", "value"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
 }
 
 func validThemeHTTPArchive(t *testing.T, name, version string) []byte {
