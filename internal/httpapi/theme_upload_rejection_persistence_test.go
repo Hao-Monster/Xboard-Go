@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,13 +22,13 @@ func TestThemeUploadRejectsInvalidUpgradeWithoutReplacingExistingTheme(t *testin
 
 	installed := themeUploadRequest(t, api, administrator, validThemeHTTPArchive(t, "Aurora", "1.0.0"), "aurora.zip")
 	if installed.Code != http.StatusCreated || !containsAll(installed.Body.String(), `"name":"Aurora"`, `"version":"1.0.0"`) {
-		t.Fatalf("initial theme upload status=%d body=%s", installed.Code, installed.Body)
+		t.Fatalf("initial theme upload status=%d body_len=%d", installed.Code, installed.Body.Len())
 	}
 	configured := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/admin/themes/Aurora/config", `{
 		"revision":1,"theme_color":"blue","background_url":"","font_scale":"large","radius":"pill"
 	}`)
 	if configured.Code != http.StatusOK || !containsAll(configured.Body.String(), `"revision":2`, `"theme_color":"blue"`, `"font_scale":"large"`, `"radius":"pill"`) {
-		t.Fatalf("theme config status=%d body=%s", configured.Code, configured.Body)
+		t.Fatalf("theme config status=%d body_len=%d", configured.Code, configured.Body.Len())
 	}
 
 	beforeSQLite, err := database.GetTheme(t.Context(), "Aurora")
@@ -36,7 +37,7 @@ func TestThemeUploadRejectsInvalidUpgradeWithoutReplacingExistingTheme(t *testin
 	}
 	beforeAPI := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes/Aurora/config", "")
 	if beforeAPI.Code != http.StatusOK {
-		t.Fatalf("read API theme before invalid upgrade status=%d body=%s", beforeAPI.Code, beforeAPI.Body)
+		t.Fatalf("read API theme before invalid upgrade status=%d body_len=%d", beforeAPI.Code, beforeAPI.Body.Len())
 	}
 	assertThemeEqual(t, beforeSQLite, decodeThemeEnvelope(t, beforeAPI), "before API and SQLite")
 
@@ -51,7 +52,7 @@ func TestThemeUploadRejectsInvalidUpgradeWithoutReplacingExistingTheme(t *testin
 
 	invalidUpgrade := themeUploadRequest(t, api, administrator, normalizedThemeDirectoryFileCollisionArchive(t), "aurora-upgrade.zip")
 	if invalidUpgrade.Code != http.StatusUnprocessableEntity || !containsAll(invalidUpgrade.Body.String(), `"code":"invalid_theme_package"`) {
-		t.Fatalf("invalid upgrade status=%d body=%s", invalidUpgrade.Code, invalidUpgrade.Body)
+		t.Fatalf("invalid upgrade status=%d body_len=%d has_invalid_theme_package=%t", invalidUpgrade.Code, invalidUpgrade.Body.Len(), bytes.Contains(invalidUpgrade.Body.Bytes(), []byte(`"code":"invalid_theme_package"`)))
 	}
 
 	afterSQLite, err := database.GetTheme(t.Context(), "Aurora")
@@ -60,12 +61,12 @@ func TestThemeUploadRejectsInvalidUpgradeWithoutReplacingExistingTheme(t *testin
 	}
 	assertThemeEqual(t, beforeSQLite, afterSQLite, "SQLite after invalid upgrade")
 	if afterSQLite.Version != "1.0.0" || afterSQLite.PackageSHA256 != beforeSQLite.PackageSHA256 || afterSQLite.Config != beforeSQLite.Config {
-		t.Fatalf("invalid upgrade changed version/digest/config: before=%#v after=%#v", beforeSQLite, afterSQLite)
+		t.Fatalf("invalid upgrade changed version/digest/config: before={version=%q digest=%q revision=%d config=%+v} after={version=%q digest=%q revision=%d config=%+v}", beforeSQLite.Version, beforeSQLite.PackageSHA256, beforeSQLite.Revision, beforeSQLite.Config, afterSQLite.Version, afterSQLite.PackageSHA256, afterSQLite.Revision, afterSQLite.Config)
 	}
 
 	afterAPI := administrator.request(t, api, http.MethodGet, "/api/v1/admin/admin/themes/Aurora/config", "")
 	if afterAPI.Code != http.StatusOK {
-		t.Fatalf("read API theme after invalid upgrade status=%d body=%s", afterAPI.Code, afterAPI.Body)
+		t.Fatalf("read API theme after invalid upgrade status=%d body_len=%d", afterAPI.Code, afterAPI.Body.Len())
 	}
 	assertThemeEqual(t, beforeSQLite, decodeThemeEnvelope(t, afterAPI), "API after invalid upgrade")
 
@@ -91,15 +92,19 @@ func decodeThemeEnvelope(t *testing.T, response *httptest.ResponseRecorder) stor
 func assertThemeEqual(t *testing.T, want, got store.Theme, label string) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {
-		t.Fatalf("%s theme changed: want=%#v got=%#v", label, want, got)
+		t.Fatalf("%s theme changed: want=%s got=%s", label, themeSummary(want), themeSummary(got))
 	}
 }
 
 func assertThemeAssetResponse(t *testing.T, response *httptest.ResponseRecorder, label string) {
 	t.Helper()
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Header().Get("ETag") == "" {
-		t.Fatalf("%s asset response status=%d headers=%v body=%s", label, response.Code, response.Header(), response.Body)
+		t.Fatalf("%s asset response status=%d content_type=%q etag=%q body_len=%d", label, response.Code, response.Header().Get("Content-Type"), response.Header().Get("ETag"), response.Body.Len())
 	}
+}
+
+func themeSummary(item store.Theme) string {
+	return fmt.Sprintf("{name=%q version=%q digest=%q revision=%d config=%+v images=%d backgrounds=%d palettes=%d active=%t system=%t can_delete=%t}", item.Name, item.Version, item.PackageSHA256, item.Revision, item.Config, len(item.Images), len(item.Backgrounds), len(item.Palettes), item.IsActive, item.IsSystem, item.CanDelete)
 }
 
 func sha256Hex(value []byte) string {
