@@ -8,6 +8,7 @@ declare(strict_types=1);
 // Laravel models and never creates tables or writes a hand-crafted schema.
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Cache;
 use App\Utils\Helper;
 
 require '/www/vendor/autoload.php';
@@ -63,6 +64,13 @@ if ($user === null) {
 foreach (['secure_path', 'frontend_admin_path'] as $key) {
     $settingClass::createOrUpdate($key, $adminPath);
 }
+
+// Kernel boot can load the same route files that call admin_setting(). The
+// setting implementation remembers the entire set forever, so the CLI may
+// have cached the pre-initialization empty database. Invalidate only that
+// documented key; never flush the shared Redis database.
+$cacheStore = config('cache.settings_store', 'redis');
+Cache::store($cacheStore)->forget(\App\Support\Setting::CACHE_KEY);
 
 $adminCount = $userClass::query()->where('is_admin', 1)->count();
 $securePath = $settingClass::query()->where('name', 'secure_path')->value('value');

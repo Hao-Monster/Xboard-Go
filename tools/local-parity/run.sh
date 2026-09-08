@@ -243,7 +243,7 @@ verify() {
   legacy_path="$(<"$run_dir/legacy-admin-path.txt")"
   test "$legacy_path" = "$XBOARD_LEGACY_ADMIN_PATH"
   printf 'http://127.0.0.1:%s/%s\n' "$XBOARD_LEGACY_PORT" "$legacy_path" >"$evidence_dir/legacy-admin-url.txt"
-  "${compose[@]}" exec -T legacy-oracle php /opt/local-parity/legacy-state.php | tee "$evidence_dir/legacy-state.json"
+  "${compose[@]}" exec -T -e "LOCAL_PARITY_ADMIN_PATH=$legacy_path" legacy-oracle php /opt/local-parity/legacy-state.php | tee "$evidence_dir/legacy-state.json"
   root_status="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${XBOARD_LEGACY_PORT}/" || true)"
   printf 'legacy-root status=%s\n' "$root_status" | tee "$evidence_dir/legacy-root-http.txt"
   if [[ "$root_status" =~ ^5[0-9]{2}$ ]]; then

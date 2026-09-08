@@ -21,7 +21,10 @@ starts only the internal Redis, migrates and initializes the Oracle in
 one-shot containers, then starts the Oracle Web process and candidate. This
 ordering is required: the legacy `admin_setting` implementation caches all
 settings forever in Redis, and its V2/admin routes are registered at process
-startup. `verify` and `cleanup` must be performed by the assigned local
+startup. The initializer then invalidates only that documented settings-cache
+key after its database writes, because its own Laravel CLI bootstrap can load
+the route files before those writes; it never flushes Redis wholesale. `verify`
+and `cleanup` must be performed by the assigned local
 executor. The exact
 Compose project is `xboard-user-parity-<run-id>` and every public port is bound
 to loopback. `cleanup` destroys only that run's Compose resources, candidate
@@ -97,8 +100,10 @@ non-default `v2_user` identity columns. Re-entry preserves those existing
 identities while refreshing the generated administrator credential. Settings
 are written through `Setting::createOrUpdate(name, value)`.
 
-`verify` records the generated legacy administrator URL only after reading the
-legacy database/cache route state and receiving an HTTP success for that URL.
+`verify` records the generated legacy administrator URL only after a strict
+legacy-state check exits successfully: both database path keys, both cached
+path keys, and the registered V2 administrator route must exactly match the
+generated path. It then requires an HTTP success for that URL.
 It separately records the legacy root (`/`) status. A root failure is not
 treated as evidence about the administrator-route prefix: `/` is a distinct
 theme-rendering route. For a root 5xx it retains only a deidentified exception
