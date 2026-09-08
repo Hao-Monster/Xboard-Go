@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -156,6 +157,130 @@ func TestXboardNodeRuntimeConfigContract(t *testing.T) {
 	}
 }
 
+func TestVER001VER003RuntimeUserPullReflectsSubscriptionRotationAndBans(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	settings, err := database.GetNodeAgentSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyToken := "legacy-user-boundary-token-1234567890"
+	if _, err := database.UpdateNodeAgentSettings(ctx, store.UpdateNodeAgentSettingsInput{
+		Revision: settings.Revision, ServerToken: &legacyToken, PullInterval: 60, PushInterval: 60,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	machine, enrollment, err := database.CreateMachine(ctx, store.CreateMachineInput{Name: "user-boundary-machine", IsActive: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "user-boundary-node", Type: "vless", Host: "user-boundary.example.test", Port: "443",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{7},
+		Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ExchangeEnrollment(ctx, machine.ID, enrollment.Code, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "rotated-runtime@example.test", PasswordHash: "hash",
+		UUID: "c46baf6e-d0c9-4519-bc40-2666b56df9df", GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	banned, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "banned-runtime@example.test", PasswordHash: "hash",
+		UUID: "9cd2ddbe-c0e5-426d-8d2f-0fb660a7351a", GroupID: 7, TransferEnable: 1_000_000,
+		Banned: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	machineUsersPath := fmt.Sprintf("/api/v2/server/user?machine_id=%d&node_id=%d", machine.ID, node.ID)
+	legacyUsersPath := fmt.Sprintf("/api/v1/server/UniProxy/user?node_id=%d&node_type=vless", node.ID)
+	for _, path := range []string{machineUsersPath, legacyUsersPath} {
+		token := credential.Token
+		if strings.Contains(path, "UniProxy") {
+			token = legacyToken
+		}
+		users := fetchRuntimeUsers(t, api, path, token)
+		if len(users) != 1 || users[0].ID != active.ID || users[0].UUID != active.UUID {
+			t.Fatalf("initial users for %s = %#v", path, users)
+		}
+		if containsRuntimeUser(users, banned.ID, banned.UUID) {
+			t.Fatalf("banned user was exposed by %s: %#v", path, users)
+		}
+	}
+
+	rotated, mutation, err := database.ResetSubscriptionSecurity(ctx, active.ID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ResetSubscriptionSecurity() error = %v", err)
+	}
+	if mutation.PreviousUUID != active.UUID || rotated.UUID == active.UUID {
+		t.Fatalf("unexpected subscription rotation: account=%#v mutation=%#v", rotated, mutation)
+	}
+	for _, path := range []string{machineUsersPath, legacyUsersPath} {
+		token := credential.Token
+		if strings.Contains(path, "UniProxy") {
+			token = legacyToken
+		}
+		users := fetchRuntimeUsers(t, api, path, token)
+		if len(users) != 1 || users[0].ID != active.ID || users[0].UUID != rotated.UUID {
+			t.Fatalf("rotated users for %s = %#v, want current UUID %q", path, users, rotated.UUID)
+		}
+		if containsRuntimeUserUUID(users, active.UUID) {
+			t.Fatalf("old UUID survived rotation in %s: %#v", path, users)
+		}
+	}
+
+	adminUser, err := database.GetAdminUser(ctx, active.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, banMutation, err := database.UpdateAdminUser(ctx, active.ID, store.UpdateAdminUserInput{
+		Revision:       adminUser.Revision,
+		Email:          adminUser.Email,
+		GroupID:        adminUser.GroupID,
+		TransferEnable: adminUser.TransferEnable,
+		ExpiredAt:      adminUser.ExpiredAt,
+		SpeedLimit:     adminUser.SpeedLimit,
+		DeviceLimit:    adminUser.DeviceLimit,
+		Banned:         true,
+	}, now.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !banMutation.RuntimeChanged || !banMutation.AccessStateCleared {
+		t.Fatalf("ban mutation did not clear runtime access: %#v", banMutation)
+	}
+	subscriptionResponse := agentRequest(api, http.MethodGet, "/api/v1/client/subscribe?token="+rotated.SubscriptionToken, "", "")
+	if subscriptionResponse.Code != http.StatusForbidden {
+		t.Fatalf("banned subscription status = %d, want %d; body=%s", subscriptionResponse.Code, http.StatusForbidden, subscriptionResponse.Body)
+	}
+	for _, path := range []string{machineUsersPath, legacyUsersPath} {
+		token := credential.Token
+		if strings.Contains(path, "UniProxy") {
+			token = legacyToken
+		}
+		users := fetchRuntimeUsers(t, api, path, token)
+		if len(users) != 0 {
+			t.Fatalf("banned users for %s = %#v, want none", path, users)
+		}
+	}
+}
+
 func TestXboardNodeRuntimeEndpointsExposeDefaultConfigurationAndEnforceOwnership(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()
@@ -284,4 +409,35 @@ func TestValidateNodeReportEnforcesEntryAndFieldLimits(t *testing.T) {
 	if _, err := validateNodeReport(nodeReportPayload{Metrics: coresAboveLimit}); err == nil || !strings.Contains(err.Error(), "cpu_per_core") {
 		t.Fatalf("CPU metrics above limit error = %v", err)
 	}
+}
+
+func fetchRuntimeUsers(t *testing.T, api http.Handler, path, token string) []store.RuntimeUser {
+	t.Helper()
+	response := agentRequest(api, http.MethodGet, path, token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("runtime users status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body)
+	}
+	var payload struct {
+		Users []store.RuntimeUser `json:"users"`
+	}
+	decodeResponse(t, response, &payload)
+	return payload.Users
+}
+
+func containsRuntimeUser(users []store.RuntimeUser, userID int64, userUUID string) bool {
+	for _, user := range users {
+		if user.ID == userID || user.UUID == userUUID {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRuntimeUserUUID(users []store.RuntimeUser, userUUID string) bool {
+	for _, user := range users {
+		if user.UUID == userUUID {
+			return true
+		}
+	}
+	return false
 }

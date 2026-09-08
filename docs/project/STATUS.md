@@ -14,8 +14,8 @@ Baseline: `M0` · as of 2026-09-08 · verification target `48db5761879e68aa9fc50
 | Implementation | `partial` | 3 |
 | Implementation | `blocked` | 0 |
 | Implementation | `not_started` | 0 |
-| Verification | `current` | 1 |
-| Verification | `historical` | 0 |
+| Verification | `current` | 0 |
+| Verification | `historical` | 1 |
 | Verification | `partial` | 79 |
 | Verification | `none` | 0 |
 | Migration | `current` | 72 |
@@ -32,7 +32,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `48db5761879e68aa9fc50
 - Decisions: 10 resolved, 8 pending (18 total).
 - Risks: 1 open Critical, 8 open High, 23 total.
 - Compatibility exceptions: 9 accepted, 0 proposed.
-- Current-head verification: 1/80; accepted: 0/80. Historical evidence is not current acceptance.
+- Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
 - Recorded evidence: 216 pass, 0 fail, 164 not_run. A not_run record preserves the unsupported claim and its explanation; it cannot support current acceptance.
 
 ## Blocked or partial requirements
@@ -50,7 +50,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `48db5761879e68aa9fc50
 | `AUTH-009` | M3 | decided | implemented | partial | — | `VER-001` |
 | `USER-001` | M1 | decided | partial | partial | `D-012` | `FUNC-002` |
 | `USER-002` | M3 | decided | implemented | partial | — | `VER-001` |
-| `USER-003` | M1 | decided | implemented | current | `D-012` | `FUNC-002` |
+| `USER-003` | M1 | decided | implemented | historical | `D-012` | `FUNC-002` |
 | `PLAN-001` | M3 | decided | implemented | partial | — | `VER-001` |
 | `PLAN-002` | M3 | decided | implemented | partial | — | `VER-001` |
 | `PLAN-003` | M3 | decided | implemented | partial | — | `VER-001` |
@@ -155,4 +155,4 @@ Baseline: `M0` · as of 2026-09-08 · verification target `48db5761879e68aa9fc50
 
 ## Interpretation
 
-Current-head verification is 1/80 and formal acceptance is 0/80. Release readiness still depends on the milestone gates above; M0 establishes the control plane, and M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.
+Current-head verification is 0/80 and formal acceptance is 0/80. Release readiness still depends on the milestone gates above; M0 establishes the control plane, and M1–M4 close business decisions, migration/operations evidence, current candidate acceptance, and production readiness in that order.

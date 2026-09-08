@@ -137,6 +137,44 @@ func TestListDraftKnowledgeAttachmentsUsesDraftScopeWithoutArticleID(t *testing.
 	}
 }
 
+func TestAttachmentDraftOwnershipAndPublicBindingAreEnforced(t *testing.T) {
+	service, database, adminID, now := newAttachmentTestService(t, 32)
+	draftToken := testDraftToken("e")
+	content := []byte("private")
+	attachment := uploadTestAttachment(t, service, adminID, draftToken, "private.txt", content, now)
+	if _, _, err := service.OpenPublic(context.Background(), attachment.UUID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("OpenPublic(unbound draft) error = %v, want ErrNotFound", err)
+	}
+
+	other, err := database.CreateAdminUser(context.Background(), store.CreateAdminUserInput{
+		Email: "other-attachment-owner@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page, err := service.List(context.Background(), other.ID, nil, draftToken, 1, 100); err != nil {
+		t.Fatalf("List(other owner) error = %v", err)
+	} else if page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("List(other owner) exposed draft attachment: %#v", page)
+	}
+	if err := service.DropDraft(context.Background(), other.ID, attachment.UUID, draftToken); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DropDraft(other owner) error = %v, want ErrNotFound", err)
+	}
+	page, err := service.List(context.Background(), adminID, nil, draftToken, 1, 100)
+	if err != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].UUID != attachment.UUID || page.Items[0].Status != AttachmentReady || page.Items[0].Size != int64(len(content)) {
+		t.Fatalf("List(owner after rejected drop) page=%#v error=%v", page, err)
+	}
+	file, metadata, err := service.Open(context.Background(), attachment.UUID)
+	if err != nil {
+		t.Fatalf("Open(owner after rejected drop) error = %v", err)
+	}
+	defer file.Close()
+	stored, err := io.ReadAll(file)
+	if err != nil || metadata.UUID != attachment.UUID || metadata.Status != AttachmentReady || !bytes.Equal(stored, content) {
+		t.Fatalf("Open(owner after rejected drop) metadata=%#v content=%q error=%v", metadata, stored, err)
+	}
+}
+
 func TestConcurrentQuotaReservationsAndCompletionAreSerialized(t *testing.T) {
 	service, _, adminID, now := newAttachmentTestService(t, 8)
 	var wait sync.WaitGroup
