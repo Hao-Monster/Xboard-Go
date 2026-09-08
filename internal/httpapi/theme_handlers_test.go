@@ -158,7 +158,7 @@ func TestThemeUploadRejectsUnsafeArchiveBeforePersistence(t *testing.T) {
 }
 
 func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
-	api, _ := newTestAPI(t)
+	api, database := newTestAPI(t)
 	administrator := loginAdmin(t, api)
 
 	t.Run("missing_file_field", func(t *testing.T) {
@@ -168,6 +168,10 @@ func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
 			}
 		})
 		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+		catalog, err := database.ListThemes(t.Context())
+		if err != nil || len(catalog.Themes) != 1 || catalog.ActiveTheme != "Xboard" {
+			t.Fatalf("missing_file_field changed catalog=%#v err=%v", catalog, err)
+		}
 	})
 
 	t.Run("wrong_field_name", func(t *testing.T) {
@@ -181,6 +185,10 @@ func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
 			}
 		})
 		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+		catalog, err := database.ListThemes(t.Context())
+		if err != nil || len(catalog.Themes) != 1 || catalog.ActiveTheme != "Xboard" {
+			t.Fatalf("wrong_field_name changed catalog=%#v err=%v", catalog, err)
+		}
 	})
 
 	t.Run("empty_filename", func(t *testing.T) {
@@ -194,6 +202,10 @@ func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
 			}
 		})
 		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+		catalog, err := database.ListThemes(t.Context())
+		if err != nil || len(catalog.Themes) != 1 || catalog.ActiveTheme != "Xboard" {
+			t.Fatalf("empty_filename changed catalog=%#v err=%v", catalog, err)
+		}
 	})
 }
 
@@ -238,17 +250,28 @@ func themeUploadMultipartRequest(t *testing.T, api http.Handler, client testClie
 	return response
 }
 
-func TestThemeUploadMultipartPayloadOverLimit(t *testing.T) {
-	api, _ := newTestAPI(t)
+func TestThemeUploadMultipartPayloadOverLimitNotReachableByContract(t *testing.T) {
+	api, database := newTestAPI(t)
 	administrator := loginAdmin(t, api)
 	response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
-		for index := 0; index < 5; index++ {
+		file, err := writer.CreateFormFile("file", "aurora.zip")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write(validThemeHTTPArchive(t, "Aurora", "1.0.0")); err != nil {
+			t.Fatal(err)
+		}
+		for index := 0; index < 4; index++ {
 			if err := writer.WriteField("field", "value"); err != nil {
 				t.Fatal(err)
 			}
 		}
 	})
 	expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
+	catalog, err := database.ListThemes(t.Context())
+	if err != nil || len(catalog.Themes) != 1 || catalog.ActiveTheme != "Xboard" {
+		t.Fatalf("multipart extra parts changed catalog=%#v err=%v", catalog, err)
+	}
 }
 
 func validThemeHTTPArchive(t *testing.T, name, version string) []byte {
