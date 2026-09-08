@@ -2536,7 +2536,7 @@ test("legacy ticket API preserves role, ownership, close, and reply state semant
   }
 });
 
-test("legacy and Go commission withdrawal APIs create the same high-priority ticket without debiting commission", async ({ browser }) => {
+test("legacy and Go commission withdrawals preserve the same ticket contract with approved Go atomic freezing", async ({ browser }) => {
   test.setTimeout(120_000);
   const legacyContext = await browser.newContext({ locale: "zh-CN" });
   const goContext = await browser.newContext({ locale: "zh-CN" });
@@ -2621,22 +2621,26 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
       try {
         let listPath: string;
         let detailPath: (ticketID: number) => string;
+        let csrf = "";
+        let goWithdrawalCreated: Record<string, unknown> | null = null;
         if (legacy) {
           const withdrawn = await userAPI.post("/api/v1/user/ticket/withdraw", {
             headers: { authorization: authorization ?? "" }, data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
           });
           expect(withdrawn.status(), await withdrawn.text()).toBe(200);
+          expect(readProperty(await withdrawn.json() as unknown, "data")).toBe(true);
           listPath = "/api/v1/user/ticket/fetch";
           detailPath = (ticketID) => `/api/v1/user/ticket/fetch?id=${ticketID}`;
         } else {
           const state = await userAPI.storageState();
-          const csrf = state.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? "";
+          csrf = state.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? "";
           expect(csrf).not.toBe("");
           const withdrawn = await userAPI.post("/api/v1/tickets/withdraw", {
             headers: { "X-CSRF-Token": decodeURIComponent(csrf) },
             data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
           });
           expect(withdrawn.status(), await withdrawn.text()).toBe(201);
+          goWithdrawalCreated = readObjectProperty(await withdrawn.json() as unknown, "data");
           listPath = "/api/v1/tickets";
           detailPath = (ticketID) => `/api/v1/tickets/${ticketID}`;
         }
@@ -2646,6 +2650,7 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
         const tickets = legacy ? listData : readProperty(listData, "items");
         if (!Array.isArray(tickets)) throw new Error("withdrawal parity ticket list is invalid");
         const ticketItems: unknown[] = tickets;
+        expect(ticketItems).toHaveLength(1);
         const item = ticketItems.find((value: unknown) => readStringProperty(value, "subject") === "[提现申请] 本工单由系统发出");
         const ticketID = Number(readProperty(item, "id"));
         expect(Number.isSafeInteger(ticketID) && ticketID > 0).toBe(true);
@@ -2655,6 +2660,80 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
         const messages = readProperty(ticket, legacy ? "message" : "messages");
         if (!Array.isArray(messages) || messages.length !== 1) throw new Error("withdrawal parity ticket messages are invalid");
         const ticketMessages: unknown[] = messages;
+        if (!legacy) {
+          // D-011 / CE-009 preserve the ticket contract, but freeze available
+          // commission in a separate pending ledger instead of leaving it spendable.
+          const userID = Number(readProperty(goCreated, "id"));
+          const withdrawal = readObjectProperty(ticket, "withdrawal");
+          const withdrawalID = Number(readProperty(withdrawal, "id"));
+          expect(Number.isSafeInteger(withdrawalID) && withdrawalID > 0).toBe(true);
+          expect(withdrawal).toMatchObject({
+            id: withdrawalID, user_id: userID, ticket_id: ticketID, amount: 25_050,
+            status: "pending", method: "USDT", account: withdrawalAccount, payment_reference: ""
+          });
+          const assertUnchangedWithdrawal = (value: unknown, ticketStatus: 0 | 1) => {
+            expect(Number(readProperty(value, "id"))).toBe(ticketID);
+            expect(Number(readProperty(value, "status"))).toBe(ticketStatus);
+            expect(readProperty(value, "withdrawal")).toEqual(withdrawal);
+          };
+          const assertPersistedWithdrawal = async (ticketStatus: 0 | 1) => {
+            // Creation/replay responses omit messages; verify them through the detail API.
+            const response = await userAPI.get(detailPath(ticketID));
+            expect(response.status(), await response.text()).toBe(200);
+            const persisted = readProperty(await response.json() as unknown, "data");
+            assertUnchangedWithdrawal(persisted, ticketStatus);
+            expect(readProperty(persisted, "messages")).toEqual(ticketMessages);
+          };
+          const assertFundsRemainFrozen = async () => {
+            const response = await goAdminRequest(goPage, `/api/v1/admin/users/${userID}`, "GET");
+            expect(response.status, response.body).toBe(200);
+            const user = readObjectProperty(JSON.parse(response.body) as unknown, "data");
+            expect(Number(readProperty(user, "commission_balance"))).toBe(0);
+            expect(Number(readProperty(user, "balance"))).toBe(Number(readProperty(goFunded, "balance")));
+          };
+          const replayWithdrawal = async (ticketStatus: 0 | 1) => {
+            // No request_key: old-shaped clients must deduplicate the active ledger too.
+            const replay = await userAPI.post("/api/v1/tickets/withdraw", {
+              headers: { "X-CSRF-Token": decodeURIComponent(csrf) },
+              data: { withdraw_method: "USDT", withdraw_account: withdrawalAccount }
+            });
+            expect(replay.status(), await replay.text()).toBe(201);
+            assertUnchangedWithdrawal(readProperty(await replay.json() as unknown, "data"), ticketStatus);
+            await assertPersistedWithdrawal(ticketStatus);
+            await assertFundsRemainFrozen();
+          };
+          assertUnchangedWithdrawal(goWithdrawalCreated, 0);
+          await assertFundsRemainFrozen();
+          await replayWithdrawal(0);
+
+          const conflicting = await userAPI.post("/api/v1/tickets/withdraw", {
+            headers: { "X-CSRF-Token": decodeURIComponent(csrf) },
+            data: { withdraw_method: "USDT", withdraw_account: `${withdrawalAccount}-different` }
+          });
+          expect(conflicting.status(), await conflicting.text()).toBe(409);
+          expect(readStringProperty(readProperty(await conflicting.json() as unknown, "error"), "code")).toBe("withdrawal_request_conflict");
+          await assertFundsRemainFrozen();
+
+          const closed = await userAPI.post(`/api/v1/tickets/${ticketID}/close`, {
+            headers: { "X-CSRF-Token": decodeURIComponent(csrf) }, data: {}
+          });
+          expect(closed.status(), await closed.text()).toBe(200);
+          assertUnchangedWithdrawal(readProperty(await closed.json() as unknown, "data"), 1);
+          await assertFundsRemainFrozen();
+          // Closing the ordinary ticket neither settles nor cancels its financial ledger.
+          await replayWithdrawal(1);
+          const finalList = await userAPI.get(listPath);
+          expect(finalList.status(), await finalList.text()).toBe(200);
+          const finalListData = readProperty(await finalList.json() as unknown, "data");
+          expect(readProperty(finalListData, "total")).toBe(1);
+          const finalItems = readProperty(finalListData, "items");
+          expect(Array.isArray(finalItems)).toBe(true);
+          if (!Array.isArray(finalItems)) throw new Error("Go withdrawal replay ticket list is invalid");
+          const finalTicketItems: unknown[] = finalItems;
+          expect(finalTicketItems).toHaveLength(1);
+          expect(Number(readProperty(finalTicketItems[0], "id"))).toBe(ticketID);
+          await assertPersistedWithdrawal(1);
+        }
         return {
           subject: readStringProperty(ticket, "subject"), level: Number(readProperty(ticket, "level")),
           status: Number(readProperty(ticket, "status")), message: readStringProperty(ticketMessages[0], "message")
@@ -2677,7 +2756,7 @@ test("legacy and Go commission withdrawal APIs create the same high-priority tic
     const goAfter = readObjectProperty(JSON.parse(goAfterResponse.body) as unknown, "data");
     const goBalanceAfter = Number(readProperty(goAfter, "commission_balance"));
     expect({ legacyBalanceBefore, legacyBalanceAfter, goBalanceBefore, goBalanceAfter }).toEqual({
-      legacyBalanceBefore: 25_050, legacyBalanceAfter: 25_050, goBalanceBefore: 25_050, goBalanceAfter: 25_050
+      legacyBalanceBefore: 25_050, legacyBalanceAfter: 25_050, goBalanceBefore: 25_050, goBalanceAfter: 0
     });
   } finally {
     if (legacyOriginal !== null && legacyAuthorization !== "") {
