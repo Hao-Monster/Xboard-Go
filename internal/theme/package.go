@@ -110,9 +110,6 @@ func ParseArchive(archive []byte) (Package, error) {
 			return Package{}, err
 		}
 		folded := strings.ToLower(name)
-		if directory {
-			folded += "/"
-		}
 		if previous, exists := seen[folded]; exists {
 			return Package{}, fmt.Errorf("theme archive contains ambiguous paths %q and %q", previous, name)
 		}
