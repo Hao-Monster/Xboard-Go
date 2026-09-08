@@ -138,6 +138,25 @@ machine-credential traffic has been observed. It does not rotate, clear, or
 retire the legacy global token; the retirement window remains an explicit
 operator decision.
 
+The D-013 statistics and log-retention decision can be prepared from a
+standalone legacy SQLite snapshot without reading failed-job payloads or
+exceptions:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance \
+  maintenance operational-retention-readiness \
+  --source /data/legacy-xboard.sqlite \
+  --retention-days 90
+```
+
+The command is read-only. It reports aggregate node-traffic rows inside and
+outside the selected retention window, future or invalid rows that would block
+a safe offline migration, pending legacy queue rows that must be drained, and
+whether legacy `failed_jobs` payload columns exist. It deliberately outputs no
+raw job payload, exception, request body, credential, IP address, user email, or
+node host data. Legacy PHP failed jobs remain non-executable evidence unless
+the compatibility exception for D-013 is explicitly accepted.
+
 Node HTTP and WebSocket handshake rate limits always retain independent
 client, direct-peer, and credential buckets. A deployment behind a shared
 reverse proxy must set `XBOARD_TRUSTED_PROXY_CIDRS` to the proxy network CIDRs

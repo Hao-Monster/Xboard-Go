@@ -90,6 +90,38 @@ func TestRunCommandMaintenanceNodeAuthRetirementReadiness(t *testing.T) {
 	}
 }
 
+func TestRunCommandMaintenanceOperationalRetentionReadiness(t *testing.T) {
+	sourcePath := createLegacyOperationalRetentionTestSnapshot(t)
+	asOf := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	var stdout, stderr bytes.Buffer
+
+	handled, err := runCommand(context.Background(), []string{"maintenance", "operational-retention-readiness", "--source", sourcePath, "--retention-days", "90"}, &stdout, &stderr, func() time.Time {
+		return asOf
+	})
+	if err != nil || !handled {
+		t.Fatalf("runCommand(operational-retention-readiness) = handled %v error %v stderr=%q", handled, err, stderr.String())
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("runCommand(operational-retention-readiness) stderr = %q", stderr.String())
+	}
+	var output operationalRetentionReadinessCommandResult
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode operational retention output %q: %v", stdout.String(), err)
+	}
+	if output.Status != "success" || output.Action != "maintenance.operational-retention-readiness" ||
+		output.RetentionDays != 90 || output.Result.NodeTraffic.TotalRows != 2 ||
+		output.Result.NodeTraffic.RetainedRows != 1 || !output.Result.FailedJobs.PayloadColumnsPresent ||
+		output.Result.FailedJobs.ExecutableImportSupported || output.Result.QueuedJobs.TotalRows != 1 ||
+		output.Result.MigrationSafe {
+		t.Fatalf("operational retention output = %#v", output)
+	}
+	for _, forbidden := range []string{"secret payload", "stack trace"} {
+		if strings.Contains(stdout.String(), forbidden) {
+			t.Fatalf("operational retention output leaked failed_jobs data: %s", stdout.String())
+		}
+	}
+}
+
 func TestRunCommandMaintenanceNodeAuthRetirementReadinessRejectsUnsafeInputsWithoutCreatingDatabase(t *testing.T) {
 	directory := t.TempDir()
 	missingPath := filepath.Join(directory, "missing.db")
@@ -135,6 +167,36 @@ func TestRunCommandMaintenanceNodeAuthRetirementReadinessRequiresExistingObserva
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("readiness without observation wrote success output: %q", stdout.String())
+	}
+}
+
+func TestRunCommandMaintenanceOperationalRetentionReadinessRejectsUnsafeInputsWithoutCreatingDatabase(t *testing.T) {
+	directory := t.TempDir()
+	missingPath := filepath.Join(directory, "missing.db")
+	now := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for _, testCase := range []struct {
+		name      string
+		arguments []string
+	}{
+		{name: "missing source", arguments: []string{"maintenance", "operational-retention-readiness"}},
+		{name: "zero days", arguments: []string{"maintenance", "operational-retention-readiness", "--source", missingPath, "--retention-days", "0"}},
+		{name: "excessive days", arguments: []string{"maintenance", "operational-retention-readiness", "--source", missingPath, "--retention-days", "3651"}},
+		{name: "positional argument", arguments: []string{"maintenance", "operational-retention-readiness", "--source", missingPath, "unexpected"}},
+		{name: "missing database", arguments: []string{"maintenance", "operational-retention-readiness", "--source", missingPath}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			handled, err := runCommand(context.Background(), testCase.arguments, &stdout, &stderr, func() time.Time { return now })
+			if !handled || err == nil {
+				t.Fatalf("runCommand(%q) = handled %v error %v", testCase.arguments, handled, err)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("failed operational retention wrote success output: %q", stdout.String())
+			}
+		})
+	}
+	if _, err := os.Lstat(missingPath); !os.IsNotExist(err) {
+		t.Fatalf("operational retention created missing database: %v", err)
 	}
 }
 
@@ -272,6 +334,55 @@ func setSQLiteUserVersion(t *testing.T, path string, version int) {
 	if _, err := database.ExecContext(t.Context(), fmt.Sprintf("PRAGMA user_version = %d", version)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func createLegacyOperationalRetentionTestSnapshot(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	database, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE v2_stat_server (
+			id INTEGER PRIMARY KEY,
+			server_id INTEGER,
+			server_type TEXT,
+			u INTEGER,
+			d INTEGER,
+			record_type TEXT,
+			record_at INTEGER,
+			created_at INTEGER,
+			updated_at INTEGER
+		);
+		CREATE TABLE failed_jobs (
+			id INTEGER PRIMARY KEY,
+			uuid TEXT,
+			connection TEXT,
+			queue TEXT,
+			payload TEXT,
+			exception TEXT,
+			failed_at TEXT
+		);
+		CREATE TABLE jobs (
+			id INTEGER PRIMARY KEY,
+			queue TEXT,
+			payload TEXT,
+			attempts INTEGER,
+			reserved_at INTEGER,
+			available_at INTEGER,
+			created_at INTEGER
+		);
+		INSERT INTO v2_stat_server VALUES
+			(1, 42, 'vless', 1024, 2048, 'd', 1787702400, 1787702400, 1787702410),
+			(2, 42, 'vless', 512, 256, 'd', 1777670400, 1777670400, 1777670410);
+		INSERT INTO failed_jobs VALUES (1, 'job-one', 'database', 'default', 'secret payload', 'stack trace', '2026-08-15 00:00:00');
+		INSERT INTO jobs VALUES (1, 'default', 'queued secret payload', 0, NULL, 1787702400, 1787702400);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 type maintenanceCommandOutput struct {
