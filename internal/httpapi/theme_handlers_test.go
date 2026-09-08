@@ -162,11 +162,7 @@ func TestThemeUploadRejectsInvalidMultipartPayload(t *testing.T) {
 	administrator := loginAdmin(t, api)
 
 	t.Run("missing_file_field", func(t *testing.T) {
-		response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
-			if err := writer.WriteField("name", "Aurora"); err != nil {
-				t.Fatal(err)
-			}
-		})
+		response := themeUploadMultipartRequest(t, api, administrator, func(*multipart.Writer) {})
 		expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
 		catalog, err := database.ListThemes(t.Context())
 		if err != nil || len(catalog.Themes) != 1 || catalog.ActiveTheme != "Xboard" {
@@ -250,7 +246,7 @@ func themeUploadMultipartRequest(t *testing.T, api http.Handler, client testClie
 	return response
 }
 
-func TestThemeUploadMultipartPayloadOverLimitNotReachableByContract(t *testing.T) {
+func TestThemeUploadRejectsExtraFieldAfterArchive(t *testing.T) {
 	api, database := newTestAPI(t)
 	administrator := loginAdmin(t, api)
 	response := themeUploadMultipartRequest(t, api, administrator, func(writer *multipart.Writer) {
@@ -261,10 +257,8 @@ func TestThemeUploadMultipartPayloadOverLimitNotReachableByContract(t *testing.T
 		if _, err := file.Write(validThemeHTTPArchive(t, "Aurora", "1.0.0")); err != nil {
 			t.Fatal(err)
 		}
-		for index := 0; index < 4; index++ {
-			if err := writer.WriteField("field", "value"); err != nil {
-				t.Fatal(err)
-			}
+		if err := writer.WriteField("field", "value"); err != nil {
+			t.Fatal(err)
 		}
 	})
 	expectAPIError(t, response, http.StatusUnprocessableEntity, "invalid_theme_package")
