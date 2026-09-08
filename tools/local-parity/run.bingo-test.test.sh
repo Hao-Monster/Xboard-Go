@@ -137,7 +137,7 @@ LOCAL_PARITY_RUN_ID=bingo-preflight LOCAL_PARITY_EXPECTED_PROJECT=xboard-user-pa
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]]
-grep -F 'unsafe local runtime root' "$test_root/accepted-overlay.log" >/dev/null
+grep -E 'unsafe (local runtime root|run directory)' "$test_root/accepted-overlay.log" >/dev/null
 echo 'PASS stock runner accepts the reviewed source overlay and reaches the runtime storage boundary'
 
 set +e
@@ -145,7 +145,7 @@ env -u LOCAL_PARITY_EXPECTED_PROJECT -u LOCAL_PARITY_COMPOSE_OVERLAY   LOCAL_PAR
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]]
-grep -F 'unsafe local runtime root' "$test_root/default-path.log" >/dev/null
+grep -E 'unsafe (local runtime root|run directory)' "$test_root/default-path.log" >/dev/null
 echo 'PASS stock runner default overlay path remains available and reaches the runtime storage boundary'
 
 make_stock_fixture() {
