@@ -1,0 +1,9 @@
+# Transcript-reconstructed candidate image. Validate the local base image and
+# the revision label before using it as parity evidence.
+ARG BASE_IMAGE=xboard-go:local
+FROM ${BASE_IMAGE}
+
+ARG APP_REVISION
+COPY --chown=65532:65532 xboard /xboard
+COPY --chown=65532:65532 web-dist /srv/xboard/web
+LABEL org.opencontainers.image.revision="${APP_REVISION}"

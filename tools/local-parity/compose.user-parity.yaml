@@ -1,0 +1,52 @@
+# Transcript-reconstructed local parity overlay. The prior temporary overlay
+# was deleted, so this file is PENDING REVALIDATION before it becomes evidence.
+# Use it only together with compose.local.yaml and tools/local-parity/run.sh.
+services:
+  captcha-stub:
+    pull_policy: never
+
+  legacy-redis:
+    image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+    command: ["redis-server", "--dir", "/tmp", "--save", "", "--appendonly", "no"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: "no"
+
+  legacy-oracle:
+    image: ${XBOARD_LEGACY_IMAGE:-xboard-legacy-parity:8065164}
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${XBOARD_LEGACY_PORT:-18781}:7001"
+    environment:
+      REDIS_HOST: legacy-redis
+      REDIS_PORT: "6379"
+      ENABLE_REDIS: "false"
+      ENABLE_HORIZON: "false"
+      ENABLE_SCHEDULER: "false"
+      ENABLE_WS_SERVER: "false"
+      ENABLE_WEB: "true"
+      ENABLE_CADDY: "true"
+      SKIP_XBOARD_UPDATE: "true"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: .docker/.data/database.sqlite
+      INSTALLED: "true"
+      APP_KEY: ${LOCAL_LEGACY_APP_KEY:?LOCAL_LEGACY_APP_KEY must be set by run.sh}
+    volumes:
+      - ${LOCAL_PARITY_RUN_DIR:?LOCAL_PARITY_RUN_DIR must be set by run.sh}/legacy-data:/www/.docker/.data
+      - ./tools/local-parity/init-legacy-oracle.php:/opt/local-parity/init-legacy-oracle.php:ro
+    depends_on:
+      legacy-redis:
+        condition: service_healthy
+    restart: "no"
