@@ -336,6 +336,15 @@ build_candidate() {
       sha256sum "$run_dir/image-context/xboard"
     } >>"$evidence_dir/source-identity.txt"
   fi
+  local -a cleaner_build=(
+    go build -buildvcs=false -trimpath -ldflags="-s -w -buildid="
+    -o "$run_dir/image-context/clean-web-root"
+    ./tools/local-parity/clean-web-root.go
+  )
+  {
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "${cleaner_build[@]}"
+    sha256sum "$run_dir/image-context/clean-web-root"
+  } >>"$evidence_dir/source-identity.txt"
   pnpm --dir web build
   cp -a web/dist "$run_dir/image-context/web-dist"
   local -a candidate_build_args=(--build-arg "APP_REVISION=$revision")
