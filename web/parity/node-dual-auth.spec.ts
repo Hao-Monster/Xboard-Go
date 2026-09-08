@@ -361,7 +361,8 @@ function probeWebSocket(baseURL: string, query: Record<string, number>, credenti
       ].join("\r\n"));
     });
     socket.on("data", (chunk) => {
-      response = Buffer.concat([response, chunk]);
+      const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      response = Buffer.concat([response, data]);
       if (!upgraded) {
         const headerEnd = response.indexOf("\r\n\r\n");
         if (headerEnd < 0) return;
