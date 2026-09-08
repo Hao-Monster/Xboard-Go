@@ -332,4 +332,6 @@ LOCAL_PARITY_COMPOSE_OVERLAY=.local/local-parity-safecleanup/compose.bingo-test.
 grep -F 'without reading runtime.env' "$stock/safe-cleanup.log" >/dev/null
 echo 'PASS cleanup-safe removes only the canonical run/project without parsing a malicious runtime file'
 
+bash "$repo/tools/local-parity/run.bingo-test.captcha-image.test.sh"
+
 echo 'ALL FAKE RESTRICTED-RUNNER TESTS PASSED; no real service was started.'
