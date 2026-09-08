@@ -3,7 +3,13 @@
   "purpose": "Record bounded local review without promoting Windows test runs to canonical current acceptance.",
   "base_commit": "05d9785981aa5109ed4f2837d3307d7ef629bf39",
   "local_test_candidate": "36834bc227b08bc7309bbe4ae3f2e1364d9652e5",
-  "work_items": ["VER-001", "VER-002", "VER-004", "OPS-002", "MIG-001"],
+  "work_items": [
+    "VER-001",
+    "VER-002",
+    "VER-004",
+    "OPS-002",
+    "MIG-001"
+  ],
   "reviewed_source_commits": [
     "2b80872f6609b8aa46c544c4967b92e1bdca4e3a",
     "23ca077630b7a85f670e0a207d9fda750711a42a",
@@ -31,12 +37,15 @@
       "failed": 0,
       "skipped": 0,
       "exit_code": 0,
-      "package_seconds": 6.750,
+      "package_seconds": 6.75,
       "jsonl_sha256": "9a58306ab3254158ce37de7eea3a11cf3723eb49d5144c82996a1562dfbb9e7d",
       "limitation": "Control-plane user pull and subscription rejection only, not real proxy authentication."
     },
     {
-      "source_commits": ["f1c5581ae2d162de0e66caa3c06ded15cd9c3c54", "f1f01148f8bbf81f9d01947247315b2de0a04d42"],
+      "source_commits": [
+        "f1c5581ae2d162de0e66caa3c06ded15cd9c3c54",
+        "f1f01148f8bbf81f9d01947247315b2de0a04d42"
+      ],
       "executed_candidate": "a9c06d7 plus the uncommitted fixture correction subsequently committed as bc81ccf1bcd360b80890e9c2a9daad4e7438ddad",
       "command": "go test ./internal/httpapi -run ThemeUpload -count=1 -json",
       "top_level_passed": 4,
@@ -59,6 +68,20 @@
       "package_seconds": 3.337,
       "jsonl_sha256": "a2ab2e7efc9d0979f42d5b758f7fd46a2c129866dfbd5a31b2b6d35d40a84b17",
       "limitation": "Local synthetic SQLite, not real payment processing or race verification."
+    },
+    {
+      "source_commits": [
+        "956630c5cbb809a6bd5970c1e182d16cd8ec6fdb",
+        "e84cbde649700d27e79b515c8767055f41a88156"
+      ],
+      "executed_candidate": "6a0fafdba97076c921d43125b51dfed74bf72466",
+      "command": "go test ./internal/attachments ./internal/store -run '^(TestDropDraftRestoresObjectWhenSQLiteDeleteFails|TestCancelledPartiallyFundedUpgradeRestoresWalletWithoutConsumingSurplus)$' -count=1 -json",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "jsonl_sha256": "8544c5f8d114624771bfd5515d39a342a7b1ccaf2fe7ee2519adbb6c0608442d",
+      "limitation": "Windows local synthetic SQLite; no race or complete business acceptance claim."
     }
   ],
   "status_transition": {
