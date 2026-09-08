@@ -206,22 +206,52 @@ build_candidate() {
 start() {
   load_runtime
   build_candidate
-  "${compose[@]}" up -d --no-build --wait | tee "$evidence_dir/compose-up.log"
+  # Bring up only Redis first. `initialize` must complete before the Oracle's
+  # Caddy/Octane entrypoint can populate the forever settings cache.
+  "${compose[@]}" up -d --no-build --wait legacy-redis | tee "$evidence_dir/compose-up.log"
+  initialize_before_oracle
+  printf '%s\n' 'legacy migration and settings initialization completed before legacy-oracle startup' >"$evidence_dir/legacy-initialization-order.txt"
+  "${compose[@]}" up -d --no-build --wait | tee -a "$evidence_dir/compose-up.log"
+}
+
+initialize_before_oracle() {
+  load_runtime
+  # `admin_setting` caches all settings in Redis forever.  Do this while only
+  # Redis is running: starting Octane first can cache an empty database and
+  # permanently register its fallback (APP_KEY-derived) administrator route.
+  "${compose[@]}" run --rm --no-deps --entrypoint php legacy-oracle /www/artisan migrate --force --no-interaction | tee "$evidence_dir/legacy-migrate.log"
+  "${compose[@]}" run --rm --no-deps \
+    -e "LOCAL_PARITY_ADMIN_EMAIL=$(<"$run_dir/legacy-admin-email.txt")" \
+    -e "LOCAL_PARITY_ADMIN_PASSWORD=$(<"$run_dir/legacy-admin-password.txt")" \
+    -e "LOCAL_PARITY_ADMIN_PATH=$(<"$run_dir/legacy-admin-path.txt")" \
+    --entrypoint php legacy-oracle /opt/local-parity/init-legacy-oracle.php | tee "$evidence_dir/legacy-init.json"
 }
 
 initialize() {
   load_runtime
-  "${compose[@]}" exec -T legacy-oracle php /www/artisan migrate --force --no-interaction | tee "$evidence_dir/legacy-migrate.log"
-  "${compose[@]}" exec -T \
-    -e "LOCAL_PARITY_ADMIN_EMAIL=$(<"$run_dir/legacy-admin-email.txt")" \
-    -e "LOCAL_PARITY_ADMIN_PASSWORD=$(<"$run_dir/legacy-admin-password.txt")" \
-    -e "LOCAL_PARITY_ADMIN_PATH=$(<"$run_dir/legacy-admin-path.txt")" \
-    legacy-oracle php /opt/local-parity/init-legacy-oracle.php | tee "$evidence_dir/legacy-init.json"
+  if [[ -s "$evidence_dir/legacy-init.json" && -s "$evidence_dir/legacy-migrate.log" ]]; then
+    echo 'legacy initialization was already performed by start before legacy-oracle startup'
+    return
+  fi
+  echo 'run start first; it performs legacy initialization before legacy-oracle starts' >&2
+  exit 2
 }
 
 verify() {
   load_runtime
-  curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out 'legacy status=%{http_code} bytes=%{size_download}\n' "http://127.0.0.1:${XBOARD_LEGACY_PORT}/" | tee "$evidence_dir/legacy-http.txt"
+  local legacy_path root_status
+  legacy_path="$(<"$run_dir/legacy-admin-path.txt")"
+  test "$legacy_path" = "$XBOARD_LEGACY_ADMIN_PATH"
+  printf 'http://127.0.0.1:%s/%s\n' "$XBOARD_LEGACY_PORT" "$legacy_path" >"$evidence_dir/legacy-admin-url.txt"
+  "${compose[@]}" exec -T legacy-oracle php /opt/local-parity/legacy-state.php | tee "$evidence_dir/legacy-state.json"
+  root_status="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${XBOARD_LEGACY_PORT}/" || true)"
+  printf 'legacy-root status=%s\n' "$root_status" | tee "$evidence_dir/legacy-root-http.txt"
+  if [[ "$root_status" =~ ^5[0-9]{2}$ ]]; then
+    # Emit only a deidentified exception category and first app/vendor frame;
+    # never copy requests, cookies, credentials, or a full Laravel log.
+    "${compose[@]}" exec -T legacy-oracle php /opt/local-parity/legacy-diagnostics.php | tee "$evidence_dir/legacy-root-diagnostics.json"
+  fi
+  curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out 'legacy-admin status=%{http_code} bytes=%{size_download}\n' "http://127.0.0.1:${XBOARD_LEGACY_PORT}/${legacy_path}" | tee "$evidence_dir/legacy-admin-http.txt"
   curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out 'go status=%{http_code} bytes=%{size_download}\n' "http://127.0.0.1:${XBOARD_GO_PORT}/${XBOARD_E2E_ADMIN_PATH}" | tee "$evidence_dir/go-admin-http.txt"
   docker image inspect "$XBOARD_LEGACY_IMAGE" --format 'id={{.Id}} repoDigests={{json .RepoDigests}}' | tee "$evidence_dir/legacy-image.txt"
   docker image inspect "$XBOARD_GO_IMAGE" --format 'id={{.Id}} repoDigests={{json .RepoDigests}} revision={{index .Config.Labels "org.opencontainers.image.revision"}}' | tee "$evidence_dir/candidate-image.txt"

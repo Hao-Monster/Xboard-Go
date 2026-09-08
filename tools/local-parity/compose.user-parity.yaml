@@ -46,6 +46,8 @@ services:
     volumes:
       - ${LOCAL_PARITY_RUN_DIR:?LOCAL_PARITY_RUN_DIR must be set by run.sh}/legacy-data:/www/.docker/.data
       - ./tools/local-parity/init-legacy-oracle.php:/opt/local-parity/init-legacy-oracle.php:ro
+      - ./tools/local-parity/legacy-state.php:/opt/local-parity/legacy-state.php:ro
+      - ./tools/local-parity/legacy-diagnostics.php:/opt/local-parity/legacy-diagnostics.php:ro
     depends_on:
       legacy-redis:
         condition: service_healthy

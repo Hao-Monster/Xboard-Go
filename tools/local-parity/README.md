@@ -10,15 +10,19 @@ recorded run. Do not treat this directory as proof of a fresh parity result.
 ```bash
 tools/local-parity/run.sh prepare
 LOCAL_PARITY_RUN_ID=<printed-run-id> tools/local-parity/run.sh start
-LOCAL_PARITY_RUN_ID=<printed-run-id> tools/local-parity/run.sh init
 LOCAL_PARITY_RUN_ID=<printed-run-id> tools/local-parity/run.sh verify
 # Assigned executor runs the exact Playwright target after verify.
 LOCAL_PARITY_RUN_ID=<printed-run-id> tools/local-parity/run.sh cleanup
 ```
 
 `prepare` creates only ignored `.local/local-parity-<run-id>` secrets and runs
-`docker compose config --quiet`; it does not start containers. `start`, `init`,
-and `verify` must be performed by the assigned local executor. The exact
+`docker compose config --quiet`; it does not start containers. `start` first
+starts only the internal Redis, migrates and initializes the Oracle in
+one-shot containers, then starts the Oracle Web process and candidate. This
+ordering is required: the legacy `admin_setting` implementation caches all
+settings forever in Redis, and its V2/admin routes are registered at process
+startup. `verify` and `cleanup` must be performed by the assigned local
+executor. The exact
 Compose project is `xboard-user-parity-<run-id>` and every public port is bound
 to loopback. `cleanup` destroys only that run's Compose resources, candidate
 image, and generated `.local` directory; it retains deidentified logs in
@@ -92,6 +96,16 @@ rows receive `uuid=Helper::guid(true)` and `token=Helper::guid()`, the two
 non-default `v2_user` identity columns. Re-entry preserves those existing
 identities while refreshing the generated administrator credential. Settings
 are written through `Setting::createOrUpdate(name, value)`.
+
+`verify` records the generated legacy administrator URL only after reading the
+legacy database/cache route state and receiving an HTTP success for that URL.
+It separately records the legacy root (`/`) status. A root failure is not
+treated as evidence about the administrator-route prefix: `/` is a distinct
+theme-rendering route. For a root 5xx it retains only a deidentified exception
+category and first application/vendor stack location from the latest Laravel
+log; it never retains raw request data or full logs. The assigned executor
+must use that small diagnostic record to decide whether another targeted
+Oracle investigation is needed.
 
 The initializer was revalidated against `xboard-legacy-parity:8065164` on
 2026-09-08 in a fresh project using the image's real migrations: two consecutive
