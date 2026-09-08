@@ -14,6 +14,9 @@ run_id="${LOCAL_PARITY_RUN_ID:-}"
 if [[ -z "$run_id" && "$action" == "prepare" ]]; then
   run_id="$(date -u +%Y%m%d%H%M%S)-$(openssl rand -hex 6)"
 fi
+if [[ -z "$run_id" && "$action" == "validate-prebuilt" ]]; then
+  run_id='validation'
+fi
 if [[ ! "$run_id" =~ ^[a-z0-9-]+$ ]]; then
   echo 'LOCAL_PARITY_RUN_ID must contain only lowercase letters, digits, and hyphens' >&2
   exit 2
@@ -25,6 +28,14 @@ runtime_env="${run_dir}/runtime.env"
 project="xboard-user-parity-${run_id}"
 candidate_image="xboard-go:user-parity-${run_id}"
 compose=(docker compose -p "$project" -f compose.local.yaml -f tools/local-parity/compose.user-parity.yaml --profile e2e)
+
+git_in_tree() {
+  if ! git -C "$root_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo 'the source must be a WSL-native clone; create an exact-SHA bundle on Windows and clone it in WSL instead of rewriting .git metadata' >&2
+    return 2
+  fi
+  git -C "$root_dir" "$@"
+}
 
 load_runtime() {
   if [[ ! -f "$runtime_env" ]]; then
@@ -40,17 +51,75 @@ load_runtime() {
 }
 
 require_clean_head() {
-  if ! git diff --quiet || ! git diff --cached --quiet; then
+  if ! git_in_tree diff --quiet || ! git_in_tree diff --cached --quiet; then
     echo 'refusing to build from a dirty tracked source tree; commit or discard tracked changes first' >&2
     exit 2
   fi
   local head
-  head="$(git rev-parse HEAD)"
+  head="$(git_in_tree rev-parse HEAD)"
   if [[ -n "${XBOARD_GO_REVISION:-}" && "$XBOARD_GO_REVISION" != "$head" ]]; then
     echo 'XBOARD_GO_REVISION must equal the current clean HEAD; building arbitrary source under another revision label is forbidden' >&2
     exit 2
   fi
   printf '%s' "$head"
+}
+
+validate_prebuilt_manifest() {
+  local expected_revision="$1"
+  if [[ ! "$expected_revision" =~ ^[0-9a-f]{40}$ ]]; then
+    echo 'expected prebuilt source revision must be an exact lowercase Git SHA' >&2
+    exit 2
+  fi
+  if [[ ! -f "${LOCAL_PARITY_PREBUILT_XBOARD:-}" || ! -f "${LOCAL_PARITY_PREBUILT_MANIFEST:-}" ]]; then
+    echo 'prebuilt candidate requires LOCAL_PARITY_PREBUILT_XBOARD and LOCAL_PARITY_PREBUILT_MANIFEST files' >&2
+    exit 2
+  fi
+
+  declare -A manifest=()
+  local line key value line_number=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    if [[ "$line" != *=* || "$line" == *=*=* ]]; then
+      echo "invalid prebuilt manifest line $line_number" >&2
+      exit 2
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      source_commit|binary_sha256|goos|goarch|cgo_enabled|go_version) ;;
+      *)
+        echo "unexpected prebuilt manifest key $key" >&2
+        exit 2
+        ;;
+    esac
+    if [[ -z "$value" || -n "${manifest[$key]+present}" ]]; then
+      echo "empty or duplicate prebuilt manifest key $key" >&2
+      exit 2
+    fi
+    manifest[$key]="$value"
+  done <"$LOCAL_PARITY_PREBUILT_MANIFEST"
+
+  for key in source_commit binary_sha256 goos goarch cgo_enabled go_version; do
+    if [[ -z "${manifest[$key]+present}" ]]; then
+      echo "missing prebuilt manifest key $key" >&2
+      exit 2
+    fi
+  done
+  if [[ ! "${manifest[source_commit]}" =~ ^[0-9a-f]{40}$ || ! "${manifest[binary_sha256]}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo 'prebuilt manifest source_commit or binary_sha256 has an invalid format' >&2
+    exit 2
+  fi
+  if [[ "${manifest[source_commit]}" != "$expected_revision" || "${manifest[goos]}" != linux || "${manifest[goarch]}" != amd64 || "${manifest[cgo_enabled]}" != 0 || "${manifest[go_version]}" != go1.26.8 ]]; then
+    echo 'prebuilt manifest does not describe the required clean revision, linux/amd64, CGO_ENABLED=0, Go 1.26.8 artifact' >&2
+    exit 2
+  fi
+
+  PREBUILT_BINARY_SHA256="$(sha256sum "$LOCAL_PARITY_PREBUILT_XBOARD" | awk '{print $1}')"
+  if [[ "$PREBUILT_BINARY_SHA256" != "${manifest[binary_sha256]}" ]]; then
+    echo 'prebuilt candidate SHA-256 did not match the manifest' >&2
+    exit 2
+  fi
+  PREBUILT_MANIFEST_SHA256="$(sha256sum "$LOCAL_PARITY_PREBUILT_MANIFEST" | awk '{print $1}')"
 }
 
 prepare() {
@@ -95,7 +164,7 @@ EOF
   chmod 600 "$runtime_env"
   {
     printf 'runtime_head=%s\n' "$revision"
-    printf 'tracked_status=%s\n' "$(git status --porcelain --untracked-files=no)"
+    printf 'tracked_status=%s\n' "$(git_in_tree status --porcelain --untracked-files=no)"
     if [[ -f web/parity/user-generation-persistence.spec.ts ]]; then
       printf 'user_parity_source_sha256=%s\n' "$(sha256sum web/parity/user-generation-persistence.spec.ts | awk '{print $1}')"
     else
@@ -115,18 +184,10 @@ build_candidate() {
     exit 2
   fi
   if [[ -n "${LOCAL_PARITY_PREBUILT_XBOARD:-}" ]]; then
-    if [[ ! -f "$LOCAL_PARITY_PREBUILT_XBOARD" || -z "${LOCAL_PARITY_PREBUILT_XBOARD_SHA256:-}" || -z "${LOCAL_PARITY_PREBUILT_XBOARD_SOURCE:-}" ]]; then
-      echo 'prebuilt candidate requires LOCAL_PARITY_PREBUILT_XBOARD, its SHA-256, and a source-manifest reference' >&2
-      exit 2
-    fi
-    local actual_sha
-    actual_sha="$(sha256sum "$LOCAL_PARITY_PREBUILT_XBOARD" | awk '{print $1}')"
-    if [[ "$actual_sha" != "$LOCAL_PARITY_PREBUILT_XBOARD_SHA256" ]]; then
-      echo 'prebuilt candidate SHA-256 did not match LOCAL_PARITY_PREBUILT_XBOARD_SHA256' >&2
-      exit 2
-    fi
+    validate_prebuilt_manifest "$revision"
     cp "$LOCAL_PARITY_PREBUILT_XBOARD" "$run_dir/image-context/xboard"
-    printf 'prebuilt_xboard_sha256=%s\nprebuilt_xboard_source=%s\n' "$actual_sha" "$LOCAL_PARITY_PREBUILT_XBOARD_SOURCE" >>"$evidence_dir/source-identity.txt"
+    cp "$LOCAL_PARITY_PREBUILT_MANIFEST" "$evidence_dir/prebuilt-manifest.env"
+    printf 'prebuilt_xboard_sha256=%s\nprebuilt_manifest=%s\nprebuilt_manifest_sha256=%s\n' "$PREBUILT_BINARY_SHA256" "$LOCAL_PARITY_PREBUILT_MANIFEST" "$PREBUILT_MANIFEST_SHA256" >>"$evidence_dir/source-identity.txt"
   else
     test "$(go env GOVERSION)" = 'go1.26.8'
     {
@@ -181,6 +242,10 @@ case "$action" in
   init) initialize ;;
   verify) verify ;;
   cleanup) cleanup ;;
+  validate-prebuilt)
+    validate_prebuilt_manifest "${LOCAL_PARITY_EXPECTED_REVISION:-$(git_in_tree rev-parse HEAD)}"
+    printf 'validated prebuilt binary SHA-256 %s with manifest SHA-256 %s\n' "$PREBUILT_BINARY_SHA256" "$PREBUILT_MANIFEST_SHA256"
+    ;;
   *)
     echo 'usage: tools/local-parity/run.sh {prepare|start|init|verify|cleanup}' >&2
     exit 2

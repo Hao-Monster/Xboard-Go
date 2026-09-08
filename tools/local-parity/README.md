@@ -32,13 +32,48 @@ Go version/build metadata are retained in the run evidence.
 
 This workstation's WSL environment may not have Go 1.26.8. Do not download a
 replacement automatically. Instead either run with an already verified Go
-1.26.8 toolchain, or supply a precompiled Linux binary together with its hash
-and immutable source-manifest reference:
+1.26.8 toolchain, or supply a precompiled Linux binary and a strict manifest:
 
 ```bash
 export LOCAL_PARITY_PREBUILT_XBOARD=/absolute/path/to/xboard-linux-amd64
-export LOCAL_PARITY_PREBUILT_XBOARD_SHA256=<lowercase-sha256>
-export LOCAL_PARITY_PREBUILT_XBOARD_SOURCE=<manifest-or-artifact-reference>
+export LOCAL_PARITY_PREBUILT_MANIFEST=/absolute/path/to/xboard-linux-amd64.manifest
+```
+
+The manifest is a six-line `key=value` file with no extra or duplicate keys:
+
+```text
+source_commit=<exact-lowercase-40-character-git-sha>
+binary_sha256=<lowercase-64-character-sha256>
+goos=linux
+goarch=amd64
+cgo_enabled=0
+go_version=go1.26.8
+```
+
+`start` verifies the manifest against the clean current HEAD and the actual
+binary, then copies the manifest and records its SHA-256. The no-secret quick
+check is `tools/local-parity/run.sh validate-prebuilt` with the two variables
+above; it starts neither Docker nor a build.
+
+Run this template from a WSL-native clone, not directly from a Windows-managed
+worktree whose `.git` pointer contains a drive-letter path. On Windows, create
+a bundle containing the exact clean HEAD; then clone that bundle into a unique
+WSL directory and detach at the recorded SHA. Do not alter global Git settings
+or worktree metadata. The bundle transfers committed source only: ignored
+`.local` secrets, runtime databases, logs, and other untracked files are not
+inputs and must be generated afresh by `prepare`.
+
+```powershell
+# Windows-managed worktree, after confirming tracked status is clean.
+$paritySha = git rev-parse HEAD
+git bundle create .local/local-parity-source.bundle $paritySha
+```
+
+```bash
+# WSL, using a new directory outside the Windows worktree.
+git clone /mnt/c/path/to/worktree/.local/local-parity-source.bundle /tmp/xboard-local-parity
+git -C /tmp/xboard-local-parity checkout --detach <recorded-sha>
+cd /tmp/xboard-local-parity
 ```
 
 Set a distinct `LOCAL_PARITY_RUN_ID` and loopback ports before `prepare` when
