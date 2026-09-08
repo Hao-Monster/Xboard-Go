@@ -48,6 +48,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
 
     await loginGoAdministrator(goPage);
     goOriginal = await getGoNodeSettings(goPage);
+    expect(readBoolean(goOriginal, "websocket_available"), "DIFF-NODE-004 requires XBOARD_WEBSOCKET_ENABLED=true on the disposable Go target").toBe(true);
     expect(readBoolean(goOriginal, "server_token_configured"), "DIFF-NODE-004 requires a disposable Go target with no pre-existing global token").toBe(false);
     await setGoNodeSettings(goPage, goOriginal, goToken);
 
