@@ -101,3 +101,89 @@ func TestWorkerTicketAutoCloseUsesStrictAdminReplyAgeAndIgnoresRecentUserReply(t
 		})
 	}
 }
+
+func TestWorkerRepeatedTicketSweepIsIdempotentAndLeavesClosedTicketsUntouched(t *testing.T) {
+	database, err := store.OpenSQLite(fmt.Sprintf("file:worker-ticket-idempotency-%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-ticket-idempotency-user@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "worker-ticket-idempotency-admin@example.test", PasswordHash: "hash", IsAdmin: true,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedBeforeSweep, err := database.CreateTicket(ctx, user.ID, store.SaveTicketInput{
+		Subject: "already closed", Level: store.TicketLevelLow, Message: "initial",
+	}, now.Add(-30*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CloseTicketAsUser(ctx, user.ID, closedBeforeSweep.ID, now.Add(-29*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	closedBefore, err := database.GetAdminTicket(ctx, closedBeforeSweep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stale, err := database.CreateTicket(ctx, user.ID, store.SaveTicketInput{
+		Subject: "stale answered", Level: store.TicketLevelLow, Message: "initial",
+	}, now.Add(-30*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ReplyTicketAsAdmin(ctx, admin.ID, stale.ID, "answer", now.Add(-25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	worker := NewWorker(database, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return now }
+	worker.applyDue(ctx)
+
+	afterFirst, err := database.GetAdminTicket(ctx, stale.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterFirst.Status != store.TicketStatusClosed || !afterFirst.UpdatedAt.Equal(now) {
+		t.Fatalf("first sweep stale ticket status=%d updated_at=%s", afterFirst.Status, afterFirst.UpdatedAt)
+	}
+	closedAfterFirst, err := database.GetAdminTicket(ctx, closedBeforeSweep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !closedAfterFirst.UpdatedAt.Equal(closedBefore.UpdatedAt) {
+		t.Fatalf("first sweep rewrote closed ticket timestamp from %s to %s", closedBefore.UpdatedAt, closedAfterFirst.UpdatedAt)
+	}
+
+	worker.now = func() time.Time { return now.Add(2 * time.Minute) }
+	worker.applyDue(ctx)
+
+	afterSecond, err := database.GetAdminTicket(ctx, stale.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !afterSecond.UpdatedAt.Equal(afterFirst.UpdatedAt) {
+		t.Fatalf("second sweep rewrote already closed stale ticket timestamp from %s to %s", afterFirst.UpdatedAt, afterSecond.UpdatedAt)
+	}
+	closedAfterSecond, err := database.GetAdminTicket(ctx, closedBeforeSweep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !closedAfterSecond.UpdatedAt.Equal(closedBefore.UpdatedAt) {
+		t.Fatalf("second sweep rewrote pre-closed ticket timestamp from %s to %s", closedBefore.UpdatedAt, closedAfterSecond.UpdatedAt)
+	}
+}
