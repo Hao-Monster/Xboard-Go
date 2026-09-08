@@ -1127,8 +1127,50 @@ docker compose -f compose.local.yaml up -d --wait xboard-go
 The JSON result contains paths, sizes, schema versions, row counts, and SHA-256
 checksums but no setting values, URLs, notice or knowledge bodies, article
 titles, email addresses, password hashes, subscription tokens, or credentials.
-This remains a local/isolated-test workflow. The commission withdrawal request
-flow matches the legacy behavior by creating a high-priority ticket without
-debiting the commission balance; administrators still perform the external
-payout and settlement. Other remaining legacy domains require separate
-mappings and migration evidence.
+This remains a local/isolated-test workflow. A commission withdrawal atomically
+moves all available commission into a frozen ledger and creates its support
+ticket. Administrators approve it, then confirm an external payment with a
+unique receipt reference, or reject it to return the frozen amount once.
+Closing a ticket does not settle money. Replayed requests and decisions are
+idempotent; historical tickets are not automatically converted into withdrawals.
+The application never initiates the external payout.
+
+Administrators can deactivate another user from User Management. Deactivation
+revokes existing access credentials and retains orders, balances and commission
+facts. Recovery is allowed for 30 days; it does not restore revoked credentials
+or remove an existing ban. After the recovery window, anonymization requires a
+separate explicit administrator action and is blocked by an unsettled withdrawal.
+It removes managed identity and message snapshots while retaining financial
+facts. It never runs automatically. Previously downloaded files, backups and
+messages already handed to an external transport cannot be recalled by this
+database operation. Independent distributor-customer subscriptions are retained.
+New password-reset and registration mail retains immutable user ownership, so
+email changes or reuse do not prevent accurate cancellation and anonymization.
+Historical mail whose ownership can no longer be proven remains unassociated;
+it is not silently assigned to the current holder of that email or claimed to
+have been anonymized. Review those legacy records under the retention policy.
+
+After importing human users, distributors, nodes, orders and commissions from the same snapshot,
+the operational log slice imports only the last 90 days of allowlisted metadata.
+It excludes request bodies, URIs, IPs, recipients, exception text and all failed
+PHP job payloads. Pending legacy jobs must be drained before the offline import.
+Statistics are rebuilt from imported business facts using the legacy
+`Asia/Shanghai` day boundaries, not copied from old aggregate tables.
+Registration and invitation counts include internal subscription users, as in
+the old statistics service. Source/target user-fact mismatches stop the import;
+they are never accepted as a successful statistics rebuild.
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps \
+  -v /absolute/path/legacy-snapshot.db:/var/lib/xboard-import/legacy.db:ro \
+  maintenance migration import-legacy-operational-logs \
+  --source /var/lib/xboard-import/legacy.db \
+  --backup-output /var/lib/xboard-backups/pre-legacy-operational-logs.xbbackup \
+  --as-of 2026-09-08T00:00:00Z \
+  --confirm-offline
+```
+
+Choose the actual test migration boundary for `--as-of`. Replaying the same
+snapshot reuses the recorded boundary when the flag is omitted, verifies the
+recorded rollback backup and target checksums, and does not shift the retention
+window. Another snapshot or a conflicting boundary is rejected.

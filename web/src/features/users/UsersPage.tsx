@@ -32,10 +32,12 @@ type UsersAPI = Pick<AdminAPI,
 	"getAdminUserSubscriptionURL" | "listAdminUserOrders" | "assignAdminUserOrder" | "listAdminUserInvitations" |
 	"listAdminUserTraffic" | "listAdminUserTrafficResets" | "resetAdminUserTraffic" | "listServerGroups" | "listPlans" |
   "createAdminUserBulkMail" | "createAdminUserBulkCSV" | "banAdminUsers" | "listAdminUserBulkJobs" |
-  "getAdminUserBulkJob" | "cancelAdminUserBulkJob" | "downloadAdminUserBulkCSV"
+  "getAdminUserBulkJob" | "cancelAdminUserBulkJob" | "downloadAdminUserBulkCSV" |
+  "deactivateAdminUser" | "restoreAdminUser" | "anonymizeAdminUser"
 >;
 
 type UserRelatedTab = "orders" | "invitations" | "traffic";
+type LifecycleAction = "deactivate" | "restore" | "anonymize";
 
 const userTimestampFormatter = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" });
 const defaultUserQuery: AdminUserQuery = { page: 1, page_size: 20, sort_by: "id", sort_desc: true };
@@ -68,6 +70,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const [resetting, setResetting] = useState<AdminUser | null>(null);
 	const [subscriptionResetting, setSubscriptionResetting] = useState<AdminUser | null>(null);
 	const [operating, setOperating] = useState<AdminUser | null>(null);
+  const [lifecycle, setLifecycle] = useState<{ account: AdminUser; action: LifecycleAction } | null>(null);
 	const [assigning, setAssigning] = useState<AdminUser | null>(null);
 	const [related, setRelated] = useState<{ account: AdminUser; tab: UserRelatedTab } | null>(null);
 	const [trafficResetting, setTrafficResetting] = useState<AdminUser | null>(null);
@@ -292,7 +295,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
             <td data-label="ID">#{account.id}</td>
             <td data-label="邮箱"><strong>{account.email}</strong><small className="muted">{roleSummary(account) || "普通用户"}</small>{account.is_distributor && account.distributor_name && <small>{account.distributor_name}</small>}</td>
             <td data-label="在线设备">{account.online_count} / {account.device_limit === 0 ? "∞" : account.device_limit}<small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
-            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.banned ? "已封禁" : "正常"}</span></td>
+            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.lifecycle_status === "anonymized" ? "已匿名化" : account.lifecycle_status === "deactivated" ? "已停用" : account.banned ? "已封禁" : "正常"}</span></td>
             <td data-label="订阅">{account.plan_name ?? "无订阅"}</td>
             <td data-label="权限组">{account.group_name ?? (account.group_id === null ? "未分组" : groupNames.get(account.group_id) ?? `#${account.group_id}`)}</td>
             <td data-label="已用流量">{formatBytes(account.traffic_used ?? account.traffic_upload + account.traffic_download)}</td>
@@ -311,7 +314,8 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
     {viewing !== null && <UserDetail api={api} account={viewing} onClose={() => setViewing(null)} />}
     {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
     {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { setResetting(null); void runQuery(appliedQuery); }} />}
-		{operating !== null && <UserOperationsDialog account={operating} onClose={() => setOperating(null)}
+		{operating !== null && <UserOperationsDialog account={operating} currentUserID={currentUserID} onClose={() => setOperating(null)}
+      onLifecycle={(action) => { setLifecycle({ account: operating, action }); setOperating(null); }}
 			onAssign={() => { setAssigning(operating); setOperating(null); }}
 			onPassword={() => { setResetting(operating); setOperating(null); }}
 			onSubscriptionReset={() => { setSubscriptionResetting(operating); setOperating(null); }}
@@ -334,6 +338,8 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         void runQuery(appliedQuery);
       }} />}
     {bulkJobsOpen && <AdminUserBulkJobsDialog api={api} onClose={() => setBulkJobsOpen(false)} />}
+    {lifecycle && <UserLifecycleDialog api={api} account={lifecycle.account} action={lifecycle.action}
+      onClose={() => setLifecycle(null)} onSaved={() => { setLifecycle(null); void runQuery(appliedQuery); }} />}
   </main>;
 }
 
@@ -528,8 +534,10 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
   </Modal>;
 }
 
-function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscriptionReset, onRelated, onTrafficReset }: {
+function UserOperationsDialog({ account, currentUserID, onLifecycle, onClose, onAssign, onPassword, onSubscriptionReset, onRelated, onTrafficReset }: {
 	account: AdminUser;
+  currentUserID: number;
+  onLifecycle: (action: LifecycleAction) => void;
 	onClose: () => void;
 	onAssign: () => void;
 	onPassword: () => void;
@@ -537,20 +545,71 @@ function UserOperationsDialog({ account, onClose, onAssign, onPassword, onSubscr
 	onRelated: (tab: UserRelatedTab) => void;
 	onTrafficReset: () => void;
 }) {
+  const inactive = account.lifecycle_status === "deactivated" || account.lifecycle_status === "anonymized";
+  const [observedAt, setObservedAt] = useState(() => Date.now());
+  useEffect(() => {
+    if (!account.restore_until) return;
+    const deadline = Date.parse(account.restore_until);
+    if (!Number.isFinite(deadline) || deadline <= observedAt) return;
+    const timer = window.setTimeout(() => setObservedAt(Date.now()), Math.min(deadline - observedAt, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [account.restore_until, observedAt]);
+  const recoveryOpen = account.restore_until != null && Date.parse(account.restore_until) > observedAt;
 	return <Modal title="用户操作" onClose={onClose}>
 		<ModalHeader title="用户操作" onClose={onClose} />
 		<p className="muted">当前用户：<strong>{account.email}</strong></p>
 		<div className="user-operation-grid">
-			<button className="button secondary" type="button" onClick={onAssign}>分配订单</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onAssign}>分配订单</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("orders")}>TA 的订单</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("invitations")}>TA 的邀请</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("traffic")}>TA 的流量记录</button>
-			<button className="button secondary" type="button" onClick={onTrafficReset}>重置流量</button>
-			<button className="button secondary" type="button" onClick={onSubscriptionReset}>重置 UUID 与订阅地址</button>
-			<button className="button secondary" type="button" onClick={onPassword}>重置密码</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onTrafficReset}>重置流量</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onSubscriptionReset}>重置 UUID 与订阅地址</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onPassword}>重置密码</button>
+      {!inactive && <button className="button danger" type="button" disabled={account.id === currentUserID} onClick={() => onLifecycle("deactivate")}>停用用户</button>}
+      {account.lifecycle_status === "deactivated" && <>
+        <button className="button secondary" type="button" disabled={!recoveryOpen} onClick={() => onLifecycle("restore")}>恢复用户</button>
+        <button className="button danger" type="button" disabled={recoveryOpen} onClick={() => onLifecycle("anonymize")}>不可逆匿名化</button>
+      </>}
 		</div>
+    {account.lifecycle_status === "deactivated" && <p>用户已停用。恢复截止：{formatTimestamp(account.restore_until ?? null)}。到期后不会自动清除，需管理员明确执行匿名化。</p>}
+    {account.lifecycle_status === "anonymized" && <p role="status">用户已匿名化，无法恢复。订单与金额记录仍保留。</p>}
 		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button></div>
 	</Modal>;
+}
+
+function UserLifecycleDialog({ api, account, action, onClose, onSaved }: {
+  api: UsersAPI; account: AdminUser; action: LifecycleAction; onClose: () => void; onSaved: () => void;
+}) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const labels = { deactivate: "停用用户", restore: "恢复用户", anonymize: "不可逆匿名化" };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !confirmed) return;
+    setBusy(true); setError("");
+    try {
+      const perform = action === "deactivate" ? api.deactivateAdminUser : action === "restore" ? api.restoreAdminUser : api.anonymizeAdminUser;
+      if (!perform) throw new Error("账号生命周期服务暂不可用，请刷新后重试");
+      await perform.call(api, account.id, account.revision);
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "操作失败，请刷新用户状态后重试");
+    } finally { setBusy(false); }
+  };
+  return <Modal title={labels[action]} onClose={busy ? () => undefined : onClose}>
+    <ModalHeader title={labels[action]} onClose={busy ? () => undefined : onClose} />
+    <form onSubmit={(event) => void submit(event)}>
+      <p>当前用户：{account.email}</p>
+      {action === "deactivate" && <p>停用后立即撤销登录与订阅凭据，30 天内可恢复。订单、余额与佣金记录保留。</p>}
+      {action === "restore" && <p>恢复账号原有状态和业务记录，已撤销的登录与订阅凭据不会重新生效。恢复前已封禁的用户仍保持封禁。</p>}
+      {action === "anonymize" && <p>这将不可逆地清除账号身份资料和工单正文，保留订单、余额与佣金事实。有待处理提现时不能匿名化。已下载文件和历史备份按保留策略另行管理。</p>}
+      <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={(event) => setConfirmed(event.target.checked)} />我已了解并确认执行{labels[action]}</label>
+      {error && <p role="alert">{error}</p>}
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button danger" type="submit" disabled={busy || !confirmed}>{busy ? "处理中…" : "确认执行"}</button></div>
+    </form>
+  </Modal>;
 }
 
 function SubscriptionSecurityReset({ api, account, onClose, onReset }: {

@@ -987,6 +987,9 @@ func runMigrationCommand(ctx context.Context, arguments []string, stdout, stderr
 	if arguments[0] == "import-legacy-commissions" {
 		return runLegacyCommissionsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}
+	if arguments[0] == "import-legacy-operational-logs" {
+		return runLegacyOperationalLogsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
+	}
 	if arguments[0] == "import-legacy-distributors" {
 		return runLegacyDistributorsMigrationCommand(ctx, arguments[1:], stdout, stderr, now)
 	}

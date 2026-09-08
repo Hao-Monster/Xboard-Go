@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type { Ticket } from "../../lib/api";
+import { CommissionWithdrawalPanel, type TransitionWithdrawal } from "./CommissionWithdrawalPanel";
 
 interface TicketDetailDialogProps {
   ticketID: number;
@@ -9,11 +10,12 @@ interface TicketDetailDialogProps {
   load: (id: number) => Promise<Ticket>;
   reply: (id: number, message: string) => Promise<Ticket>;
   close: (id: number) => Promise<Ticket>;
+  transitionWithdrawal?: TransitionWithdrawal;
   onClose: () => void;
   onUpdated: (ticket: Ticket) => void;
 }
 
-export function TicketDetailDialog({ ticketID, administrator = false, load, reply, close, onClose, onUpdated }: TicketDetailDialogProps) {
+export function TicketDetailDialog({ ticketID, administrator = false, load, reply, close, transitionWithdrawal, onClose, onUpdated }: TicketDetailDialogProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -82,6 +84,7 @@ export function TicketDetailDialog({ ticketID, administrator = false, load, repl
           <div><h3>{ticket.subject}</h3><p className="muted small">{levelLabel(ticket.level)} · 更新于 {formatDate(ticket.updated_at)}</p></div>
           <div className="ticket-badges"><span className={`status-badge ${ticket.status === 0 ? "enabled" : "blocked"}`}>{ticket.status === 0 ? "处理中" : "已关闭"}</span><span className={`ticket-reply-badge ${ticket.reply_status === 0 ? "waiting" : "answered"}`}>{ticket.reply_status === 0 ? "待回复" : "已回复"}</span></div>
         </div>
+        <CommissionWithdrawalPanel ticket={ticket} transition={administrator ? transitionWithdrawal : undefined} onUpdated={(value) => { setTicket(value); onUpdated(value); }} />
         <div className="ticket-message-list" aria-label="工单消息">
           {(ticket.messages ?? []).map((item) => <article key={item.id} className={`ticket-message ${item.is_me ? "from-user" : "from-admin"}`}>
             <header><strong>{item.is_me ? "用户" : "管理员"}</strong><time dateTime={item.created_at}>{formatDate(item.created_at)}</time></header>

@@ -79,6 +79,10 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 	if err != nil || !claimed {
 		return false, err
 	}
+	return worker.deliverClaimed(ctx, job, claimToken, now)
+}
+
+func (worker *Worker) deliverClaimed(ctx context.Context, job store.TelegramDeliveryJob, claimToken string, now time.Time) (bool, error) {
 	if worker.cipher == nil {
 		return true, worker.recordFailure(ctx, job, claimToken, now)
 	}
@@ -86,6 +90,11 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 	if err != nil || !ValidBotToken(botToken) {
 		zeroSecret(botToken)
 		return true, worker.recordFailure(ctx, job, claimToken, now)
+	}
+	active, err := worker.store.OutboxClaimActive(ctx, "telegram", job.ID, claimToken)
+	if err != nil || !active {
+		zeroSecret(botToken)
+		return true, err
 	}
 	err = worker.sender.SendMessage(ctx, botToken, job.ChatID, job.Text)
 	zeroSecret(botToken)

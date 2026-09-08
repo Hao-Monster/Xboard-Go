@@ -48,6 +48,7 @@ test("[DIFF-NODE-004] legacy and Go dual credentials enforce the same HTTP and W
 
     await loginGoAdministrator(goPage);
     goOriginal = await getGoNodeSettings(goPage);
+    expect(readBoolean(goOriginal, "websocket_available"), "DIFF-NODE-004 requires XBOARD_WEBSOCKET_ENABLED=true on the disposable Go target").toBe(true);
     expect(readBoolean(goOriginal, "server_token_configured"), "DIFF-NODE-004 requires a disposable Go target with no pre-existing global token").toBe(false);
     await setGoNodeSettings(goPage, goOriginal, goToken);
 
@@ -274,12 +275,10 @@ async function createGoNode(page: Page, name: string, machineID: number | null, 
   });
   expect(created.status).toBe(201);
   const data = readObject(readJSON(created.body), "data");
-  const identity = { id: readNumber(data, "id"), revision: readNumber(data, "revision") };
-  const runtime = await goAdminRequest(page, `/api/v1/admin/nodes/${identity.id}/runtime`, "PUT", {
-    rate: 1, group_ids: [], route_ids: [], config: { protocol: "vless", listen_ip: "0.0.0.0", server_port: 443 }
-  });
-  expect(runtime.status).toBe(200);
-  return identity;
+  // Compact administrator creates now atomically persist the complete runtime;
+  // a second raw-runtime write would replace that canonical protocol config.
+  expect(readBoolean(data, "runtime_configured")).toBe(true);
+  return { id: readNumber(data, "id"), revision: readNumber(data, "revision") };
 }
 
 async function nodeConfigAllowed(page: Page, baseURL: string, nodeID: number, credential: string, machineID: number | null): Promise<boolean> {
@@ -303,7 +302,18 @@ async function goAdminRequest(page: Page, path: string, method: string, body?: u
       body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     return { status: response.status, body: await response.text() };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  }, { requestPath: goAdminURL(path), requestMethod: method, requestBody: body });
+}
+
+function goAdminURL(path: string): string {
+  const base = new URL(goURL);
+  const securePath = base.pathname.replace(/^\/+|\/+$/g, "");
+  if (securePath === "" || !/^\/api\/v[12]\/admin\//.test(path)) return new URL(path, goURL).toString();
+  if (path.startsWith("/api/v2/admin/")) {
+    return new URL(path.replace("/api/v2/admin/", `/api/v2/${securePath}/`), base.origin).toString();
+  }
+  const [prefix, resource] = path.split(/(?<=^\/api\/v1\/admin)\//, 2);
+  return new URL(`${prefix}/${securePath}/${resource ?? ""}`, base.origin).toString();
 }
 
 async function bestEffortLegacyPost(page: Page, authorization: string, path: string, data: unknown): Promise<void> {
@@ -360,7 +370,7 @@ function probeWebSocket(baseURL: string, query: Record<string, number>, credenti
         `Authorization: Bearer ${credential}`, "", ""
       ].join("\r\n"));
     });
-    socket.on("data", (chunk) => {
+    socket.on("data", (chunk: Buffer | string) => {
       const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
       response = Buffer.concat([response, data]);
       if (!upgraded) {

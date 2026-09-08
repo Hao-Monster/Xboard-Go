@@ -1,6 +1,7 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import type { CommissionLogPage, CommissionTransferResult, InvitationCode, InvitationSummary, Ticket } from "../../lib/api";
+import { secureRandomUUID } from "../../lib/random";
 
 type Locale = "zh-CN" | "en-US";
 
@@ -9,7 +10,7 @@ interface InvitationPageAPI {
   createInvitation: () => Promise<InvitationCode>;
   listCommissionLogs: (page?: number, pageSize?: number) => Promise<CommissionLogPage>;
   transferCommission: (amount: number) => Promise<CommissionTransferResult>;
-  requestCommissionWithdrawal: (withdrawMethod: string, withdrawAccount: string) => Promise<Ticket>;
+  requestCommissionWithdrawal: (withdrawMethod: string, withdrawAccount: string, requestKey?: string) => Promise<Ticket>;
 }
 
 const emptySummary: InvitationSummary = {
@@ -31,7 +32,7 @@ const copy = {
     success: "操作成功", invalidAmount: "请输入最多两位小数且大于 0 的金额",
     history: "佣金记录", orderNo: "订单号", orderAmount: "订单金额", empty: "暂无数据",
     withdraw: "佣金提现", withdrawMethod: "提现方式", withdrawAccount: "提现账号",
-    withdrawHint: "提交后系统会创建高优先级提现工单，佣金余额由管理员处理后结算。",
+    withdrawHint: "提交后全部可用佣金将被冻结，并创建高优先级提现工单。管理员审批后确认付款；拒绝后退回可用佣金。关闭工单不会结算提现。",
     withdrawDisabled: "管理员当前未开放佣金提现。", withdrawUnavailable: "当前没有可用的提现方式。",
     withdrawCreated: "提现工单已创建，可在“我的工单”查看。", invalidAccount: "请输入有效的提现账号",
     retry: "重新加载", requestFailed: "邀请码请求失败"
@@ -47,7 +48,7 @@ const copy = {
     success: "Success", invalidAmount: "Enter an amount greater than zero with at most two decimal places",
     history: "Commission history", orderNo: "Order", orderAmount: "Amount", empty: "No data",
     withdraw: "Withdraw commission", withdrawMethod: "Withdrawal method", withdrawAccount: "Withdrawal account",
-    withdrawHint: "Submitting creates a high-priority support ticket. An administrator settles the balance after review.",
+    withdrawHint: "Submitting freezes all available commission and creates a high-priority ticket. An administrator approves and confirms payment; rejection releases the funds. Closing the ticket does not settle the withdrawal.",
     withdrawDisabled: "Commission withdrawal is currently disabled.", withdrawUnavailable: "No withdrawal method is available.",
     withdrawCreated: "Withdrawal ticket created. You can review it under My Tickets.", invalidAccount: "Enter a valid withdrawal account",
     retry: "Retry", requestFailed: "Invitation request failed"
@@ -63,6 +64,7 @@ export function InvitationPage({ api, locale = "zh-CN", allowWithdrawal = true }
   const [transferAmount, setTransferAmount] = useState("");
   const [withdrawMethod, setWithdrawMethod] = useState("");
   const [withdrawAccount, setWithdrawAccount] = useState("");
+  const withdrawalRequest = useRef<{ method: string; account: string; key: string } | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -137,9 +139,14 @@ export function InvitationPage({ api, locale = "zh-CN", allowWithdrawal = true }
     }
     setBusy("withdraw");
     try {
-      await api.requestCommissionWithdrawal(method, account);
+      if (withdrawalRequest.current?.method !== method || withdrawalRequest.current?.account !== account) {
+        withdrawalRequest.current = { method, account, key: secureRandomUUID() };
+      }
+      await api.requestCommissionWithdrawal(method, account, withdrawalRequest.current.key);
+      withdrawalRequest.current = null;
       setWithdrawAccount("");
       setMessage(labels.withdrawCreated);
+      await refresh();
     } catch (cause) {
       setError(messageOf(cause, labels.requestFailed));
     } finally {

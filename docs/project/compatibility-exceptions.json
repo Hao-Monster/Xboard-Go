@@ -3,10 +3,12 @@
   "exceptions": [
     {"id":"CE-001","status":"accepted","decision_id":"D-001","requirement_ids":[],"title":"不复制已确认缺陷、漏洞和偶然行为","rationale":"兼容目标是正确业务意图；批准差异必须测试和登记。"},
     {"id":"CE-002","status":"accepted","decision_id":"D-003","requirement_ids":["PLUG-002"],"title":"拒绝在 Go 主进程执行任意 PHP 或上传脚本","rationale":"旧插件执行模型造成不可接受的 RCE 与供应链边界。"},
-    {"id":"CE-003","status":"proposed","decision_id":"D-013","requirement_ids":["OPS-002"],"title":"旧 PHP 失败任务只作不可执行历史记录","rationale":"载荷可能含敏感信息且不属于 Go worker 的可信输入。"},
+    {"id":"CE-003","status":"accepted","decision_id":"D-013","requirement_ids":["OPS-002"],"title":"不导入或执行旧 PHP 失败任务载荷","rationale":"2026-09-08 用户确认 D-013：仅迁移最近 90 天脱敏日志元数据，从业务事实重建统计；旧失败任务载荷可能含敏感信息，不属于迁移内容或 Go worker 的可信输入。"},
     {"id":"CE-004","status":"accepted","decision_id":"D-008","requirement_ids":["SUB-001"],"title":"订阅响应与节点授权保留不同边界","rationale":"超额用户仍可取得订阅配置，但节点下发要求剩余流量大于零。"},
     {"id":"CE-005","status":"accepted","decision_id":"D-010","requirement_ids":["DIST-014"],"title":"旧 claim 仅兼容读取消费，新购使用长期二维码","rationale":"保持旧数据可消费，同时以固定新主流程交付。"},
     {"id":"CE-006","status":"accepted","decision_id":"D-001","requirement_ids":["NODE-004"],"title":"全局 server token 同样拒绝已禁用节点","rationale":"固定旧版 HTTP/WS 全局 token 路径遗漏 enabled 检查；Go 保持 fail-closed，避免复制越权缺陷。"},
-    {"id":"CE-007","status":"accepted","decision_id":"D-001","requirement_ids":["SUB-003"],"title":"Mieru 端口范围不同时输出单端口","rationale":"旧 Xboard 在配置端口范围时同时输出 port 与 port-range，当前 Mihomo 会拒绝该配置；Go 保留范围并省略互斥的单端口，同时补齐旧版 username=password 凭据语义。"}
+    {"id":"CE-007","status":"accepted","decision_id":"D-001","requirement_ids":["SUB-003"],"title":"Mieru 端口范围不同时输出单端口","rationale":"旧 Xboard 在配置端口范围时同时输出 port 与 port-range，当前 Mihomo 会拒绝该配置；Go 保留范围并省略互斥的单端口，同时补齐旧版 username=password 凭据语义。"},
+    {"id":"CE-008","status":"accepted","decision_id":"D-012","requirement_ids":["USER-001","USER-003"],"title":"管理员删除用户改为停用、恢复窗口和显式匿名化","rationale":"旧 Xboard user/destroy 会删除用户及订单、邀请码、统计、工单。2026-09-08 用户批准 D-012：旧 POST /api/v2/{管理路径}/user/destroy 映射停用并保持兼容成功返回，重复调用不重置恢复期限；停用后 30 天内可恢复，截止时刻起只允许管理员显式不可逆匿名化；保留 ID、金额与订单等业务事实，清除个人标识与可识别正文，禁止自动清除。"},
+    {"id":"CE-009","status":"accepted","decision_id":"D-011","requirement_ids":["FIN-001","TICKET-001"],"title":"提现从单纯工单改为原子冻结账本与显式结算","rationale":"2026-09-08 用户批准 D-011。旧提现端点保留 withdraw_method/account 输入和 legacy data:true 返回，但申请原子冻结当前可用佣金并关联唯一提现账本；相同活跃申请重试幂等，不同内容冲突。管理员显式审批、凭付款凭据标记 paid 或 rejected 返还，关闭普通工单不结算资金，历史无账本工单不自动成为提现款项；不调用真实支付。"}
   ]
 }

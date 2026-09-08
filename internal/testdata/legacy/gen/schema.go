@@ -6,10 +6,8 @@ import (
 )
 
 // representativeLegacySchema is the smallest schema that can exercise the
-// implemented migration dependency chain with realistic relationships. The
-// D-013 traffic table is present only because the node reader requires the
-// historical table shape; populateRepresentativeDomains deliberately leaves
-// it empty and the manifest never counts it as migrated data.
+// implemented migration dependency chain with realistic relationships,
+// including D-013's approved metadata-only retention and rebuilt statistics.
 const representativeLegacySchema = `
 PRAGMA user_version = 22;
 
@@ -310,6 +308,29 @@ CREATE TABLE v2_stat_server (
     updated_at INTEGER
 );
 CREATE TABLE v2_server_report_receipt (id INTEGER PRIMARY KEY);
+CREATE TABLE v2_commission_log (
+    id INTEGER PRIMARY KEY, invite_user_id INTEGER, user_id INTEGER, trade_no TEXT,
+    order_amount INTEGER, get_amount INTEGER, created_at INTEGER, updated_at INTEGER
+);
+CREATE TABLE v2_distributor_order (
+    id INTEGER PRIMARY KEY, order_id INTEGER, distributor_user_id INTEGER, subscriber_user_id INTEGER,
+    customer_name TEXT, remark TEXT, claim_token_hash TEXT, delivery_status INTEGER, settlement_status INTEGER,
+    config_issued_at INTEGER, connected_at INTEGER, connected_node_id INTEGER, connected_node_name TEXT,
+    claimed_at INTEGER, closed_at INTEGER, settled_at INTEGER, settled_by INTEGER, claim_ip TEXT, claim_ua TEXT,
+    hwid_enabled INTEGER, hwid_limit INTEGER, created_at INTEGER, updated_at INTEGER
+);
+CREATE TABLE v2_distributor_hwid_device (
+    id INTEGER PRIMARY KEY, distributor_order_id INTEGER, hwid TEXT, device_os TEXT, os_version TEXT,
+    device_model TEXT, user_agent TEXT, ip TEXT, first_seen_at INTEGER, last_seen_at INTEGER
+);
+CREATE TABLE jobs (id INTEGER PRIMARY KEY, payload TEXT);
+CREATE TABLE failed_jobs (id INTEGER PRIMARY KEY, payload TEXT, exception TEXT);
+CREATE TABLE v2_admin_audit_log (id INTEGER PRIMARY KEY, created_at INTEGER, method TEXT, request_data TEXT);
+CREATE TABLE v2_log (id INTEGER PRIMARY KEY, created_at INTEGER, method TEXT, data TEXT);
+CREATE TABLE v2_mail_log (id INTEGER PRIMARY KEY, created_at INTEGER, email TEXT, subject TEXT);
+CREATE TABLE v2_server_log (id INTEGER PRIMARY KEY, created_at INTEGER, message TEXT);
+CREATE TABLE v2_stat (id INTEGER PRIMARY KEY, record_at INTEGER, order_total INTEGER);
+CREATE TABLE stats_daily (id INTEGER PRIMARY KEY, record_at INTEGER, paid_total INTEGER);
 `
 
 func (g *Generator) buildSchema(ctx context.Context, db *sql.DB) error {

@@ -43,6 +43,9 @@ jobs:
     env:
       COREPACK_ENABLE_NETWORK: "0"
       GOTOOLCHAIN: local
+      # The isolated server cannot reach proxy.golang.org reliably. Downloads
+      # still use go.sum and the standard checksum database for verification.
+      GOPROXY: https://goproxy.cn,direct
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
@@ -50,6 +53,7 @@ jobs:
       XBOARD_GO_SETTINGS_ENCRYPTION_KEY_FILE: .local/settings-encryption-key.txt
       XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
       XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
+      XBOARD_WEBSOCKET_ENABLED: "true"
       XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
       XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
@@ -147,7 +151,7 @@ jobs:
             printf 'LEGACY_ADMIN_EMAIL=%s\n' "$legacy_email"
             printf 'LEGACY_ADMIN_PASSWORD=%s\n' "$legacy_password"
           } >> "$GITHUB_ENV"
-      - name: Compare the administrator surface with the fixed legacy Oracle
+      - name: Compare the complete parity suite with the fixed legacy Oracle
         env:
           LEGACY_DOCKER_CONTAINER: xboard-legacy-ci-oracle
           XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
@@ -156,8 +160,7 @@ jobs:
         run: |
           test "$XBOARD_GO_ADMIN_PASSWORD" = "$(tr -d '\r\n' < .local/bootstrap-password.txt)"
           pnpm --dir web exec playwright test \
-            --config playwright.parity.config.ts \
-            admin-surface.spec.ts
+            --config playwright.parity.config.ts
       - name: Record exact-commit evidence
         if: success()
         env:

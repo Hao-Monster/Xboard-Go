@@ -28,7 +28,7 @@ interface InvitationSummary {
   withdraw_methods: string[];
 }
 
-test("administrator commission rules drive the invited order, history, and positive transfer flow", async ({ page }, testInfo) => {
+test("commission funds freeze atomically and support rejected refunds and approved payment through ticket dialogs", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];
@@ -120,12 +120,59 @@ test("administrator commission rules drive the invited order, history, and posit
     const withdrawalDialog = page.getByRole("dialog", { name: "工单详情" });
     await expect(withdrawalDialog).toContainText("提现方式：USDT");
     await expect(withdrawalDialog).toContainText(`提现账号：wallet-${unique}`);
+    await expect(withdrawalDialog).toContainText("佣金提现 · 待审批");
+    await expect(withdrawalDialog.getByRole("button", { name: "批准提现", exact: true })).toHaveCount(0);
+    await withdrawalDialog.getByRole("button", { name: "关闭工单", exact: true }).click();
+    await page.getByRole("dialog", { name: "关闭工单", exact: true }).getByRole("button", { name: "确认关闭", exact: true }).click();
+    await expect(withdrawalDialog.getByText("已关闭", { exact: true })).toBeVisible();
     await withdrawalDialog.getByRole("button", { name: "关闭工单详情" }).click();
     await page.getByRole("button", { name: "我的邀请", exact: true }).click();
+    await expect(page.getByText("可用佣金: ¥0.00 · 佣金提现: ≥ ¥5.25", { exact: true })).toBeVisible();
     await page.getByLabel("划转金额（CNY）").fill("10.00");
     await page.getByRole("button", { name: "佣金划转余额", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveText("佣金余额不足");
+
+    await logoutAndWait(page);
+    await login(page, adminEmail, adminPassword);
+    await openWithdrawalTicket(page, ownerEmail, true);
+    await withdrawalDialog.getByRole("button", { name: "拒绝并退回佣金", exact: true }).click();
+    await page.getByRole("dialog", { name: "拒绝并退回佣金", exact: true }).getByRole("button", { name: "确认", exact: true }).click();
+    await expect(withdrawalDialog).toContainText("佣金提现 · 已拒绝（金额已退回）");
+    await withdrawalDialog.getByRole("button", { name: "关闭工单详情" }).click();
+
+    await logoutAndWait(page);
+    await login(page, ownerEmail, password);
+    await page.getByRole("button", { name: "我的邀请", exact: true }).click();
+    await expect(page.getByText("可用佣金: ¥10.00 · 佣金提现: ≥ ¥5.25", { exact: true })).toBeVisible();
+    await page.getByLabel("划转金额（CNY）").fill("4.00");
+    await page.getByRole("button", { name: "佣金划转余额", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("操作成功");
-    await expect(page.locator(".invitation-overview .overview-metric").filter({ hasText: "可用佣金" }).getByText("¥0.00", { exact: true })).toBeVisible();
+    await expect(page.getByText("可用佣金: ¥6.00 · 佣金提现: ≥ ¥5.25", { exact: true })).toBeVisible();
+    await page.getByLabel("提现方式", { exact: true }).selectOption("USDT");
+    await page.getByLabel("提现账号", { exact: true }).fill(`wallet-${unique}`);
+    await page.getByRole("button", { name: "佣金提现", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("提现工单已创建");
+
+    await logoutAndWait(page);
+    await login(page, adminEmail, adminPassword);
+    await openWithdrawalTicket(page, ownerEmail, false);
+    await withdrawalDialog.getByRole("button", { name: "批准提现", exact: true }).click();
+    await page.getByRole("dialog", { name: "批准提现", exact: true }).getByRole("button", { name: "确认", exact: true }).click();
+    await expect(withdrawalDialog).toContainText("佣金提现 · 待付款");
+    await withdrawalDialog.getByRole("button", { name: "确认已付款", exact: true }).click();
+    const paymentDialog = page.getByRole("dialog", { name: "确认已付款", exact: true });
+    await expect(paymentDialog.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
+    await paymentDialog.getByLabel("付款凭据", { exact: true }).fill(`offline-test-receipt-${unique}`);
+    await paymentDialog.getByRole("button", { name: "确认", exact: true }).click();
+    await expect(withdrawalDialog).toContainText("佣金提现 · 已付款");
+    await expect(withdrawalDialog).toContainText("申请金额：¥6.00");
+    await expect(withdrawalDialog.getByRole("button", { name: "拒绝并退回佣金", exact: true })).toHaveCount(0);
+    await withdrawalDialog.getByRole("button", { name: "关闭工单详情" }).click();
+
+    await logoutAndWait(page);
+    await login(page, ownerEmail, password);
+    await page.getByRole("button", { name: "我的邀请", exact: true }).click();
+    await expect(page.getByText("可用佣金: ¥0.00 · 佣金提现: ≥ ¥5.25", { exact: true })).toBeVisible();
     const transferred = await getInvitationSummary(page);
     expect(transferred).toMatchObject({
       valid_commission: 1_000, pending_commission: 0, commission_rate: 20,
@@ -155,6 +202,16 @@ test("administrator commission rules drive the invited order, history, and posit
   expect(pageErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
 });
+
+async function openWithdrawalTicket(page: Page, ownerEmail: string, closed: boolean) {
+  await page.getByRole("button", { name: "工单管理", exact: true }).click();
+  if (closed) await page.getByRole("button", { name: "已关闭", exact: true }).click();
+  await page.getByRole("searchbox", { name: "搜索工单" }).fill(ownerEmail);
+  await page.getByRole("button", { name: "查询工单", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: ownerEmail });
+  await expect(row).toHaveCount(1);
+  await row.getByRole("button", { name: "查看工单：[提现申请] 本工单由系统发出", exact: true }).click();
+}
 
 async function login(page: Page, email: string, password: string) {
   await page.goto(email === adminEmail ? adminEntryPath : "/");

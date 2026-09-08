@@ -57,6 +57,9 @@ func (s *Store) CreateAdminUserBulkJob(ctx context.Context, input CreateAdminUse
 }
 
 func createAdminUserBulkJobTx(ctx context.Context, tx *sql.Tx, input CreateAdminUserBulkJobInput, scope AdminUserBulkScope, where string, arguments []any, digest string, now time.Time) (AdminUserBulkJob, error) {
+	if input.Kind == AdminUserBulkKindMail {
+		where += ` AND NOT EXISTS (SELECT 1 FROM user_lifecycles lifecycle WHERE lifecycle.user_id=u.id AND lifecycle.deactivated_at IS NOT NULL)`
+	}
 	var administratorEmail string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT email FROM users WHERE id = ? AND account_kind = 'human' AND is_admin = 1 AND banned = 0
@@ -534,7 +537,7 @@ func (s *Store) CompleteAdminUserBulkCSV(ctx context.Context, jobID, claimToken,
 		UPDATE admin_user_bulk_jobs
 		SET status='succeeded', processed_count=total_count, success_count=total_count,
 		    failure_count=0, skipped_count=0, cancelled_count=0,
-		    output_filename=?, output_relative_path=?, output_size=?, output_sha256=?, output_expires_at=?,
+		    output_filename=?, output_relative_path=?, output_size=?, output_sha256=?, output_expires_at=CASE WHEN output_expires_at=0 THEN 0 ELSE ? END,
 		    claim_token=NULL, claimed_at=NULL, completed_at=?, updated_at=?
 		WHERE id=? AND kind='csv' AND status='running' AND claim_token=?
 	`, filename, relativePath, size, digest, expiresAt.Unix(), now.Unix(), now.Unix(), jobID, claimToken)

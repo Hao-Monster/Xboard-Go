@@ -22,7 +22,7 @@ import (
 // evidence identity. Schema or fixture changes must update this value
 // deliberately after cross-platform review; the pin does not resolve D-006.
 func TestGeneratorProducesDeterministicDataset(t *testing.T) {
-	const expectedSHA256 = "e179d5ce428d0983451b951ad00ef642f28cb930c0726bd3d5a1dc35d255f3f6"
+	const expectedSHA256 = "99cfe71a40f0fee311a8f0b890b51cd6a875de7345b26466caa90dc474e9c8b5"
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "legacy.db")
 	manifestPath := filepath.Join(dir, "manifest.json")
@@ -100,6 +100,7 @@ func TestGeneratorProducesRepresentativeMigrationDomains(t *testing.T) {
 		"v2_settings", "v2_notice", "v2_server_group", "v2_server_route", "v2_plan", "v2_user",
 		"personal_access_tokens", "v2_invite_code", "v2_coupon", "v2_payment", "v2_order",
 		"v2_ticket", "v2_ticket_message", "v2_server_machine", "v2_server",
+		"v2_commission_log", "v2_distributor_order", "v2_distributor_hwid_device", "v2_admin_audit_log", "v2_log", "v2_mail_log", "v2_server_log",
 	} {
 		var objectType string
 		if err := database.QueryRow(`SELECT type FROM sqlite_schema WHERE name = ?`, table).Scan(&objectType); err != nil {
@@ -108,21 +109,14 @@ func TestGeneratorProducesRepresentativeMigrationDomains(t *testing.T) {
 			t.Errorf("sqlite object %q type = %q, want table", table, objectType)
 		}
 	}
-	for _, excluded := range []string{"failed_jobs", "stats_daily"} {
+	for table, want := range map[string]int{"jobs": 0, "failed_jobs": 1, "stats_daily": 1, "v2_stat": 1, "v2_stat_server": 1} {
 		var count int
-		if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_schema WHERE name = ?`, excluded).Scan(&count); err != nil {
+		if err := database.QueryRow(`SELECT COUNT(*) FROM "` + table + `"`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 0 {
-			t.Errorf("D-013-gated table %q must be absent", excluded)
+		if count != want {
+			t.Errorf("D-013 source %q rows=%d want=%d", table, count, want)
 		}
-	}
-	var statRows int
-	if err := database.QueryRow(`SELECT COUNT(*) FROM v2_stat_server`).Scan(&statRows); err != nil {
-		t.Fatal(err)
-	}
-	if statRows != 0 {
-		t.Errorf("D-013-gated v2_stat_server rows = %d, want 0", statRows)
 	}
 }
 
@@ -178,6 +172,21 @@ func TestGeneratedDatasetSatisfiesImplementedMigrationReaders(t *testing.T) {
 		}},
 		{"nodes", func(ctx context.Context, path string) error {
 			_, err := legacymigration.ReadNodesSnapshot(ctx, path)
+			return err
+		}},
+		{"commissions", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadCommissionsSnapshot(ctx, path)
+			return err
+		}},
+		{"distributors", func(ctx context.Context, path string) error {
+			_, err := legacymigration.ReadDistributorsSnapshot(ctx, path)
+			return err
+		}},
+		{"operational-logs", func(ctx context.Context, path string) error {
+			snapshot, err := legacymigration.ReadOperationalLogsSnapshot(ctx, path, gen.DefaultConfig(path).Now)
+			if err == nil && (len(snapshot.Logs) != 4 || snapshot.ExcludedRows != 1 || snapshot.ExcludedFailedJobs != 1) {
+				return fmt.Errorf("operational metadata rows=%d excluded=%d failed_jobs=%d, want 4/1/1", len(snapshot.Logs), snapshot.ExcludedRows, snapshot.ExcludedFailedJobs)
+			}
 			return err
 		}},
 		{"currency-settings", func(ctx context.Context, path string) error {
@@ -323,9 +332,7 @@ func TestManifestContainsNoPII(t *testing.T) {
 	}
 }
 
-// TestManifestExcludesD013Domains verifies that D-013-gated tables
-// (stats, failed_jobs, stat_server) are not included in the generated dataset.
-func TestManifestExcludesD013Domains(t *testing.T) {
+func TestManifestDeclaresApprovedOperationalProjection(t *testing.T) {
 	dir := t.TempDir()
 	cfg := gen.DefaultConfig(filepath.Join(dir, "legacy.db"))
 	g := gen.New(cfg)
@@ -335,9 +342,10 @@ func TestManifestExcludesD013Domains(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	for _, banned := range []string{"stat_server", "failed_jobs", "stats_"} {
-		if _, found := manifest.DomainRows[banned]; found {
-			t.Errorf("D-013 domain %q must not be in generated dataset until D-013 is decided", banned)
+	for domain, want := range map[string]int{"human_users": 2, "users": 3, "distributor_subscriptions": 1, "commissions": 1, "node_traffic_statistics": 1,
+		"admin_audit_metadata": 1, "request_metadata": 2, "mail_metadata": 1, "server_metadata": 1, "excluded_failed_jobs": 1} {
+		if got := manifest.DomainRows[domain]; got != want {
+			t.Errorf("approved domain %q rows=%d want=%d", domain, got, want)
 		}
 	}
 }

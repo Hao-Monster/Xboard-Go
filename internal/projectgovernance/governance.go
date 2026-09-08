@@ -54,15 +54,16 @@ type Requirement struct {
 }
 
 type Evidence struct {
-	ID          string   `json:"id"`
-	Kind        string   `json:"kind"`
-	Environment string   `json:"environment"`
-	CaseIDs     []string `json:"case_ids"`
-	Artifact    string   `json:"artifact"`
-	Commit      string   `json:"commit"`
-	ObservedAt  string   `json:"observed_at"`
-	Command     string   `json:"command"`
-	Result      string   `json:"result"`
+	ID           string   `json:"id"`
+	Kind         string   `json:"kind"`
+	Environment  string   `json:"environment"`
+	CaseIDs      []string `json:"case_ids"`
+	Artifact     string   `json:"artifact"`
+	Commit       string   `json:"commit"`
+	ObservedAt   string   `json:"observed_at"`
+	Command      string   `json:"command"`
+	Result       string   `json:"result"`
+	NotRunReason string   `json:"not_run_reason,omitempty"`
 }
 
 type DecisionRegistry struct {
@@ -467,8 +468,16 @@ func Validate(state State) error {
 			}
 			if !evidenceIDPattern.MatchString(evidence.ID) || !oneOf(evidence.Kind, "unit", "integration", "contract", "browser", "differential", "migration", "security", "performance", "manual") ||
 				!oneOf(evidence.Environment, "github-actions", "bingo-dev") || !validCases || !validArtifact ||
-				!regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail") {
+				!regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(evidence.Commit) || observedAtErr != nil || strings.TrimSpace(evidence.Command) == "" || !oneOf(evidence.Result, "pass", "fail", "not_run") {
 				problems = append(problems, fmt.Sprintf("%s has incomplete or invalid evidence", requirement.ID))
+			}
+			if (evidence.Result == "not_run") != (strings.TrimSpace(evidence.NotRunReason) != "") {
+				problems = append(problems, fmt.Sprintf("%s evidence %s requires not_run_reason exactly when result is not_run", requirement.ID, evidence.ID))
+			}
+			if evidence.Result == "pass" {
+				if problem := evidenceExecutionProblem(evidence); problem != "" {
+					problems = append(problems, fmt.Sprintf("%s evidence %s execution mismatch: %s", requirement.ID, evidence.ID, problem))
+				}
 			}
 			if requirement.VerificationStatus == "current" && evidence.Commit != state.Requirements.BaselineCommit {
 				problems = append(problems, fmt.Sprintf("%s current evidence must target baseline_commit %s", requirement.ID, state.Requirements.BaselineCommit))
@@ -632,12 +641,15 @@ func validateEvidenceTarget(root string, state State) error {
 	if !hasCurrentEvidence {
 		return nil
 	}
-	diff := exec.Command("git", "-C", root, "diff", "--name-only", "--diff-filter=ACMRT", commit+"..HEAD")
+	diff := exec.Command("git", "-C", root, "diff", "--name-only", "-z", commit+"..HEAD")
 	output, err := diff.Output()
 	if err != nil {
 		return fmt.Errorf("inspect changes after requirements baseline_commit: %w", err)
 	}
-	for _, path := range strings.Fields(string(output)) {
+	for _, path := range strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00") {
+		if path == "" {
+			continue
+		}
 		path = filepath.ToSlash(path)
 		if !isEvidenceMetadataPath(path) {
 			return fmt.Errorf("current evidence target %s is stale because %s changed afterwards", commit, path)
@@ -697,11 +709,18 @@ func RenderStatus(state State) (string, error) {
 	fmt.Fprintf(&out, "- Risks: %d open Critical, %d open High, %d total.\n", riskCounts["open:critical"], riskCounts["open:high"], len(state.Risks.Risks))
 	fmt.Fprintf(&out, "- Compatibility exceptions: %d accepted, %d proposed.\n", countExceptionStatus(state.Exceptions.Exceptions, "accepted"), countExceptionStatus(state.Exceptions.Exceptions, "proposed"))
 	fmt.Fprintf(&out, "- Current-head verification: %d/80; accepted: %d/80. Historical evidence is not current acceptance.\n", countRequirementStatus(state.Requirements.Requirements, "verification", "current"), countRequirementStatus(state.Requirements.Requirements, "acceptance", "accepted"))
+	executionCounts := make(map[string]int)
+	for _, requirement := range state.Requirements.Requirements {
+		for _, evidence := range requirement.Evidence {
+			executionCounts[evidence.Result]++
+		}
+	}
+	fmt.Fprintf(&out, "- Recorded evidence: %d pass, %d fail, %d not_run. A not_run record preserves the unsupported claim and its explanation; it cannot support current acceptance.\n", executionCounts["pass"], executionCounts["fail"], executionCounts["not_run"])
 
 	fmt.Fprintf(&out, "\n## Blocked or partial requirements\n\n")
 	fmt.Fprintf(&out, "| ID | Milestone | Scope | Implementation | Verification | Decisions | Work items |\n| --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, requirement := range state.Requirements.Requirements {
-		if requirement.ScopeStatus == "blocked" || requirement.ImplementationStatus != "implemented" {
+		if requirement.ScopeStatus == "blocked" || requirement.ImplementationStatus != "implemented" || requirement.VerificationStatus != "current" || requirement.AcceptanceStatus != "accepted" {
 			fmt.Fprintf(&out, "| `%s` | %s | %s | %s | %s | %s | %s |\n", requirement.ID, requirement.Milestone, requirement.ScopeStatus, requirement.ImplementationStatus, requirement.VerificationStatus, joinCode(requirement.DecisionIDs), joinCode(requirement.WorkItemIDs))
 		}
 	}

@@ -84,6 +84,12 @@ var requiredSchemaTables = []struct {
 	{"telegram_message_outbox", 56},
 	{"node_auth_telemetry_state", 60},
 	{"node_auth_telemetry", 60},
+	{"commission_withdrawals", 61},
+	{"commission_withdrawal_events", 61},
+	{"user_lifecycles", 62},
+	{"user_lifecycle_events", 62},
+	{"legacy_operational_logs", 63},
+	{"operational_daily_statistics", 63},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -400,6 +406,41 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if err := validateNodeAuthTelemetrySchema(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 61 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{
+			"commission_withdrawals":       {"id", "user_id", "ticket_id", "amount", "status", "request_key", "method", "account", "payment_reference", "payment_reference_hash", "anonymized_at", "created_at", "updated_at"},
+			"commission_withdrawal_events": {"id", "withdrawal_id", "actor_id", "status", "available_delta", "frozen_delta", "paid_delta", "created_at"},
+		}); err != nil {
+			return err
+		}
+		if err := validateSchemaV61Objects(ctx, database); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 62 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{
+			"user_lifecycles":                {"user_id", "deactivated_at", "restore_until", "anonymized_at", "previous_banned"},
+			"user_lifecycle_events":          {"id", "user_id", "administrator_id", "action", "revision", "created_at"},
+			"password_reset_mail_outbox":     {"user_id"},
+			"registration_email_mail_outbox": {"user_id", "owner_pending"},
+		}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV62UserLifecycle); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 63 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{
+			"legacy_operational_logs":      {"category", "source_id", "method", "created_at"},
+			"operational_daily_statistics": {"record_at", "metric", "value"},
+		}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV63OperationalLogs); err != nil {
+			return err
 		}
 	}
 	if schemaVersion >= 42 {

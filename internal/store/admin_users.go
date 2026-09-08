@@ -119,10 +119,11 @@ const adminUserSelect = `
 	       u.expired_at, u.speed_limit, u.device_limit, u.online_count, u.last_online_at, u.last_login_at,
 	       u.balance, u.commission_type, u.commission_rate, u.commission_balance, u.discount,
 	       u.next_reset_at, u.last_reset_at, u.reset_count, u.telegram_id, u.remind_expire, u.remind_traffic, u.remarks,
-	       u.admin_revision, u.created_at, u.updated_at`
+	       u.admin_revision, u.created_at, u.updated_at, lifecycle.deactivated_at, lifecycle.restore_until, lifecycle.anonymized_at`
 
 const adminUserFrom = `
 	FROM users u
+	LEFT JOIN user_lifecycles lifecycle ON lifecycle.user_id = u.id
 	LEFT JOIN server_groups g ON g.id = u.group_id
 	LEFT JOIN plans p ON p.id = u.plan_id
 	LEFT JOIN users inviter ON inviter.id = u.invite_user_id AND inviter.account_kind = 'human'`
@@ -623,6 +624,9 @@ func (s *Store) UpdateAdminUser(ctx context.Context, userID int64, input UpdateA
 	if existing.Revision != input.Revision {
 		return AdminUser{}, AdminUserMutation{}, ErrConflict
 	}
+	if existing.LifecycleStatus == "anonymized" || existing.LifecycleStatus == "deactivated" && !input.Banned {
+		return AdminUser{}, AdminUserMutation{}, fmt.Errorf("%w: use the explicit lifecycle operation for inactive users", ErrConflict)
+	}
 	isAdmin := existing.IsAdmin
 	if input.IsAdmin != nil {
 		isAdmin = *input.IsAdmin
@@ -844,6 +848,7 @@ func (s *Store) ResetAdminUserPassword(ctx context.Context, userID, revision int
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users SET password_hash = ?, admin_revision = admin_revision + 1, updated_at = ?
 		WHERE id = ? AND account_kind = 'human' AND admin_revision = ?
+		  AND NOT EXISTS (SELECT 1 FROM user_lifecycles WHERE user_id=users.id AND deactivated_at IS NOT NULL)
 	`, passwordHash, now.Unix(), userID, revision)
 	if err != nil {
 		return AdminUser{}, fmt.Errorf("reset user password: %w", err)
@@ -914,6 +919,7 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 	var groupID, planID, inviteUserID, expiredAt, lastOnlineAt, lastLoginAt sql.NullInt64
 	var commissionRate, discount, nextResetAt, lastResetAt, telegramID sql.NullInt64
 	var createdAt, updatedAt int64
+	var deactivatedAt, restoreUntil, anonymizedAt sql.NullInt64
 	if err := row.Scan(
 		&user.ID, &user.Email, &user.IsAdmin, &user.IsStaff, &user.IsDistributor, &distributorName, &user.Banned,
 		&groupID, &groupName, &planID, &planName, &inviteUserID, &inviteUserEmail,
@@ -921,7 +927,7 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 		&expiredAt, &user.SpeedLimit, &user.DeviceLimit, &user.OnlineCount, &lastOnlineAt, &lastLoginAt,
 		&user.Balance, &user.CommissionType, &commissionRate, &user.CommissionBalance, &discount,
 		&nextResetAt, &lastResetAt, &user.ResetCount, &telegramID, &user.RemindExpire, &user.RemindTraffic, &remarks,
-		&user.Revision, &createdAt, &updatedAt,
+		&user.Revision, &createdAt, &updatedAt, &deactivatedAt, &restoreUntil, &anonymizedAt,
 	); err != nil {
 		return AdminUser{}, err
 	}
@@ -982,6 +988,16 @@ func scanAdminUser(row rowScanner) (AdminUser, error) {
 	}
 	user.CreatedAt = time.Unix(createdAt, 0).UTC()
 	user.UpdatedAt = time.Unix(updatedAt, 0).UTC()
+	user.DeactivatedAt = userLifecycleTime(deactivatedAt)
+	user.RestoreUntil = userLifecycleTime(restoreUntil)
+	user.AnonymizedAt = userLifecycleTime(anonymizedAt)
+	user.LifecycleStatus = "active"
+	if deactivatedAt.Valid {
+		user.LifecycleStatus = "deactivated"
+	}
+	if anonymizedAt.Valid {
+		user.LifecycleStatus = "anonymized"
+	}
 	return user, nil
 }
 
