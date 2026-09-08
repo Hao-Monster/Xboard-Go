@@ -122,6 +122,61 @@ func TestRunCommandMaintenanceOperationalRetentionReadiness(t *testing.T) {
 	}
 }
 
+func TestRunCommandMaintenanceDatabaseCompatibilityReadiness(t *testing.T) {
+	databasePath := createMaintenanceTestDatabase(t)
+	t.Setenv("XBOARD_DATABASE_DSN", "file:"+databasePath)
+	asOf := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	var stdout, stderr bytes.Buffer
+
+	handled, err := runCommand(context.Background(), []string{"maintenance", "database-compatibility-readiness", "--target-engine", "sqlite3", "--representative-data"}, &stdout, &stderr, func() time.Time {
+		return asOf
+	})
+	if err != nil || !handled {
+		t.Fatalf("runCommand(database-compatibility-readiness) = handled %v error %v stderr=%q", handled, err, stderr.String())
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("runCommand(database-compatibility-readiness) stderr = %q", stderr.String())
+	}
+	var output databaseCompatibilityReadinessCommandResult
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode database compatibility readiness output %q: %v", stdout.String(), err)
+	}
+	if output.Status != "success" || output.Action != "maintenance.database-compatibility-readiness" ||
+		output.AsOf != asOf || output.TargetEngine != "sqlite" || !output.RepresentativeDataSupplied ||
+		!output.Result.QueryOnly || !output.Result.SQLiteCandidate || !output.Result.ProductionDecisionReady {
+		t.Fatalf("database compatibility readiness output = %#v", output)
+	}
+	if strings.Contains(stdout.String(), "XBOARD_DATABASE_DSN") || strings.Contains(stdout.String(), "server_token") {
+		t.Fatalf("database compatibility readiness output exposed sensitive configuration: %s", stdout.String())
+	}
+}
+
+func TestRunCommandMaintenanceDatabaseCompatibilityReadinessReportsDecisionGaps(t *testing.T) {
+	databasePath := createMaintenanceTestDatabase(t)
+	t.Setenv("XBOARD_DATABASE_DSN", "file:"+databasePath)
+	var stdout, stderr bytes.Buffer
+
+	handled, err := runCommand(context.Background(), []string{"maintenance", "database-compatibility-readiness", "--target-engine", "postgres"}, &stdout, &stderr, func() time.Time {
+		return time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	})
+	if err != nil || !handled {
+		t.Fatalf("runCommand(database-compatibility-readiness) = handled %v error %v stderr=%q", handled, err, stderr.String())
+	}
+	var output databaseCompatibilityReadinessCommandResult
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode database compatibility readiness output %q: %v", stdout.String(), err)
+	}
+	if output.Result.ProductionDecisionReady || output.Result.SQLiteCandidate {
+		t.Fatalf("database compatibility readiness incorrectly passed = %#v", output.Result)
+	}
+	reasons := strings.Join(output.Result.Reasons, "\n")
+	for _, want := range []string{"only SQLite is implemented", "representative production-shaped database evidence has not been supplied"} {
+		if !strings.Contains(reasons, want) {
+			t.Fatalf("database compatibility reasons %q missing %q", reasons, want)
+		}
+	}
+}
+
 func TestRunCommandMaintenanceNodeAuthRetirementReadinessRejectsUnsafeInputsWithoutCreatingDatabase(t *testing.T) {
 	directory := t.TempDir()
 	missingPath := filepath.Join(directory, "missing.db")
@@ -197,6 +252,36 @@ func TestRunCommandMaintenanceOperationalRetentionReadinessRejectsUnsafeInputsWi
 	}
 	if _, err := os.Lstat(missingPath); !os.IsNotExist(err) {
 		t.Fatalf("operational retention created missing database: %v", err)
+	}
+}
+
+func TestRunCommandMaintenanceDatabaseCompatibilityReadinessRejectsUnsafeInputsWithoutCreatingDatabase(t *testing.T) {
+	directory := t.TempDir()
+	missingPath := filepath.Join(directory, "missing.db")
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	for _, testCase := range []struct {
+		name      string
+		arguments []string
+		dsn       string
+	}{
+		{name: "positional argument", arguments: []string{"maintenance", "database-compatibility-readiness", "unexpected"}, dsn: "file:" + missingPath},
+		{name: "memory database", arguments: []string{"maintenance", "database-compatibility-readiness"}, dsn: "file:compatibility?mode=memory&cache=shared"},
+		{name: "missing database", arguments: []string{"maintenance", "database-compatibility-readiness"}, dsn: "file:" + missingPath},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("XBOARD_DATABASE_DSN", testCase.dsn)
+			var stdout, stderr bytes.Buffer
+			handled, err := runCommand(context.Background(), testCase.arguments, &stdout, &stderr, func() time.Time { return now })
+			if !handled || err == nil {
+				t.Fatalf("runCommand(%q) = handled %v error %v", testCase.arguments, handled, err)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("failed database compatibility readiness wrote success output: %q", stdout.String())
+			}
+		})
+	}
+	if _, err := os.Lstat(missingPath); !os.IsNotExist(err) {
+		t.Fatalf("database compatibility readiness created missing database: %v", err)
 	}
 }
 

@@ -393,6 +393,15 @@ type operationalRetentionReadinessCommandResult struct {
 	Result        legacymigration.OperationalRetentionSnapshot `json:"result"`
 }
 
+type databaseCompatibilityReadinessCommandResult struct {
+	Status                     string                                     `json:"status"`
+	Action                     string                                     `json:"action"`
+	AsOf                       time.Time                                  `json:"as_of"`
+	TargetEngine               string                                     `json:"target_engine"`
+	RepresentativeDataSupplied bool                                       `json:"representative_data_supplied"`
+	Result                     maintenance.DatabaseCompatibilityReadiness `json:"result"`
+}
+
 type attachmentStatusCommandResult struct {
 	Status string                   `json:"status"`
 	Action string                   `json:"action"`
@@ -2582,7 +2591,7 @@ func hashMigrationArtifact(ctx context.Context, path string) (string, int64, err
 
 func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
 	if len(arguments) == 0 {
-		return true, errors.New("maintenance subcommand is required: cleanup-expired, node-auth-retirement-readiness, or operational-retention-readiness")
+		return true, errors.New("maintenance subcommand is required: cleanup-expired, node-auth-retirement-readiness, operational-retention-readiness, or database-compatibility-readiness")
 	}
 	switch arguments[0] {
 	case "cleanup-expired":
@@ -2591,6 +2600,8 @@ func runMaintenanceCommand(ctx context.Context, arguments []string, stdout, stde
 		return runMaintenanceNodeAuthRetirementReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
 	case "operational-retention-readiness":
 		return runMaintenanceOperationalRetentionReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
+	case "database-compatibility-readiness":
+		return runMaintenanceDatabaseCompatibilityReadinessCommand(ctx, arguments[1:], stdout, stderr, now)
 	default:
 		return true, fmt.Errorf("unknown maintenance subcommand %q", arguments[0])
 	}
@@ -2734,6 +2745,37 @@ func runMaintenanceOperationalRetentionReadinessCommand(ctx context.Context, arg
 	return true, encoder.Encode(operationalRetentionReadinessCommandResult{
 		Status: "success", Action: "maintenance.operational-retention-readiness",
 		AsOf: asOf, RetentionDays: *retentionDays, Result: result,
+	})
+}
+
+func runMaintenanceDatabaseCompatibilityReadinessCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {
+	flags := flag.NewFlagSet("maintenance database-compatibility-readiness", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	targetEngine := flags.String("target-engine", maintenance.DefaultDatabaseCompatibilityTargetEngine, "candidate production database engine for D-006")
+	representativeData := flags.Bool("representative-data", false, "mark this standalone database snapshot as representative production-shaped evidence")
+	if err := flags.Parse(arguments); err != nil {
+		return true, err
+	}
+	if flags.NArg() != 0 {
+		return true, errors.New("maintenance database-compatibility-readiness does not accept positional arguments")
+	}
+
+	dsn := config.DatabaseDSN()
+	path, ok := sqliteFilePath(dsn)
+	if !ok {
+		return true, errors.New("maintenance database-compatibility-readiness requires a file-backed SQLite database")
+	}
+	asOf := now().UTC()
+	result, err := maintenance.CheckDatabaseCompatibilityReadiness(ctx, path, asOf, *targetEngine, *representativeData)
+	if err != nil {
+		return true, err
+	}
+	encoder := json.NewEncoder(stdout)
+	encoder.SetEscapeHTML(false)
+	return true, encoder.Encode(databaseCompatibilityReadinessCommandResult{
+		Status: "success", Action: "maintenance.database-compatibility-readiness",
+		AsOf: asOf, TargetEngine: result.TargetEngine, RepresentativeDataSupplied: result.RepresentativeDataSupplied,
+		Result: result,
 	})
 }
 
