@@ -57,7 +57,11 @@ evidence_dir="$fixture/output/local-parity-bingo-repeatable"
 [[ -f "$run_dir/bingo-run-identity.txt" && ! -L "$run_dir/bingo-run-identity.txt" ]]
 [[ -f "$run_dir/compose.bingo-test.prepared.yaml" && ! -L "$run_dir/compose.bingo-test.prepared.yaml" ]]
 cmp -s "$run_dir/bingo-run-identity.txt" "$evidence_dir/bingo-run-identity.txt"
-[[ "$(sha256sum "$run_dir/compose.bingo-test.prepared.yaml" | awk '{print $1}')" == 98c20be611d5989617e0a2ece97bceeceaae3e8635ee611342eb931569e25403 ]]
+[[ "$(sha256sum "$run_dir/compose.bingo-test.prepared.yaml" | awk '{print $1}')" == c58e881b725f4bb1db8756681b446e7428a77a59300cf476e5e59f9365c05f69 ]]
+grep -Fx 'captcha_image=xboard-node-parity:24.18.0-ae91dcc111a6' "$run_dir/bingo-run-identity.txt" >/dev/null
+grep -Fx 'captcha_image_source_index_digest=sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573' "$run_dir/bingo-run-identity.txt" >/dev/null
+grep -Fx 'captcha_image_platform_manifest_digest=sha256:5301bbf5e8046148348b1dea15436326f43c579031f8d76654a631225bdfe467' "$run_dir/bingo-run-identity.txt" >/dev/null
+grep -Fx 'captcha_image_id=sha256:77343b9c9fae9d567dbbb308eed6ac08564ef29663b6f09e7183b0a7c94f0c73' "$run_dir/bingo-run-identity.txt" >/dev/null
 echo 'PASS prepare retains a strict non-secret run identity and reviewed overlay snapshot'
 
 invoke start

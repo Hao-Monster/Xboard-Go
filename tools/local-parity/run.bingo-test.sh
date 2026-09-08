@@ -5,11 +5,15 @@ set -Eeuo pipefail
 # this entry point supplies its reviewed overlay, project, and base identity.
 readonly expected_host='bingo'
 readonly source_overlay_rel='tools/local-parity/compose.bingo-test.yaml'
-readonly source_overlay_sha256='98c20be611d5989617e0a2ece97bceeceaae3e8635ee611342eb931569e25403'
+readonly source_overlay_sha256='c58e881b725f4bb1db8756681b446e7428a77a59300cf476e5e59f9365c05f69'
 readonly candidate_base_image='xboard-go:gpt55-user-2e1713c69dfc-offline'
 readonly candidate_base_image_id='sha256:0e19640a157c07392250caadd0321cceced1f8c214a1cdf5156536058bfddfb5'
 readonly legacy_image='xboard-legacy-parity:8065164'
 readonly legacy_image_id='sha256:6bb8ce9dd1a06ce33400588dd9a5002dccb7e73113ed4d88a7ce065f3439bd94'
+readonly captcha_image='xboard-node-parity:24.18.0-ae91dcc111a6'
+readonly captcha_image_source_index_digest='sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573'
+readonly captcha_image_platform_manifest_digest='sha256:5301bbf5e8046148348b1dea15436326f43c579031f8d76654a631225bdfe467'
+readonly captcha_image_id='sha256:77343b9c9fae9d567dbbb308eed6ac08564ef29663b6f09e7183b0a7c94f0c73'
 readonly go_bin='/home/bingo/.local/toolchains/go1.26.8/bin'
 readonly node_bin='/home/bingo/apps/xboard-go-tools/node-v24.20.0-linux-x64/bin'
 export PATH="$node_bin:$go_bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -87,6 +91,10 @@ render_identity() {
   printf 'candidate_base_image_id=%s\n' "$candidate_base_image_id"
   printf 'legacy_image=%s\n' "$legacy_image"
   printf 'legacy_image_id=%s\n' "$legacy_image_id"
+  printf 'captcha_image=%s\n' "$captcha_image"
+  printf 'captcha_image_source_index_digest=%s\n' "$captcha_image_source_index_digest"
+  printf 'captcha_image_platform_manifest_digest=%s\n' "$captcha_image_platform_manifest_digest"
+  printf 'captcha_image_id=%s\n' "$captcha_image_id"
   printf 'go_bin=%s\n' "$go_bin"
   printf 'node_bin=%s\n' "$node_bin"
   printf 'GOTOOLCHAIN=%s\n' "$GOTOOLCHAIN"
@@ -174,6 +182,14 @@ validate_build_inputs() {
   }
   [[ "$actual_legacy_image_id" == "$legacy_image_id" ]] || {
     echo 'reviewed legacy image ID mismatch' >&2
+    exit 2
+  }
+  actual_captcha_image_id="$(/usr/bin/docker image inspect --format '{{.Id}}' "$captcha_image")" || {
+    echo 'reviewed local captcha image is unavailable' >&2
+    exit 2
+  }
+  [[ "$actual_captcha_image_id" == "$captcha_image_id" ]] || {
+    echo 'reviewed local captcha image ID mismatch' >&2
     exit 2
   }
 }
