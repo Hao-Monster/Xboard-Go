@@ -256,7 +256,7 @@ async function fetchLegacyUserByEmail(page: Page, authorization: string, email: 
   const body = await expectResponseStatus(response, 200, "legacy user fetch");
   const items = readArray(readJSON(body)["data"]).map((item) => readRecord(item));
   const matches = items.filter((item) => item.email === email);
-  expect(matches, `legacy /user/fetch must return exactly one row for ${email}`).toHaveLength(1);
+  expect(matches.length, 'legacy /user/fetch exact email match count').toBe(1);
   return matches[0];
 }
 
