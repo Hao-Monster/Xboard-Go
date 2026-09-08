@@ -22,6 +22,45 @@
     "skipped": 0,
     "formal_current_evidence": false
   },
+  "additional_local_verification": [
+    {
+      "source_commit": "47f67f4643ed01bee054b9bc590e72f2d193ae5d",
+      "executed_candidate": "52478f6",
+      "command": "go test ./internal/httpapi -run '^TestVER001VER003RuntimeUserPullReflectsSubscriptionRotationAndBans$' -count=1 -json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "package_seconds": 6.750,
+      "jsonl_sha256": "9a58306ab3254158ce37de7eea3a11cf3723eb49d5144c82996a1562dfbb9e7d",
+      "limitation": "Control-plane user pull and subscription rejection only, not real proxy authentication."
+    },
+    {
+      "source_commits": ["f1c5581ae2d162de0e66caa3c06ded15cd9c3c54", "f1f01148f8bbf81f9d01947247315b2de0a04d42"],
+      "executed_candidate": "a9c06d7 plus the uncommitted fixture correction subsequently committed as bc81ccf1bcd360b80890e9c2a9daad4e7438ddad",
+      "command": "go test ./internal/httpapi -run ThemeUpload -count=1 -json",
+      "top_level_passed": 4,
+      "subtests_passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "package_seconds": 7.567,
+      "jsonl_sha256": "f59f071d29762d514190bd9cef162839c571b49783b5e903380d236f6bcacb2e",
+      "limitation": "Multipart rejection and no catalog mutation; no claim about executing arbitrary legacy PHP themes."
+    },
+    {
+      "source_commit": "38cc936e16ec3b24f57c448d004a601536dd59c9",
+      "executed_candidate": "073ae7ab991b10bfeba60f61db2b7ae0d387a3ef",
+      "command": "go test ./internal/store -run '^(TestPaymentWebhookIndependentSQLiteWritersApplyEntitlementExactlyOnce|TestCommissionWithdrawalPaidAuditFailureRollsBackReceiptAndFrozenFunds)$' -count=1 -json",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "package_seconds": 3.337,
+      "jsonl_sha256": "a2ab2e7efc9d0979f42d5b758f7fd46a2c129866dfbd5a31b2b6d35d40a84b17",
+      "limitation": "Local synthetic SQLite, not real payment processing or race verification."
+    }
+  ],
   "status_transition": {
     "requirement": "USER-003",
     "verification_status": "historical",
