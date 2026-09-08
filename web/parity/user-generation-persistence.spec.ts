@@ -135,6 +135,82 @@ test("[DIFF-USER-005] legacy and Go user generation persists equivalent administ
   }
 });
 
+test("[DIFF-USER-006] legacy and Go user updates persist equivalent banned state", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const legacyContext = await browser.newContext({ locale: "zh-CN" });
+  const goContext = await browser.newContext({ locale: "zh-CN" });
+  const legacyPage = await legacyContext.newPage();
+  const goPage = await goContext.newPage();
+  const unique = `${Date.now()}-${randomBytes(4).toString("hex")}`;
+  const emailDomain = "diff.local";
+  const legacyPrefix = `le-${unique}`;
+  const legacyUserEmail = `${legacyPrefix}@${emailDomain}`;
+  const goUserEmail = `ge-${unique}@${emailDomain}`;
+  const password = `Edit-${unique}-pw`;
+  const expiredAt = Math.floor(Date.now() / 1000) + 31 * 24 * 60 * 60;
+  let legacyAuthorization = "";
+  let legacyUserID: number | undefined;
+  let goUser: Record<string, unknown> | undefined;
+
+  try {
+    legacyAuthorization = await loginLegacyBearer(legacyPage);
+    const legacyGenerated = await legacyPage.request.post(legacyAdminAPI("/user/generate"), {
+      headers: { authorization: legacyAuthorization },
+      data: {
+        email_prefix: legacyPrefix,
+        email_suffix: emailDomain,
+        password,
+        expired_at: expiredAt,
+        plan_id: null,
+        is_distributor: 0,
+        distributor_name: ""
+      }
+    });
+    await expectResponseStatus(legacyGenerated, 200, "legacy user generation for update");
+    const legacyUser = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail);
+    legacyUserID = readNumber(legacyUser, "id");
+    expect(readBoolean(legacyUser, "banned")).toBe(false);
+
+    await loginGoAdministrator(goPage);
+    const goGenerated = await goAdminRequest(goPage, "/api/v1/admin/users/generate", "POST", {
+      mode: "single",
+      email: goUserEmail,
+      password,
+      plan_id: null,
+      expired_at: new Date(expiredAt * 1000).toISOString(),
+      is_distributor: false,
+      distributor_name: ""
+    });
+    expectGoStatus(goGenerated, 201, "Go user generation for update");
+    const generatedItems = readArray(readObject(readJSON(goGenerated.body), "data")["items"]);
+    expect(generatedItems).toHaveLength(1);
+    goUser = await getGoUser(goPage, readNumber(readRecord(generatedItems[0]), "id"));
+    expect(readBoolean(goUser, "banned")).toBe(false);
+
+    const legacyUpdated = await legacyPage.request.post(legacyAdminAPI("/user/update"), {
+      headers: { authorization: legacyAuthorization },
+      data: { id: legacyUserID, banned: 1 }
+    });
+    await expectResponseStatus(legacyUpdated, 200, "legacy user banned update");
+    const updatedLegacyUser = await fetchLegacyUserByEmail(legacyPage, legacyAuthorization, legacyUserEmail);
+
+    const goUpdated = await goAdminRequest(goPage, `/api/v1/admin/users/${readNumber(goUser, "id")}`, "PATCH", {
+      ...goUserUpdatePayload(goUser),
+      banned: true
+    });
+    expectGoStatus(goUpdated, 200, "Go user banned update");
+    goUser = await getGoUser(goPage, readNumber(goUser, "id"));
+
+    expect(readBoolean(updatedLegacyUser, "banned")).toBe(true);
+    expect(readBoolean(goUser, "banned")).toBe(readBoolean(updatedLegacyUser, "banned"));
+  } finally {
+    const cleanupFailures = await cleanupGeneratedUsers(legacyPage, legacyAuthorization, legacyUserID, goPage, goUser);
+    await legacyContext.close();
+    await goContext.close();
+    expect(cleanupFailures).toEqual([]);
+  }
+});
+
 async function loginLegacyBearer(page: Page): Promise<string> {
   const response = await page.request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), {
     data: { email: legacyEmail, password: legacyPassword }
@@ -176,6 +252,52 @@ async function getGoUser(page: Page, userID: number): Promise<Record<string, unk
   return readObject(readJSON(response.body), "data");
 }
 
+async function cleanupGeneratedUsers(
+  legacyPage: Page,
+  legacyAuthorization: string,
+  legacyUserID: number | undefined,
+  goPage: Page,
+  goUser: Record<string, unknown> | undefined
+): Promise<string[]> {
+  const cleanupFailures: string[] = [];
+  try {
+    if (legacyAuthorization && legacyUserID !== undefined) {
+      const destroyed = await legacyPage.request.post(legacyAdminAPI("/user/destroy"), {
+        headers: { authorization: legacyAuthorization },
+        data: { id: legacyUserID }
+      }).catch((error: Error) => error);
+      if (destroyed instanceof Error) {
+        cleanupFailures.push(`legacy destroy transport failed: ${destroyed.message}`);
+      } else if (destroyed.status() !== 200) {
+        cleanupFailures.push(await responseSummary(destroyed, "legacy destroy"));
+      }
+    }
+  } catch (error) {
+    cleanupFailures.push(`legacy cleanup failed: ${errorMessage(error)}`);
+  }
+  try {
+    if (goUser !== undefined) {
+      const userID = readNumber(goUser, "id");
+      const latest = await getGoUser(goPage, userID).catch((error: Error) => error);
+      if (latest instanceof Error) {
+        cleanupFailures.push(`Go cleanup read failed: ${latest.message}`);
+      } else if (readString(latest, "lifecycle_status") === "active") {
+        const deactivated = await goAdminRequest(goPage, `/api/v1/admin/users/${userID}/deactivate`, "POST", {
+          revision: readNumber(latest, "revision")
+        }).catch((error: Error) => error);
+        if (deactivated instanceof Error) {
+          cleanupFailures.push(`Go deactivate transport failed: ${deactivated.message}`);
+        } else if (deactivated.status !== 200) {
+          cleanupFailures.push(goResponseSummary(deactivated, "Go deactivate"));
+        }
+      }
+    }
+  } catch (error) {
+    cleanupFailures.push(`Go cleanup failed: ${errorMessage(error)}`);
+  }
+  return cleanupFailures;
+}
+
 async function loginUser(page: Page, baseURL: string, email: string, password: string): Promise<string> {
   const response = await page.request.post(new URL("/api/v1/passport/auth/login", baseURL).toString(), {
     data: { email, password }
@@ -200,6 +322,19 @@ async function goAdminRequest(page: Page, path: string, method: string, body?: u
     });
     return { status: response.status, body: await response.text() };
   }, { requestPath: goAdminURL(path), requestMethod: method, requestBody: body });
+}
+
+function goUserUpdatePayload(user: Record<string, unknown>) {
+  return {
+    revision: readNumber(user, "revision"),
+    email: readString(user, "email"),
+    group_id: readNullableNumber(user, "group_id"),
+    transfer_enable: readNumber(user, "transfer_enable"),
+    expired_at: readNullableString(user, "expired_at"),
+    speed_limit: readNumber(user, "speed_limit"),
+    device_limit: readNumber(user, "device_limit"),
+    banned: readBoolean(user, "banned")
+  };
 }
 
 function normalizeGeneratedUser(user: Record<string, unknown>, source: "legacy" | "go") {
