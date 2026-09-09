@@ -33,7 +33,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `48db5761879e68aa9fc50
 - Risks: 1 open Critical, 8 open High, 23 total.
 - Compatibility exceptions: 9 accepted, 0 proposed.
 - Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
-- Recorded evidence: 216 pass, 0 fail, 164 not_run. A not_run record preserves the unsupported claim and its explanation; it cannot support current acceptance.
+- Recorded evidence: 217 pass, 0 fail, 164 not_run. A not_run record preserves the unsupported claim and its explanation; it cannot support current acceptance.
 
 ## Blocked or partial requirements
 
