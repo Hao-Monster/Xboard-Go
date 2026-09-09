@@ -20,27 +20,29 @@ type giftCardCodeRedemptionSnapshot struct {
 }
 
 type giftCardRewardUserSnapshot struct {
-	planID          sql.NullInt64
-	groupID         sql.NullInt64
-	expiredAt       sql.NullInt64
-	nextResetAt     sql.NullInt64
-	lastResetAt     sql.NullInt64
-	balance         int64
-	transferEnable  int64
-	trafficUpload   int64
-	trafficDownload int64
-	speedLimit      int64
-	deviceLimit     int64
-	resetCount      int64
-	adminRevision   int64
-	updatedAt       int64
+	planID            sql.NullInt64
+	groupID           sql.NullInt64
+	expiredAt         sql.NullInt64
+	nextResetAt       sql.NullInt64
+	lastResetAt       sql.NullInt64
+	balance           int64
+	commissionBalance int64
+	transferEnable    int64
+	trafficUpload     int64
+	trafficDownload   int64
+	speedLimit        int64
+	deviceLimit       int64
+	resetCount        int64
+	adminRevision     int64
+	updatedAt         int64
 }
 
 type giftCardRedemptionSnapshot struct {
-	code       giftCardCodeRedemptionSnapshot
-	recipient  giftCardRewardUserSnapshot
-	inviter    giftCardRewardUserSnapshot
-	usageCount int64
+	code            giftCardCodeRedemptionSnapshot
+	recipient       giftCardRewardUserSnapshot
+	inviter         giftCardRewardUserSnapshot
+	usageCount      int64
+	totalUsageCount int64
 }
 
 func readGiftCardRedemptionSnapshot(t *testing.T, database *Store, codeID, recipientID, inviterID int64) giftCardRedemptionSnapshot {
@@ -57,11 +59,11 @@ func readGiftCardRedemptionSnapshot(t *testing.T, database *Store, codeID, recip
 	readUser := func(userID int64, target *giftCardRewardUserSnapshot) {
 		if err := database.db.QueryRowContext(ctx, `
 			SELECT plan_id, group_id, expired_at, next_reset_at, last_reset_at,
-				balance, transfer_enable, traffic_u, traffic_d, speed_limit, device_limit,
+				balance, commission_balance, transfer_enable, traffic_u, traffic_d, speed_limit, device_limit,
 				reset_count, admin_revision, updated_at
 			FROM users WHERE id = ?
 		`, userID).Scan(&target.planID, &target.groupID, &target.expiredAt, &target.nextResetAt,
-			&target.lastResetAt, &target.balance, &target.transferEnable, &target.trafficUpload,
+			&target.lastResetAt, &target.balance, &target.commissionBalance, &target.transferEnable, &target.trafficUpload,
 			&target.trafficDownload, &target.speedLimit, &target.deviceLimit, &target.resetCount,
 			&target.adminRevision, &target.updatedAt); err != nil {
 			t.Fatal(err)
@@ -71,6 +73,10 @@ func readGiftCardRedemptionSnapshot(t *testing.T, database *Store, codeID, recip
 	readUser(inviterID, &snapshot.inviter)
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gift_card_usages WHERE code_id = ?`, codeID).
 		Scan(&snapshot.usageCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gift_card_usages`).
+		Scan(&snapshot.totalUsageCount); err != nil {
 		t.Fatal(err)
 	}
 	return snapshot
@@ -90,7 +96,7 @@ func TestGiftCardRedemptionAuditFailureRollsBackRewardsAndRetrySucceeds(t *testi
 	initialExpiry := now.Add(24 * time.Hour)
 	initialNextReset := now.Add(48 * time.Hour)
 	if _, err := database.db.ExecContext(ctx, `
-		UPDATE users SET invite_user_id = ?, plan_id = ?, balance = 100, transfer_enable = ?,
+		UPDATE users SET invite_user_id = ?, plan_id = ?, balance = 100, commission_balance = 321, transfer_enable = ?,
 			traffic_u = 123, traffic_d = 456, expired_at = ?, speed_limit = 7, device_limit = 2,
 			next_reset_at = ?, last_reset_at = ?, reset_count = 7, updated_at = ?
 		WHERE id = ?
@@ -98,7 +104,7 @@ func TestGiftCardRedemptionAuditFailureRollsBackRewardsAndRetrySucceeds(t *testi
 		t.Fatal(err)
 	}
 	if _, err := database.db.ExecContext(ctx, `
-		UPDATE users SET balance = 50, transfer_enable = 200, updated_at = ? WHERE id = ?
+		UPDATE users SET balance = 50, commission_balance = 654, transfer_enable = 200, updated_at = ? WHERE id = ?
 	`, now.Unix(), inviter.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +165,9 @@ func TestGiftCardRedemptionAuditFailureRollsBackRewardsAndRetrySucceeds(t *testi
 		t.Fatalf("GetGiftCardUsage() error = %v", err)
 	}
 	wantInviterReward := GiftCardReward{Balance: 250, TransferEnable: bytesPerGiB / 2}
-	if persistedUsage.CodeID != code.ID || persistedUsage.UserID != recipientID ||
+	if persistedUsage.CodeID != code.ID || persistedUsage.TemplateID != template.ID ||
+		persistedUsage.TemplateName != "Rollback and retry" || persistedUsage.TemplateType != GiftCardTypeGeneral ||
+		persistedUsage.UserID != recipientID ||
 		persistedUsage.InviterID == nil || *persistedUsage.InviterID != inviter.ID ||
 		!reflect.DeepEqual(persistedUsage.Rewards, reward) || !reflect.DeepEqual(persistedUsage.InviterRewards, wantInviterReward) ||
 		persistedUsage.UserLevelAtUse == nil || *persistedUsage.UserLevelAtUse != int64(plan.SortPosition) ||
@@ -199,6 +207,7 @@ func TestGiftCardRedemptionAuditFailureRollsBackRewardsAndRetrySucceeds(t *testi
 	wantAfterRetry.inviter.adminRevision++
 	wantAfterRetry.inviter.updatedAt = retryTime.Unix()
 	wantAfterRetry.usageCount++
+	wantAfterRetry.totalUsageCount++
 	if afterRetry != wantAfterRetry {
 		t.Fatalf("retry code, recipient, inviter, revision, or usage state = %#v, want %#v", afterRetry, wantAfterRetry)
 	}
