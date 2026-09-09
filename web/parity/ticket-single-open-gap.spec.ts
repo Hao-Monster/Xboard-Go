@@ -48,10 +48,14 @@ test("legacy and Go enforce one open ordinary ticket per user", async ({ browser
     expect(goGenerated.status).toBe(201);
     goUserID = requiredPositiveNumber(requiredArrayProperty(readProperty(parseJSONBody(goGenerated.body), "data"), "items")[0], "id");
 
-    await Promise.all([
+    const exerciseResults = await Promise.allSettled([
       exerciseLegacy(browser, legacyUser.email, legacyUser.password, subject, duplicateSubject, thirdSubject, firstMessage, duplicateMessage, thirdMessage),
       exerciseGo(browser, goUser.email, goUser.password, subject, duplicateSubject, thirdSubject, firstMessage, duplicateMessage, thirdMessage)
     ]);
+    const failedExercise = exerciseResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failedExercise !== undefined) {
+      throw new Error(`ticket parity exercise failed: ${failedExercise.reason instanceof Error ? failedExercise.reason.message : "unknown error"}`);
+    }
   } finally {
     const cleanupErrors: string[] = [];
     try {
@@ -68,7 +72,8 @@ test("legacy and Go enforce one open ordinary ticket per user", async ({ browser
         if (response.status !== 200) cleanupErrors.push(`Go cleanup status ${response.status}`);
       }
     } catch { cleanupErrors.push("Go cleanup threw"); }
-    await Promise.all([legacyAdminContext.close(), goAdminContext.close()]);
+    const contextClosures = await Promise.allSettled([legacyAdminContext.close(), goAdminContext.close()]);
+    if (contextClosures.some((result) => result.status === "rejected")) cleanupErrors.push("admin context close failed");
     expect(cleanupErrors, "test fixture cleanup").toEqual([]);
   }
 });
@@ -132,7 +137,9 @@ async function expectLegacySingleTicket(request: APIRequestContext, headers: { a
   const detail = await request.get(legacyUserAPI(`/ticket/fetch?id=${id}`), { headers });
   expect(detail.status()).toBe(200);
   const ticket = readProperty(await readJSON(detail), "data");
-  expect({ subject: readStringProperty(ticket, "subject"), status: readProperty(ticket, "status"), message: readStringProperty(requiredArrayProperty(ticket, "message")[0], "message") }).toEqual({ subject, status, message });
+  const messages = requiredArrayProperty(ticket, "message");
+  expect(messages).toHaveLength(1);
+  expect({ subject: readStringProperty(ticket, "subject"), status: readProperty(ticket, "status"), message: readStringProperty(messages[0], "message") }).toEqual({ subject, status, message });
 }
 
 async function expectGoSingleTicket(request: APIRequestContext, authorization: string, id: number, subject: string, message: string, status: number) {
@@ -141,7 +148,9 @@ async function expectGoSingleTicket(request: APIRequestContext, authorization: s
   const detail = await goUserRequest(request, `/api/v1/tickets/${id}`, "GET", undefined, authorization);
   expect(detail.status).toBe(200);
   const ticket = readProperty(parseJSONBody(detail.body), "data");
-  expect({ subject: readStringProperty(ticket, "subject"), status: readProperty(ticket, "status"), message: readStringProperty(requiredArrayProperty(ticket, "messages")[0], "message") }).toEqual({ subject, status, message });
+  const messages = requiredArrayProperty(ticket, "messages");
+  expect(messages).toHaveLength(1);
+  expect({ subject: readStringProperty(ticket, "subject"), status: readProperty(ticket, "status"), message: readStringProperty(messages[0], "message") }).toEqual({ subject, status, message });
 }
 
 async function legacyTicketID(request: APIRequestContext, headers: { authorization: string }, subject: string) {
@@ -151,19 +160,111 @@ async function legacyTicketID(request: APIRequestContext, headers: { authorizati
   return requiredPositiveNumber(list.find((item) => readStringProperty(item, "subject") === subject), "id");
 }
 
-async function loginLegacyAdmin(page: Page): Promise<string> { await page.goto(legacyURL, { waitUntil: "domcontentloaded" }); const fields = page.locator("input:visible"); await expect(fields).toHaveCount(2); await fields.first().fill(legacyEmail); await fields.nth(1).fill(legacyPassword); await fields.nth(1).press("Enter"); await expect(page.locator('a[href="#/server/machine"]')).toBeVisible({ timeout: 60_000 }); const response = page.waitForResponse((item) => item.url().includes("/ticket/fetch")); await page.locator('a[href="#/user/ticket"]').click(); const ticketResponse = await response; return ticketResponse.request().headers().authorization ?? ""; }
-async function loginLegacyUserAPI(request: APIRequestContext, email: string, password: string): Promise<string> { const response = await request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), { data: { email, password } }); expect(response.status()).toBe(200); return readStringProperty(readProperty(await readJSON(response), "data"), "auth_data") ?? ""; }
-async function loginGoAdmin(page: Page) { await page.goto(goURL, { waitUntil: "domcontentloaded" }); await page.getByLabel("邮箱").fill(goEmail); await page.getByLabel("密码").fill(goPassword); await page.getByRole("button", { name: "登录" }).click(); await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible({ timeout: 60_000 }); }
-async function loginGoUser(request: APIRequestContext, email: string, password: string): Promise<string> { const response = await request.post(new URL("/api/v1/passport/auth/login", goURL).toString(), { data: { email, password } }); expect(response.status()).toBe(200); return readStringProperty(readProperty(await readJSON(response), "data"), "auth_data") ?? ""; }
-async function goAdminRequest(page: Page, path: string, body?: unknown) { return page.evaluate(async ({ path: requestPath, body: requestBody }) => { const csrf = document.cookie.split("; ").find((item) => item.startsWith("xboard_csrf="))?.slice("xboard_csrf=".length) ?? ""; const response = await fetch(requestPath, { method: requestBody === undefined ? "GET" : "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) }, body: requestBody === undefined ? undefined : JSON.stringify(requestBody) }); return { status: response.status, body: await response.text() }; }, { path: goAdminURL(path), body }); }
-async function goUserRequest(request: APIRequestContext, path: string, method = "GET", body?: unknown, authorization = "") { const cookies = await request.storageState(); const csrf = cookies.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? ""; const response = await request.fetch(new URL(path, goURL).toString(), { method, headers: { Authorization: authorization, "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) }, data: body }); return { status: response.status(), body: await response.text() }; }
-function legacyUserAPI(path: string) { return new URL(`/api/v1/user${path}`, new URL(legacyURL).origin).toString(); }
-function legacyAdminAPI(path: string) { const securePath = new URL(legacyURL).pathname.replace(/\/$/, ""); return new URL(`/api/v2${securePath}${path}`, legacyURL).toString(); }
-function goAdminURL(path: string) { const base = new URL(goURL); const securePath = base.pathname.replace(/^\/+|\/+$/g, ""); return path.startsWith("/api/v1/admin/") ? new URL(`/api/v1/admin/${securePath}/${path.slice("/api/v1/admin/".length)}`, base.origin).toString() : new URL(path, goURL).toString(); }
-async function readJSON(response: { text(): Promise<string> }) { return JSON.parse(await response.text()) as unknown; }
-function parseJSONBody(body: string) { return JSON.parse(body) as unknown; }
-function requiredEnv(name: string) { const value = process.env[name]?.trim(); if (!value) throw new Error(`${name} is required`); return value; }
-function readProperty(value: unknown, key: string): unknown { return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined; }
-function readStringProperty(value: unknown, key: string): string | null { const property = readProperty(value, key); return typeof property === "string" ? property : null; }
-function requiredArrayProperty(value: unknown, key: string): unknown[] { const property = readProperty(value, key); if (!Array.isArray(property)) throw new Error(`missing array: ${key}`); return property; }
-function requiredPositiveNumber(value: unknown, key: string): number { const property = readProperty(value, key); if (typeof property !== "number" || !Number.isSafeInteger(property) || property < 1) throw new Error(`invalid positive number: ${key}`); return property; }
+async function loginLegacyAdmin(page: Page): Promise<string> {
+  await page.goto(legacyURL, { waitUntil: "domcontentloaded" });
+  const fields = page.locator("input:visible");
+  await expect(fields).toHaveCount(2);
+  await fields.first().fill(legacyEmail);
+  await fields.nth(1).fill(legacyPassword);
+  await fields.nth(1).press("Enter");
+  await expect(page.locator('a[href="#/server/machine"]')).toBeVisible({ timeout: 60_000 });
+  const response = page.waitForResponse((item) => item.url().includes("/ticket/fetch"));
+  await page.locator('a[href="#/user/ticket"]').click();
+  return (await response).request().headers().authorization ?? "";
+}
+
+async function loginLegacyUserAPI(request: APIRequestContext, email: string, password: string): Promise<string> {
+  const response = await request.post(new URL("/api/v1/passport/auth/login", legacyURL).toString(), { data: { email, password } });
+  expect(response.status()).toBe(200);
+  return readStringProperty(readProperty(await readJSON(response), "data"), "auth_data") ?? "";
+}
+
+async function loginGoAdmin(page: Page) {
+  await page.goto(goURL, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("邮箱").fill(goEmail);
+  await page.getByLabel("密码").fill(goPassword);
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible({ timeout: 60_000 });
+}
+
+async function loginGoUser(request: APIRequestContext, email: string, password: string): Promise<string> {
+  const response = await request.post(new URL("/api/v1/passport/auth/login", goURL).toString(), { data: { email, password } });
+  expect(response.status()).toBe(200);
+  return readStringProperty(readProperty(await readJSON(response), "data"), "auth_data") ?? "";
+}
+
+async function goAdminRequest(page: Page, path: string, body?: unknown) {
+  return page.evaluate(async ({ path: requestPath, body: requestBody }) => {
+    const csrf = document.cookie.split("; ").find((item) => item.startsWith("xboard_csrf="))?.slice("xboard_csrf=".length) ?? "";
+    const response = await fetch(requestPath, {
+      method: requestBody === undefined ? "GET" : "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) },
+      body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
+    });
+    return { status: response.status, body: await response.text() };
+  }, { path: goAdminURL(path), body });
+}
+
+async function goUserRequest(request: APIRequestContext, path: string, method = "GET", body?: unknown, authorization = "") {
+  const cookies = await request.storageState();
+  const csrf = cookies.cookies.find((cookie) => cookie.name === "xboard_csrf")?.value ?? "";
+  const response = await request.fetch(new URL(path, goURL).toString(), {
+    method,
+    headers: { Authorization: authorization, "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) },
+    data: body
+  });
+  return { status: response.status(), body: await response.text() };
+}
+
+function legacyUserAPI(path: string) {
+  return new URL(`/api/v1/user${path}`, new URL(legacyURL).origin).toString();
+}
+
+function legacyAdminAPI(path: string) {
+  const securePath = new URL(legacyURL).pathname.replace(/\/$/, "");
+  return new URL(`/api/v2${securePath}${path}`, legacyURL).toString();
+}
+
+function goAdminURL(path: string) {
+  const base = new URL(goURL);
+  const securePath = base.pathname.replace(/^\/+|\/+$/g, "");
+  return path.startsWith("/api/v1/admin/")
+    ? new URL(`/api/v1/admin/${securePath}/${path.slice("/api/v1/admin/".length)}`, base.origin).toString()
+    : new URL(path, goURL).toString();
+}
+
+async function readJSON(response: { text(): Promise<string> }) {
+  return JSON.parse(await response.text()) as unknown;
+}
+
+function parseJSONBody(body: string) {
+  return JSON.parse(body) as unknown;
+}
+
+function requiredEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function readProperty(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+}
+
+function readStringProperty(value: unknown, key: string): string | null {
+  const property = readProperty(value, key);
+  return typeof property === "string" ? property : null;
+}
+
+function requiredArrayProperty(value: unknown, key: string): unknown[] {
+  const property = readProperty(value, key);
+  if (!Array.isArray(property)) throw new Error(`missing array: ${key}`);
+  return property;
+}
+
+function requiredPositiveNumber(value: unknown, key: string): number {
+  const property = readProperty(value, key);
+  if (typeof property !== "number" || !Number.isSafeInteger(property) || property < 1) throw new Error(`invalid positive number: ${key}`);
+  return property;
+}
