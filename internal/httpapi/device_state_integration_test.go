@@ -120,7 +120,7 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 	throttleKey := prefix + "device:db-throttle:" + strconv.FormatInt(user.ID, 10)
-	// Keep Redis TTL independent from the manually controlled test clock; real TTL expiry is covered separately below.
+	// Keep Redis TTL independent from the manually controlled test clock; real TTL expiry is covered separately in internal/devicestate/redis_integration_test.go.
 	if err := redisClient.Set(ctx, throttleKey, "1", 0).Err(); err != nil {
 		t.Fatalf("pin database throttle key: %v", err)
 	}
