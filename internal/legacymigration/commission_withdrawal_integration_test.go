@@ -64,6 +64,11 @@ func TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift(t *testing.T) 
 	if created, err := database.BootstrapAdmin(ctx, "bootstrap@example.test", "bootstrap-hash", time.Unix(50, 0)); err != nil || !created {
 		t.Fatalf("bootstrap target = %v, %v", created, err)
 	}
+	inspection, err := sql.Open("sqlite", "file:"+targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inspection.Close()
 
 	now := time.Date(2026, 9, 9, 1, 0, 0, 0, time.UTC)
 	rollbackHash := strings.Repeat("a", 64)
@@ -81,6 +86,7 @@ func TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift(t *testing.T) 
 	}, now.Add(time.Minute)); err != nil {
 		t.Fatalf("import legacy human users: %v", err)
 	}
+	assertImportedCommissionState(t, inspection, 2, 50, 0, 0)
 	if _, err := database.ImportLegacyOrders(ctx, store.LegacyOrdersImport{
 		Slice: store.LegacyOrdersSlice, SourceSHA256: orders.SHA256, SourceSize: orders.Size,
 		Orders: orders.Orders, Checksum: orders.Checksum,
@@ -88,6 +94,8 @@ func TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift(t *testing.T) 
 	}, now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("import legacy orders: %v", err)
 	}
+	assertImportedCommissionState(t, inspection, 2, 50, 0, 0)
+	assertImportedOrderState(t, inspection)
 	commissionReport, err := database.ImportLegacyCommissions(ctx, store.LegacyCommissionsImport{
 		Slice: store.LegacyCommissionsSlice, SourceSHA256: commissions.SHA256, SourceSize: commissions.Size,
 		Logs: commissions.Logs, Checksum: commissions.Checksum,
@@ -96,16 +104,12 @@ func TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift(t *testing.T) 
 	if err != nil || commissionReport.Logs.SourceRows != 1 || commissionReport.Logs.TargetRows != 1 {
 		t.Fatalf("import legacy commissions = %#v, %v", commissionReport, err)
 	}
-
-	inspection, err := sql.Open("sqlite", "file:"+targetPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer inspection.Close()
+	assertLegacyMigrationRunsShareSource(t, inspection, commissions.SHA256)
+	assertImportedCommissionState(t, inspection, 2, 50, 1, 50)
+	assertImportedCommissionRelation(t, inspection)
 	if _, err := inspection.Exec(`UPDATE app_settings SET withdraw_close_enable = 0, commission_withdraw_limit = 1, commission_withdraw_method = '["USDT"]' WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}
-	assertImportedCommissionState(t, inspection, 2, 50, 1, 50)
 
 	withdrawal, err := database.CreateCommissionWithdrawalTicket(ctx, 2, store.CommissionWithdrawalInput{
 		Method: "USDT", Account: "legacy-import-wallet", RequestKey: "legacy-import-withdrawal",
@@ -124,6 +128,47 @@ func TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift(t *testing.T) 
 	var audits int
 	if err := inspection.QueryRow(`SELECT COUNT(*) FROM admin_audit_logs WHERE route = '/api/v1/admin/tickets/{ticketID}/withdrawal'`).Scan(&audits); err != nil || audits != 1 {
 		t.Fatalf("withdrawal audits = %d, %v", audits, err)
+	}
+}
+
+func assertLegacyMigrationRunsShareSource(t *testing.T, database *sql.DB, sourceSHA256 string) {
+	t.Helper()
+	var runs, sources int
+	var minimumSHA256, maximumSHA256 string
+	if err := database.QueryRow(`
+		SELECT COUNT(*), COUNT(DISTINCT source_sha256), MIN(source_sha256), MAX(source_sha256)
+		FROM legacy_migration_runs
+		WHERE slice IN (?, ?, ?, ?)
+	`, store.LegacyPlansSlice, store.LegacyHumanUsersSlice, store.LegacyOrdersSlice, store.LegacyCommissionsSlice).
+		Scan(&runs, &sources, &minimumSHA256, &maximumSHA256); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 4 || sources != 1 || minimumSHA256 != sourceSHA256 || maximumSHA256 != sourceSHA256 {
+		t.Fatalf("legacy migration runs = runs %d sources %d range %s..%s, want 4/1/%s", runs, sources, minimumSHA256, maximumSHA256, sourceSHA256)
+	}
+}
+
+func assertImportedOrderState(t *testing.T, database *sql.DB) {
+	t.Helper()
+	var userID, inviteUserID, totalAmount int64
+	if err := database.QueryRow(`SELECT user_id, invite_user_id, total_amount FROM orders WHERE id = 61`).
+		Scan(&userID, &inviteUserID, &totalAmount); err != nil {
+		t.Fatal(err)
+	}
+	if userID != 1 || inviteUserID != 2 || totalAmount != 524 {
+		t.Fatalf("imported order relation = user %d inviter %d total %d, want 1/2/524", userID, inviteUserID, totalAmount)
+	}
+}
+
+func assertImportedCommissionRelation(t *testing.T, database *sql.DB) {
+	t.Helper()
+	var orderID, inviteUserID, userID, orderAmount, getAmount int64
+	if err := database.QueryRow(`SELECT order_id, invite_user_id, user_id, order_amount, get_amount FROM commission_logs WHERE id = 131`).
+		Scan(&orderID, &inviteUserID, &userID, &orderAmount, &getAmount); err != nil {
+		t.Fatal(err)
+	}
+	if orderID != 61 || inviteUserID != 2 || userID != 1 || orderAmount != 524 || getAmount != 50 {
+		t.Fatalf("imported commission relation = order %d inviter %d user %d amounts %d/%d, want 61/2/1/524/50", orderID, inviteUserID, userID, orderAmount, getAmount)
 	}
 }
 
