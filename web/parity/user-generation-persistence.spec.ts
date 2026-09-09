@@ -364,7 +364,7 @@ async function loginLegacyBearer(page: Page): Promise<string> {
   });
   const body = await expectResponseStatus(response, 200, "legacy administrator login");
   const authorization = readString(readObject(readJSON(body), "data"), "auth_data");
-  expect(authorization).toMatch(/^Bearer /);
+  expect(/^Bearer /.test(authorization), "legacy administrator login returned bearer authorization").toBe(true);
   return authorization;
 }
 
@@ -482,7 +482,7 @@ function expectLegacyBannedLoginRejected(response: { status: number; body: strin
   expect(response.status, safeResponseMessage("legacy banned user login", response.status, response.body)).toBe(400);
   const body = readJSON(response.body);
   expect(readString(body, "status")).toBe("fail");
-  expect(readString(body, "message")).toBe("该账户已被停止使用");
+  expect(readString(body, "message") === "该账户已被停止使用", "legacy banned login message marker").toBe(true);
   expect(readRequired(body, "data")).toBeNull();
   expect(readRequired(body, "error")).toBeNull();
   expectNoAuthData(body);
@@ -492,10 +492,10 @@ function expectGoBannedLoginRejected(response: { status: number; body: string })
   expect(response.status, safeResponseMessage("Go banned user login", response.status, response.body)).toBe(401);
   const body = readJSON(response.body);
   expect(readString(body, "status")).toBe("fail");
-  expect(readString(body, "message")).toBe("邮箱或密码错误");
+  expect(readString(body, "message") === "邮箱或密码错误", "Go banned login message marker").toBe(true);
   const error = readObject(body, "error");
   expect(readString(error, "code")).toBe("invalid_credentials");
-  expect(readString(error, "message")).toBe("邮箱或密码错误");
+  expect(readString(error, "message") === "邮箱或密码错误", "Go banned login error message marker").toBe(true);
   expectNoAuthData(body);
 }
 
@@ -699,7 +699,9 @@ function sanitizeJSONSummary(value: unknown): unknown {
       result[key] = "<redacted>";
     } else if (key === "error" && isRecord(entry)) {
       result[key] = sanitizeJSONSummary(entry);
-    } else if (["status", "code", "message"].includes(key)) {
+    } else if (key === "message" && typeof entry === "string") {
+      result[key] = `<string length=${entry.length}>`;
+    } else if (["status", "code"].includes(key)) {
       result[key] = typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean" || entry === null ? entry : typeof entry;
     } else {
       result[key] = Array.isArray(entry) ? `<array length=${entry.length}>` : isRecord(entry) ? "<object>" : typeof entry;
