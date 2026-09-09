@@ -1,3 +1,5 @@
+import { randomBytes, randomUUID } from "node:crypto";
+
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
@@ -11,11 +13,11 @@ const goPassword = requiredEnv("XBOARD_GO_ADMIN_PASSWORD");
 
 test("legacy and Go ticket creation persist the same user-visible contract", async ({ browser }) => {
   test.setTimeout(120_000);
-  const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const unique = randomUUID();
   const subject = `Ticket persistence ${unique}`;
   const message = `Initial persisted message ${unique}`;
-  const legacyUser = { email: `ticket-persistence-${unique}@legacy.local`, password: `ticket-persistence-${unique}` };
-  const goUser = { email: `ticket-persistence-${unique}@go.local`, password: `ticket-persistence-${unique}` };
+  const legacyUser = { email: `ticket-persistence-${unique}@legacy.local`, password: randomBytes(24).toString("base64url") };
+  const goUser = { email: `ticket-persistence-${unique}@go.local`, password: randomBytes(24).toString("base64url") };
   let legacyUserID: number | null = null;
   let goUserID: number | null = null;
   let legacyAuthorization = "";
@@ -109,13 +111,13 @@ test("legacy and Go ticket creation persist the same user-visible contract", asy
 
 test("legacy and Go ticket reply and close persist across re-login without reopening", async ({ browser }) => {
   test.setTimeout(120_000);
-  const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const unique = randomUUID();
   const subject = `Ticket reply close ${unique}`;
   const initialMessage = `Initial reply-close message ${unique}`;
   const userReplyMessage = `User reply ${unique}`;
   const adminReplyMessage = `Administrator reply ${unique}`;
-  const legacyUser = { email: `ticket-reply-close-${unique}@legacy.local`, password: `ticket-reply-close-${unique}` };
-  const goUser = { email: `ticket-reply-close-${unique}@go.local`, password: `ticket-reply-close-${unique}` };
+  const legacyUser = { email: `ticket-reply-close-${unique}@legacy.local`, password: randomBytes(24).toString("base64url") };
+  const goUser = { email: `ticket-reply-close-${unique}@go.local`, password: randomBytes(24).toString("base64url") };
   let legacyUserID: number | null = null;
   let goUserID: number | null = null;
   let legacyAuthorization = "";
