@@ -67,6 +67,7 @@ jobs:
           pnpm --dir web licenses list --prod --json > artifacts/web-production-licenses.json
           node .github/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
           node --test .github/scripts/check-production-licenses.test.mjs
+          node --test .github/scripts/authorize-legacy-parity.test.mjs
       - name: Generate source SBOM
         env:
           SYFT_CHECK_FOR_APP_UPDATE: "false"

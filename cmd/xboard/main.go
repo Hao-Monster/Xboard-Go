@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -337,11 +338,20 @@ func runAttachmentCleanup(ctx context.Context, service *attachments.Service, log
 }
 
 type commandResult struct {
-	Status         string          `json:"status"`
-	Action         string          `json:"action"`
-	Path           string          `json:"path"`
-	AttachmentPath string          `json:"attachment_path,omitempty"`
-	Manifest       backup.Manifest `json:"manifest"`
+	Status             string                    `json:"status"`
+	Action             string                    `json:"action"`
+	Path               string                    `json:"path"`
+	AttachmentPath     string                    `json:"attachment_path,omitempty"`
+	Bytes              int64                     `json:"bytes,omitempty"`
+	SHA256             string                    `json:"sha256,omitempty"`
+	Manifest           backup.Manifest           `json:"manifest"`
+	RemoteVerification *remoteBackupVerification `json:"remote_verification,omitempty"`
+}
+
+type remoteBackupVerification struct {
+	Bytes    int64           `json:"bytes"`
+	SHA256   string          `json:"sha256"`
+	Manifest backup.Manifest `json:"manifest"`
 }
 
 type maintenanceCommandResult struct {
@@ -486,7 +496,7 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		return true, fmt.Errorf("unknown command %q", arguments[0])
 	}
 	if len(arguments) < 2 {
-		return true, errors.New("backup subcommand is required: create, verify, or restore")
+		return true, errors.New("backup subcommand is required: create, verify, upload-http, download-http, or restore")
 	}
 
 	switch arguments[1] {
@@ -536,6 +546,105 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 		}
 		return true, encodeCommandResult(stdout, commandResult{Status: "success", Action: "backup.verify", Path: absolute, Manifest: manifest})
 
+	case "upload-http":
+		flags := flag.NewFlagSet("backup upload-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		input := flags.String("input", "", "backup archive path")
+		putURLFile := flags.String("put-url-file", "", "private file containing an HTTP(S) PUT URL")
+		verifyGetURLFile := flags.String("verify-get-url-file", "", "private file containing an HTTP(S) GET URL for an optional post-upload readback")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP for an isolated local recovery drill")
+		confirm := flags.Bool("confirm-independent-storage", false, "confirm the destination is a separately protected failure domain")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*input) == "" || strings.TrimSpace(*putURLFile) == "" || !*confirm {
+			return true, errors.New("backup upload-http requires --input, --put-url-file, and --confirm-independent-storage and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*putURLFile)
+		if err != nil {
+			return true, err
+		}
+		var verifyGetURL string
+		if strings.TrimSpace(*verifyGetURLFile) != "" {
+			verifyGetURL, err = readBackupReplicaURL(*verifyGetURLFile)
+			if err != nil {
+				return true, err
+			}
+			if err := backup.ValidateHTTPReplicaURL(verifyGetURL, *allowInsecureHTTP); err != nil {
+				return true, fmt.Errorf("validate backup replica GET URL: %w", err)
+			}
+		}
+		uploaded, err := backup.UploadHTTP(ctx, *input, replicaURL, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*input)
+		if err != nil {
+			return true, err
+		}
+		var remoteVerification *remoteBackupVerification
+		if verifyGetURL != "" {
+			temporaryDirectory, err := os.MkdirTemp("", "xboard-backup-upload-verify-*")
+			if err != nil {
+				return true, fmt.Errorf("create backup replica verification directory: %w", err)
+			}
+			defer os.RemoveAll(temporaryDirectory)
+			temporaryPath := filepath.Join(temporaryDirectory, "remote.xbbackup")
+			downloaded, err := backup.DownloadHTTP(ctx, verifyGetURL, temporaryPath, *allowInsecureHTTP)
+			if err != nil {
+				return true, fmt.Errorf("remote backup readback failed; uploaded object may already exist: %w", err)
+			}
+			if downloaded.Size != uploaded.Size || downloaded.SHA256 != uploaded.SHA256 {
+				return true, errors.New("remote backup readback does not match the uploaded archive; uploaded object may already exist")
+			}
+			manifest, err := backup.Verify(ctx, temporaryPath)
+			if err != nil {
+				return true, fmt.Errorf("verify remote backup readback; uploaded object may already exist: %w", err)
+			}
+			remoteVerification = &remoteBackupVerification{
+				Bytes: downloaded.Size, SHA256: downloaded.SHA256, Manifest: manifest,
+			}
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.upload-http", Path: absolute,
+			Bytes: uploaded.Size, SHA256: uploaded.SHA256,
+			RemoteVerification: remoteVerification,
+		})
+
+	case "download-http":
+		flags := flag.NewFlagSet("backup download-http", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		getURLFile := flags.String("get-url-file", "", "private file containing an HTTP(S) GET URL")
+		output := flags.String("output", "", "new downloaded backup archive path")
+		allowInsecureHTTP := flags.Bool("allow-insecure-http", false, "allow plain HTTP for an isolated local recovery drill")
+		if err := flags.Parse(arguments[2:]); err != nil {
+			return true, err
+		}
+		if flags.NArg() != 0 || strings.TrimSpace(*getURLFile) == "" || strings.TrimSpace(*output) == "" {
+			return true, errors.New("backup download-http requires --get-url-file and --output and accepts no positional arguments")
+		}
+		replicaURL, err := readBackupReplicaURL(*getURLFile)
+		if err != nil {
+			return true, err
+		}
+		downloaded, err := backup.DownloadHTTP(ctx, replicaURL, *output, *allowInsecureHTTP)
+		if err != nil {
+			return true, err
+		}
+		absolute, err := filepath.Abs(*output)
+		if err != nil {
+			return true, err
+		}
+		manifest, err := backup.Verify(ctx, absolute)
+		if err != nil {
+			_ = os.Remove(absolute)
+			return true, fmt.Errorf("verify downloaded backup replica: %w", err)
+		}
+		return true, encodeCommandResult(stdout, commandResult{
+			Status: "success", Action: "backup.download-http", Path: absolute,
+			Bytes: downloaded.Size, SHA256: downloaded.SHA256, Manifest: manifest,
+		})
+
 	case "restore":
 		flags := flag.NewFlagSet("backup restore", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -568,6 +677,32 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	default:
 		return true, fmt.Errorf("unknown backup subcommand %q", arguments[1])
 	}
+}
+
+func readBackupReplicaURL(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("backup replica URL file is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect backup replica URL file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("backup replica URL file must be a regular file")
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("backup replica URL file must not be readable by group or others")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read backup replica URL file: %w", err)
+	}
+	replicaURL := strings.TrimSpace(string(content))
+	if replicaURL == "" {
+		return "", errors.New("backup replica URL file is empty")
+	}
+	return replicaURL, nil
 }
 
 func runKnowledgeAttachmentsCommand(ctx context.Context, arguments []string, stdout, stderr io.Writer, now func() time.Time) (bool, error) {

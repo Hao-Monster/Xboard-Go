@@ -229,8 +229,39 @@ XBOARD_ATTACHMENT_ROOT=/var/lib/xboard/restored-attachments \
 The database archive does not contain `XBOARD_SETTINGS_ENCRYPTION_KEY`; retain
 that secret independently for as long as encrypted settings or pending tokens
 exist. Copy verified archives to independently protected storage when testing
-a real disaster-recovery plan. These commands are currently intended only for
-local and isolated test environments.
+a real disaster-recovery plan. An operator-managed pre-signed HTTPS endpoint can
+be used for a streamed independent copy; keep the URL in a private,
+operator-owned file and pass it to the maintenance command:
+
+```bash
+# Mount the private URL file at /run/secrets/backup-put-url in the maintenance container.
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup upload-http \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --put-url-file /run/secrets/backup-put-url \
+  --confirm-independent-storage
+```
+
+The upload command reports the local archive digest after the PUT completes.
+For an explicit post-upload readback, also mount a private GET URL file and pass
+`--verify-get-url-file`; the command then downloads the object to a temporary
+path, compares its size and SHA-256 with the source, and runs the archive
+verifier before reporting readback success:
+
+```bash
+docker compose -f compose.local.yaml run --rm --no-deps maintenance backup upload-http \
+  --input /var/lib/xboard-backups/xboard-YYYYMMDDTHHMMSSZ.xbbackup \
+  --put-url-file /run/secrets/backup-put-url \
+  --verify-get-url-file /run/secrets/backup-get-url \
+  --confirm-independent-storage
+```
+
+Use `backup download-http` with a private GET URL file to retrieve a copy into
+a new path; a successful command also verifies the downloaded archive before
+returning. Plain HTTP is accepted only for an explicit loopback recovery drill.
+These commands are currently intended only for local and isolated test
+environments. A successful PUT or readback still does not prove independent
+failure-domain persistence, immutable retention, or a completed disaster
+recovery drill.
 
 ## Local bounded maintenance
 

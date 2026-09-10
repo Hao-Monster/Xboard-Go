@@ -151,6 +151,112 @@ func TestAdminUserFullProfileModernAndLegacyUpdateParity(t *testing.T) {
 	}
 }
 
+func TestLegacyAdminUserDestroyMatchesLegacyContract(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+	created := bearerRequest(api, http.MethodPost, "/api/v1/admin/admin/users", admin, `{
+		"email":"legacy-destroy@example.test","password":"destroy-password-123",
+		"transfer_enable":1,"speed_limit":0,"device_limit":0,"banned":false
+	}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create user status=%d body=%s", created.Code, created.Body)
+	}
+	var payload struct {
+		Data store.AdminUser `json:"data"`
+	}
+	decodeResponse(t, created, &payload)
+
+	destroyed := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, fmt.Sprintf(`{"id":%d}`, payload.Data.ID))
+	if destroyed.Code != http.StatusOK || !containsAll(destroyed.Body.String(), `"status":"success"`, `"data":true`) {
+		t.Fatalf("destroy user status=%d body=%s", destroyed.Code, destroyed.Body)
+	}
+	if _, err := database.GetAdminUser(context.Background(), payload.Data.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("deleted user lookup error=%v, want ErrNotFound", err)
+	}
+
+	missing := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, `{"id":999999}`)
+	if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body.String(), "用户不存在") {
+		t.Fatalf("missing destroy status=%d body=%s", missing.Code, missing.Body)
+	}
+}
+
+func TestLegacyAdminUserDestroyRejectsInvalidID(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "zero", body: `{"id":0}`},
+		{name: "negative", body: `{"id":-1}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, test.body)
+			if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "用户ID不能为空") {
+				t.Fatalf("invalid destroy status=%d body=%s", response.Code, response.Body)
+			}
+		})
+	}
+}
+
+func TestLegacyAdminUserDestroyMapsProtectedAndDistributorErrors(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := context.Background()
+	now := fixedNow()
+	admin := loginLegacyBearer(t, api, "admin@example.test", "admin-password-123").Authorization
+
+	protected, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "legacy-destroy-protected@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateTicket(ctx, protected.ID, store.SaveTicketInput{
+		Subject: "protected destroy ticket", Message: "retained history",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	protectedResponse := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, fmt.Sprintf(`{"id":%d}`, protected.ID))
+	if protectedResponse.Code != http.StatusUnprocessableEntity || !strings.Contains(protectedResponse.Body.String(), "该用户存在受保护业务记录，不能删除；请改为封禁账号") {
+		t.Fatalf("protected destroy status=%d body=%s", protectedResponse.Code, protectedResponse.Body)
+	}
+	if _, err := database.GetAdminUser(ctx, protected.ID); err != nil {
+		t.Fatalf("protected user lookup error=%v", err)
+	}
+
+	distributor, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "legacy-destroy-distributor@example.test", PasswordHash: "hash",
+		IsDistributor: true, DistributorName: "test distributor",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.CreatePlan(ctx, store.SavePlanInput{
+		Name: "legacy destroy distributor plan", TransferEnableGiB: 1,
+		Prices: store.PlanPrices{"monthly": 100},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = database.SetPlanState(ctx, plan.ID, plan.Revision, store.PlanState{Show: true, Sell: true, Renew: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateDistributorOrder(ctx, store.CreateDistributorOrderInput{
+		DistributorUserID: distributor.ID, PlanID: plan.ID, Period: "monthly",
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	distributorResponse := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, fmt.Sprintf(`{"id":%d}`, distributor.ID))
+	if distributorResponse.Code != http.StatusUnprocessableEntity || !strings.Contains(distributorResponse.Body.String(), "该分销商已有订单，不能删除；请改为封禁账号") {
+		t.Fatalf("distributor destroy status=%d body=%s", distributorResponse.Code, distributorResponse.Body)
+	}
+	if _, err := database.GetAdminUser(ctx, distributor.ID); err != nil {
+		t.Fatalf("blocked distributor lookup error=%v", err)
+	}
+}
+
 func TestAdminUserTelegramIDConflictHasDistinctModernAndLegacyErrors(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()

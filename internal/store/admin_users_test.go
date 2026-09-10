@@ -69,6 +69,184 @@ func TestAdminUserDirectoryUsesStableCursorAndHidesInternalAccounts(t *testing.T
 	}
 }
 
+func TestDeleteHumanUserRejectsInvalidAndMissingIDs(t *testing.T) {
+	database := newTestStore(t)
+	defer database.Close()
+
+	if err := database.DeleteHumanUser(context.Background(), 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("DeleteHumanUser(0) error = %v, want ErrInvalidInput", err)
+	}
+	if err := database.DeleteHumanUser(context.Background(), 999999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("DeleteHumanUser(missing) error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestDeleteHumanUserRejectsProtectedAndDistributorOrderRecords(t *testing.T) {
+	database := newTestStore(t)
+	defer database.Close()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+
+	inviter, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-protected-inviter@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protected, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-protected@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "delete distributor plan", TransferEnableGiB: 1,
+		Prices: PlanPrices{"monthly": 100},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE plans SET show = 1, sell = 1 WHERE id = ?`, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, CreateOrderInput{
+		UserID: inviter.ID, PlanID: plan.ID, Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO commission_logs
+			(order_id, invite_user_id, user_id, trade_no, order_amount, get_amount, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 100, 1, ?, ?)
+	`, order.ID, protected.ID, protected.ID, order.TradeNo, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteHumanUser(ctx, protected.ID); !errors.Is(err, ErrUserDeletionProtected) {
+		t.Fatalf("DeleteHumanUser(commission protected) error = %v, want ErrUserDeletionProtected", err)
+	}
+	if _, err := database.GetAdminUser(ctx, protected.ID); err != nil {
+		t.Fatalf("protected user lookup error = %v", err)
+	}
+	var commissionCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM commission_logs WHERE user_id = ?`, protected.ID).Scan(&commissionCount); err != nil {
+		t.Fatal(err)
+	}
+	if commissionCount != 1 {
+		t.Fatalf("commission log count = %d, want 1", commissionCount)
+	}
+
+	distributor, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-distributor@example.test", PasswordHash: "hash", IsDistributor: true, DistributorName: "test distributor",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscriber, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-subscriber@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET account_kind = 'internal_subscription' WHERE id = ?`, subscriber.ID); err != nil {
+		t.Fatal(err)
+	}
+	distributorOrder, err := database.CreateOrder(ctx, CreateOrderInput{
+		UserID: distributor.ID, PlanID: plan.ID, Period: "monthly",
+	}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE orders SET status = 3 WHERE id = ?`, distributorOrder.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO distributor_subscriptions
+			(original_order_id, distributor_user_id, subscriber_user_id, claim_token_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, distributorOrder.ID, distributor.ID, subscriber.ID, strings.Repeat("a", 64), now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteHumanUser(ctx, distributor.ID); !errors.Is(err, ErrUserDeletionBlocked) {
+		t.Fatalf("DeleteHumanUser(distributor order) error = %v, want ErrUserDeletionBlocked", err)
+	}
+	if _, err := database.GetAdminUser(ctx, distributor.ID); err != nil {
+		t.Fatalf("blocked distributor lookup error = %v", err)
+	}
+}
+
+func TestDeleteHumanUserCleansInvitationCodesAndTickets(t *testing.T) {
+	database := newTestStore(t)
+	defer database.Close()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+
+	admin, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-ticket-admin@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := database.CreateAdminUser(ctx, CreateAdminUserInput{
+		Email: "delete-cleanup@example.test", PasswordHash: "hash",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO invitation_codes
+			(user_id, code_digest, code_cipher, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, target.ID, make([]byte, 32), make([]byte, 32), now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO tickets
+			(user_id, subject, level, status, reply_status, last_reply_user_id, created_at, updated_at)
+		VALUES (?, 'cleanup ticket', 0, 0, 0, ?, ?, ?)
+	`, target.ID, admin.ID, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	var ticketID int64
+	if err := database.db.QueryRowContext(ctx, `SELECT id FROM tickets WHERE user_id = ?`, target.ID).Scan(&ticketID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `
+		INSERT INTO ticket_messages (ticket_id, user_id, message, created_at, updated_at)
+		VALUES (?, ?, 'admin reply', ?, ?)
+	`, ticketID, admin.ID, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteHumanUser(ctx, target.ID); err != nil {
+		t.Fatalf("DeleteHumanUser(cleanup) error = %v", err)
+	}
+	if _, err := database.GetAdminUser(ctx, target.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted user lookup error = %v, want ErrNotFound", err)
+	}
+	for _, check := range []struct {
+		name  string
+		query string
+	}{
+		{"invitation codes", `SELECT COUNT(*) FROM invitation_codes WHERE user_id = ?`},
+		{"tickets", `SELECT COUNT(*) FROM tickets WHERE user_id = ?`},
+	} {
+		var count int
+		if err := database.db.QueryRowContext(ctx, check.query, target.ID).Scan(&count); err != nil {
+			t.Fatalf("%s count error = %v", check.name, err)
+		}
+		if count != 0 {
+			t.Fatalf("%s count = %d, want 0", check.name, count)
+		}
+	}
+	var messages int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = ?`, ticketID).Scan(&messages); err != nil {
+		t.Fatal(err)
+	}
+	if messages != 0 {
+		t.Fatalf("ticket message count = %d, want 0", messages)
+	}
+}
+
 func TestAdminUserDirectoryFiltersAndBoundsWork(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()

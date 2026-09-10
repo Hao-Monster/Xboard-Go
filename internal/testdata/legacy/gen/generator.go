@@ -168,28 +168,6 @@ func WriteManifest(manifest DatasetManifest, manifestPath string) error {
 	return nil
 }
 
-// buildSchema creates the legacy Xboard table structure.
-// This mirrors the pre-migration source schema (not the current Go schema).
-//
-// NOTE: The exact schema version and table set to simulate depends on D-006
-// (target production database type). Until D-006 is resolved, we use SQLite
-// with a representative pre-migration schema (user_version = 22, the last
-// version before Go migration baseline).
-func (g *Generator) buildSchema(ctx context.Context, db *sql.DB) error {
-	// Minimal legacy schema placeholder — full schema TBD after D-006 decision.
-	// Each domain's buildSchema* function will be added in domains/*.go files.
-	_, err := db.ExecContext(ctx, `PRAGMA user_version = 22`)
-	return err
-}
-
-// populateDomains writes representative rows for each covered domain.
-// D-013-gated domains (stats, failed_jobs) are excluded.
-func (g *Generator) populateDomains(_ context.Context, _ *sql.DB) error {
-	// Placeholder: actual domain generators will be implemented in domains/*.go
-	// after the schema is finalized (D-006) and this design is approved.
-	return nil
-}
-
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

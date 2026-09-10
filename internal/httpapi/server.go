@@ -473,6 +473,7 @@ func New(dependencies Dependencies) http.Handler {
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/sendMail", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkMail)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/dumpCSV", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkCSV)))
 	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/ban", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyAdminUserBulkBan)))
+	legacyAdmin.Handle("POST /api/v2/"+dependencies.LegacyAdminPath+"/user/destroy", api.auditLegacyAdminUserMutations(http.HandlerFunc(api.legacyDestroyAdminUser)))
 	legacyAdminTrafficReset := http.NewServeMux()
 	legacyAdminTrafficReset.HandleFunc("POST /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/reset-user", api.legacyResetAdminUserTraffic)
 	legacyAdminTrafficReset.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/traffic-reset/user/{userID}/history", api.legacyListAdminUserTrafficResets)
@@ -866,7 +867,7 @@ func (s *server) auditLegacyAdminOrderMutations(next http.Handler) http.Handler 
 func (s *server) auditLegacyAdminUserMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action := ""
-		for _, candidate := range []string{"update", "resetSecret", "generate", "sendMail", "dumpCSV", "ban"} {
+		for _, candidate := range []string{"update", "resetSecret", "generate", "sendMail", "dumpCSV", "ban", "destroy"} {
 			if strings.HasSuffix(r.URL.Path, "/user/"+candidate) {
 				action = candidate
 				break

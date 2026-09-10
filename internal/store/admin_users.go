@@ -908,6 +908,121 @@ func getAdminUsersTx(ctx context.Context, tx *sql.Tx, userIDs []int64) (map[int6
 	return users, nil
 }
 
+// DeleteHumanUser preserves the legacy administrator deletion workflow.
+func (s *Store) DeleteHumanUser(ctx context.Context, userID int64) error {
+	if userID < 1 {
+		return fmt.Errorf("%w: invalid user id", ErrInvalidInput)
+	}
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin user deletion: %w", err)
+	}
+	defer tx.Rollback()
+
+	var accountKind string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT account_kind
+		FROM users WHERE id = ?
+	`, userID).Scan(&accountKind); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("read user for deletion: %w", err)
+	}
+	if accountKind != "human" {
+		return ErrNotFound
+	}
+	var internalSubscriber bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM distributor_subscriptions WHERE subscriber_user_id = ?)`, userID).Scan(&internalSubscriber); err != nil {
+		return fmt.Errorf("check internal subscriber: %w", err)
+	}
+	if internalSubscriber {
+		return ErrNotFound
+	}
+	var distributorOrder bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM distributor_subscriptions WHERE distributor_user_id = ?)`, userID).Scan(&distributorOrder); err != nil {
+		return fmt.Errorf("check distributor orders: %w", err)
+	}
+	if distributorOrder {
+		return ErrUserDeletionBlocked
+	}
+	protected := []string{
+		`SELECT EXISTS(SELECT 1 FROM commission_logs WHERE invite_user_id = ? OR user_id = ?)`,
+		`SELECT EXISTS(SELECT 1 FROM gift_card_usages WHERE user_id = ? OR inviter_id = ?)`,
+		`SELECT EXISTS(SELECT 1 FROM tickets WHERE last_reply_user_id = ?)`,
+		`SELECT EXISTS(SELECT 1 FROM ticket_messages WHERE user_id = ?)`,
+		`SELECT EXISTS(SELECT 1 FROM knowledge_attachments WHERE uploader_user_id = ?)`,
+		`SELECT EXISTS(SELECT 1 FROM knowledge_attachment_uploads WHERE uploader_user_id = ?)`,
+	}
+	for _, query := range protected {
+		var exists bool
+		args := []any{userID}
+		if strings.Count(query, "?") == 2 {
+			args = []any{userID, userID}
+		}
+		if err := tx.QueryRowContext(ctx, query, args...).Scan(&exists); err != nil {
+			return fmt.Errorf("check retained user records: %w", err)
+		}
+		if exists {
+			return ErrUserDeletionProtected
+		}
+	}
+
+	orderRows, err := tx.QueryContext(ctx, `SELECT id FROM orders WHERE user_id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("list user orders for deletion: %w", err)
+	}
+	var orderIDs []int64
+	for orderRows.Next() {
+		var orderID int64
+		if err := orderRows.Scan(&orderID); err != nil {
+			_ = orderRows.Close()
+			return fmt.Errorf("scan user order for deletion: %w", err)
+		}
+		orderIDs = append(orderIDs, orderID)
+	}
+	if err := orderRows.Err(); err != nil {
+		_ = orderRows.Close()
+		return fmt.Errorf("iterate user orders for deletion: %w", err)
+	}
+	if err := orderRows.Close(); err != nil {
+		return fmt.Errorf("close user orders for deletion: %w", err)
+	}
+	for _, orderID := range orderIDs {
+		for _, query := range []string{
+			`DELETE FROM payment_webhook_receipts WHERE order_id = ?`,
+			`DELETE FROM payment_checkout_attempts WHERE order_id = ?`,
+			`DELETE FROM order_entitlement_events WHERE order_id = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, query, orderID); err != nil {
+				return fmt.Errorf("delete order history for user: %w", err)
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM orders WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("delete user orders: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM invitation_codes WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("delete user invitation codes: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM ticket_messages
+		WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id = ?)
+	`, userID); err != nil {
+		return fmt.Errorf("delete user ticket messages: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tickets WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("delete user tickets: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = ? AND account_kind = 'human'`, userID); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit user deletion: %w", err)
+	}
+	return nil
+}
+
 func scanAdminUser(row rowScanner) (AdminUser, error) {
 	var user AdminUser
 	var distributorName, groupName, planName, inviteUserEmail, remarks sql.NullString

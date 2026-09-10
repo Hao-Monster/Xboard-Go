@@ -18,6 +18,8 @@ var (
 	ErrTelegramIDInUse                        = fmt.Errorf("%w: Telegram id already in use", ErrConflict)
 	ErrAdminInviteUserNotFound                = errors.New("administrator invite user not found")
 	ErrAdminUserPlanNotFound                  = errors.New("administrator user plan not found")
+	ErrUserDeletionBlocked                    = fmt.Errorf("%w: user has protected business records", ErrConflict)
+	ErrUserDeletionProtected                  = fmt.Errorf("%w: user has retained business history", ErrConflict)
 	ErrRegistrationClosed                     = errors.New("registration is closed")
 	ErrEmailDomainNotAllowed                  = errors.New("email domain is not allowed")
 	ErrGmailAliasNotAllowed                   = errors.New("Gmail alias is not allowed")
