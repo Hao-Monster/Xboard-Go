@@ -48,33 +48,31 @@ const defaultGuestConfig: GuestConfig = {
 type AuthMode = "login" | "register" | "recover";
 type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
-const adminNavItems: Array<{ key: AdminPage; label: string }> = [
-  { key: "system", label: "系统状态" },
-  { key: "settings", label: "系统设置" },
-  { key: "themes", label: "主题配置" },
-  { key: "mail", label: "邮件设置" },
-  { key: "telegram", label: "Telegram 设置" },
-  { key: "client-app", label: "客户端版本" },
-  { key: "commissions", label: "佣金设置" },
-  { key: "subscriptions", label: "订阅设置" },
-  { key: "node-settings", label: "节点配置" },
-  { key: "servers", label: "服务器管理" },
-  { key: "nodes", label: "节点管理" },
-  { key: "plans", label: "套餐管理" },
-  { key: "orders", label: "订单管理" },
-  { key: "distributors", label: "分销管理" },
-  { key: "plugins", label: "插件管理" },
-  { key: "payments", label: "支付配置" },
-  { key: "coupons", label: "优惠券管理" },
-  { key: "gift-cards", label: "礼品卡管理" },
-  { key: "users", label: "用户管理" },
-  { key: "tickets", label: "工单管理" },
-  { key: "groups", label: "权限组" },
-  { key: "routes", label: "路由规则" },
-  { key: "notices", label: "公告管理" },
-  { key: "knowledge", label: "知识库管理" },
-  { key: "clients", label: "客户端管理" },
-  { key: "account", label: "账号安全" }
+type AdminNavItem = { key: AdminPage; label: string };
+type AdminNavGroup = { key: string; label: string; items: AdminNavItem[] };
+
+const adminNavGroups: AdminNavGroup[] = [
+  { key: "system", label: "系统管理", items: [
+    { key: "settings", label: "系统配置" }, { key: "plugins", label: "插件管理" },
+    { key: "themes", label: "主题配置" }, { key: "notices", label: "公告管理" },
+    { key: "payments", label: "支付配置" }, { key: "knowledge", label: "知识库管理" },
+    { key: "clients", label: "客户端管理" }, { key: "mail", label: "邮件设置" },
+    { key: "telegram", label: "Telegram 设置" }, { key: "client-app", label: "客户端版本" },
+    { key: "commissions", label: "佣金设置" }, { key: "subscriptions", label: "订阅设置" },
+    { key: "node-settings", label: "节点配置" }, { key: "account", label: "账号安全" }
+  ] },
+  { key: "nodes", label: "节点管理", items: [
+    { key: "servers", label: "服务器管理" }, { key: "nodes", label: "节点管理" },
+    { key: "groups", label: "权限组管理" }, { key: "routes", label: "路由管理" }
+  ] },
+  { key: "subscriptions", label: "订阅管理", items: [
+    { key: "plans", label: "套餐管理" }, { key: "orders", label: "订单管理" },
+    { key: "coupons", label: "优惠券管理" }, { key: "gift-cards", label: "礼品卡管理" },
+    { key: "distributors", label: "分销管理" }
+  ] },
+  { key: "users", label: "用户管理", items: [
+    { key: "users", label: "用户管理" }, { key: "tickets", label: "工单管理" }
+  ] }
 ];
 
 const pageLoaders: Record<AdminPage, () => Promise<unknown>> = {
@@ -194,6 +192,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<AdminPage>("servers");
+  const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(adminNavGroups.map((group) => [group.key, true])));
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
@@ -374,18 +373,16 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            {adminNavItems.map(({ key, label }) => (
-              <button
-                key={key}
-                className="nav-link"
-                aria-current={page === key ? "page" : undefined}
-                onClick={() => navigateAdminPage(key)}
-                onMouseEnter={() => prefetchAdminPage(key)}
-                onFocus={() => prefetchAdminPage(key)}
-              >
-                {label}
-              </button>
-            ))}
+            <button className="nav-link nav-dashboard" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")} onMouseEnter={() => prefetchAdminPage("system")} onFocus={() => prefetchAdminPage("system")}>仪表盘</button>
+            {adminNavGroups.map((group) => {
+              const expanded = expandedAdminGroups[group.key] ?? true;
+              return <section className="admin-nav-group" key={group.key}>
+                <button className="admin-nav-group-toggle" aria-expanded={expanded} onClick={() => setExpandedAdminGroups((current) => ({ ...current, [group.key]: !expanded }))}>
+                  <span>{group.label}</span><span className="admin-nav-chevron" aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+                </button>
+                {expanded && <div className="admin-nav-group-items">{group.items.map(({ key, label }) => <button key={key} className="nav-link" aria-current={page === key ? "page" : undefined} onClick={() => navigateAdminPage(key)} onMouseEnter={() => prefetchAdminPage(key)} onFocus={() => prefetchAdminPage(key)}>{label}</button>)}</div>}
+              </section>;
+            })}
           </div>
         </nav>
         <div className="admin-content">
