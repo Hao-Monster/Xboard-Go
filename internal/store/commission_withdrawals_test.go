@@ -432,3 +432,16 @@ func TestCommissionWithdrawalMigrationDoesNotSettleHistoricalTicket(t *testing.T
 		t.Fatalf("historical migration tickets=%d withdrawals=%d: %v", tickets, withdrawals, err)
 	}
 }
+
+func TestMigrationRepairsMissingCommissionWithdrawalTablesAtV63(t *testing.T) {
+	db, _, _, _ := withdrawalFixture(t)
+	if _, err := db.db.Exec(`DROP TRIGGER users_money_admin_revision; DROP TRIGGER commission_withdrawals_no_delete; DROP TRIGGER commission_withdrawal_events_no_delete; DROP TRIGGER commission_withdrawal_events_no_update; DROP TRIGGER commission_withdrawals_receipt_immutable; DROP TRIGGER commission_withdrawals_transition; DROP TRIGGER commission_withdrawals_account_immutable; DROP TRIGGER commission_withdrawals_immutable; DROP TABLE commission_withdrawal_events; DROP TABLE commission_withdrawals; PRAGMA user_version = 63`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(t.Context()); err != nil {
+		t.Fatalf("Migrate(v63 missing ledger tables): %v", err)
+	}
+	if err := db.ValidateCurrentSchema(t.Context()); err != nil {
+		t.Fatalf("repaired schema validation: %v", err)
+	}
+}
