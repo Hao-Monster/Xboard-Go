@@ -1,18 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { AdminAPI, NodeAgentSettings, NodeAgentSettingsInput } from "../../lib/api";
+import { swrCache } from "../../lib/swr";
 
 type NodeAgentSettingsAPI = Pick<AdminAPI, "getNodeAgentSettings" | "updateNodeAgentSettings">;
 type Draft = Omit<NodeAgentSettingsInput, "revision" | "server_token" | "generate_server_token">;
 type TokenAction = "preserve" | "replace" | "generate" | "clear";
 
 export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
-  const [current, setCurrent] = useState<NodeAgentSettings | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const cached = swrCache.findPrefix<NodeAgentSettings>("node-agent-settings");
+  const initialSafe = cached ? withoutIssuedToken(cached) : null;
+  const [current, setCurrent] = useState<NodeAgentSettings | null>(() => initialSafe);
+  const [draft, setDraft] = useState<Draft | null>(() => initialSafe ? toDraft(initialSafe) : null);
   const [tokenAction, setTokenAction] = useState<TokenAction>("preserve");
   const [manualToken, setManualToken] = useState("");
   const [issuedToken, setIssuedToken] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => initialSafe === null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");

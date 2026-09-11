@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } 
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
+import { TopProgressBar } from "./components/TopProgressBar";
 
 const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
 const RoutingRulesPage = lazy(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
@@ -46,6 +47,133 @@ const defaultGuestConfig: GuestConfig = {
 };
 type AuthMode = "login" | "register" | "recover";
 type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+
+const adminNavItems: Array<{ key: AdminPage; label: string }> = [
+  { key: "system", label: "系统状态" },
+  { key: "settings", label: "系统设置" },
+  { key: "themes", label: "主题配置" },
+  { key: "mail", label: "邮件设置" },
+  { key: "telegram", label: "Telegram 设置" },
+  { key: "client-app", label: "客户端版本" },
+  { key: "commissions", label: "佣金设置" },
+  { key: "subscriptions", label: "订阅设置" },
+  { key: "node-settings", label: "节点配置" },
+  { key: "servers", label: "服务器管理" },
+  { key: "nodes", label: "节点管理" },
+  { key: "plans", label: "套餐管理" },
+  { key: "orders", label: "订单管理" },
+  { key: "distributors", label: "分销管理" },
+  { key: "plugins", label: "插件管理" },
+  { key: "payments", label: "支付配置" },
+  { key: "coupons", label: "优惠券管理" },
+  { key: "gift-cards", label: "礼品卡管理" },
+  { key: "users", label: "用户管理" },
+  { key: "tickets", label: "工单管理" },
+  { key: "groups", label: "权限组" },
+  { key: "routes", label: "路由规则" },
+  { key: "notices", label: "公告管理" },
+  { key: "knowledge", label: "知识库管理" },
+  { key: "clients", label: "客户端管理" },
+  { key: "account", label: "账号安全" }
+];
+
+const pageLoaders: Record<AdminPage, () => Promise<unknown>> = {
+  system: () => import("./features/system/SystemOperationsPage"),
+  settings: () => import("./features/settings/SiteSettingsPage"),
+  themes: () => import("./features/settings/ThemeManagementPage"),
+  mail: () => import("./features/settings/EmailSettingsPage"),
+  telegram: () => import("./features/settings/TelegramSettingsPage"),
+  "client-app": () => import("./features/settings/ClientAppSettingsPage"),
+  commissions: () => import("./features/settings/CommissionSettingsPage"),
+  subscriptions: () => import("./features/settings/SubscriptionSettingsPage"),
+  "node-settings": () => import("./features/settings/NodeAgentSettingsPage"),
+  servers: () => import("./features/servers/ServerManagementPage"),
+  nodes: () => import("./features/nodes/NodeManagementPage"),
+  plans: () => import("./features/plans/PlanManagementPage"),
+  orders: () => import("./features/orders/OrderManagementPage"),
+  distributors: () => import("./features/distributor/AdminDistributorPage"),
+  plugins: () => import("./features/plugins/PluginManagementPage"),
+  payments: () => import("./features/payments/PaymentManagementPage"),
+  coupons: () => import("./features/coupons/CouponManagementPage"),
+  "gift-cards": () => import("./features/giftcards/GiftCardManagementPage"),
+  users: () => import("./features/users/UsersPage"),
+  tickets: () => import("./features/tickets/TicketManagementPage"),
+  groups: () => import("./features/admin/ServerGroupsPage"),
+  routes: () => import("./features/admin/RoutingRulesPage"),
+  notices: () => import("./features/notices/NoticeManagementPage"),
+  knowledge: () => import("./features/knowledge/KnowledgeManagementPage"),
+  clients: () => import("./features/clients/ClientCatalogManagementPage"),
+  account: () => import("./features/account/AccountSecurityPage")
+};
+
+function prefetchAdminAPI(target: AdminPage, client: APIClient): void {
+  switch (target) {
+    case "node-settings":
+      void client.getNodeAgentSettings().catch(() => undefined);
+      break;
+    case "settings":
+      void client.getSiteSettings().catch(() => undefined);
+      void client.listPlans().catch(() => undefined);
+      break;
+    case "plans":
+      void client.listPlans().catch(() => undefined);
+      break;
+    case "orders":
+      void client.listAdminOrders().catch(() => undefined);
+      break;
+    case "servers":
+      void client.listMachines().catch(() => undefined);
+      break;
+    case "nodes":
+      void client.listAdminNodes().catch(() => undefined);
+      break;
+    case "system":
+      void client.getSystemStatus().catch(() => undefined);
+      break;
+    case "commissions":
+      void client.getCommissionSettings().catch(() => undefined);
+      break;
+    case "mail":
+      void client.getMailSettings().catch(() => undefined);
+      break;
+    case "telegram":
+      void client.getTelegramSettings().catch(() => undefined);
+      break;
+    case "subscriptions":
+      void client.getSubscriptionSettings().catch(() => undefined);
+      break;
+    case "client-app":
+      void client.getClientAppSettings().catch(() => undefined);
+      break;
+    case "coupons":
+      void client.listCoupons().catch(() => undefined);
+      break;
+    case "groups":
+      void client.listServerGroups().catch(() => undefined);
+      break;
+    case "routes":
+      void client.listRoutingRules().catch(() => undefined);
+      break;
+    case "notices":
+      void client.listNotices().catch(() => undefined);
+      break;
+    case "knowledge":
+      void client.listKnowledgeAdmin().catch(() => undefined);
+      break;
+    case "clients":
+      void client.listClientCatalogAdmin().catch(() => undefined);
+      break;
+    case "payments":
+      void client.listPaymentProviders().catch(() => undefined);
+      void client.listAdminPayments().catch(() => undefined);
+      break;
+    case "gift-cards":
+      void client.listGiftCardTemplates().catch(() => undefined);
+      break;
+    default:
+      break;
+  }
+}
 
 export type AppSurface = { kind: "public" } | { kind: "admin"; path: string };
 
@@ -209,6 +337,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const navigateAdminPage = (nextPage: AdminPage) => {
     if (nextPage !== page && canLeaveAdminPage()) setPage(nextPage);
   };
+  const prefetchAdminPage = (target: AdminPage) => {
+    void pageLoaders[target]?.();
+    prefetchAdminAPI(target, api);
+  };
   const signOut = () => {
     if (!canLeaveAdminPage()) return;
     void api.logout().catch(() => undefined).then(() => setSession(null));
@@ -231,6 +363,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   }
   return (
     <div className="app-frame">
+      <TopProgressBar />
       <header className="topbar">
         <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
         <div className="account">
@@ -241,32 +374,18 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>系统状态</button>
-            <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigateAdminPage("settings")}>系统设置</button>
-            <button className="nav-link" aria-current={page === "themes" ? "page" : undefined} onClick={() => navigateAdminPage("themes")}>主题配置</button>
-            <button className="nav-link" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigateAdminPage("mail")}>邮件设置</button>
-            <button className="nav-link" aria-current={page === "telegram" ? "page" : undefined} onClick={() => navigateAdminPage("telegram")}>Telegram 设置</button>
-            <button className="nav-link" aria-current={page === "client-app" ? "page" : undefined} onClick={() => navigateAdminPage("client-app")}>客户端版本</button>
-            <button className="nav-link" aria-current={page === "commissions" ? "page" : undefined} onClick={() => navigateAdminPage("commissions")}>佣金设置</button>
-            <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => navigateAdminPage("subscriptions")}>订阅设置</button>
-            <button className="nav-link" aria-current={page === "node-settings" ? "page" : undefined} onClick={() => navigateAdminPage("node-settings")}>节点配置</button>
-            <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => navigateAdminPage("servers")}>服务器管理</button>
-            <button className="nav-link" aria-current={page === "nodes" ? "page" : undefined} onClick={() => navigateAdminPage("nodes")}>节点管理</button>
-            <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => navigateAdminPage("plans")}>套餐管理</button>
-            <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => navigateAdminPage("orders")}>订单管理</button>
-            <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => navigateAdminPage("distributors")}>分销管理</button>
-            <button className="nav-link" aria-current={page === "plugins" ? "page" : undefined} onClick={() => navigateAdminPage("plugins")}>插件管理</button>
-            <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => navigateAdminPage("payments")}>支付配置</button>
-            <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => navigateAdminPage("coupons")}>优惠券管理</button>
-            <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => navigateAdminPage("gift-cards")}>礼品卡管理</button>
-            <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => navigateAdminPage("users")}>用户管理</button>
-            <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => navigateAdminPage("tickets")}>工单管理</button>
-            <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => navigateAdminPage("groups")}>权限组</button>
-            <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => navigateAdminPage("routes")}>路由规则</button>
-            <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => navigateAdminPage("notices")}>公告管理</button>
-            <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => navigateAdminPage("knowledge")}>知识库管理</button>
-            <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => navigateAdminPage("clients")}>客户端管理</button>
-            <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => navigateAdminPage("account")}>账号安全</button>
+            {adminNavItems.map(({ key, label }) => (
+              <button
+                key={key}
+                className="nav-link"
+                aria-current={page === key ? "page" : undefined}
+                onClick={() => navigateAdminPage(key)}
+                onMouseEnter={() => prefetchAdminPage(key)}
+                onFocus={() => prefetchAdminPage(key)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </nav>
         <div className="admin-content">

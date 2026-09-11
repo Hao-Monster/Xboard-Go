@@ -1,3 +1,5 @@
+import { swrCache } from "./swr";
+
 export interface Machine {
   id: number;
   name: string;
@@ -2991,14 +2993,37 @@ export class APIClient implements AdminAPI {
     return this.request<ClientCatalogQR>(`/api/v1/client-catalog/qr?${query.toString()}`);
   }
 
-  private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
+  private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string>; noCache?: boolean } = {}): Promise<T> {
     path = this.resolvePath(path);
-    const method = options.method ?? "GET";
+    const method = (options.method ?? "GET").toUpperCase();
+
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      swrCache.invalidate(path.split("?")[0]);
+      if (path.includes("/api/v1/admin/")) {
+        swrCache.invalidate("/api/v1/admin/");
+      }
+      return this.executeRequest<T>(path, method, options);
+    }
+
+    if (options.noCache) {
+      return this.executeRequest<T>(path, method, options);
+    }
+
+    const cacheKey = `${method}:${path}`;
+    const cached = swrCache.get<T>(cacheKey);
+    if (cached && !cached.isStale) {
+      return cached.data;
+    }
+
+    return swrCache.fetch<T>(cacheKey, () => this.executeRequest<T>(path, method, options));
+  }
+
+  private async executeRequest<T>(path: string, method: string, options: { body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
     const headers = new Headers({ Accept: "application/json" });
     if (options.body !== undefined) {
       headers.set("Content-Type", "application/json");
     }
-		for (const [name, value] of Object.entries(options.headers ?? {})) headers.set(name, value);
+    for (const [name, value] of Object.entries(options.headers ?? {})) headers.set(name, value);
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
       const csrf = readCookie("xboard_csrf");
       if (csrf !== null) {
@@ -3025,6 +3050,10 @@ export class APIClient implements AdminAPI {
 
   private async requestForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
     path = this.resolvePath(path);
+    swrCache.invalidate(path.split("?")[0]);
+    if (path.includes("/api/v1/admin/")) {
+      swrCache.invalidate("/api/v1/admin/");
+    }
     const headers = new Headers({ Accept: "application/json" });
     const csrf = readCookie("xboard_csrf");
     if (csrf !== null) headers.set("X-CSRF-Token", csrf);
