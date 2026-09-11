@@ -175,6 +175,18 @@ func New(dependencies Dependencies) http.Handler {
 	if err := dependencies.Store.EnsureSiteAccessSettings(dependencies.Context, dependencies.LegacyAdminPath, dependencies.Now()); err != nil {
 		panic(fmt.Sprintf("httpapi: ensure site access settings: %v", err))
 	}
+	// The database is the source of truth once the setting exists. Config may
+	// generate a fallback on every process start, so read back the persisted
+	// value before registering routes; otherwise a restart would rotate the
+	// administrator URL and invalidate the frontend/API route.
+	accessSettings, err := dependencies.Store.GetSiteAccessSettings(dependencies.Context)
+	if err != nil {
+		panic(fmt.Sprintf("httpapi: load persisted site access settings: %v", err))
+	}
+	if !validLegacyAdminPath(accessSettings.SecurePath) {
+		panic("httpapi: persisted secure path is invalid")
+	}
+	dependencies.LegacyAdminPath = accessSettings.SecurePath
 	if dependencies.NodePushInterval == 0 {
 		dependencies.NodePushInterval = 60
 	}

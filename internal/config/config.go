@@ -22,7 +22,7 @@ var (
 	redisKeyPrefixRE       = regexp.MustCompile(`^[0-9A-Za-z:_-]{1,64}$`)
 )
 
-const generatedLegacyAdminPathBytes = 24
+const generatedLegacyAdminPathBytes = 20
 
 func generatedLegacyAdminPath() (string, error) {
 	bytes := make([]byte, generatedLegacyAdminPathBytes)
