@@ -16,6 +16,7 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const telemetry = current === null ? null : nodeAuthTelemetryOf(current);
 
   const apply = (settings: NodeAgentSettings, oneTimeToken = "") => {
     const safeSettings = withoutIssuedToken(settings);
@@ -116,10 +117,14 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
           {!current.websocket_available && <p className="small muted">当前部署没有启用 WebSocket 服务能力，管理设置不能绕过部署约束。</p>}
           <label>WebSocket 地址<input type="text" inputMode="url" maxLength={2048} placeholder="wss://panel.example.com/ws（留空自动生成）" value={draft.server_ws_url} onChange={(event) => updateDraft("server_ws_url", event.target.value)} /></label>
         </fieldset>
-        <section className="settings-telemetry" aria-label="旧单节点使用情况">
-          <h3>旧单节点使用情况</h3>
-          <dl className="metrics"><div><dt>HTTP 认证</dt><dd>{current.legacy_http_auth_success_count}</dd></div><div><dt>WebSocket 认证</dt><dd>{current.legacy_websocket_auth_success_count}</dd></div><div><dt>最后使用</dt><dd>{formatTime(current.legacy_last_used_at)}</dd></div></dl>
-        </section>
+        {telemetry !== null && <section className="settings-telemetry" aria-label="节点鉴权迁移遥测">
+          <h3>节点鉴权迁移遥测</h3>
+          <p className="small muted">自 {formatTime(telemetry.observed_since)} 起持久化聚合，仅用于评估 V1 全局令牌退役窗口。</p>
+          <h4>V1 全局令牌</h4>
+          <dl className="metrics"><div><dt>HTTP 认证</dt><dd>{telemetry.legacy_global_token.http_auth_success_count}</dd></div><div><dt>WebSocket 认证</dt><dd>{telemetry.legacy_global_token.websocket_auth_success_count}</dd></div><div><dt>最后使用</dt><dd>{formatTime(telemetry.legacy_global_token.last_used_at)}</dd></div></dl>
+          <h4>V2 机器凭据</h4>
+          <dl className="metrics"><div><dt>HTTP 认证</dt><dd>{telemetry.machine_credential.http_auth_success_count}</dd></div><div><dt>WebSocket 认证</dt><dd>{telemetry.machine_credential.websocket_auth_success_count}</dd></div><div><dt>最后使用</dt><dd>{formatTime(telemetry.machine_credential.last_used_at)}</dd></div></dl>
+        </section>}
         {issuedToken !== "" && <div className="alert warning one-time-token" role="status"><strong>请立即保存通讯密钥，关闭后无法再次查看</strong><code>{issuedToken}</code><div className="row-actions"><button className="button secondary compact" type="button" onClick={() => void copyIssuedToken()}>复制通讯密钥</button><button className="button ghost compact" type="button" onClick={() => setIssuedToken("")}>我已保存</button></div></div>}
         {saved && issuedToken === "" && <div className="alert success" role="status">节点配置已保存</div>}
         <div className="form-actions">
@@ -145,6 +150,18 @@ function withoutIssuedToken(settings: NodeAgentSettings): NodeAgentSettings {
   const safeSettings = { ...settings };
   delete safeSettings.issued_token;
   return safeSettings;
+}
+
+function nodeAuthTelemetryOf(settings: NodeAgentSettings): NonNullable<NodeAgentSettings["node_auth_telemetry"]> {
+  return settings.node_auth_telemetry ?? {
+    observed_since: settings.updated_at,
+    legacy_global_token: {
+      http_auth_success_count: settings.legacy_http_auth_success_count,
+      websocket_auth_success_count: settings.legacy_websocket_auth_success_count,
+      last_used_at: settings.legacy_last_used_at
+    },
+    machine_credential: { http_auth_success_count: 0, websocket_auth_success_count: 0, last_used_at: null }
+  };
 }
 
 function formatTime(value: string | null): string {

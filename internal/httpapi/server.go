@@ -112,6 +112,7 @@ type server struct {
 	machineAuthPeerFailures    *attemptLimiter
 	legacyNodeAuthFailures     *attemptLimiter
 	legacyNodeAuthPeerFailures *attemptLimiter
+	nodeAuthTelemetry          *nodeAuthTelemetryRecorder
 	handshakeRequests          *nodeRequestLimitGroup
 	pullRequests               *nodeRequestLimitGroup
 	reportRequests             *nodeRequestLimitGroup
@@ -185,6 +186,9 @@ func New(dependencies Dependencies) http.Handler {
 		WebSocketEnabled: dependencies.WebSocketEnabled, WebSocketURL: strings.TrimRight(dependencies.WebSocketURL, "/"),
 	}, dependencies.Now()); err != nil {
 		panic(fmt.Sprintf("httpapi: ensure node agent settings: %v", err))
+	}
+	if err := dependencies.Store.EnsureNodeAuthTelemetry(dependencies.Context, dependencies.Now()); err != nil {
+		panic(fmt.Sprintf("httpapi: ensure node authentication telemetry: %v", err))
 	}
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
@@ -260,6 +264,7 @@ func New(dependencies Dependencies) http.Handler {
 		machineAuthPeerFailures:    newAttemptLimiter(600, time.Minute),
 		legacyNodeAuthFailures:     newAttemptLimiter(60, time.Minute),
 		legacyNodeAuthPeerFailures: newAttemptLimiter(600, time.Minute),
+		nodeAuthTelemetry:          newNodeAuthTelemetryRecorder(dependencies.Store),
 		handshakeRequests:          newNodeRequestLimitGroup(60, 600, 20, trustedProxyPrefixes),
 		pullRequests:               newNodeRequestLimitGroup(2_400, 10_000, 600, trustedProxyPrefixes),
 		reportRequests:             newNodeRequestLimitGroup(1_200, 10_000, 240, trustedProxyPrefixes),
@@ -290,6 +295,7 @@ func New(dependencies Dependencies) http.Handler {
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
 	}
+	go api.nodeAuthTelemetry.run(dependencies.Context, dependencies.Logger)
 	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)
 	}

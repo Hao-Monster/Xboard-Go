@@ -86,6 +86,10 @@ var requiredSchemaTables = []struct {
 	{"commission_withdrawal_events", 60},
 	{"user_lifecycles", 61},
 	{"user_lifecycle_events", 61},
+	{"node_auth_telemetry_state", 62},
+	{"node_auth_telemetry", 62},
+	{"legacy_operational_logs", 63},
+	{"operational_daily_statistics", 63},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -217,6 +221,11 @@ var requiredSchemaColumnsV56 = map[string][]string{
 
 var requiredSchemaColumnsV57 = map[string][]string{
 	"telegram_message_outbox": {"recipient_user_id"},
+}
+
+var requiredSchemaColumnsV62 = map[string][]string{
+	"node_auth_telemetry_state": {"id", "observed_since"},
+	"node_auth_telemetry":       {"auth_kind", "transport", "success_count", "last_used_at"},
 }
 
 type schemaQueryer interface {
@@ -415,6 +424,25 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 		}
 		if err := validateDeclaredSchemaObjects(ctx, database, schemaV61UserLifecycle); err != nil {
 			return err
+		}
+	}
+	if schemaVersion >= 62 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV62); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV62NodeAuthTelemetry); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 63 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{
+			"legacy_operational_logs":      {"category", "source_id", "method", "created_at"},
+			"operational_daily_statistics": {"record_at", "metric", "value"},
+		}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV63OperationalLogs); err != nil {
+			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
 		}
 	}
 	if schemaVersion >= 42 {

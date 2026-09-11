@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 61
+const currentSchemaVersion = 63
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -441,6 +441,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v61: %w", err)
 		}
 		version = 61
+	}
+	if version < 62 {
+		if _, err := tx.ExecContext(ctx, schemaV62NodeAuthTelemetry); err != nil {
+			return fmt.Errorf("apply schema v62: %w", err)
+		}
+		version = 62
+	}
+	if version < 63 {
+		if _, err := tx.ExecContext(ctx, schemaV63OperationalLogs); err != nil {
+			return fmt.Errorf("apply schema v63: %w", err)
+		}
+		version = 63
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2909,3 +2921,18 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
+const schemaV62NodeAuthTelemetry = `
+CREATE TABLE IF NOT EXISTS node_auth_telemetry_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    observed_since INTEGER NOT NULL CHECK (observed_since >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS node_auth_telemetry (
+    auth_kind TEXT NOT NULL CHECK (auth_kind IN ('legacy_global_token', 'machine_credential')),
+    transport TEXT NOT NULL CHECK (transport IN ('http', 'websocket')),
+    success_count INTEGER NOT NULL CHECK (success_count >= 0),
+    last_used_at INTEGER NOT NULL CHECK (last_used_at >= 0),
+    PRIMARY KEY (auth_kind, transport)
+) STRICT, WITHOUT ROWID;
+`
