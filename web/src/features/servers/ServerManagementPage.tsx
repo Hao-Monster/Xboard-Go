@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import "./ServerManagementPage.css";
+
 import { Drawer, Modal } from "../../components/Overlay";
 import type { ActivationSchedule, AdminAPI, DailyScheduleInput, LoadHistory, Machine, MachineEnrollment, Node } from "../../lib/api";
 
@@ -20,6 +22,10 @@ export function ServerManagementPage({ api }: Props) {
   const [linkedFilter, setLinkedFilter] = useState("all");
   const [loadFilter, setLoadFilter] = useState("all");
   const [sortBy, setSortBy] = useState("id");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [editMachine, setEditMachine] = useState<Machine | null>(null);
+  const [deleteMachine, setDeleteMachine] = useState<Machine | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -65,66 +71,58 @@ export function ServerManagementPage({ api }: Props) {
     return left.id - right.id;
   });
   const onlineCount = machines.filter((machine) => machineStatus(machine, observedAt) === "online").length;
-  const inactiveCount = machines.filter((machine) => !machine.is_active).length;
+
   const highLoadCount = machines.filter(isHighLoad).length;
   const nodeCount = machines.reduce((total, machine) => total + machine.servers_count, 0);
 
+  const pageCount = Math.max(1, Math.ceil(filteredMachines.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleMachines = filteredMachines.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => { setPage(1); }, [query, statusFilter, linkedFilter, loadFilter, pageSize]);
+
   return (
-    <main className="page-shell">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">基础设施</p>
-          <h1>服务器管理</h1>
-          <p className="muted">管理节点机器、关联节点和每日激活计划。</p>
-        </div>
-        <button className="button primary" onClick={() => setCreating(true)}>新增服务器</button>
+    <main className="page-shell machine-management">
+      <header className="machine-heading">
+        <h1>服务器管理</h1>
+        <p>用于查看服务器健康、负载与承载节点，并从运维视角快捷发起节点操作。</p>
       </header>
-
-      <section className="overview-grid" aria-label="服务器概览">
-        <OverviewMetric label="服务器" value={machines.length} />
-        <OverviewMetric label="承载节点" value={nodeCount} />
-        <OverviewMetric label="在线" value={onlineCount} tone="good" />
-        <OverviewMetric label="离线或失联" value={machines.length - onlineCount - inactiveCount} tone="warning" />
-        <OverviewMetric label="高负载" value={highLoadCount} tone={highLoadCount > 0 ? "danger" : "neutral"} hint="CPU ≥ 80% 或内存 ≥ 90%" />
+      <section className="machine-overview" aria-label="服务器概览">
+        <OverviewMetric label="服务器总数" value={machines.length} />
+        <OverviewMetric label="在线服务器" value={onlineCount} tone="good" />
+        <OverviewMetric label="离线 / 失联" value={machines.length - onlineCount} tone="warning" />
+        <OverviewMetric label="高负载" value={highLoadCount} tone="danger" />
+        <OverviewMetric label="节点数" value={nodeCount} />
       </section>
-
-      <section className="filter-bar" aria-label="服务器筛选">
-        <label className="search-field">搜索<input type="search" placeholder="名称、备注或 ID" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <label>状态<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">全部</option><option value="online">在线</option><option value="offline">离线</option><option value="inactive">已停用</option></select></label>
-        <label>承载节点<select value={linkedFilter} onChange={(event) => setLinkedFilter(event.target.value)}><option value="all">全部</option><option value="yes">有节点</option><option value="no">无节点</option></select></label>
-        <label>负载<select value={loadFilter} onChange={(event) => setLoadFilter(event.target.value)}><option value="all">全部</option><option value="high">高负载</option></select></label>
-        <label>排序<select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="id">ID</option><option value="name">名称</option><option value="load">负载</option></select></label>
-        <button className="button ghost compact" onClick={() => { setQuery(""); setStatusFilter("all"); setLinkedFilter("all"); setLoadFilter("all"); setSortBy("id"); }}>重置</button>
+      <section className="machine-toolbar" aria-label="服务器筛选">
+        <button className="machine-add" onClick={() => setCreating(true)}><span aria-hidden="true">＋</span> 添加服务器</button>
+        <label className="machine-search"><span aria-hidden="true">⌕</span><input aria-label="搜索服务器" type="search" placeholder="搜索服务器名称、备注或 ID..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label className="machine-filter"><span aria-hidden="true">⊕</span><select aria-label="状态" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">状态</option><option value="online">在线</option><option value="offline">离线</option><option value="inactive">已停用</option></select></label>
+        <label className="machine-filter"><span aria-hidden="true">⊕</span><select aria-label="节点" value={linkedFilter} onChange={(event) => setLinkedFilter(event.target.value)}><option value="all">节点</option><option value="yes">有节点</option><option value="no">无节点</option></select></label>
+        {(query !== "" || statusFilter !== "all" || linkedFilter !== "all" || loadFilter !== "all") && <button className="machine-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setLinkedFilter("all"); setLoadFilter("all"); }}>重置 ×</button>}
+        <div className="machine-toolbar-summary"><span>在线 {onlineCount}/{machines.length}</span><button className={loadFilter === "high" ? "selected" : ""} aria-pressed={loadFilter === "high"} onClick={() => setLoadFilter(loadFilter === "high" ? "all" : "high")}>高负载 {highLoadCount}</button></div>
       </section>
-
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      {loading ? (
-        <div className="empty-card" aria-live="polite">正在加载服务器…</div>
-      ) : machines.length === 0 ? (
-        <div className="empty-card">尚未添加服务器。</div>
-      ) : filteredMachines.length === 0 ? (
-        <div className="empty-card">没有符合当前筛选条件的服务器。</div>
-      ) : (
-        <section className="machine-grid" aria-label="服务器列表">
-          {filteredMachines.map((machine) => (
-            <article className="machine-card" key={machine.id}>
-              <div className="card-heading">
-                <div>
-                  <h2>{machine.name}</h2>
-                  <p className="muted monospace">#{machine.id}</p>
-                </div>
-                <StatusBadge machine={machine} observedAt={observedAt} />
-              </div>
-              <p className="card-notes">{machine.notes || "暂无备注"}</p>
-              <dl className="metrics">
-                <div><dt>关联节点</dt><dd>{machine.servers_count}</dd></div>
-                <div><dt>最后在线</dt><dd>{formatLastSeen(machine.last_seen_at)}</dd></div>
-              </dl>
-              <button className="button secondary full" onClick={() => setDetailMachine(machine)}>服务器详情</button>
-            </article>
-          ))}
-        </section>
-      )}
+      <div className="machine-table-wrap">
+        <table className="machine-table" aria-label="服务器列表">
+          <colgroup><col style={{width:"30%"}}/><col style={{width:"10%"}}/><col style={{width:"19%"}}/><col style={{width:"18%"}}/><col style={{width:"12%"}}/><col style={{width:"11%"}}/></colgroup>
+          <thead><tr><th><button onClick={() => setSortBy(sortBy === "name" ? "id" : "name")}>服务器名称 <span aria-hidden="true">↕</span></button></th><th>状态</th><th><button onClick={() => setSortBy(sortBy === "load" ? "id" : "load")}>负载 <span aria-hidden="true">↕</span></button></th><th>节点数</th><th>最后心跳</th><th>操作</th></tr></thead>
+          <tbody>
+            {loading ? <tr><td colSpan={6} className="machine-empty" aria-live="polite">正在加载服务器…</td></tr> : visibleMachines.length === 0 ? <tr><td colSpan={6} className="machine-empty">{machines.length === 0 ? "尚未添加服务器。" : "没有符合当前筛选条件的服务器。"}</td></tr> : visibleMachines.map((machine) => (
+              <tr key={machine.id}>
+                <td><div className="machine-identity"><span className="machine-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/></svg></span><div><div className="machine-name"><button onClick={() => setDetailMachine(machine)}>{machine.name}</button><i className={machineStatus(machine, observedAt)} aria-hidden="true"/><span className="machine-sid">SID: {machine.id}</span></div><div className="machine-subline"><StatusBadge machine={machine} observedAt={observedAt}/><span>心跳 {relativeSeen(machine.last_seen_at, observedAt)}</span><span>节点 {machine.servers_count}</span></div>{machine.notes && <div className="machine-note" title={machine.notes}>{machine.notes}</div>}</div></div></td>
+                <td><StatusBadge machine={machine} observedAt={observedAt}/></td>
+                <td><CompactLoad machine={machine}/></td>
+                <td><div className="machine-node-count">{machine.servers_count} <span>个节点</span></div><button className="machine-link" onClick={() => setDetailMachine(machine)}>查看详情 <span aria-hidden="true">↗</span></button></td>
+                <td><div className="machine-heartbeat" title={formatLastSeen(machine.last_seen_at)}>{relativeSeen(machine.last_seen_at, observedAt)}</div><div className="machine-load-report">负载上报 {machine.load_status ? relativeSeen(new Date(machine.load_status.updated_at * 1000).toISOString(), observedAt) : "暂无"}</div></td>
+                <td><div className="machine-row-actions"><button onClick={() => setDetailMachine(machine)}>详情</button><button onClick={() => setEditMachine(machine)}>编辑</button><button className="machine-delete" onClick={() => setDeleteMachine(machine)}>删除</button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <footer className="machine-pagination"><span>共 {filteredMachines.length} 台服务器{filteredMachines.length > 0 && `，当前显示 ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filteredMachines.length)} 条`}</span><div><label>每页条数 <select aria-label="每页条数" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{[10,20,30,50].map((size) => <option key={size} value={size}>{size}</option>)}</select></label><strong>第 {currentPage} / {pageCount} 页</strong><div className="machine-page-buttons"><button aria-label="首页" disabled={currentPage === 1} onClick={() => setPage(1)}>«</button><button aria-label="上一页" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>‹</button><button aria-label="下一页" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>›</button><button aria-label="末页" disabled={currentPage === pageCount} onClick={() => setPage(pageCount)}>»</button></div></div></footer>
+      {editMachine !== null && <EditMachineModal api={api} machine={editMachine} onClose={() => setEditMachine(null)} onUpdated={() => { setEditMachine(null); void refresh(); }}/>} 
+      {deleteMachine !== null && <DeleteMachineModal api={api} machine={deleteMachine} onClose={() => setDeleteMachine(null)} onDeleted={() => { setDeleteMachine(null); void refresh(); }}/>} 
 
       {creating && (
         <CreateMachineModal
@@ -154,7 +152,24 @@ export function ServerManagementPage({ api }: Props) {
 }
 
 function OverviewMetric({ label, value, tone = "neutral", hint }: { label: string; value: number; tone?: "neutral" | "good" | "warning" | "danger"; hint?: string }) {
-  return <article className={`overview-metric ${tone}`}><span>{label}</span><strong>{value}</strong>{hint !== undefined && <small>{hint}</small>}</article>;
+  return <article className={`machine-overview-item ${tone}`}><span>{label}</span><strong>{value}</strong>{hint !== undefined && <small>{hint}</small>}</article>;
+}
+
+function relativeSeen(value: string | null, now: number): string {
+  if (value === null) return "从未上报";
+  const seconds = Math.max(0, Math.floor((now - new Date(value).getTime()) / 1000));
+  if (!Number.isFinite(seconds)) return "未知";
+  if (seconds < 60) return `${seconds} 秒前`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`;
+  return `${Math.floor(seconds / 86400)} 天前`;
+}
+
+function CompactLoad({ machine }: { machine: Machine }) {
+  const load = machine.load_status;
+  if (!load) return <span className="machine-load-report">暂无负载数据</span>;
+  const memory = percent(load.mem.used, load.mem.total);
+  return <div className="machine-compact-load">{[["CPU", load.cpu], ["MEM", memory]].map(([label, value]) => <div key={label}><span>{label}</span><span className="machine-load-track"><i style={{width: `${Math.min(100, Math.max(0, Number(value)))}%`}}/></span><b>{Number(value).toFixed(1)}%</b></div>)}<p>DISK <span>{load.disk ? `${percent(load.disk.used, load.disk.total).toFixed(1)}%` : "—"}</span></p></div>;
 }
 
 function StatusBadge({ machine, observedAt }: { machine: Machine; observedAt: number }) {
