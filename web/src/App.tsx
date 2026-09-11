@@ -18,6 +18,7 @@ const ServerManagementPage = lazy(async () => import("./features/servers/ServerM
 const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
 const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
 const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
+const AdminDashboardPage = lazy(async () => import("./features/system/AdminDashboardPage").then((module) => ({ default: module.AdminDashboardPage })));
 const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
 const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
@@ -76,7 +77,7 @@ const adminNavGroups: AdminNavGroup[] = [
 ];
 
 const pageLoaders: Record<AdminPage, () => Promise<unknown>> = {
-  system: () => import("./features/system/SystemOperationsPage"),
+  system: () => import("./features/system/AdminDashboardPage"),
   settings: () => import("./features/settings/SiteSettingsPage"),
   themes: () => import("./features/settings/ThemeManagementPage"),
   mail: () => import("./features/settings/EmailSettingsPage"),
@@ -387,7 +388,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
         </nav>
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
-        {page === "system" && <SystemOperationsPage api={api} />}
+        {page === "system" && <AdminDashboardPage api={api} />}
         {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
         {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
         {page === "mail" && <EmailSettingsPage api={api} />}
