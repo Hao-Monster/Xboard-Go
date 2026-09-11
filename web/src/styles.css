@@ -852,6 +852,37 @@ html[data-theme-sidebar-style="light"] .app-frame > .admin-layout > .admin-sideb
 .empty-card[aria-live="polite"] {
   animation: smoothLoadingFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both;
 }
+
+/* Administrator dashboard: match the reference's spacious, card-based hierarchy. */
+.admin-dashboard { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 32px 0 48px; }
+.admin-dashboard .page-header { align-items: flex-start; margin-bottom: 20px; }
+.admin-dashboard .page-header h1 { margin: 4px 0 8px; font-size: clamp(1.8rem, 3vw, 2.35rem); letter-spacing: -.03em; }
+.admin-dashboard .eyebrow { color: var(--theme-primary); font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.dashboard-realtime, .dashboard-rank, .dashboard-queue { border: 1px solid var(--theme-border); border-radius: var(--theme-card-radius); background: color-mix(in srgb, var(--theme-surface) 96%, transparent); box-shadow: 0 14px 34px rgb(0 0 0 / 10%); }
+.dashboard-realtime { padding: 22px; }
+.dashboard-realtime > header, .dashboard-rank > header, .dashboard-queue > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.dashboard-realtime h2, .dashboard-rank h2, .dashboard-queue h2 { margin: 0; font-size: 1rem; }
+.status-badge.enabled { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 999px; color: #0f8a56; background: rgb(34 197 94 / 14%); font-size: .75rem; font-weight: 700; }
+.status-badge.enabled::before { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; content: ""; }
+.dashboard-realtime-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.dashboard-realtime-grid > div { padding: 16px; border-radius: var(--theme-control-radius); background: color-mix(in srgb, var(--theme-background) 72%, var(--theme-surface)); }
+.dashboard-realtime-grid strong { display: block; margin-top: 7px; font-size: 1.55rem; }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.overview-metric { min-width: 0; min-height: 112px; padding: 20px; border: 1px solid var(--theme-border); border-radius: var(--theme-card-radius); background: color-mix(in srgb, var(--theme-surface) 96%, transparent); box-shadow: 0 10px 26px rgb(0 0 0 / 8%); }
+.overview-metric strong { display: block; margin-top: 10px; font-size: 1.8rem; letter-spacing: -.03em; }
+.overview-metric small { color: var(--theme-muted); font-weight: 650; }
+.dashboard-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+.dashboard-rank { min-width: 0; padding: 22px; }
+.dashboard-rank-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 13px 0; border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent); overflow: hidden; }
+.dashboard-rank-row:last-child { border-bottom: 0; }
+.dashboard-rank-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-rank-row i { grid-column: 1 / -1; display: block; height: 4px; border-radius: 999px; background: linear-gradient(90deg, var(--theme-primary), color-mix(in srgb, var(--theme-primary) 35%, transparent)); opacity: .75; }
+.dashboard-queue { margin-top: 20px; padding: 22px; }
+.dashboard-queue-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.dashboard-queue-grid > div { padding: 14px; border-radius: var(--theme-control-radius); background: color-mix(in srgb, var(--theme-background) 72%, var(--theme-surface)); }
+.dashboard-queue-grid strong { display: block; margin-top: 6px; font-size: 1.3rem; }
+@media (max-width: 1040px) { .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dashboard-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .admin-dashboard { width: min(100% - 24px, 600px); padding-top: 22px; } .dashboard-realtime-grid, .dashboard-columns { grid-template-columns: 1fr; } .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .overview-metric { padding: 15px; } .dashboard-queue-grid { grid-template-columns: 1fr; } }
 @keyframes smoothLoadingFadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
