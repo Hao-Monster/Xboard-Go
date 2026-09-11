@@ -252,6 +252,50 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
 
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    env:
+      XBOARD_E2E_JUNIT_PATH: artifacts/browser-smoke-junit.xml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install locked web dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build web assets
+        run: pnpm build
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Chromium smoke
+        run: |
+          mkdir -p artifacts
+          pnpm exec playwright test e2e/registration.spec.ts --project chromium
+      - name: Upload Chromium smoke evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-smoke-${{ github.sha }}
+          path: |
+            web/artifacts/browser-smoke-junit.xml
+            web/test-results/
+            web/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
   packaged-browser:
     runs-on: ubuntu-latest
     env:

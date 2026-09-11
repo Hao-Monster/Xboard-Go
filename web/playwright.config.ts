@@ -9,13 +9,20 @@ const backendURL = `http://127.0.0.1:${backendPort}`;
 const attachmentRoot = join(tmpdir(), `xboard-go-e2e-attachments-${process.pid}`);
 const browserChannel = process.env.XBOARD_E2E_BROWSER_CHANNEL?.trim();
 const adminSecurePath = process.env.XBOARD_E2E_ADMIN_PATH?.trim() || "e2e-admin-secure";
+const junitPath = process.env.XBOARD_E2E_JUNIT_PATH?.trim();
+
+const reporters: NonNullable<Parameters<typeof defineConfig>[0]["reporter"]> = [
+  ["list"],
+  ["html", { open: "never" }]
+];
+if (junitPath) reporters.push(["junit", { outputFile: junitPath }]);
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: reporters,
   use: {
     baseURL,
     trace: "retain-on-failure",
