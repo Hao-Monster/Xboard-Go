@@ -49,8 +49,9 @@ func (s *server) createTicket(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createCommissionWithdrawalTicket(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Method  string `json:"withdraw_method"`
-		Account string `json:"withdraw_account"`
+		RequestKey string `json:"request_key"`
+		Method     string `json:"withdraw_method"`
+		Account    string `json:"withdraw_account"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -60,7 +61,7 @@ func (s *server) createCommissionWithdrawalTicket(w http.ResponseWriter, r *http
 		return
 	}
 	ticket, err := s.store.CreateCommissionWithdrawalTicket(r.Context(), session.UserID, store.CommissionWithdrawalInput{
-		Method: input.Method, Account: input.Account,
+		Method: input.Method, Account: input.Account, RequestKey: input.RequestKey,
 		NotificationLocation: s.ticketNotificationLocation(r),
 	}, s.now())
 	if err != nil {
@@ -72,8 +73,9 @@ func (s *server) createCommissionWithdrawalTicket(w http.ResponseWriter, r *http
 
 func (s *server) legacyCommissionWithdrawalTicket(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Method  string `json:"withdraw_method"`
-		Account string `json:"withdraw_account"`
+		RequestKey string `json:"request_key"`
+		Method     string `json:"withdraw_method"`
+		Account    string `json:"withdraw_account"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -83,7 +85,7 @@ func (s *server) legacyCommissionWithdrawalTicket(w http.ResponseWriter, r *http
 		return
 	}
 	_, err := s.store.CreateCommissionWithdrawalTicket(r.Context(), session.UserID, store.CommissionWithdrawalInput{
-		Method: input.Method, Account: input.Account,
+		Method: input.Method, Account: input.Account, RequestKey: input.RequestKey,
 		NotificationLocation: s.ticketNotificationLocation(r),
 	}, s.now())
 	if err != nil {
@@ -348,6 +350,10 @@ func handleCommissionWithdrawalError(w http.ResponseWriter, err error, legacy bo
 	code := "validation_failed"
 	message := "提现参数无效"
 	switch {
+	case errors.Is(err, store.ErrCommissionWithdrawalReplay):
+		status, code, message = http.StatusConflict, "withdrawal_request_conflict", "已有提现申请，请查看原提现工单"
+	case errors.Is(err, store.ErrCommissionWithdrawalState):
+		status, code, message = http.StatusConflict, "withdrawal_state_conflict", "提现状态已变化，请刷新后重试"
 	case errors.Is(err, store.ErrCommissionWithdrawalDisabled):
 		status, code, message = http.StatusConflict, "commission_withdrawal_disabled", "当前不支持佣金提现"
 	case errors.Is(err, store.ErrCommissionWithdrawalMethodUnsupported):

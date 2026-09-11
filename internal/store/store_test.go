@@ -577,6 +577,22 @@ func removeSchemaV27ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	removeSchemaV32ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER IF EXISTS users_lifecycle_identity_guard;
+		DROP TRIGGER IF EXISTS users_lifecycle_ban_guard;
+		DROP TRIGGER IF EXISTS user_lifecycles_anonymized_guard;
+		DROP TRIGGER IF EXISTS user_lifecycle_events_update_guard;
+		DROP TRIGGER IF EXISTS user_lifecycle_events_delete_guard;
+		DROP TRIGGER IF EXISTS password_reset_mail_owner_guard;
+		DROP TRIGGER IF EXISTS registration_email_mail_owner_guard;
+		DROP TRIGGER IF EXISTS users_registration_mail_owner;
+		DROP TRIGGER IF EXISTS commission_withdrawals_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_account_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_transition;
+		DROP TRIGGER IF EXISTS commission_withdrawals_receipt_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_no_delete;
+		DROP TRIGGER IF EXISTS commission_withdrawal_events_no_update;
+		DROP TRIGGER IF EXISTS commission_withdrawal_events_no_delete;
+		DROP TRIGGER IF EXISTS users_money_admin_revision;
 		DROP INDEX idx_users_directory_plan_id;
 		DROP INDEX idx_users_directory_expired_at;
 		DROP INDEX idx_users_directory_online_count;
@@ -685,6 +701,22 @@ func removeSchemaV39ForMigrationTest(t *testing.T, database *Store) {
 	t.Helper()
 	removeSchemaV40ForMigrationTest(t, database)
 	if _, err := database.db.ExecContext(context.Background(), `
+		DROP TRIGGER IF EXISTS users_lifecycle_identity_guard;
+		DROP TRIGGER IF EXISTS users_lifecycle_ban_guard;
+		DROP TRIGGER IF EXISTS user_lifecycles_anonymized_guard;
+		DROP TRIGGER IF EXISTS user_lifecycle_events_update_guard;
+		DROP TRIGGER IF EXISTS user_lifecycle_events_delete_guard;
+		DROP TRIGGER IF EXISTS password_reset_mail_owner_guard;
+		DROP TRIGGER IF EXISTS registration_email_mail_owner_guard;
+		DROP TRIGGER IF EXISTS users_registration_mail_owner;
+		DROP TRIGGER IF EXISTS commission_withdrawals_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_account_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_transition;
+		DROP TRIGGER IF EXISTS commission_withdrawals_receipt_immutable;
+		DROP TRIGGER IF EXISTS commission_withdrawals_no_delete;
+		DROP TRIGGER IF EXISTS commission_withdrawal_events_no_update;
+		DROP TRIGGER IF EXISTS commission_withdrawal_events_no_delete;
+		DROP TRIGGER IF EXISTS users_money_admin_revision;
 		DROP TABLE IF EXISTS admin_user_bulk_targets;
 		DROP TABLE IF EXISTS admin_user_bulk_jobs;
 	`); err != nil {

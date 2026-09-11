@@ -30,7 +30,7 @@ describe("TicketManagementPage", () => {
       getAdminTicket: vi.fn().mockResolvedValue(detail),
       replyAdminTicket: vi.fn().mockResolvedValue(answered),
       closeAdminTicket: vi.fn().mockResolvedValue({ ...answered, status: 1 }),
-      getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn()
+      transitionCommissionWithdrawal: vi.fn(), getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn()
     };
     const user = userEvent.setup();
     render(<TicketManagementPage api={api} />);
@@ -74,7 +74,7 @@ describe("TicketManagementPage", () => {
       getAdminTicket: vi.fn().mockResolvedValue(closed),
       replyAdminTicket: vi.fn().mockResolvedValue({ ...closed, messages: [...(closed.messages ?? []), { id: 3, ticket_id: 11, is_me: false, message: "Additional answer", created_at: ticket.updated_at, updated_at: ticket.updated_at }] }),
       closeAdminTicket: vi.fn(),
-      getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn()
+      transitionCommissionWithdrawal: vi.fn(), getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn()
     };
     const user = userEvent.setup();
     render(<TicketManagementPage api={api} initialStatus={1} />);
@@ -91,7 +91,7 @@ describe("TicketManagementPage", () => {
     const api = {
       listAdminTickets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
       getAdminTicket: vi.fn(), replyAdminTicket: vi.fn(), closeAdminTicket: vi.fn(),
-      getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn().mockResolvedValue(updated)
+      transitionCommissionWithdrawal: vi.fn(), getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn().mockResolvedValue(updated)
     };
     const user = userEvent.setup();
     render(<TicketManagementPage api={api} />);

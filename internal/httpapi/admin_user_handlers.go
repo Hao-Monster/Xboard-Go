@@ -613,35 +613,6 @@ func (s *server) legacyUpdateAdminUser(w http.ResponseWriter, r *http.Request) {
 	writeLegacySuccess(w, http.StatusOK, true)
 }
 
-func (s *server) legacyDestroyAdminUser(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		ID int64 `json:"id"`
-	}
-	if !decodeJSONLimit(w, r, &input, 1024) {
-		return
-	}
-	if input.ID < 1 {
-		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户ID不能为空")
-		return
-	}
-	if err := s.store.DeleteHumanUser(r.Context(), input.ID); err != nil {
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			writeLegacyOrderFail(w, http.StatusBadRequest, "用户不存在")
-		case errors.Is(err, store.ErrUserDeletionBlocked):
-			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "该分销商已有订单，不能删除；请改为封禁账号")
-		case errors.Is(err, store.ErrUserDeletionProtected):
-			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "该用户存在受保护业务记录，不能删除；请改为封禁账号")
-		case errors.Is(err, store.ErrInvalidInput):
-			writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "用户ID不能为空")
-		default:
-			writeLegacyOrderFail(w, http.StatusInternalServerError, "删除失败")
-		}
-		return
-	}
-	writeLegacySuccess(w, http.StatusOK, true)
-}
-
 func legacyPassword(value *string) string {
 	if value == nil {
 		return ""

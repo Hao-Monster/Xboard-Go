@@ -140,17 +140,18 @@ type TicketMessage struct {
 }
 
 type Ticket struct {
-	ID              int64             `json:"id"`
-	UserID          int64             `json:"user_id"`
-	UserEmail       string            `json:"user_email,omitempty"`
-	Subject         string            `json:"subject"`
-	Level           TicketLevel       `json:"level"`
-	Status          TicketStatus      `json:"status"`
-	ReplyStatus     TicketReplyStatus `json:"reply_status"`
-	LastReplyUserID int64             `json:"-"`
-	Messages        []TicketMessage   `json:"messages,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	Withdrawal      *CommissionWithdrawal `json:"withdrawal,omitempty"`
+	ID              int64                 `json:"id"`
+	UserID          int64                 `json:"user_id"`
+	UserEmail       string                `json:"user_email,omitempty"`
+	Subject         string                `json:"subject"`
+	Level           TicketLevel           `json:"level"`
+	Status          TicketStatus          `json:"status"`
+	ReplyStatus     TicketReplyStatus     `json:"reply_status"`
+	LastReplyUserID int64                 `json:"-"`
+	Messages        []TicketMessage       `json:"messages,omitempty"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
 type SaveTicketInput struct {
@@ -161,6 +162,7 @@ type SaveTicketInput struct {
 }
 
 type CommissionWithdrawalInput struct {
+	RequestKey           string
 	Method               string
 	Account              string
 	NotificationLocation string
@@ -969,6 +971,10 @@ const (
 )
 
 type AdminUser struct {
+	LifecycleStatus   string     `json:"lifecycle_status"`
+	DeactivatedAt     *time.Time `json:"deactivated_at"`
+	RestoreUntil      *time.Time `json:"restore_until"`
+	AnonymizedAt      *time.Time `json:"anonymized_at"`
 	ID                int64      `json:"id"`
 	Email             string     `json:"email"`
 	IsAdmin           bool       `json:"is_admin"`

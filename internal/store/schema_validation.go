@@ -82,6 +82,10 @@ var requiredSchemaTables = []struct {
 	{"theme_settings", 51},
 	{"trusted_plugins", 55},
 	{"telegram_message_outbox", 56},
+	{"commission_withdrawals", 60},
+	{"commission_withdrawal_events", 60},
+	{"user_lifecycles", 61},
+	{"user_lifecycle_events", 61},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -188,6 +192,11 @@ var requiredSchemaColumnsV52 = map[string][]string{
 
 var requiredSchemaColumnsV53 = map[string][]string{
 	"app_settings": {"safe_mode_enable", "secure_path"},
+}
+
+var requiredSchemaColumnsV60 = map[string][]string{
+	"commission_withdrawals":       {"id", "user_id", "ticket_id", "amount", "status", "request_key", "method", "account", "payment_reference", "payment_reference_hash", "anonymized_at", "created_at", "updated_at"},
+	"commission_withdrawal_events": {"id", "withdrawal_id", "actor_id", "status", "available_delta", "frozen_delta", "paid_delta", "created_at"},
 }
 
 var requiredSchemaColumnsV54 = map[string][]string{
@@ -385,6 +394,27 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 	if schemaVersion >= 59 {
 		if err := validateUserTrafficTotalTriggers(ctx, database); err != nil {
 			return fmt.Errorf("Xboard schema version %d: %w", schemaVersion, err)
+		}
+	}
+	if schemaVersion >= 60 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, requiredSchemaColumnsV60); err != nil {
+			return err
+		}
+		if err := validateSchemaV61Objects(ctx, database); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 61 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{
+			"user_lifecycles":                {"user_id", "deactivated_at", "restore_until", "anonymized_at", "previous_banned"},
+			"user_lifecycle_events":          {"id", "user_id", "administrator_id", "action", "revision", "created_at"},
+			"password_reset_mail_outbox":     {"user_id"},
+			"registration_email_mail_outbox": {"user_id", "owner_pending"},
+		}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV61UserLifecycle); err != nil {
+			return err
 		}
 	}
 	if schemaVersion >= 42 {

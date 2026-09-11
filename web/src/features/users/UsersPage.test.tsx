@@ -29,6 +29,44 @@ const bulkJob: AdminUserBulkJob = {
 };
 
 describe("UsersPage", () => {
+  it("requires explicit lifecycle confirmation and leaves failed requests recoverable", async () => {
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+    api.deactivateAdminUser.mockRejectedValueOnce(new Error("用户状态已变化，请刷新"));
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    await user.click(await screen.findByRole("button", { name: "用户操作：alpha@example.test" }));
+    await user.click(screen.getByRole("button", { name: "停用用户" }));
+    expect(screen.queryByRole("dialog", { name: "用户操作" })).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "停用用户" });
+    expect(within(dialog).getByRole("button", { name: "确认执行" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("用户状态已变化");
+    expect(api.deactivateAdminUser).toHaveBeenCalledWith(account.id, account.revision);
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
+  });
+
+  it("shows recovery deadlines and never anonymizes an expired account automatically", async () => {
+    const api = baseAPI();
+    const inactive = { ...account, banned: true, lifecycle_status: "deactivated" as const,
+      deactivated_at: "2000-01-01T00:00:00Z", restore_until: "2000-01-31T00:00:00Z", anonymized_at: null };
+    api.listAdminUsers.mockResolvedValue({ items: [inactive], total: 1, page: 1, page_size: 20 });
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+    expect(await screen.findByText("已停用")).toBeVisible();
+    expect(api.anonymizeAdminUser).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "用户操作：alpha@example.test" }));
+    expect(screen.getByRole("button", { name: "恢复用户" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "分配订单" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "不可逆匿名化" }));
+    const dialog = screen.getByRole("dialog", { name: "不可逆匿名化" });
+    expect(within(dialog).getByText(/有待处理提现时不能匿名化/)).toBeVisible();
+    expect(api.anonymizeAdminUser).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    await waitFor(() => expect(api.anonymizeAdminUser).toHaveBeenCalledWith(account.id, account.revision));
+  });
   it("uses stable server pages and keeps quick filters on page navigation", async () => {
     const beta = { ...account, id: 40, email: "beta@example.test" };
     const api = baseAPI();
@@ -572,6 +610,7 @@ describe("UsersPage", () => {
 function baseAPI() {
   return {
     listAdminUsers: vi.fn(), getAdminUser: vi.fn(), createAdminUser: vi.fn(), generateAdminUsers: vi.fn(), updateAdminUser: vi.fn(), resetAdminUserPassword: vi.fn(),
+    deactivateAdminUser: vi.fn(), restoreAdminUser: vi.fn(), anonymizeAdminUser: vi.fn(), getAdminUserLifecycleImpact: vi.fn().mockResolvedValue({ user_id: 41, revision: 1, lifecycle_status: "active", orders: 1, invitation_codes: 2, commission_logs: 3, withdrawals: 0, tickets: 4, ticket_messages: 5, distributor_relations: 0, attachments: 0, balance: 2500, commission_balance: 900 }),
 		getAdminUserSubscriptionURL: vi.fn(), resetAdminUserSubscriptionSecurity: vi.fn(), listAdminUserOrders: vi.fn(), assignAdminUserOrder: vi.fn(), listAdminUserInvitations: vi.fn(),
 		listAdminUserTraffic: vi.fn(), listAdminUserTrafficResets: vi.fn(), resetAdminUserTraffic: vi.fn(),
     createAdminUserBulkMail: vi.fn(), createAdminUserBulkCSV: vi.fn(), banAdminUsers: vi.fn(),

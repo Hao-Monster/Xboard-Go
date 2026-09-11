@@ -170,12 +170,13 @@ func TestLegacyAdminUserDestroyMatchesLegacyContract(t *testing.T) {
 	if destroyed.Code != http.StatusOK || !containsAll(destroyed.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("destroy user status=%d body=%s", destroyed.Code, destroyed.Body)
 	}
-	if _, err := database.GetAdminUser(context.Background(), payload.Data.ID); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("deleted user lookup error=%v, want ErrNotFound", err)
+	retained, err := database.GetAdminUser(context.Background(), payload.Data.ID)
+	if err != nil || retained.LifecycleStatus != "deactivated" || !retained.Banned {
+		t.Fatalf("legacy destroy user state=%#v err=%v, want retained deactivated user", retained, err)
 	}
 
 	missing := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, `{"id":999999}`)
-	if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body.String(), "用户不存在") {
+	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "用户不存在") {
 		t.Fatalf("missing destroy status=%d body=%s", missing.Code, missing.Body)
 	}
 }
@@ -193,7 +194,7 @@ func TestLegacyAdminUserDestroyRejectsInvalidID(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, test.body)
-			if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "用户ID不能为空") {
+			if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "用户参数格式无效") {
 				t.Fatalf("invalid destroy status=%d body=%s", response.Code, response.Body)
 			}
 		})
@@ -218,7 +219,7 @@ func TestLegacyAdminUserDestroyMapsProtectedAndDistributorErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	protectedResponse := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, fmt.Sprintf(`{"id":%d}`, protected.ID))
-	if protectedResponse.Code != http.StatusUnprocessableEntity || !strings.Contains(protectedResponse.Body.String(), "该用户存在受保护业务记录，不能删除；请改为封禁账号") {
+	if protectedResponse.Code != http.StatusOK || !containsAll(protectedResponse.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("protected destroy status=%d body=%s", protectedResponse.Code, protectedResponse.Body)
 	}
 	if _, err := database.GetAdminUser(ctx, protected.ID); err != nil {
@@ -249,7 +250,7 @@ func TestLegacyAdminUserDestroyMapsProtectedAndDistributorErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	distributorResponse := bearerRequest(api, http.MethodPost, "/api/v2/admin/user/destroy", admin, fmt.Sprintf(`{"id":%d}`, distributor.ID))
-	if distributorResponse.Code != http.StatusUnprocessableEntity || !strings.Contains(distributorResponse.Body.String(), "该分销商已有订单，不能删除；请改为封禁账号") {
+	if distributorResponse.Code != http.StatusOK || !containsAll(distributorResponse.Body.String(), `"status":"success"`, `"data":true`) {
 		t.Fatalf("distributor destroy status=%d body=%s", distributorResponse.Code, distributorResponse.Body)
 	}
 	if _, err := database.GetAdminUser(ctx, distributor.ID); err != nil {
