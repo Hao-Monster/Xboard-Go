@@ -105,6 +105,11 @@ const pageLoaders: Record<AdminPage, () => Promise<unknown>> = {
   account: () => import("./features/account/AccountSecurityPage")
 };
 
+function initialAdminPage(): AdminPage {
+  const saved = window.localStorage.getItem("xboard-go-admin-page");
+  return saved !== null && Object.prototype.hasOwnProperty.call(pageLoaders, saved) ? saved as AdminPage : "servers";
+}
+
 function prefetchAdminAPI(target: AdminPage, client: APIClient): void {
   switch (target) {
     case "node-settings":
@@ -192,7 +197,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
-  const [page, setPage] = useState<AdminPage>("servers");
+  const [page, setPage] = useState<AdminPage>(initialAdminPage);
   const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(adminNavGroups.map((group) => [group.key, true])));
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
@@ -335,7 +340,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
-    if (nextPage !== page && canLeaveAdminPage()) setPage(nextPage);
+    if (nextPage !== page && canLeaveAdminPage()) {
+      window.localStorage.setItem("xboard-go-admin-page", nextPage);
+      setPage(nextPage);
+    }
   };
   const prefetchAdminPage = (target: AdminPage) => {
     void pageLoaders[target]?.();
