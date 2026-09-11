@@ -1,0 +1,265 @@
+/* User Portal Layout - Replicating cloud.thinderbox.com */
+
+.user-portal-frame {
+  min-height: 100vh;
+  background: var(--theme-background);
+  color: var(--theme-text);
+}
+
+.user-portal-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  min-height: 100vh;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.user-portal-layout.sidebar-collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+/* Sidebar */
+.user-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  z-index: 25;
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+
+.user-sidebar-header {
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.user-sidebar-header .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--theme-text);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.user-sidebar-header .brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--theme-text);
+}
+
+.user-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0 24px;
+  scrollbar-width: thin;
+}
+
+.user-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Category Header */
+.user-nav-group-title {
+  padding: 16px 20px 6px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--theme-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.user-sidebar.collapsed .user-nav-group-title {
+  display: none;
+}
+
+/* Nav Item */
+.user-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 42px;
+  padding: 0 20px;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text);
+  font-size: 13.5px;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  user-select: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.user-sidebar.collapsed .user-nav-item {
+  padding: 0;
+  justify-content: center;
+}
+
+.user-nav-item .nav-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--theme-muted);
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.user-nav-item:hover {
+  background: color-mix(in srgb, var(--theme-surface) 60%, transparent);
+  color: var(--theme-primary);
+}
+
+.user-nav-item:hover .nav-item-icon {
+  color: var(--theme-primary);
+}
+
+/* Active State matching cloud.thinderbox.com */
+.user-nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--theme-primary) 12%, var(--theme-surface));
+  color: var(--theme-primary);
+  font-weight: 600;
+}
+
+.user-nav-item[aria-current="page"] .nav-item-icon {
+  color: var(--theme-primary);
+}
+
+.user-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--theme-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.user-nav-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Main Area */
+.user-portal-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--theme-background);
+}
+
+/* Topbar */
+.user-portal-topbar {
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--theme-surface);
+  border-bottom: 1px solid var(--theme-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.user-portal-topbar .topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.user-sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--theme-border);
+  background: transparent;
+  color: var(--theme-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.user-sidebar-toggle-btn:hover {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-surface) 80%, var(--theme-primary));
+  border-color: var(--theme-primary);
+}
+
+.page-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.page-breadcrumb .breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--theme-primary);
+}
+
+.user-portal-topbar .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-portal-topbar .account-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--theme-muted);
+}
+
+.user-portal-body {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .user-portal-layout {
+    grid-template-columns: 1fr;
+  }
+  .user-sidebar {
+    position: fixed;
+    left: -240px;
+    width: 210px;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
+  }
+  .user-portal-layout:not(.sidebar-collapsed) .user-sidebar {
+    left: 0;
+  }
+}
