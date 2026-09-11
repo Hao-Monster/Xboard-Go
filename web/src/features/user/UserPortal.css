@@ -249,6 +249,25 @@
   min-width: 0;
 }
 
+.user-portal-body .page-shell {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 24px 0 64px;
+}
+
+.user-portal-body .page-header {
+  margin-bottom: 24px;
+}
+
+.user-portal-body .page-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 4px 0 6px;
+  color: var(--theme-text);
+}
+
+
 @media (max-width: 768px) {
   .user-portal-layout {
     grid-template-columns: 1fr;
