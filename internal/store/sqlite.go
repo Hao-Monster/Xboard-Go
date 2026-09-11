@@ -70,6 +70,16 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if version > currentSchemaVersion {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
+	// Older deployments may have advanced PRAGMA user_version before the
+	// v60 ledger DDL committed (for example after an interrupted/manual
+	// migration). Re-apply the idempotent ledger schema for every database
+	// claiming v60 or newer so v61 lifecycle queries never fail with a missing
+	// commission_withdrawals table. This does not alter existing rows.
+	if version >= 60 {
+		if _, err := tx.ExecContext(ctx, schemaV60CommissionWithdrawals); err != nil {
+			return fmt.Errorf("repair schema v60: %w", err)
+		}
+	}
 	if version < 1 {
 		if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
 			return fmt.Errorf("apply schema v1: %w", err)
