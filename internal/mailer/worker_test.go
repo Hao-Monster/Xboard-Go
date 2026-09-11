@@ -231,6 +231,60 @@ func (sender *recordingSender) Send(_ context.Context, configuration SMTPConfig,
 	return sender.failure
 }
 
+func TestWorkerDoesNotDeliverTicketMailCancelledAfterClaim(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 24, 15, 0, 0, 0, time.UTC)
+	database, err := store.OpenSQLite("file:" + filepath.Join(t.TempDir(), "cancelled-mail-worker.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "cancelled-mail-user@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "cancelled-mail-admin@example.test", PasswordHash: "hash", IsAdmin: true}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := database.GetTicketSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateTicketSettings(ctx, admin.ID, settings.Revision, store.SaveTicketSettingsInput{AppName: "Xboard", AppURL: "https://panel.example.test", SMTPEnabled: true, SMTPHost: "smtp.example.test", SMTPPort: 587, SMTPEncryption: EncryptionNone, SMTPFromAddress: "support@example.test"}, now); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := database.CreateTicket(ctx, user.ID, store.SaveTicketInput{Subject: "cancel", Level: store.TicketLevelHigh, Message: "body"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ReplyTicketAsAdmin(ctx, admin.ID, ticket.ID, "reply", now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	claimedJob, claimed, err := database.ClaimTicketMail(ctx, "worker-claim", now.Add(2*time.Minute), time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("claim=(%v,%v)", claimed, err)
+	}
+	sender := &recordingSender{}
+	account, err := database.GetAdminUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := database.ChangeUserLifecycle(ctx, store.UserLifecycleInput{AdministratorID: admin.ID, UserID: user.ID, Revision: account.Revision, Action: "deactivate"}, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(database, nil, nil, nil, nil, sender, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := worker.deliverTicket(ctx, claimedJob, "worker-claim", now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("deliverTicket=(%v)", err)
+	}
+	if len(sender.messages) != 0 {
+		t.Fatalf("cancelled ticket was sent: %#v", sender.messages)
+	}
+}
+
 func TestWorkerRetriesAndDeliversBothSubscriptionReminderKinds(t *testing.T) {
 	ctx := t.Context()
 	now := time.Date(2026, 8, 29, 3, 30, 0, 0, time.UTC)

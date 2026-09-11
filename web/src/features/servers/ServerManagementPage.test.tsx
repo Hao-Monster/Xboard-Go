@@ -321,6 +321,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     updateAdminUser: vi.fn(),
     resetAdminUserPassword: vi.fn(),
 		resetAdminUserSubscriptionSecurity: vi.fn(),
+		getAdminUserLifecycleImpact: vi.fn().mockResolvedValue({ user_id: 1, revision: 1, lifecycle_status: "active", orders: 0, invitation_codes: 0, commission_logs: 0, withdrawals: 0, tickets: 0, ticket_messages: 0, distributor_relations: 0, attachments: 0, balance: 0, commission_balance: 0 }),
 		getAdminUserSubscriptionURL: vi.fn(),
 		listAdminUserOrders: vi.fn(),
 		assignAdminUserOrder: vi.fn(),

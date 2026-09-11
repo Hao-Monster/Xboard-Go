@@ -157,6 +157,11 @@ func (worker *Worker) deliverTicket(ctx context.Context, job store.TicketMailJob
 		configuration.Password = ""
 		return worker.recordFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
+	if active, err := worker.store.OutboxClaimActive(ctx, "ticket", job.ID, claimToken); err != nil {
+		return fmt.Errorf("check ticket email claim: %w", err)
+	} else if !active {
+		return nil
+	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
 		return worker.recordFailure(ctx, job, claimToken, now, err)
@@ -200,6 +205,11 @@ func (worker *Worker) deliverSubscriptionReminder(ctx context.Context, job store
 	if err != nil {
 		configuration.Password = ""
 		return worker.recordSubscriptionReminderFailure(ctx, job, claimToken, now, errors.New("render mail template"))
+	}
+	if active, err := worker.store.OutboxClaimActive(ctx, "subscription_reminder", job.ID, claimToken); err != nil {
+		return fmt.Errorf("check subscription reminder claim: %w", err)
+	} else if !active {
+		return nil
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
@@ -251,6 +261,11 @@ func (worker *Worker) deliverLoginLink(ctx context.Context, job store.LoginLinkM
 		configuration.Password = ""
 		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
+	if active, err := worker.store.OutboxClaimActive(ctx, "login_link", job.ID, claimToken); err != nil {
+		return fmt.Errorf("check login link claim: %w", err)
+	} else if !active {
+		return nil
+	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
 		return worker.recordLoginLinkFailure(ctx, job, claimToken, now, err)
@@ -299,6 +314,11 @@ func (worker *Worker) deliverRegistrationEmailVerification(ctx context.Context, 
 		configuration.Password = ""
 		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, errors.New("render mail template"))
 	}
+	if active, err := worker.store.OutboxClaimActive(ctx, "registration", job.ID, claimToken); err != nil {
+		return fmt.Errorf("check registration email claim: %w", err)
+	} else if !active {
+		return nil
+	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
 		return worker.recordRegistrationEmailFailure(ctx, job, claimToken, now, err)
@@ -346,6 +366,11 @@ func (worker *Worker) deliverPasswordReset(ctx context.Context, job store.Passwo
 	if err != nil {
 		configuration.Password = ""
 		return worker.recordPasswordResetFailure(ctx, job, claimToken, now, errors.New("render mail template"))
+	}
+	if active, err := worker.store.OutboxClaimActive(ctx, "password_reset", job.ID, claimToken); err != nil {
+		return fmt.Errorf("check password reset claim: %w", err)
+	} else if !active {
+		return nil
 	}
 	if err := worker.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""

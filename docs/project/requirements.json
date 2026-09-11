@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "baseline": "M0",
-  "as_of": "2026-09-04",
+  "as_of": "2026-09-11",
   "baseline_commit": "f56e2bef7591ca6a0a1a429a546ba2137cb56914",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
@@ -5999,7 +5999,7 @@
       "level": "V",
       "domain": "配置、扩展与运维",
       "title": "系统具备安装、升级、回滚、备份、迁移、运行时健康和数据清理命令。",
-      "scope_status": "blocked",
+      "scope_status": "decided",
       "implementation_status": "partial",
       "verification_status": "partial",
       "migration_status": "partial",

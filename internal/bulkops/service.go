@@ -239,6 +239,15 @@ func (service *Service) RunMailOnce(ctx context.Context, now time.Time) (bool, e
 		configuration.Password = ""
 		return true, service.failMail(ctx, claimed, claimToken, errors.New("rendered bulk mail exceeds transport limits"), now)
 	}
+	active, err := service.store.AdminUserBulkMailClaimActive(ctx, claimed.JobID, claimed.Sequence, claimToken)
+	if err != nil {
+		configuration.Password = ""
+		return true, fmt.Errorf("check bulk mail claim: %w", err)
+	}
+	if !active {
+		configuration.Password = ""
+		return true, nil
+	}
 	if err := service.sender.Send(ctx, configuration, message); err != nil {
 		configuration.Password = ""
 		service.logger.Warn("administrator bulk SMTP delivery failed",

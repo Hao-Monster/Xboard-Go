@@ -87,6 +87,15 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 		zeroSecret(botToken)
 		return true, worker.recordFailure(ctx, job, claimToken, now)
 	}
+	active, err := worker.store.OutboxClaimActive(ctx, "telegram", job.ID, claimToken)
+	if err != nil {
+		zeroSecret(botToken)
+		return true, fmt.Errorf("check Telegram claim: %w", err)
+	}
+	if !active {
+		zeroSecret(botToken)
+		return true, nil
+	}
 	err = worker.sender.SendMessage(ctx, botToken, job.ChatID, job.Text)
 	zeroSecret(botToken)
 	if err != nil {
