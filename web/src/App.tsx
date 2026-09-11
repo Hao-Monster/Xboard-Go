@@ -15,6 +15,7 @@ const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeM
 const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
+const SystemConfigShell = lazy(async () => import("./features/settings/SystemConfigShell").then((module) => ({ default: module.SystemConfigShell })));
 const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
 const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
 const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
@@ -57,10 +58,7 @@ const adminNavGroups: AdminNavGroup[] = [
     { key: "settings", label: "系统配置" }, { key: "plugins", label: "插件管理" },
     { key: "themes", label: "主题配置" }, { key: "notices", label: "公告管理" },
     { key: "payments", label: "支付配置" }, { key: "knowledge", label: "知识库管理" },
-    { key: "clients", label: "客户端管理" }, { key: "mail", label: "邮件设置" },
-    { key: "telegram", label: "Telegram 设置" }, { key: "client-app", label: "客户端版本" },
-    { key: "commissions", label: "佣金设置" }, { key: "subscriptions", label: "订阅设置" },
-    { key: "node-settings", label: "节点配置" }, { key: "account", label: "账号安全" }
+    { key: "clients", label: "客户端管理" }
   ] },
   { key: "nodes", label: "节点管理", items: [
     { key: "servers", label: "服务器管理" }, { key: "nodes", label: "节点管理" },
@@ -78,7 +76,7 @@ const adminNavGroups: AdminNavGroup[] = [
 
 const pageLoaders: Record<AdminPage, () => Promise<unknown>> = {
   system: () => import("./features/system/AdminDashboardPage"),
-  settings: () => import("./features/settings/SiteSettingsPage"),
+  settings: () => import("./features/settings/SystemConfigShell"),
   themes: () => import("./features/settings/ThemeManagementPage"),
   mail: () => import("./features/settings/EmailSettingsPage"),
   telegram: () => import("./features/settings/TelegramSettingsPage"),
@@ -179,6 +177,259 @@ function prefetchAdminAPI(target: AdminPage, client: APIClient): void {
   }
 }
 
+function IconSearch() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
+
+function IconChevronRight() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function IconDashboard() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" />
+    </svg>
+  );
+}
+
+function IconSettings() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function IconServer() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect width="20" height="8" x="2" y="14" rx="2" ry="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" />
+    </svg>
+  );
+}
+
+function IconCreditCard() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function IconUser() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function IconLogOut() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" />
+    </svg>
+  );
+}
+
+function GroupIcon({ kind }: { kind: string }) {
+  switch (kind) {
+    case "system": return <IconSettings />;
+    case "nodes": return <IconServer />;
+    case "subscriptions": return <IconCreditCard />;
+    case "users": return <IconUsers />;
+    default: return <IconDashboard />;
+  }
+}
+
+function IconSliders() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
+      <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />
+      <line x1="20" x2="20" y1="21" y2="16" /><line x1="20" x2="20" y1="12" y2="3" />
+      <line x1="1" x2="7" y1="14" y2="14" /><line x1="9" x2="15" y1="8" y2="8" /><line x1="17" x2="23" y1="16" y2="16" />
+    </svg>
+  );
+}
+
+function IconPackage() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16.5 9.4 7.55 4.24" />
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.29 7 12 12 20.71 7" /><line x1="12" x2="12" y1="22" y2="12" />
+    </svg>
+  );
+}
+
+function IconMonitor() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" />
+    </svg>
+  );
+}
+
+function IconFileText() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+      <line x1="16" x2="8" y1="13" y2="13" /><line x1="16" x2="8" y1="17" y2="17" /><polyline points="10 9 9 9 8 9" />
+    </svg>
+  );
+}
+
+function IconBook() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  );
+}
+
+function IconAppWindow() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="16" rx="2" /><path d="M10 4v4" /><path d="M2 8h20" /><path d="M6 4v4" />
+    </svg>
+  );
+}
+
+function IconNetwork() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+    </svg>
+  );
+}
+
+function IconShield() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function IconRoute() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="19" r="2" /><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" />
+      <path d="M18 7v2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7" /><path d="M12 11v6" />
+    </svg>
+  );
+}
+
+function IconShoppingBag() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" x2="21" y1="6" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+  );
+}
+
+function IconReceipt() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z" />
+      <line x1="8" x2="16" y1="8" y2="8" /><line x1="8" x2="16" y1="12" y2="12" /><line x1="8" x2="12" y1="16" y2="16" />
+    </svg>
+  );
+}
+
+function IconTicket() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z" />
+      <line x1="13" x2="13" y1="5" y2="7" /><line x1="13" x2="13" y1="11" y2="13" /><line x1="13" x2="13" y1="17" y2="19" />
+    </svg>
+  );
+}
+
+function IconGift() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="20 12 20 22 4 22 4 12" /><rect width="20" height="5" x="2" y="7" /><line x1="12" x2="12" y1="22" y2="7" />
+      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+    </svg>
+  );
+}
+
+function IconLayers() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
+    </svg>
+  );
+}
+
+function IconMessageSquare() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function ItemIcon({ page }: { page: AdminPage }) {
+  switch (page) {
+    case "settings": return <IconSliders />;
+    case "plugins": return <IconPackage />;
+    case "themes": return <IconMonitor />;
+    case "notices": return <IconFileText />;
+    case "payments": return <IconCreditCard />;
+    case "knowledge": return <IconBook />;
+    case "clients": return <IconAppWindow />;
+    case "servers": return <IconServer />;
+    case "nodes": return <IconNetwork />;
+    case "groups": return <IconShield />;
+    case "routes": return <IconRoute />;
+    case "plans": return <IconShoppingBag />;
+    case "orders": return <IconReceipt />;
+    case "coupons": return <IconTicket />;
+    case "gift-cards": return <IconGift />;
+    case "distributors": return <IconLayers />;
+    case "users": return <IconUser />;
+    case "tickets": return <IconMessageSquare />;
+    default: return null;
+  }
+}
+
 export type AppSurface = { kind: "public" } | { kind: "admin"; path: string };
 
 export function surfaceFromPathname(pathname = window.location.pathname): AppSurface {
@@ -199,9 +450,54 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<AdminPage>(initialAdminPage);
   const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(adminNavGroups.map((group) => [group.key, true])));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    const results: { key: AdminPage; label: string; group: string }[] = [];
+    if ("仪表盘".includes(q) || "dashboard".includes(q)) {
+      results.push({ key: "system", label: "仪表盘", group: "概览" });
+    }
+    for (const g of adminNavGroups) {
+      for (const item of g.items) {
+        if (item.label.toLowerCase().includes(q) || item.key.toLowerCase().includes(q)) {
+          results.push({ key: item.key, label: item.label, group: g.label });
+        }
+      }
+    }
+    const systemSubTabs: { key: AdminPage; label: string }[] = [
+      { key: "settings", label: "站点设置" },
+      { key: "settings", label: "安全设置" },
+      { key: "subscriptions", label: "订阅设置" },
+      { key: "commissions", label: "邀请&佣金设置" },
+      { key: "node-settings", label: "节点配置" },
+      { key: "mail", label: "邮件设置" },
+      { key: "telegram", label: "Telegram 设置" },
+      { key: "client-app", label: "APP设置" },
+      { key: "client-app", label: "客户端版本" },
+      { key: "settings", label: "订阅模板" }
+    ];
+    for (const item of systemSubTabs) {
+      if (item.label.toLowerCase().includes(q)) {
+        if (!results.some((r) => r.key === item.key && r.label === item.label)) {
+          results.push({ key: item.key, label: item.label, group: "系统配置" });
+        }
+      }
+    }
+    return results.slice(0, 8);
+  }, [searchQuery]);
+
+  const toggleThemeMode = () => {
+    const isLight = document.documentElement.dataset.themeHeaderStyle === "light";
+    document.documentElement.dataset.themeHeaderStyle = isLight ? "dark" : "light";
+    document.documentElement.dataset.themeSidebarStyle = isLight ? "dark" : "light";
+  };
 
   useEffect(() => {
     let active = true;
@@ -334,7 +630,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
 
   const canLeaveAdminPage = () => {
-    if (page === "client-app" && clientAppSettingsDirty) return window.confirm("客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
+    if ((page === "client-app" || clientAppSettingsDirty) && clientAppSettingsDirty) return window.confirm("客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     if (page === "themes" && themeSettingsDirty) return window.confirm("主题设置有未保存的修改，确认离开并放弃这些修改吗？");
     return true;
   };
@@ -369,60 +665,235 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   if (!session.is_admin) {
     return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>退出登录</button></section></main>;
   }
+  const isItemActive = (key: AdminPage) => {
+    if (key === "settings") {
+      return page === "settings" || page === "mail" || page === "telegram" || page === "client-app" || page === "commissions" || page === "subscriptions" || page === "node-settings";
+    }
+    return page === key;
+  };
+
   return (
     <div className="app-frame">
       <TopProgressBar />
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
-        <div className="account">
-          <span>{session.email}</span>
-          <button className="button ghost compact" onClick={signOut}>退出</button>
-        </div>
-      </header>
-      <div className="admin-layout">
+      <div className={`admin-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <nav className="admin-sidebar" aria-label="管理端导航">
-          <div className="admin-nav">
-            <button className="nav-link nav-dashboard" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")} onMouseEnter={() => prefetchAdminPage("system")} onFocus={() => prefetchAdminPage("system")}>仪表盘</button>
-            {adminNavGroups.map((group) => {
-              const expanded = expandedAdminGroups[group.key] ?? true;
-              return <section className="admin-nav-group" key={group.key}>
-                <button className="admin-nav-group-toggle" aria-expanded={expanded} onClick={() => setExpandedAdminGroups((current) => ({ ...current, [group.key]: !expanded }))}>
-                  <span>{group.label}</span><span className="admin-nav-chevron" aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
-                </button>
-                {expanded && <div className="admin-nav-group-items">{group.items.map(({ key, label }) => <button key={key} className="nav-link" aria-current={page === key ? "page" : undefined} onClick={() => navigateAdminPage(key)} onMouseEnter={() => prefetchAdminPage(key)} onFocus={() => prefetchAdminPage(key)}>{label}</button>)}</div>}
-              </section>;
-            })}
+          <div className="admin-sidebar-header">
+            <div className="brand">
+              <span className="brand-slash">//</span>
+              {!sidebarCollapsed && <span className="brand-name">{guestConfig.app_name}</span>}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            aria-label={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"}
+            onClick={() => setSidebarCollapsed((c) => !c)}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {sidebarCollapsed ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
+            </svg>
+          </button>
+          <div className="admin-sidebar-content">
+            <div className="admin-nav">
+              <button
+                className="nav-link nav-dashboard"
+                aria-current={page === "system" ? "page" : undefined}
+                onClick={() => navigateAdminPage("system")}
+                onMouseEnter={() => prefetchAdminPage("system")}
+                onFocus={() => prefetchAdminPage("system")}
+                title="仪表盘"
+              >
+                <IconDashboard />
+                {!sidebarCollapsed && <span>仪表盘</span>}
+              </button>
+              {adminNavGroups.map((group) => {
+                const expanded = expandedAdminGroups[group.key] ?? true;
+                return (
+                  <section className="admin-nav-group" key={group.key}>
+                    <button
+                      className="admin-nav-group-toggle"
+                      aria-expanded={expanded}
+                      onClick={() => setExpandedAdminGroups((current) => ({ ...current, [group.key]: !expanded }))}
+                      title={group.label}
+                    >
+                      <span className="group-left">
+                        <GroupIcon kind={group.key} />
+                        {!sidebarCollapsed && <span>{group.label}</span>}
+                      </span>
+                      {!sidebarCollapsed && (
+                        <span className={`admin-nav-chevron ${expanded ? "open" : ""}`} aria-hidden="true">
+                          <IconChevronRight />
+                        </span>
+                      )}
+                    </button>
+                    {expanded && !sidebarCollapsed && (
+                      <div className="admin-nav-group-items">
+                        {group.items.map(({ key, label }) => (
+                          <button
+                            key={key}
+                            className="nav-link"
+                            aria-current={isItemActive(key) ? "page" : undefined}
+                            onClick={() => navigateAdminPage(key)}
+                            onMouseEnter={() => prefetchAdminPage(key)}
+                            onFocus={() => prefetchAdminPage(key)}
+                          >
+                            <span className="nav-item-icon" aria-hidden="true">
+                              <ItemIcon page={key} />
+                            </span>
+                            <span>{label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           </div>
         </nav>
-        <div className="admin-content">
-          <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
-        {page === "system" && <AdminDashboardPage api={api} />}
-        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
-        {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-        {page === "mail" && <EmailSettingsPage api={api} />}
-        {page === "telegram" && <TelegramSettingsPage api={api} />}
-        {page === "client-app" && <ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} />}
-        {page === "commissions" && <CommissionSettingsPage api={api} />}
-        {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
-        {page === "node-settings" && <NodeAgentSettingsPage api={api} />}
-        {page === "servers" && <ServerManagementPage api={api} />}
-        {page === "nodes" && <NodeManagementPage api={api} />}
-        {page === "plans" && <PlanManagementPage api={api} />}
-        {page === "orders" && <OrderManagementPage api={api} />}
-        {page === "distributors" && <AdminDistributorPage api={api} />}
-        {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
-        {page === "payments" && <PaymentManagementPage api={api} />}
-        {page === "coupons" && <CouponManagementPage api={api} />}
-        {page === "gift-cards" && <GiftCardManagementPage api={api} />}
-        {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
-        {page === "tickets" && <TicketManagementPage api={api} />}
-        {page === "groups" && <ServerGroupsPage api={api} />}
-        {page === "routes" && <RoutingRulesPage api={api} />}
-        {page === "notices" && <NoticeManagementPage api={api} />}
-        {page === "knowledge" && <KnowledgeManagementPage api={api} />}
-        {page === "clients" && <ClientCatalogManagementPage api={api} />}
-        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
-          </Suspense>
+        <div className="admin-main">
+          <header className="topbar">
+            <div className="topbar-search-wrap">
+              <div className="topbar-search-box">
+                <IconSearch />
+                <input
+                  type="text"
+                  placeholder="搜索菜单和功能..."
+                  aria-label="搜索菜单和功能"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <kbd className="topbar-shortcut-badge">⌘K</kbd>
+              </div>
+              {searchResults.length > 0 && (
+                <div className="topbar-search-results">
+                  {searchResults.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        navigateAdminPage(item.key);
+                        setSearchQuery("");
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <small className="muted">{item.group}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="topbar-actions">
+              <button
+                type="button"
+                className="topbar-icon-button"
+                aria-label="切换明暗主题"
+                onClick={toggleThemeMode}
+              >
+                <IconMoon />
+              </button>
+              <div className="topbar-lang-badge">
+                <span>🇨🇳 CN</span>
+                <IconChevronDown />
+              </div>
+              <div className="topbar-user-wrap">
+                <button
+                  type="button"
+                  className="topbar-user-btn"
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                  aria-expanded={userMenuOpen}
+                >
+                  <span className="user-avatar-circle">
+                    {session.email.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="user-email-text">{session.email}</span>
+                  <IconChevronDown />
+                </button>
+                {userMenuOpen && (
+                  <div className="user-dropdown-popover">
+                    <div className="user-dropdown-header">
+                      <strong>{session.email}</strong>
+                      <small>{session.is_admin ? "超级管理员" : "管理人员"}</small>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        navigateAdminPage("account");
+                      }}
+                    >
+                      <IconUser />
+                      <span>账号安全</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        signOut();
+                      }}
+                    >
+                      <IconLogOut />
+                      <span>退出登录</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button className="button ghost compact" onClick={signOut}>退出</button>
+            </div>
+          </header>
+          <div className="admin-content">
+            <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
+              {page === "system" && <AdminDashboardPage api={api} />}
+              {(page === "settings" || page === "mail" || page === "telegram" || page === "client-app" || page === "commissions" || page === "subscriptions" || page === "node-settings") && (
+                <SystemConfigShell
+                  api={api}
+                  activeTab={
+                    page === "mail" ? "mail" :
+                    page === "telegram" ? "telegram" :
+                    page === "client-app" ? "client-app" :
+                    page === "commissions" ? "commissions" :
+                    page === "subscriptions" ? "subscriptions" :
+                    page === "node-settings" ? "node-settings" :
+                    "site"
+                  }
+                  onIdentityChanged={identityChanged}
+                  onBeforeTabChange={canLeaveAdminPage}
+                  onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)}
+                  onClientAppDirtyChange={setClientAppSettingsDirty}
+                />
+              )}
+              {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
+              {page === "servers" && <ServerManagementPage api={api} />}
+              {page === "nodes" && <NodeManagementPage api={api} />}
+              {page === "plans" && <PlanManagementPage api={api} />}
+              {page === "orders" && <OrderManagementPage api={api} />}
+              {page === "distributors" && <AdminDistributorPage api={api} />}
+              {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
+              {page === "payments" && <PaymentManagementPage api={api} />}
+              {page === "coupons" && <CouponManagementPage api={api} />}
+              {page === "gift-cards" && <GiftCardManagementPage api={api} />}
+              {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
+              {page === "tickets" && <TicketManagementPage api={api} />}
+              {page === "groups" && <ServerGroupsPage api={api} />}
+              {page === "routes" && <RoutingRulesPage api={api} />}
+              {page === "notices" && <NoticeManagementPage api={api} />}
+              {page === "knowledge" && <KnowledgeManagementPage api={api} />}
+              {page === "clients" && <ClientCatalogManagementPage api={api} />}
+              {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
+            </Suspense>
+            {page !== "distributors" && (
+              <button
+                className="floating-distributor-badge"
+                type="button"
+                onClick={() => navigateAdminPage("distributors")}
+                title="进入分销管理"
+              >
+                <span className="distributor-badge-icon">分</span>
+                <span className="distributor-badge-text">分销管理</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

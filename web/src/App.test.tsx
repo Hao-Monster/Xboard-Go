@@ -67,7 +67,7 @@ describe("App public identity bootstrap", () => {
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
-		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
@@ -97,17 +97,18 @@ describe("App public identity bootstrap", () => {
     const user = userEvent.setup();
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
+    await user.click(await screen.findByRole("button", { name: "系统配置" }));
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");
     await user.clear(version);
     await user.type(version, "5.0.0");
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     expect(screen.getByRole("heading", { name: "客户端版本" })).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(await screen.findByRole("heading", { name: "系统设置" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
   });
 
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {

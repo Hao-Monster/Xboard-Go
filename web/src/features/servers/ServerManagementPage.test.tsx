@@ -387,6 +387,10 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     saveClientCatalog: vi.fn(),
     getSystemStatus: vi.fn(),
     listAdminAudit: vi.fn(),
-    listTicketMailFailures: vi.fn()
+    listTicketMailFailures: vi.fn(),
+    getSubscriptionSettings: vi.fn(),
+    updateSubscriptionSettings: vi.fn(),
+    getSubscriptionPolicySettings: vi.fn(),
+    updateSubscriptionPolicySettings: vi.fn()
   };
 }

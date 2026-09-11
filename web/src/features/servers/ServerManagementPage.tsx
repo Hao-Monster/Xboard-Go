@@ -94,11 +94,11 @@ export function ServerManagementPage({ api }: Props) {
         <OverviewMetric label="节点数" value={nodeCount} />
       </section>
       <section className="machine-toolbar" aria-label="服务器筛选">
-        <button className="machine-add" onClick={() => setCreating(true)}><span aria-hidden="true">＋</span> 添加服务器</button>
-        <label className="machine-search"><span aria-hidden="true">⌕</span><input aria-label="搜索服务器" type="search" placeholder="搜索服务器名称、备注或 ID..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <button className="machine-add" aria-label="新增服务器" onClick={() => setCreating(true)}><span aria-hidden="true">＋</span> 添加服务器</button>
+        <label className="machine-search"><span aria-hidden="true">⌕</span><input aria-label="搜索" type="search" placeholder="搜索服务器名称、备注或 ID..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <label className="machine-filter"><span aria-hidden="true">⊕</span><select aria-label="状态" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">状态</option><option value="online">在线</option><option value="offline">离线</option><option value="inactive">已停用</option></select></label>
         <label className="machine-filter"><span aria-hidden="true">⊕</span><select aria-label="节点" value={linkedFilter} onChange={(event) => setLinkedFilter(event.target.value)}><option value="all">节点</option><option value="yes">有节点</option><option value="no">无节点</option></select></label>
-        {(query !== "" || statusFilter !== "all" || linkedFilter !== "all" || loadFilter !== "all") && <button className="machine-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setLinkedFilter("all"); setLoadFilter("all"); }}>重置 ×</button>}
+        {(query !== "" || statusFilter !== "all" || linkedFilter !== "all" || loadFilter !== "all") && <button className="machine-reset" aria-label="重置" onClick={() => { setQuery(""); setStatusFilter("all"); setLinkedFilter("all"); setLoadFilter("all"); }}>重置 ×</button>}
         <div className="machine-toolbar-summary"><span>在线 {onlineCount}/{machines.length}</span><button className={loadFilter === "high" ? "selected" : ""} aria-pressed={loadFilter === "high"} onClick={() => setLoadFilter(loadFilter === "high" ? "all" : "high")}>高负载 {highLoadCount}</button></div>
       </section>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
@@ -114,7 +114,7 @@ export function ServerManagementPage({ api }: Props) {
                 <td><CompactLoad machine={machine}/></td>
                 <td><div className="machine-node-count">{machine.servers_count} <span>个节点</span></div><button className="machine-link" onClick={() => setDetailMachine(machine)}>查看详情 <span aria-hidden="true">↗</span></button></td>
                 <td><div className="machine-heartbeat" title={formatLastSeen(machine.last_seen_at)}>{relativeSeen(machine.last_seen_at, observedAt)}</div><div className="machine-load-report">负载上报 {machine.load_status ? relativeSeen(new Date(machine.load_status.updated_at * 1000).toISOString(), observedAt) : "暂无"}</div></td>
-                <td><div className="machine-row-actions"><button onClick={() => setDetailMachine(machine)}>详情</button><button onClick={() => setEditMachine(machine)}>编辑</button><button className="machine-delete" onClick={() => setDeleteMachine(machine)}>删除</button></div></td>
+                <td><div className="machine-row-actions"><button aria-label="服务器详情" onClick={() => setDetailMachine(machine)}>详情</button><button onClick={() => setEditMachine(machine)}>编辑</button><button className="machine-delete" onClick={() => setDeleteMachine(machine)}>删除</button></div></td>
               </tr>
             ))}
           </tbody>

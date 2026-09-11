@@ -5,6 +5,7 @@ import type {
   AdminAPI, AdminNode, AdminNodeQuery, AdminNodeRevision, AdminNodeStateInput, Machine, RoutingRule, ServerGroup
 } from "../../lib/api";
 import { NodeDefinitionModal } from "./NodeDefinitionModal";
+import "./NodeManagementPage.css";
 
 type NodeManagementAPI = Pick<AdminAPI,
   "listAdminNodes" | "listAdminNodeParentOptions" | "listMachines" | "listServerGroups" | "listRoutingRules" | "getAdminNodeDefinition" |

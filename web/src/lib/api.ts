@@ -1863,6 +1863,10 @@ export interface AdminAPI {
   updateSiteSettings: (input: SiteSettingsInput) => Promise<SiteSettings>;
   getCommissionSettings: () => Promise<CommissionSettings>;
   updateCommissionSettings: (input: CommissionSettingsInput) => Promise<CommissionSettings>;
+  getSubscriptionSettings: () => Promise<SubscriptionSettings>;
+  updateSubscriptionSettings: (input: SubscriptionSettingsInput) => Promise<SubscriptionSettings>;
+  getSubscriptionPolicySettings: () => Promise<SubscriptionPolicySettings>;
+  updateSubscriptionPolicySettings: (input: SubscriptionPolicySettingsInput) => Promise<SubscriptionPolicySettings>;
   listNotices: () => Promise<Notice[]>;
   createNotice: (input: NoticeInput) => Promise<Notice>;
   updateNotice: (id: number, revision: number, input: NoticeInput) => Promise<Notice>;
