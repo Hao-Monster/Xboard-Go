@@ -40,6 +40,19 @@ published to the host. Runtime application data is stored in the
 This profile explicitly permits cleartext SMTP only inside its isolated Docker
 network and is not a production deployment definition.
 
+The node installer is served from the panel's configured release root, so a
+node host never needs GitHub CLI or a GitHub login. Set
+`XBOARD_NODE_RELEASE_ROOT` to a read-only directory containing one subdirectory
+per release version. Each version directory must contain `manifest.json`,
+`SHA256SUMS`, `install.sh`, and the binaries named by the manifest. The local
+Compose profile defaults this root to `/var/lib/xboard/node-releases` inside the
+`xboard-go-data` volume; populate it before generating an install command and
+keep the directory operator-managed and immutable. The generated command
+requires an HTTPS panel URL, downloads only from the panel release endpoint,
+and verifies `install.sh` before execution. GitHub remains the Xboard-Node
+installer's legacy fallback when it is run directly without a panel release
+base.
+
 The default `XBOARD_NODE_COORDINATION_MODE=local` is deliberately limited to
 one API/WebSocket replica. Multi-replica tests must use `redis` mode: the
 application then claims a 180-second machine-and-node lease, renews it every 60

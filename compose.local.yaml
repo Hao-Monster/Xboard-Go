@@ -34,6 +34,11 @@ services:
       XBOARD_WEBSOCKET_URL: ${XBOARD_WEBSOCKET_URL:-}
       XBOARD_NODE_PUSH_INTERVAL: ${XBOARD_NODE_PUSH_INTERVAL:-60}
       XBOARD_NODE_PULL_INTERVAL: ${XBOARD_NODE_PULL_INTERVAL:-60}
+      # Immutable, operator-provided Xboard-Node releases. The directory is
+      # read-only to the application and lives inside the data volume by
+      # default; set XBOARD_NODE_RELEASE_ROOT only when mounting another
+      # read-only release directory into the container.
+      XBOARD_NODE_RELEASE_ROOT: ${XBOARD_NODE_RELEASE_ROOT:-/var/lib/xboard/node-releases}
       XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE: ${XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE:-}
     secrets:
       - bootstrap_admin_password

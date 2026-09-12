@@ -187,6 +187,34 @@ func TestLoadRejectsRelativeWebRoot(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesNodeReleaseRoot(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", "relative/releases")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative node release root")
+	}
+
+	webRoot := filepath.Join(t.TempDir(), "web")
+	t.Setenv("XBOARD_WEB_ROOT", webRoot)
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", filepath.Join(webRoot, "releases"))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a node release root below the public web root")
+	}
+
+	releaseRoot := filepath.Join(t.TempDir(), "releases")
+	t.Setenv("XBOARD_WEB_ROOT", "")
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", releaseRoot)
+	settings, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.NodeReleaseRoot != releaseRoot {
+		t.Fatalf("node release root = %q, want %q", settings.NodeReleaseRoot, releaseRoot)
+	}
+}
+
 func TestLoadRejectsRelativeLegacyAppClashTemplate(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")

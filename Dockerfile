@@ -49,6 +49,7 @@ ENV XBOARD_ADDRESS=0.0.0.0:8080 \
     XBOARD_ALLOWED_ORIGINS=http://127.0.0.1:7080 \
     XBOARD_COOKIE_SECURE=false \
     XBOARD_BACKUP_DIRECTORY=/var/lib/xboard-backups \
+    XBOARD_NODE_RELEASE_ROOT=/var/lib/xboard/node-releases \
     XBOARD_ADMIN_EXPORT_ROOT=/var/lib/xboard/admin-exports \
     XBOARD_IP2REGION_XDB_FILE=/usr/share/xboard/ip2region.xdb \
     XBOARD_WEB_ROOT=/srv/xboard/web

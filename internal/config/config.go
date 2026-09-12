@@ -239,6 +239,18 @@ func Load() (Config, error) {
 	if config.WebRoot != "" && !filepath.IsAbs(config.WebRoot) {
 		return Config{}, errors.New("XBOARD_WEB_ROOT must be an absolute path")
 	}
+	if config.NodeReleaseRoot != "" {
+		if !filepath.IsAbs(config.NodeReleaseRoot) {
+			return Config{}, errors.New("XBOARD_NODE_RELEASE_ROOT must be an absolute path")
+		}
+		cleanReleaseRoot := filepath.Clean(config.NodeReleaseRoot)
+		if cleanReleaseRoot == filepath.VolumeName(cleanReleaseRoot)+string(filepath.Separator) ||
+			(config.WebRoot != "" && pathsOverlap(cleanReleaseRoot, filepath.Clean(config.WebRoot))) ||
+			(config.AttachmentRoot != "" && pathsOverlap(cleanReleaseRoot, filepath.Clean(config.AttachmentRoot))) ||
+			(config.AdminExportRoot != "" && pathsOverlap(cleanReleaseRoot, filepath.Clean(config.AdminExportRoot))) {
+			return Config{}, errors.New("XBOARD_NODE_RELEASE_ROOT must be a dedicated immutable directory")
+		}
+	}
 	if config.LegacyAppClashTemplateFile != "" && !filepath.IsAbs(config.LegacyAppClashTemplateFile) {
 		return Config{}, errors.New("XBOARD_LEGACY_APP_CLASH_TEMPLATE_FILE must be an absolute path")
 	}
