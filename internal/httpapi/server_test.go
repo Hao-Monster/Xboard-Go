@@ -84,6 +84,12 @@ func TestAdminAPIRequiresSessionAndCSRF(t *testing.T) {
 	if !strings.Contains(payload.Data.InstallCommand, "v1.14.3") || strings.Contains(payload.Data.InstallCommand, "latest") {
 		t.Fatalf("install command must pin the published node release: %q", payload.Data.InstallCommand)
 	}
+	if strings.Contains(payload.Data.InstallCommand, "gh release") || strings.Contains(payload.Data.InstallCommand, "gh auth token") {
+		t.Fatalf("install command must not require GitHub CLI: %q", payload.Data.InstallCommand)
+	}
+	if !strings.Contains(payload.Data.InstallCommand, "/api/v2/node/releases") {
+		t.Fatalf("install command must use the panel release API: %q", payload.Data.InstallCommand)
+	}
 }
 
 func TestAPIMACH002MachineEnrollmentCredentialLifecycleIsOneTimeAndNoStore(t *testing.T) {
