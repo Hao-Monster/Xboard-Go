@@ -17,8 +17,9 @@ ADD --checksum=sha256:5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${APP_REVISION}" -o /out/xboard ./cmd/xboard \
-    && mkdir -p /out/data/admin-exports /out/backups /out/tmp \
-    && chmod 0700 /out/data /out/data/admin-exports /out/backups /out/tmp
+    && mkdir -p /out/data/admin-exports /out/backups /out/node-releases /out/tmp \
+    && chmod 0700 /out/data /out/data/admin-exports /out/backups /out/tmp \
+    && chmod 0755 /out/node-releases
 
 FROM node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573 AS web-build
 WORKDIR /src/web
@@ -37,6 +38,7 @@ COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 COPY --from=go-build /out/xboard /xboard
 COPY --chown=65532:65532 --from=go-build /out/data /var/lib/xboard
 COPY --chown=65532:65532 --from=go-build /out/backups /var/lib/xboard-backups
+COPY --chown=65532:65532 --from=go-build /out/node-releases /var/lib/xboard-node-releases
 COPY --chown=65532:65532 --from=go-build /out/tmp /tmp
 COPY --chown=65532:65532 --from=go-build /out/ip2region.xdb /usr/share/xboard/ip2region.xdb
 COPY --chown=65532:65532 --from=web-build /src/web/dist /srv/xboard/web
@@ -49,10 +51,10 @@ ENV XBOARD_ADDRESS=0.0.0.0:8080 \
     XBOARD_ALLOWED_ORIGINS=http://127.0.0.1:7080 \
     XBOARD_COOKIE_SECURE=false \
     XBOARD_BACKUP_DIRECTORY=/var/lib/xboard-backups \
-    XBOARD_NODE_RELEASE_ROOT=/var/lib/xboard/node-releases \
+    XBOARD_NODE_RELEASE_ROOT=/var/lib/xboard-node-releases \
     XBOARD_ADMIN_EXPORT_ROOT=/var/lib/xboard/admin-exports \
     XBOARD_IP2REGION_XDB_FILE=/usr/share/xboard/ip2region.xdb \
     XBOARD_WEB_ROOT=/srv/xboard/web
-VOLUME ["/var/lib/xboard"]
+VOLUME ["/var/lib/xboard", "/var/lib/xboard-node-releases"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 CMD ["/xboard", "healthcheck"]
 ENTRYPOINT ["/xboard"]

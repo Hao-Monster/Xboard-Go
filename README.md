@@ -45,9 +45,10 @@ node host never needs GitHub CLI or a GitHub login. Set
 `XBOARD_NODE_RELEASE_ROOT` to a read-only directory containing one subdirectory
 per release version. Each version directory must contain `manifest.json`,
 `SHA256SUMS`, `install.sh`, and the binaries named by the manifest. The local
-Compose profile defaults this root to `/var/lib/xboard/node-releases` inside the
-`xboard-go-data` volume; populate it before generating an install command and
-keep the directory operator-managed and immutable. The generated command
+Compose profile defaults this root to `/var/lib/xboard-node-releases` in the
+separate `xboard-node-releases` volume, mounted read-only by the application;
+populate that volume before generating an install command and keep the source
+directory operator-managed and immutable. The generated command
 requires an HTTPS panel URL, downloads only from the panel release endpoint,
 and verifies `install.sh` before execution. GitHub remains the Xboard-Node
 installer's legacy fallback when it is run directly without a panel release
