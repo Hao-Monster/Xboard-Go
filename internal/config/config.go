@@ -41,6 +41,7 @@ type Config struct {
 	TrustedProxyPrefixes       []netip.Prefix
 	CookieSecure               bool
 	NodeRelease                string
+	NodeReleaseRoot            string
 	BootstrapAdminEmail        string
 	BootstrapAdminPassword     string
 	SchedulerInterval          time.Duration
@@ -187,6 +188,7 @@ func Load() (Config, error) {
 		TrustedProxyPrefixes:       trustedProxyPrefixes,
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
+		NodeReleaseRoot:            strings.TrimSpace(os.Getenv("XBOARD_NODE_RELEASE_ROOT")),
 		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword:     bootstrapPassword,
 		SchedulerInterval:          interval,

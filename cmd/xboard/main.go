@@ -254,6 +254,7 @@ func main() {
 		PanelURL:                   settings.PanelURL,
 		LegacyAdminPath:            settings.LegacyAdminPath,
 		NodeRelease:                settings.NodeRelease,
+		NodeReleaseRoot:            settings.NodeReleaseRoot,
 		CookieSecure:               settings.CookieSecure,
 		AllowedOrigins:             settings.AllowedOrigins,
 		TrustedProxyPrefixes:       settings.TrustedProxyPrefixes,

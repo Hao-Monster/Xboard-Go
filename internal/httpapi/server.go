@@ -45,6 +45,7 @@ type Dependencies struct {
 	PanelURL                   string
 	LegacyAdminPath            string
 	NodeRelease                string
+	NodeReleaseRoot            string
 	CookieSecure               bool
 	AllowedOrigins             []string
 	TrustedProxyPrefixes       []netip.Prefix
@@ -91,6 +92,7 @@ type server struct {
 	panelURL                   string
 	panelHostname              string
 	nodeRelease                string
+	nodeReleaseRoot            string
 	cookieSecure               bool
 	allowedOrigins             map[string]struct{}
 	trustedProxyPrefixes       []netip.Prefix
@@ -255,6 +257,7 @@ func New(dependencies Dependencies) http.Handler {
 		panelURL:                   strings.TrimRight(dependencies.PanelURL, "/"),
 		panelHostname:              panelHostname,
 		nodeRelease:                dependencies.NodeRelease,
+		nodeReleaseRoot:            strings.TrimSpace(dependencies.NodeReleaseRoot),
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,
 		trustedProxyPrefixes:       trustedProxyPrefixes,
@@ -322,6 +325,9 @@ func New(dependencies Dependencies) http.Handler {
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", api.health)
+	root.HandleFunc("GET /api/v2/node/releases/{version}/manifest", api.nodeReleaseManifest)
+	root.HandleFunc("GET /api/v2/node/releases/{version}", api.nodeReleaseMetadata)
+	root.HandleFunc("GET /api/v2/node/releases/{version}/{artifact}", api.nodeReleaseArtifact)
 	root.HandleFunc("GET /ws", api.webSocket)
 	root.HandleFunc("GET /api/v1/guest/comm/config", api.getGuestConfig)
 	root.HandleFunc("GET /api/v1/theme-assets/{name}/{digest}/{path...}", api.getThemeAsset)
