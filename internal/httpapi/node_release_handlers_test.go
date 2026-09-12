@@ -90,3 +90,27 @@ func TestNodeReleaseArtifactRejectsTraversalSymlinksAndUnconfiguredRoot(t *testi
 		t.Fatalf("unconfigured status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
+
+func TestNodeReleaseMetadataRejectsSymlinkManifest(t *testing.T) {
+	root := t.TempDir()
+	versionDir := filepath.Join(root, "v1.14.3-test")
+	if err := os.Mkdir(versionDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(outside, []byte(`{"version":"v1.14.3-test","artifacts":[{"name":"install.sh"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(versionDir, "manifest.json")); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	api, _ := newTestAPIWithAllOptionsAndModifier(t, nil, true, nil, nil, false, nil, nil, func(dependencies *Dependencies) {
+		dependencies.NodeReleaseRoot = root
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/node/releases/v1.14.3-test", nil)
+	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}

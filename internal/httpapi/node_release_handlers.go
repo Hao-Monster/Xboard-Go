@@ -19,6 +19,16 @@ func (s *server) nodeReleaseMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := filepath.Join(s.nodeReleaseRoot, version, "manifest.json")
+	versionInfo, err := os.Lstat(filepath.Join(s.nodeReleaseRoot, version))
+	if err != nil || !versionInfo.IsDir() || versionInfo.Mode()&os.ModeSymlink != 0 {
+		http.NotFound(w, r)
+		return
+	}
+	manifestInfo, err := os.Lstat(path)
+	if err != nil || !manifestInfo.Mode().IsRegular() || manifestInfo.Mode()&os.ModeSymlink != 0 {
+		http.NotFound(w, r)
+		return
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		http.NotFound(w, r)
