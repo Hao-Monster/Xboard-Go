@@ -604,6 +604,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/nodes/bulk-state", api.updateAdminNodeStates)
 	admin.HandleFunc("POST /api/v1/admin/nodes/bulk-reset-traffic", api.resetAdminNodeTraffic)
 	admin.HandleFunc("POST /api/v1/admin/nodes/bulk-delete", api.deleteAdminNodes)
+	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}/runtime", api.getAdminNodeRuntime)
 	admin.HandleFunc("PUT /api/v1/admin/nodes/{nodeID}/runtime", api.saveNodeRuntime)
 	admin.HandleFunc("GET /api/v1/admin/server-groups", api.listServerGroups)
 	admin.HandleFunc("POST /api/v1/admin/server-groups", api.createServerGroup)
@@ -759,7 +760,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
-	return api.securityHeaders(api.recoverPanic(root))
+	return api.requestLogger(api.securityHeaders(api.recoverPanic(root)))
 }
 
 func validLegacyAdminPath(value string) bool {

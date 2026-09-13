@@ -73,6 +73,7 @@ func (s *server) agentNodes(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.Debug("machine nodes served", "request_id", RequestID(r.Context()), "machine_id", machineID, "nodes", len(nodes))
 	writeSuccess(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
@@ -119,6 +120,7 @@ func (s *server) xboardNodeMachineNodes(w http.ResponseWriter, r *http.Request) 
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.Debug("machine nodes served", "request_id", RequestID(r.Context()), "machine_id", input.MachineID, "nodes", len(nodes))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nodes": nodes,
 		"base_config": map[string]int{
@@ -177,6 +179,7 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 	if s.webSocketEnabled && settings.WebSocketEnabled {
 		websocket = map[string]any{"enabled": true, "ws_url": s.requestWebSocketURL(r, settings.WebSocketURL)}
 	}
+	s.logger.Debug("node handshake served", "request_id", RequestID(r.Context()), "machine_id", input.MachineID, "node_id", input.NodeID, "websocket", websocket["enabled"])
 	writeJSON(w, http.StatusOK, map[string]any{
 		"websocket": websocket,
 		"settings": map[string]int{
@@ -309,9 +312,11 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 		status.NetworkOut = &input.Net.OutSpeed
 	}
 	if err := s.store.RecordMachineStatus(r.Context(), machineID, status, s.now()); err != nil {
+		s.logger.Warn("machine status persistence failed", "request_id", RequestID(r.Context()), "machine_id", machineID, "error", err)
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.Debug("machine status accepted", "request_id", RequestID(r.Context()), "machine_id", machineID, "cpu", *input.CPU, "memory_used", input.Mem.Used, "memory_total", input.Mem.Total)
 	if enveloped {
 		writeSuccess(w, http.StatusOK, true)
 		return

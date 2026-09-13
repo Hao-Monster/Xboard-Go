@@ -83,6 +83,13 @@ endpoint is derived from the trusted `XBOARD_PANEL_URL`, never from an
 untrusted request `Host` header. The stored switch cannot enable WebSocket
 when the deployment capability is disabled.
 
+`XBOARD_LOG_LEVEL` controls the structured panel log level (`debug`, `info`,
+`warn`, or `error`) and defaults to `info`. Set it to `debug` only while
+reproducing a node or API issue so successful requests and their correlation
+IDs are captured; restore `info` after diagnosis. See
+[`docs/LOGGING.md`](docs/LOGGING.md) for the field reference and timeout
+runbook.
+
 The same page can generate, replace, or clear the legacy global server token
 used by fixed Xboard-Node single-node mode. The plaintext is returned once;
 the database stores only its SHA-256 digest and a short display prefix.

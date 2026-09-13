@@ -115,6 +115,24 @@ func TestXboardNodeRuntimeConfigContract(t *testing.T) {
 			t.Fatalf("report attempt %d status = %d, want %d; body=%s", attempt, report.Code, http.StatusOK, report.Body)
 		}
 	}
+	runtimeResponse := admin.request(t, api, http.MethodGet,
+		fmt.Sprintf("/api/v1/admin/admin/nodes/%d/runtime", node.ID), "")
+	if runtimeResponse.Code != http.StatusOK {
+		t.Fatalf("admin runtime status = %d, want %d; body=%s", runtimeResponse.Code, http.StatusOK, runtimeResponse.Body)
+	}
+	var runtimePayload struct {
+		Data struct {
+			NodeID     int64           `json:"node_id"`
+			Metrics    json.RawMessage `json:"metrics"`
+			AgeSeconds int64           `json:"age_seconds"`
+			Stale      bool            `json:"stale"`
+		} `json:"data"`
+	}
+	decodeResponse(t, runtimeResponse, &runtimePayload)
+	if runtimePayload.Data.NodeID != node.ID || runtimePayload.Data.AgeSeconds < 0 || runtimePayload.Data.Stale ||
+		!strings.Contains(string(runtimePayload.Data.Metrics), `"active_connections":2`) {
+		t.Fatalf("unexpected admin runtime payload: %#v", runtimePayload.Data)
+	}
 	uppercaseReportID := strings.Replace(reportBody,
 		"f0402358-4b0f-4f9b-92da-e6a9011001d4",
 		"F0402358-4B0F-4F9B-92DA-E6A9011001D4", 1)

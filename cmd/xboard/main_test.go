@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -371,5 +372,26 @@ func TestRunHealthcheck(t *testing.T) {
 	t.Setenv("XBOARD_HEALTH_URL", server.URL)
 	if err := runHealthcheck(); err != nil {
 		t.Fatalf("runHealthcheck() error = %v", err)
+	}
+}
+
+func TestConfiguredLogLevel(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  slog.Level
+	}{
+		{name: "debug", value: "debug", want: slog.LevelDebug},
+		{name: "warning alias", value: " warning ", want: slog.LevelWarn},
+		{name: "error", value: "error", want: slog.LevelError},
+		{name: "default", value: "", want: slog.LevelInfo},
+		{name: "invalid defaults to info", value: "verbose", want: slog.LevelInfo},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XBOARD_LOG_LEVEL", test.value)
+			if got := configuredLogLevel(); got != test.want {
+				t.Fatalf("configuredLogLevel() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }

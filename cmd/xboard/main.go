@@ -55,7 +55,7 @@ func main() {
 		}
 		return
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: configuredLogLevel()}))
 	settings, err := config.Load()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
@@ -317,6 +317,19 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("serve HTTP", "error", err)
 		os.Exit(1)
+	}
+}
+
+func configuredLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("XBOARD_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }
 

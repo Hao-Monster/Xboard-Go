@@ -23,13 +23,14 @@ import (
 )
 
 const (
-	maxReportBody     = 8 << 20
-	maxReportUsers    = 100_000
-	maxReportDevices  = 100_000
-	maxDevicesPerUser = 64
-	maxCPUCoreMetrics = 1_024
-	maxTrafficEntry   = int64(math.MaxInt64 / 1_000)
-	runtimeRateScale  = 1_000_000
+	maxReportBody          = 8 << 20
+	maxReportUsers         = 100_000
+	maxReportDevices       = 100_000
+	maxDevicesPerUser      = 64
+	maxCPUCoreMetrics      = 1_024
+	maxTrafficEntry        = int64(math.MaxInt64 / 1_000)
+	runtimeRateScale       = 1_000_000
+	runtimeStateStaleAfter = 5 * time.Minute
 )
 
 type nodeReportPayload struct {
@@ -51,6 +52,40 @@ type nodeReportStatus struct {
 	Swap         *resourceUsage `json:"swap"`
 	Disk         *resourceUsage `json:"disk"`
 	KernelStatus *bool          `json:"kernel_status,omitempty"`
+}
+
+type adminNodeRuntimeStateResponse struct {
+	NodeID     int64           `json:"node_id"`
+	Status     json.RawMessage `json:"status,omitempty"`
+	Metrics    json.RawMessage `json:"metrics,omitempty"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	AgeSeconds int64           `json:"age_seconds"`
+	Stale      bool            `json:"stale"`
+}
+
+// getAdminNodeRuntime exposes the last sanitized runtime snapshot received
+// from a node. The endpoint is administrator-protected and intentionally
+// returns only the persisted status/metrics payload, never credentials or
+// report bodies.
+func (s *server) getAdminNodeRuntime(w http.ResponseWriter, r *http.Request) {
+	nodeID, ok := pathID(w, r, "nodeID")
+	if !ok {
+		return
+	}
+	state, err := s.store.GetNodeRuntimeState(r.Context(), nodeID)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	age := s.now().Sub(state.UpdatedAt)
+	if age < 0 {
+		age = 0
+	}
+	writeSuccess(w, http.StatusOK, adminNodeRuntimeStateResponse{
+		NodeID: state.NodeID, Status: state.Status, Metrics: state.Metrics,
+		UpdatedAt: state.UpdatedAt, AgeSeconds: int64(age / time.Second),
+		Stale: age > runtimeStateStaleAfter,
+	})
 }
 
 func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
@@ -122,14 +157,18 @@ func (s *server) xboardNodeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, err := nodeConfigObject(runtime, settings.PushInterval, settings.PullInterval)
 	if err != nil {
+		s.logger.Warn("node config generation failed", "request_id", RequestID(r.Context()), "node_id", nodeID, "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "invalid_runtime_config", "节点运行时配置无效", nil)
 		return
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
+		s.logger.Warn("node config serialization failed", "request_id", RequestID(r.Context()), "node_id", nodeID, "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	digest := sha256.Sum256(encoded)
+	s.logger.Debug("node config served", "request_id", RequestID(r.Context()), "node_id", nodeID, "bytes", len(encoded), "config_sha256_prefix", hex.EncodeToString(digest[:8]))
 	writeETagJSON(w, r, encoded)
 }
 
@@ -173,6 +212,7 @@ func (s *server) xboardNodeUsers(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.Debug("node users served", "request_id", RequestID(r.Context()), "node_id", nodeID, "users", len(users))
 	encoded, err := json.Marshal(map[string]any{"users": users})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -208,6 +248,7 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 	}
 	report, err := validateNodeReport(payload)
 	if err != nil {
+		s.logger.Warn("node report rejected", "request_id", RequestID(r.Context()), "machine_id", payload.MachineID, "node_id", payload.NodeID, "stage", "validation", "error", err)
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), nil)
 		return
 	}
@@ -217,10 +258,14 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 	report.Now = s.now()
 	result, err := s.applyNodeReport(r.Context(), report)
 	if err != nil {
+		s.logger.Warn("node report persistence failed", "request_id", RequestID(r.Context()), "machine_id", report.MachineID, "node_id", report.NodeID, "report_id", report.ReportID, "error", err)
 		handleStoreError(w, err)
 		return
 	}
 	s.notifyNodeReportResult(r.Context(), result)
+	s.logger.Debug("node report accepted", "request_id", RequestID(r.Context()), "machine_id", report.MachineID, "node_id", report.NodeID, "report_id", report.ReportID,
+		"traffic_users", len(report.Traffic), "alive_users", len(report.Alive), "online_users", len(report.Online), "duplicate_traffic", result.DuplicateTraffic,
+		"exceeded_users", len(result.ExceededUsers))
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }
 
@@ -314,10 +359,14 @@ func (s *server) xboardNodeAliveList(w http.ResponseWriter, r *http.Request) {
 func (s *server) applyNodeReportResponse(w http.ResponseWriter, r *http.Request, report store.NodeReportInput) {
 	result, err := s.applyNodeReport(r.Context(), report)
 	if err != nil {
+		s.logger.Warn("node report persistence failed", "request_id", RequestID(r.Context()), "machine_id", report.MachineID, "node_id", report.NodeID, "report_id", report.ReportID, "error", err)
 		handleStoreError(w, err)
 		return
 	}
 	s.notifyNodeReportResult(r.Context(), result)
+	s.logger.Debug("node partial report accepted", "request_id", RequestID(r.Context()), "machine_id", report.MachineID, "node_id", report.NodeID,
+		"report_id", report.ReportID, "traffic_users", len(report.Traffic), "alive_users", len(report.Alive), "online_users", len(report.Online),
+		"duplicate_traffic", result.DuplicateTraffic, "exceeded_users", len(result.ExceededUsers))
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }
 
