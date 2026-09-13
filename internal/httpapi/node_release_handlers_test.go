@@ -53,8 +53,24 @@ func TestNodeReleaseManifestAndArtifactAreServedFromConfiguredRoot(t *testing.T)
 		})
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v2/node/releases/v1.14.3-test", nil)
+	if err := os.WriteFile(filepath.Join(versionDir, "SHA256SUMS"), []byte("hash  install.sh\r\nsecond-hash  xbctl-linux-amd64\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/node/releases/v1.14.3-test/SHA256SUMS", nil)
 	response := httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("checksums status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body)
+	}
+	if response.Body.String() != "hash  install.sh\nsecond-hash  xbctl-linux-amd64\n" {
+		t.Fatalf("checksums body = %q, want normalized LF line endings", response.Body.String())
+	}
+	if response.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Fatalf("checksums content-type = %q", response.Header().Get("Content-Type"))
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v2/node/releases/v1.14.3-test", nil)
+	response = httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("metadata status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body)

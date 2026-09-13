@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -116,6 +117,20 @@ func (s *server) serveNodeReleaseArtifact(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// SHA256SUMS is consumed by POSIX sha256sum. Normalize line endings at the
+	// HTTP boundary so releases copied from Windows remain valid on Linux.
+	if artifact == "SHA256SUMS" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+		data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeContent(w, r, filepath.Base(path), info.ModTime(), bytes.NewReader(data))
+		return
+	}
 	http.ServeFile(w, r, path)
 }
 
