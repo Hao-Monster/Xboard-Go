@@ -185,6 +185,7 @@ describe("APIClient administrator node contracts", () => {
 		await api.createAdminNodeDefinition(definition);
 		await api.replaceAdminNodeDefinition(41, { ...definition, revision: 3 });
     await api.updateAdminNode(41, { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null });
+    await api.setAdminNodeVisibility(41, 3, false);
     await api.copyAdminNode(41, 3);
     await api.reorderAdminNodes(targets);
     await api.updateAdminNodeStates({ targets, enabled: false, machine_id: null });
@@ -198,6 +199,7 @@ describe("APIClient administrator node contracts", () => {
 			{ path: "/api/v1/admin/nodes", method: "POST", body: definition, csrf: "node-csrf" },
 			{ path: "/api/v1/admin/nodes/41", method: "PUT", body: { ...definition, revision: 3 }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/41", method: "PATCH", body: { revision: 3, name: "SG", host: "sg.test", port: "443", show: true, enabled: true, sort: 10, machine_id: null }, csrf: "node-csrf" },
+      { path: "/api/v1/admin/nodes/41/visibility", method: "PATCH", body: { revision: 3, show: false }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/41/copy", method: "POST", body: { revision: 3 }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/order", method: "PUT", body: { targets }, csrf: "node-csrf" },
       { path: "/api/v1/admin/nodes/bulk-state", method: "POST", body: { targets, enabled: false, machine_id: null }, csrf: "node-csrf" },

@@ -1760,6 +1760,7 @@ export interface AdminAPI {
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
   replaceAdminNodeDefinition: (nodeID: number, input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
   updateAdminNode: (nodeID: number, input: AdminNodeUpdateInput) => Promise<Node>;
+  setAdminNodeVisibility: (nodeID: number, revision: number, show: boolean) => Promise<Node>;
   copyAdminNode: (nodeID: number, revision: number) => Promise<Node>;
   reorderAdminNodes: (targets: AdminNodeRevision[]) => Promise<AdminNodeMutation>;
   updateAdminNodeStates: (input: AdminNodeStateInput) => Promise<AdminNodeMutation>;
@@ -2151,6 +2152,12 @@ export class APIClient implements AdminAPI {
 
   async updateAdminNode(nodeID: number, input: AdminNodeUpdateInput): Promise<Node> {
     return this.request<Node>(`/api/v1/admin/nodes/${nodeID}`, { method: "PATCH", body: input });
+  }
+
+  async setAdminNodeVisibility(nodeID: number, revision: number, show: boolean): Promise<Node> {
+    return this.request<Node>(`/api/v1/admin/nodes/${nodeID}/visibility`, {
+      method: "PATCH", body: { revision, show }
+    });
   }
 
   async copyAdminNode(nodeID: number, revision: number): Promise<Node> {

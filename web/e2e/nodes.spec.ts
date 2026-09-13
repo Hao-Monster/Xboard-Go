@@ -168,6 +168,46 @@ const protocolScenarios: ProtocolScenario[] = [
   }
 ];
 
+test("administrator can toggle node visibility directly from the node list", async ({ page }, testInfo) => {
+  const pageErrors: string[] = [];
+  const serverErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
+  });
+
+  await loginAdministrator(page);
+  const prefix = `Visibility parity ${testInfo.project.name}-${Date.now()}`;
+  const name = `${prefix} node`;
+  await deleteFixtureNodes(page, prefix);
+
+  try {
+    await createNode(page, { name, type: "vless", host: "visibility.example.test", port: "443", sort: 10 });
+    await page.getByRole("button", { name: "节点管理", exact: true }).last().click();
+    await expect(page.getByRole("heading", { name: "节点管理" })).toBeVisible();
+    await page.getByLabel("搜索节点").fill(prefix);
+    await page.getByRole("button", { name: "查询节点" }).click();
+
+    const row = page.locator("tr", { has: page.getByText(name, { exact: true }) });
+    const visibility = row.getByRole("switch", { name: `隐藏节点：${name}` });
+    await expect(visibility).toBeChecked();
+    const responsePromise = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("/visibility"));
+    await visibility.click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    await expect(row.getByRole("switch", { name: `显示节点：${name}` })).not.toBeChecked();
+    await expect(row.getByText("隐藏", { exact: true })).toBeVisible();
+
+    const persisted = await loadNodeDefinition(page, name);
+    expect(persisted.show).toBe(false);
+    expect(persisted.revision).toBe(2);
+    expect(pageErrors).toEqual([]);
+    expect(serverErrors).toEqual([]);
+  } finally {
+    await deleteFixtureNodes(page, prefix);
+  }
+});
+
 test("administrator node management preserves the observed Xboard workflow on every viewport", async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   const serverErrors: string[] = [];

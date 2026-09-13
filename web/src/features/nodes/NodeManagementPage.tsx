@@ -10,7 +10,7 @@ import "./NodeManagementPage.css";
 type NodeManagementAPI = Pick<AdminAPI,
   "listAdminNodes" | "listAdminNodeParentOptions" | "listMachines" | "listServerGroups" | "listRoutingRules" | "getAdminNodeDefinition" |
   "createAdminNodeDefinition" | "replaceAdminNodeDefinition" | "copyAdminNode" | "reorderAdminNodes" |
-  "updateAdminNodeStates" | "resetAdminNodeTraffic" | "deleteAdminNodes"
+  "updateAdminNodeStates" | "setAdminNodeVisibility" | "resetAdminNodeTraffic" | "deleteAdminNodes"
 >;
 
 interface Props {
@@ -120,6 +120,18 @@ export function NodeManagementPage({ api }: Props) {
     if (selectedTargets.length === 0) return;
     void run(() => api.updateAdminNodeStates({ targets: selectedTargets, ...input }));
   };
+  const toggleVisibility = async (node: AdminNode) => {
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api.setAdminNodeVisibility(node.id, node.revision, !node.show);
+      setNodes((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
   const applyMachine = () => {
     if (bulkMachine === "" || selectedTargets.length === 0) return;
     updateState({ machine_id: bulkMachine === "unassigned" ? null : Number(bulkMachine) });
@@ -167,7 +179,21 @@ export function NodeManagementPage({ api }: Props) {
       <table className="resource-table node-table" aria-label="节点列表"><thead><tr><th>节点ID</th><th>显隐</th><th>节点</th><th>部署方式</th><th>地址</th><th>在线人数</th><th>倍率</th><th>权限组</th><th>流量使用</th><th>操作</th></tr></thead>
         <tbody>{nodes.length === 0 ? <tr className="empty-table-row"><td colSpan={10}>没有符合条件的节点。</td></tr> : nodes.map((node, index) => <tr key={node.id}>
           <td data-label="节点ID"><label className="node-select"><input type="checkbox" aria-label={`选择节点：${node.name}`} checked={selected.includes(node.id)} disabled={busy} onChange={(event) => setSelected((current) => event.target.checked ? [...current, node.id] : current.filter((id) => id !== node.id))} /><strong>#{node.id}</strong></label></td>
-          <td data-label="显隐"><span className={`status-badge ${node.show ? "enabled" : "blocked"}`}>{node.show ? "显示" : "隐藏"}</span></td>
+          <td data-label="显隐">
+            <label className="node-visibility-control">
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch-input node-visibility-switch"
+                checked={node.show}
+                aria-checked={node.show}
+                aria-label={`${node.show ? "隐藏" : "显示"}节点：${node.name}`}
+                disabled={busy}
+                onChange={() => void toggleVisibility(node)}
+              />
+              <span className={`status-badge ${node.show ? "enabled" : "blocked"}`}>{node.show ? "显示" : "隐藏"}</span>
+            </label>
+          </td>
           <td data-label="节点"><strong>{node.name}</strong><small className="muted">{protocolLabel(node.type)} · {node.enabled ? "已启用" : "已停用"}</small></td>
           <td data-label="部署方式">{node.machine_name ?? "独立部署"}</td>
           <td data-label="地址"><code>{node.host}:{node.port}</code></td>

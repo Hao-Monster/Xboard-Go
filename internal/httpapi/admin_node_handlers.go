@@ -504,6 +504,38 @@ func (s *server) updateAdminNodeStates(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, mutation)
 }
 
+func (s *server) setAdminNodeVisibility(w http.ResponseWriter, r *http.Request) {
+	nodeID, ok := pathID(w, r, "nodeID")
+	if !ok {
+		return
+	}
+	var input struct {
+		Revision *int64 `json:"revision"`
+		Show     *bool  `json:"show"`
+	}
+	if !decodeJSONLimit(w, r, &input, 1024) {
+		return
+	}
+	fields := map[string]string{}
+	if input.Revision == nil || *input.Revision < 1 {
+		fields["revision"] = "必须是正整数"
+	}
+	if input.Show == nil {
+		fields["show"] = "必填且必须是布尔值"
+	}
+	if len(fields) > 0 {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请提交有效的节点显隐字段", fields)
+		return
+	}
+	updated, mutation, err := s.store.SetAdminNodeVisibility(r.Context(), nodeID, *input.Revision, *input.Show, s.now())
+	if err != nil {
+		handleAdminNodeMutationError(w, err)
+		return
+	}
+	s.publishAdminNodeMutation(r, mutation)
+	writeSuccess(w, http.StatusOK, updated)
+}
+
 func (s *server) resetAdminNodeTraffic(w http.ResponseWriter, r *http.Request) {
 	targets, ok := decodeAdminNodeTargets(w, r)
 	if !ok {

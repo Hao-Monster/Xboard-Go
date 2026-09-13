@@ -523,6 +523,25 @@ func (s *Store) UpdateAdminNodeStates(ctx context.Context, input AdminNodeStateI
 	return mutation, nil
 }
 
+// SetAdminNodeVisibility updates only the user-facing visibility flag while
+// retaining the same revision protection and mutation notifications as the
+// bulk state endpoint. The focused operation lets the admin table toggle a
+// single node without submitting the complete protocol definition.
+func (s *Store) SetAdminNodeVisibility(ctx context.Context, nodeID, revision int64, show bool, now time.Time) (Node, AdminNodeMutation, error) {
+	mutation, err := s.UpdateAdminNodeStates(ctx, AdminNodeStateInput{
+		Targets: []AdminNodeRevision{{ID: nodeID, Revision: revision}},
+		Show:    &show,
+	}, now)
+	if err != nil {
+		return Node{}, AdminNodeMutation{}, err
+	}
+	updated, err := s.GetNode(ctx, nodeID)
+	if err != nil {
+		return Node{}, AdminNodeMutation{}, err
+	}
+	return updated, mutation, nil
+}
+
 func (s *Store) ResetAdminNodeTraffic(ctx context.Context, targets []AdminNodeRevision, now time.Time) (AdminNodeMutation, error) {
 	return s.mutateAdminNodeTargets(ctx, targets, now, "reset traffic", func(tx *sql.Tx, target adminNodeTarget, _ int) error {
 		result, err := tx.ExecContext(ctx, `

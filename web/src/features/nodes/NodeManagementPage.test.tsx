@@ -84,6 +84,21 @@ describe("NodeManagementPage", () => {
     expect(api.listAdminNodes).toHaveBeenCalledWith({ page: 2, page_size: 500 });
   });
 
+  it("toggles a node visibility switch with the current revision and updates the row", async () => {
+    const api = nodeAPI([node]);
+    api.setAdminNodeVisibility.mockResolvedValue({ ...node, show: false, revision: 4 });
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+
+    const toggle = await screen.findByRole("switch", { name: "隐藏节点：SG VLESS" });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+
+    await waitFor(() => expect(api.setAdminNodeVisibility).toHaveBeenCalledWith(41, 3, false));
+    expect(await screen.findByRole("switch", { name: "显示节点：SG VLESS" })).not.toBeChecked();
+    expect(within(screen.getByRole("table", { name: "节点列表" })).getByText("隐藏", { exact: true })).toBeVisible();
+  });
+
   it("edits common fields, copies complete nodes, and persists explicit order", async () => {
     const second = { ...node, id: 42, revision: 1, name: "US Trojan", type: "trojan", sort: 20 };
     const api = nodeAPI([node, second]);
@@ -354,6 +369,7 @@ function nodeAPI(items = [node]) {
     getAdminNodeDefinition: vi.fn().mockResolvedValue(definition),
     createAdminNodeDefinition: vi.fn(), replaceAdminNodeDefinition: vi.fn(),
     copyAdminNode: vi.fn(), reorderAdminNodes: vi.fn().mockResolvedValue(undefined),
+    setAdminNodeVisibility: vi.fn(),
     updateAdminNodeStates: vi.fn().mockResolvedValue(undefined), resetAdminNodeTraffic: vi.fn().mockResolvedValue(undefined),
     deleteAdminNodes: vi.fn()
   };

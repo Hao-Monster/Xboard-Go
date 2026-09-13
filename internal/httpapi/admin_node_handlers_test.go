@@ -14,6 +14,45 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
+func TestAdminNodeVisibilityEndpointTogglesSingleNodeWithRevisionProtection(t *testing.T) {
+	api, database := newTestAPI(t)
+	node, err := database.CreateNode(context.Background(), store.CreateNodeInput{
+		Name: "Visibility API", Type: "vless", Host: "visibility.example.test", Port: "443", Show: true, Enabled: true,
+	}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := loginAdmin(t, api)
+	path := fmt.Sprintf("/api/v1/admin/admin/nodes/%d/visibility", node.ID)
+
+	hidden := admin.request(t, api, http.MethodPatch, path, fmt.Sprintf(`{"revision":%d,"show":false}`, node.Revision))
+	if hidden.Code != http.StatusOK {
+		t.Fatalf("hide status=%d body=%s", hidden.Code, hidden.Body)
+	}
+	var hiddenPayload struct {
+		Data store.Node `json:"data"`
+	}
+	if err := json.Unmarshal(hidden.Body.Bytes(), &hiddenPayload); err != nil || hiddenPayload.Data.Show || hiddenPayload.Data.Revision != 2 {
+		t.Fatalf("hide response=%s error=%v", hidden.Body, err)
+	}
+
+	stale := admin.request(t, api, http.MethodPatch, path, `{"revision":1,"show":true}`)
+	if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), "node_revision_conflict") {
+		t.Fatalf("stale visibility status=%d body=%s", stale.Code, stale.Body)
+	}
+
+	shown := admin.request(t, api, http.MethodPatch, path, `{"revision":2,"show":true}`)
+	if shown.Code != http.StatusOK {
+		t.Fatalf("show status=%d body=%s", shown.Code, shown.Body)
+	}
+	var shownPayload struct {
+		Data store.Node `json:"data"`
+	}
+	if err := json.Unmarshal(shown.Body.Bytes(), &shownPayload); err != nil || !shownPayload.Data.Show || shownPayload.Data.Revision != 3 {
+		t.Fatalf("show response=%s error=%v", shown.Body, err)
+	}
+}
+
 func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.T) {
 	api, database := newTestAPI(t)
 	ctx := context.Background()

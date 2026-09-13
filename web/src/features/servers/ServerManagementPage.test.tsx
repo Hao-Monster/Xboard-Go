@@ -283,6 +283,7 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     createAdminNodeDefinition: vi.fn(),
     replaceAdminNodeDefinition: vi.fn(),
     updateAdminNode: vi.fn(),
+    setAdminNodeVisibility: vi.fn(),
     copyAdminNode: vi.fn(),
     reorderAdminNodes: vi.fn(),
     updateAdminNodeStates: vi.fn(),
