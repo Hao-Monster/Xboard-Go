@@ -500,7 +500,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .session-times div { display: grid; gap: 2px; }
 .session-times dt { color: #7f899c; font-size: .7rem; }
 .session-times dd { margin: 0; color: #bec6d4; font-size: .78rem; }
-.page-shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0 96px; }
+.page-shell { width: calc(100% - 40px); max-width: none; margin: 0 auto; padding: 56px 0 96px; }
 .page-header, .card-heading, .section-heading, .drawer-header, .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 10px; font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -.045em; }
@@ -1367,7 +1367,7 @@ textarea { min-height: 100px; resize: vertical; }
   .access-token-form .button { width: 100%; }
   .session-row { align-items: stretch; flex-direction: column; }
   .session-row > .button { width: 100%; }
-  .page-shell { width: min(100% - 24px, 1180px); padding-top: 32px; }
+  .page-shell { width: calc(100% - 24px); max-width: none; padding-top: 32px; }
   .page-header { align-items: stretch; flex-direction: column; }
   .overview-grid { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { grid-template-columns: 1fr 1fr; }
