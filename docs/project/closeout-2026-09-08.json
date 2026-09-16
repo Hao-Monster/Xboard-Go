@@ -86,7 +86,7 @@
     {
       "kind": "external_node_reconnect",
       "repository": "Xboard-Node",
-      "commit": "a95b06fb6d517328018df388cfe8c8e90590d4be",
+      "commit": "7ec48f90fc1767106c6d3328d15318ed0666a148",
       "additional_test_sha256": "ee4b2975f4d2e827c00d6035d193da59cd01ab4ac90c9db5a2f18a444e916c35",
       "command": "go test -race ./internal/panel -run '^(TestR014ReconnectJitterDistribution|TestWSClient_ReconnectOnDisconnect)$' -count=5 -v -timeout=15m",
       "passed_executions": 10,
