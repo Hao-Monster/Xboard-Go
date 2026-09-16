@@ -1,0 +1,66 @@
+name: Deploy development server
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xboard-go-freedom-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 1
+
+      - name: Build exact image
+        run: docker build --build-arg APP_REVISION=${{ inputs.revision }} -t xboard-go:${{ inputs.revision }} .
+
+      - name: Export image
+        run: docker save xboard-go:${{ inputs.revision }} | gzip -1 > xboard-go-image.tar.gz
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H bingo-dev-ts >> ~/.ssh/known_hosts
+
+      - name: Upload image and deploy with rollback
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          scp -i ~/.ssh/deploy_key xboard-go-image.tar.gz bingo-dev-ts:/tmp/xboard-go-${REVISION}.tar.gz
+          ssh -i ~/.ssh/deploy_key bingo-dev-ts "REVISION=${REVISION} bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/bingo/apps/xboard-go-freedom
+          previous="$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')"
+          docker load < "/tmp/xboard-go-${REVISION}.tar.gz"
+          printf '%s\n' "$previous" > .previous-image
+          printf 'XBOARD_GO_REVISION=%s\n' "$REVISION" > .deploy.env
+          if ! docker compose --env-file .deploy.env up -d --no-build --wait app; then
+            docker tag "$previous" "xboard-go:${REVISION}"
+            docker compose --env-file .deploy.env up -d --no-build --wait app
+            exit 1
+          fi
+          test "$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')" = "xboard-go:${REVISION}"
+          test "$(docker inspect xboard-go-freedom-app-1 --format '{{.State.Health.Status}}')" = healthy
+          rm -f "/tmp/xboard-go-${REVISION}.tar.gz" .previous-image .deploy.env
+          REMOTE
+
+      - name: Verify public endpoint
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
