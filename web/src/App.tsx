@@ -47,6 +47,77 @@ const defaultGuestConfig: GuestConfig = {
 type AuthMode = "login" | "register" | "recover";
 type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
+type NavGroup = {
+  id: string;
+  title: string;
+  items: { page: AdminPage; label: string }[];
+};
+
+const adminNavGroups: NavGroup[] = [
+  {
+    id: "dashboard",
+    title: "仪表盘",
+    items: [
+      { page: "system", label: "系统状态" },
+    ],
+  },
+  {
+    id: "system",
+    title: "系统管理",
+    items: [
+      { page: "settings", label: "系统设置" },
+      { page: "themes", label: "主题配置" },
+      { page: "mail", label: "邮件设置" },
+      { page: "telegram", label: "Telegram 设置" },
+      { page: "client-app", label: "客户端版本" },
+      { page: "commissions", label: "佣金设置" },
+      { page: "subscriptions", label: "订阅设置" },
+      { page: "node-settings", label: "节点配置" },
+      { page: "plugins", label: "插件管理" },
+      { page: "payments", label: "支付配置" },
+      { page: "notices", label: "公告管理" },
+      { page: "knowledge", label: "知识库管理" },
+      { page: "clients", label: "客户端管理" },
+    ],
+  },
+  {
+    id: "nodes",
+    title: "节点网络",
+    items: [
+      { page: "servers", label: "服务器管理" },
+      { page: "nodes", label: "节点管理" },
+      { page: "groups", label: "权限组" },
+      { page: "routes", label: "路由规则" },
+    ],
+  },
+  {
+    id: "finance",
+    title: "订阅财务",
+    items: [
+      { page: "plans", label: "套餐管理" },
+      { page: "orders", label: "订单管理" },
+      { page: "distributors", label: "分销管理" },
+      { page: "coupons", label: "优惠券管理" },
+      { page: "gift-cards", label: "礼品卡管理" },
+    ],
+  },
+  {
+    id: "users",
+    title: "用户支持",
+    items: [
+      { page: "users", label: "用户管理" },
+      { page: "tickets", label: "工单管理" },
+    ],
+  },
+  {
+    id: "account",
+    title: "个人中心",
+    items: [
+      { page: "account", label: "账号安全" },
+    ],
+  },
+];
+
 export type AppSurface = { kind: "public" } | { kind: "admin"; path: string };
 
 export function surfaceFromPathname(pathname = window.location.pathname): AppSurface {
@@ -247,32 +318,23 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>系统状态</button>
-            <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigateAdminPage("settings")}>系统设置</button>
-            <button className="nav-link" aria-current={page === "themes" ? "page" : undefined} onClick={() => navigateAdminPage("themes")}>主题配置</button>
-            <button className="nav-link" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigateAdminPage("mail")}>邮件设置</button>
-            <button className="nav-link" aria-current={page === "telegram" ? "page" : undefined} onClick={() => navigateAdminPage("telegram")}>Telegram 设置</button>
-            <button className="nav-link" aria-current={page === "client-app" ? "page" : undefined} onClick={() => navigateAdminPage("client-app")}>客户端版本</button>
-            <button className="nav-link" aria-current={page === "commissions" ? "page" : undefined} onClick={() => navigateAdminPage("commissions")}>佣金设置</button>
-            <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => navigateAdminPage("subscriptions")}>订阅设置</button>
-            <button className="nav-link" aria-current={page === "node-settings" ? "page" : undefined} onClick={() => navigateAdminPage("node-settings")}>节点配置</button>
-            <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => navigateAdminPage("servers")}>服务器管理</button>
-            <button className="nav-link" aria-current={page === "nodes" ? "page" : undefined} onClick={() => navigateAdminPage("nodes")}>节点管理</button>
-            <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => navigateAdminPage("plans")}>套餐管理</button>
-            <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => navigateAdminPage("orders")}>订单管理</button>
-            <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => navigateAdminPage("distributors")}>分销管理</button>
-            <button className="nav-link" aria-current={page === "plugins" ? "page" : undefined} onClick={() => navigateAdminPage("plugins")}>插件管理</button>
-            <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => navigateAdminPage("payments")}>支付配置</button>
-            <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => navigateAdminPage("coupons")}>优惠券管理</button>
-            <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => navigateAdminPage("gift-cards")}>礼品卡管理</button>
-            <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => navigateAdminPage("users")}>用户管理</button>
-            <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => navigateAdminPage("tickets")}>工单管理</button>
-            <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => navigateAdminPage("groups")}>权限组</button>
-            <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => navigateAdminPage("routes")}>路由规则</button>
-            <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => navigateAdminPage("notices")}>公告管理</button>
-            <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => navigateAdminPage("knowledge")}>知识库管理</button>
-            <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => navigateAdminPage("clients")}>客户端管理</button>
-            <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => navigateAdminPage("account")}>账号安全</button>
+            {adminNavGroups.map((group) => (
+              <div key={group.id} className="nav-group">
+                <div className="nav-group-title">{group.title}</div>
+                <div className="nav-group-items">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.page}
+                      className="nav-link"
+                      aria-current={page === item.page ? "page" : undefined}
+                      onClick={() => navigateAdminPage(item.page)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </nav>
         <div className="admin-content">
