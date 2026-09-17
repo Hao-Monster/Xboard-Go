@@ -14,16 +14,13 @@ test("administrator path rotation isolates the UI and V1 admin API", async ({ pa
   await expect(page.getByRole("navigation", { name: "管理端导航" })).toBeVisible();
 
   const original = await readSiteSettings(page, adminSecurePath);
-  let current = original;
   try {
-    await page.getByRole("button", { name: "系统配置", exact: true }).click();
-    await page.getByRole("button", { name: "安全设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统设置", exact: true }).click();
     await page.getByLabel("管理员安全路径").fill(rotatedPath);
-    await page.getByRole("button", { name: "保存安全设置", exact: true }).click();
+    await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
     await page.waitForURL((url) => url.pathname === `/${rotatedPath}/` && url.hash === "#/", { timeout: 15_000 });
     await expect(page.getByRole("navigation", { name: "管理端导航" })).toBeVisible();
-    current = await readSiteSettings(page, rotatedPath);
-    expect(current.secure_path).toBe(rotatedPath);
+    expect((await readSiteSettings(page, rotatedPath)).secure_path).toBe(rotatedPath);
     expect((await page.request.get(adminAPIPath(adminSecurePath, "/site-settings"))).status()).toBe(404);
     expect((await page.request.get("/api/v1/admin/site-settings")).status()).toBe(404);
     expect((await page.request.get(adminAPIPath("wrong-admin-path", "/site-settings"))).status()).toBe(404);
@@ -32,7 +29,8 @@ test("administrator path rotation isolates the UI and V1 admin API", async ({ pa
     await expect(page.getByRole("navigation", { name: "用户导航" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "管理端导航" })).toHaveCount(0);
   } finally {
-    if (current.secure_path !== original.secure_path) {
+    const current = await tryReadSiteSettings(page, rotatedPath) ?? await tryReadSiteSettings(page, adminSecurePath);
+    if (current !== null && current.secure_path !== original.secure_path) {
       const csrf = decodeURIComponent((await page.context().cookies()).find((cookie) => cookie.name === "xboard_csrf")?.value ?? "");
       const restored = await page.request.put(adminAPIPath(current.secure_path, "/site-settings"), {
         headers: { "X-CSRF-Token": csrf },
