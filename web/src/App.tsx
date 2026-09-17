@@ -177,6 +177,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const authenticated = (nextSession: UserSession) => {
     setBootstrapAuthError("");
     setSession(nextSession);
+    setPage("servers");
+    window.scrollTo(0, 0);
     window.history.replaceState(null, "", "#/");
     setAuthLocation(window.location.hash);
   };
@@ -211,7 +213,11 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const signOut = () => {
     if (!canLeaveAdminPage()) return;
-    void api.logout().catch(() => undefined).then(() => setSession(null));
+    void api.logout().catch(() => undefined).then(() => {
+      setPage("servers");
+      window.scrollTo(0, 0);
+      setSession(null);
+    });
   };
 
   if (loading) {
@@ -296,7 +302,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
         {page === "notices" && <NoticeManagementPage api={api} />}
         {page === "knowledge" && <KnowledgeManagementPage api={api} />}
         {page === "clients" && <ClientCatalogManagementPage api={api} />}
-        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
+        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
           </Suspense>
         </div>
       </div>
