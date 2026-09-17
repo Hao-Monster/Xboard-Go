@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -483,6 +483,37 @@ describe("App public identity bootstrap", () => {
         email: "verified@example.test", email_code: "482731", password: "password-123", password_confirmation: "password-123"
       } }
     ]);
+  });
+
+  it("renders categorized navigation groups in the administrator sidebar", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        app_name: "Grouped Board", app_description: null, app_url: null, tos_url: null, logo: null,
+        is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+        captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+        recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+      } }));
+      if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        id: 99, email: "admin@example.test", is_admin: true, is_staff: false, is_distributor: false
+      } }));
+      return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
+    }));
+
+    render(<App surface={{ kind: "admin", path: "admin" }} />);
+    const sidebar = await screen.findByRole("navigation", { name: "管理端导航" });
+    expect(sidebar).toBeVisible();
+
+    const expectedTitles = ["仪表盘", "系统管理", "节点网络", "订阅财务", "用户支持", "个人中心"];
+    for (const title of expectedTitles) {
+      expect(sidebar).toHaveTextContent(title);
+    }
+    expect(within(sidebar).getByRole("button", { name: "系统状态" })).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "系统设置" })).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "节点管理" })).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "套餐管理" })).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "用户管理" })).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "账号安全" })).toBeVisible();
   });
 });
 
