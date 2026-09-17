@@ -180,15 +180,15 @@ jobs:
           XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
         run: |
           echo "Starting automated deployment for candidate: ${TARGET_SHA}"
-          # 1. Export the verified candidate image
-          docker tag "$XBOARD_GO_IMAGE" "xboard-go:${TARGET_SHA}"
-          docker save "xboard-go:${TARGET_SHA}" | gzip -1 > "/tmp/xboard-go-${TARGET_SHA}.tar.gz"
-
-          # 2. Configure SSH client
+          # 1. Configure SSH client
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # 2. Tag and stream the candidate image directly to bingo's system docker
+          docker tag "$XBOARD_GO_IMAGE" "xboard-go:${TARGET_SHA}"
+          docker save "xboard-go:${TARGET_SHA}" | gzip -1 | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "gunzip | docker load"
 
           # 3. Deploy remotely on bingo-dev as user bingo
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "REVISION=${TARGET_SHA} bash -s" <<'REMOTE'
@@ -197,9 +197,6 @@ jobs:
           previous="$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}' 2>/dev/null || echo 'xboard-go:38a6d3f0')"
           echo "Current running image: ${previous}"
           echo "Deploying target image: xboard-go:${REVISION}"
-
-          docker load < "/tmp/xboard-go-${REVISION}.tar.gz"
-          rm -f "/tmp/xboard-go-${REVISION}.tar.gz"
 
           backup_suffix="pre-${REVISION}-$(date -u +%Y%m%dT%H%M%SZ)"
           cp -p compose.yaml "compose.yaml.${backup_suffix}"
@@ -244,7 +241,7 @@ jobs:
           trap - ERR
           REMOTE
 
-          rm -f ~/.ssh/deploy_key "/tmp/xboard-go-${TARGET_SHA}.tar.gz"
+          rm -f ~/.ssh/deploy_key
       - name: Verify public HTTPS endpoint
         if: success()
         run: |
