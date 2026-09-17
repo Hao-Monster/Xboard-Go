@@ -104,8 +104,8 @@ export function GiftCardManagementPage({ api }: { api: GiftCardManagementAPI }) 
     setTab(next);
   };
 
-  return <main className="content gift-card-management">
-    <header className="page-heading"><div><p className="eyebrow">Finance</p><h1>礼品卡管理</h1><p className="muted">模板、兑换码、使用记录与统计采用与 Xboard 一致的业务口径。</p></div>
+  return <main className="page-shell gift-card-management">
+    <header className="page-header"><div><p className="eyebrow">Finance</p><h1>礼品卡管理</h1><p className="muted">模板、兑换码、使用记录与统计采用与 Xboard 一致的业务口径。</p></div>
       <div className="row-actions">{tab === "templates" && <button className="button primary" onClick={() => setEditing(null)}>添加模板</button>}{tab === "codes" && <><button className="button primary" disabled={templateOptionsLoading} onClick={() => setGenerating(true)}>{templateOptionsLoading ? "正在加载模板…" : "生成兑换码"}</button><button className="button secondary" disabled={codeBatch.trim() === ""} onClick={() => void exportCodes()}>导出筛选批次</button></>}<button className="button secondary" onClick={() => void load()}>刷新</button></div>
     </header>
     <nav className="tab-list" aria-label="礼品卡功能"><button aria-current={tab === "templates" ? "page" : undefined} onClick={() => switchTab("templates")}>模板管理</button><button aria-current={tab === "codes" ? "page" : undefined} onClick={() => switchTab("codes")}>兑换码管理</button><button aria-current={tab === "usages" ? "page" : undefined} onClick={() => switchTab("usages")}>使用记录</button><button aria-current={tab === "statistics" ? "page" : undefined} onClick={() => switchTab("statistics")}>统计数据</button></nav>

@@ -1,0 +1,798 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-16",
+  "purpose": "Original 18-item audit tracking; supplements existing work-items, not a replacement for requirement acceptance.",
+  "source": {
+    "type": "recovered_assistant_task_breakdown",
+    "session_id": "01a09ef8-fa07-7cd1-8cca-9f3a0a92c959",
+    "statement": "Recovered from original conversation; task areas, not 18 proven defects. Numbering and titles preserved."
+  },
+  "baselines": {
+    "pr211": {
+      "sha": "4d9d8c1b9abb62e250818c88bb5eb59337e535f9",
+      "merge_state": "DIRTY"
+    },
+    "pr224": {
+      "sha": "a2b968321e22ce60aaaa95a75dc0e1ab9c129f87",
+      "merge_state": "CLEAN",
+      "state": "OPEN",
+      "ci_run": 35056520257,
+      "ci_conclusion": "success"
+    },
+    "root_worktree": "dirty; user changes preserved"
+  },
+  "policy": [
+    "Do not renumber original items; append new findings under existing IDs.",
+    "Each update records candidate SHA, PR, command/run URL, outcome, acceptance and remaining work.",
+    "Partial or historical evidence cannot close an item.",
+    "Record scope, implementation, verification, migration and acceptance separately.",
+    "Do not mark the entire project ready based on PR #224.",
+    "This supplemental ledger is JSON-validated but is not yet automatically enforced by projectctl."
+  ],
+  "items": [
+    {
+      "id": "AUD18-01",
+      "number": 1,
+      "title": "流水线治理门禁和 PR 元数据",
+      "work_item_ids": [
+        "CI-001"
+      ],
+      "issue_numbers": [
+        127
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "partial",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "PR #224 CI 35056520257 passed at a2b968321e22ce60aaaa95a75dc0e1ab9c129f87; PR #211 governance remains stale.",
+      "completion_criteria": "Target PR metadata and governance pass; record exact candidate and actual evidence. Do not rebind historical results without rerunning.",
+      "entrypoint": ".github/workflows/ci.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran go run ./cmd/projectctl check at HEAD 6cea7cf655ec6f972c63e911e5d363d7ecf687e3: FAIL (exit 1), because requirements baseline/evidence target f56e2bef7591ca6a0a1a429a546ba2137cb56914 is stale after .env.example changed. Historical evidence was not rebound; current candidate rerun and governance regeneration remain required."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Re-ran go run ./cmd/projectctl check at HEAD 1013271b: FAIL (exit 1) with the same stale evidence target f56e2bef7591ca6a0a1a429a546ba2137cb56914 after .env.example changed. No historical evidence was rebound and projectctl generate remains blocked by this governance gate."
+        },
+    {
+      "date": "2026-09-16",
+      "action": "Re-ran go run ./cmd/projectctl check at HEAD c1e1ccaaedaf35e4de34515b01e8139a9e018973: FAIL (exit 1) with the same stale evidence target f56e2bef7591ca6a0a1a429a546ba2137cb56914 because .env.example changed afterwards. The failure is recorded as a governance blocker; historical evidence remains unchanged."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Re-ran go run ./cmd/projectctl check at the current local candidate: FAIL (exit 1), reporting that evidence target f56e2bef7591ca6a0a1a429a546ba2137cb56914 is stale because .env.example changed afterwards. Historical evidence was left untouched; candidate rebinding and governance regeneration remain pending."
+    }
+      ]
+    },
+    {
+      "id": "AUD18-02",
+      "number": 2,
+      "title": "精确提交构建镜像",
+      "work_item_ids": [
+        "REL-001"
+      ],
+      "issue_numbers": [
+        131
+      ],
+      "milestone": "M4",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_static",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "Workflow now validates a lowercase 40-character SHA, checks checkout identity, exports a SHA256 manifest and verifies it remotely; CI authorization and candidate-bound artifact identity remain unverified.",
+      "completion_criteria": "Validate full SHA and allowed source; verify CI for candidate; build once; record image ID/digest, archive checksum and run ID.",
+      "entrypoint": ".github/workflows/deploy-dev.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Updated deploy-dev.yml to validate full revision SHA, quote build inputs, and emit archive checksum; local commit 173265fd. CI candidate authorization, remote checksum verification, and deployment acceptance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Revalidated deploy-dev.yml after cdbfd210: YAML parse, six Bash run-block syntax checks, SHA validation, fixed known_hosts, archive checksum and rollback static assertions passed locally. No GitHub run or remote artifact load was executed."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-03",
+      "number": 3,
+      "title": "开发测试服务器 SSH 发布",
+      "work_item_ids": [
+        "REL-001"
+      ],
+      "issue_numbers": [
+        131
+      ],
+      "milestone": "M4",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "Workflow now joins the private tailnet through a pinned Tailscale Action, pings 100.79.73.91, then uses explicit bingo@100.79.73.91 and pinned known_hosts; GitHub secret/tag ACL, hosted-runner connectivity and least-privilege acceptance remain unverified.",
+      "verification": "partial",
+      "completion_criteria": "Verify runner connectivity, pinned host identity, least-privilege key and explicit user/host in isolated deployment.",
+      "entrypoint": ".github/workflows/deploy-dev.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Hardened deploy-dev.yml to require nonempty BINGO_DEV_SSH_KNOWN_HOSTS, use explicit bingo@100.79.73.91, and preserve the hosted-runner trust boundary. YAML parse, six Bash run-block syntax checks and static workflow assertions passed locally. Shared-server connectivity and least-privilege acceptance remain NOT RUN."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Read-only inspected bingo-dev: hostname bingo, SSH/Nginx/MySQL/Docker/Tailscale/cloudflared active, and the current Xboard container healthy on 127.0.0.1:18082. Added pinned tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 with TS_OAUTH_CLIENT_ID/TS_OAUTH_SECRET, tag:xboard-go-ci and ping 100.79.73.91 before SSH. Real GitHub runner connectivity and ACL authorization remain NOT RUN."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-04",
+      "number": 4,
+      "title": "发布失败自动回滚",
+      "work_item_ids": [
+        "REL-001"
+      ],
+      "issue_numbers": [
+        131
+      ],
+      "milestone": "M4",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "Workflow now preserves the previous image ID/env and rolls back on candidate health or public Smoke failure; remote failure injection remains unverified.",
+      "verification": "partial",
+      "completion_criteria": "Preserve immutable previous identity; restore configuration and image on all post-switch failures; rehearse rollback.",
+      "entrypoint": ".github/workflows/deploy-dev.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Hardened deploy-dev.yml to retain the immutable previous image ID and prior env file, restore them on candidate health failure or public Smoke failure, and clean up only after Smoke success. YAML parse, six Bash run-block syntax checks and static rollback assertions passed locally. Remote failure injection and deployment acceptance remain NOT RUN."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Added post-rollback image identity and healthy-state assertions for both candidate-health and public-Smoke failure paths. YAML parsing passed; live failure injection and shared-server rollback rehearsal remain NOT RUN."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-05",
+      "number": 5,
+      "title": "容器健康检查和公开 HTTPS Smoke Test",
+      "work_item_ids": [
+        "REL-001"
+      ],
+      "issue_numbers": [
+        131
+      ],
+      "milestone": "M4",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_static",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "Workflow now checks the container health state and requires public /healthz success plus homepage availability; exact public revision exposure and remote Smoke execution remain pending.",
+      "completion_criteria": "Verify loaded image identity, application readiness, public critical endpoint and expected version; fail safely.",
+      "entrypoint": ".github/workflows/deploy-dev.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Updated deploy-dev.yml public verification to require /healthz JSON status success and homepage HTTPS availability before cleanup; failure still enters the immutable rollback path. YAML parsing passed. Bash run-block recheck was NOT RUN because this Windows environment currently has no usable Git/MSYS/WSL bash executable; prior workflow blocks had passed before this condition-only change. No public endpoint was contacted."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Read-only public check: curl https://freedom.openal.uk/healthz returned status success and curl https://freedom.openal.uk/ returned 16 bytes. This confirms current endpoint availability only; it is not candidate revision or deployment Smoke evidence."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-06",
+      "number": 6,
+      "title": "备份创建与备份完整性验证",
+      "work_item_ids": [
+        "OPS-002"
+      ],
+      "issue_numbers": [
+        117
+      ],
+      "milestone": "M2",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Isolated local backup create, hash/integrity verification, restore, remote readback and invalid archive cases pass; release-candidate binding and operational recovery timing remain pending.",
+      "completion_criteria": "Create isolated backup, verify hashes and integrity, restore database/files, measure recovery and validate business state.",
+      "entrypoint": "cmd/xboard/backup_cli_test.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran go test ./cmd/xboard ./internal/store -run Test.*(Backup|Restore|Migration|Migrate|Commission|Ledger|SQLite) -count=1: both packages passed locally at predecessor candidate ea8a1b0b03e39060ea766266dcf8c040bf58d01d. Full isolated backup/restore acceptance and current candidate rebinding remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 ran go test ./cmd/xboard -run TestRunCommandBackup -count=1 -v: PASS, 6 top-level tests. Covered isolated create/verify/restore, HTTP remote readback absence and byte mismatch, URL validation, non-archive rejection and private timestamped defaults. Operational recovery timing and final candidate governance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the six isolated backup CLI tests: PASS (Go test 1.150s; command wall time 4.530s). Create/verify/restore completed in 0.56s and remote integrity/invalid archive/private default cases passed. This is local synthetic timing on Windows, not a representative operational recovery target; a clean governed release candidate and production-sized recovery drill remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-07",
+      "number": 7,
+      "title": "SQLite v60 commission ledger 幂等迁移",
+      "work_item_ids": [
+        "MIG-001"
+      ],
+      "issue_numbers": [
+        118
+      ],
+      "milestone": "M2",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "passed_local",
+      "acceptance": "pending_candidate",
+      "finding": "Current schema repair and preservation tests pass for missing commission withdrawal tables and an existing ledger; final release-candidate migration/restore evidence remains pending.",
+      "completion_criteria": "Prove old DB upgrade, version>=60 missing-table recovery, repeat migration, preserved data and rollback.",
+      "entrypoint": "internal/store/sqlite.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Added TestCommissionWithdrawalMigrationPreservesExistingLedger regression coverage; targeted migration tests and full go test ./internal/store -count=1 passed at local candidate before test commit 67c0d223. CI-bound candidate, old DB fixture matrix, backup/restore and rollback evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 the targeted store matrix passed, including TestCommissionWithdrawalMigrationPreservesExistingLedger and TestMigrationRepairsMissingCommissionWithdrawalTablesAtV63. Existing-ledger preservation, missing-table repair, concurrent/idempotent financial writes and rollback assertions passed locally; candidate-bound recovery evidence remains pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran TestCommissionWithdrawalMigrationDoesNotSettleHistoricalTicket, TestCommissionWithdrawalMigrationPreservesExistingLedger and TestMigrationRepairsMissingCommissionWithdrawalTablesAtV63: PASS, 3 tests (Go test 0.704s; command wall time 3.851s). Historical settlement safety, existing-ledger preservation and version-63 missing-table repair are current local evidence; clean candidate backup/restore and governance binding remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-08",
+      "number": 8,
+      "title": "管理员路径持久化与安全校验",
+      "work_item_ids": [
+        "FUNC-003"
+      ],
+      "issue_numbers": [
+        145
+      ],
+      "milestone": "M1",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Local API tests pass for persisted secure path routing, normalization bypass rejection, authorization and path switching; process-restart browser acceptance and candidate governance remain pending.",
+      "completion_criteria": "Verify restart persistence, invalid/reserved paths, unauthorized access, old-path behavior and public routing.",
+      "entrypoint": "internal/config/config.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran go test ./internal/config ./internal/httpapi -run Test.*(Admin|Path|SafeAccess|Route|Access) -count=1: both packages passed locally. Restart persistence, invalid/reserved path matrix, public routing and candidate-bound evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 targeted HTTP API tests passed for legacy path validation, persisted modern admin path routing, normalized traversal/double-slash rejection and authorized path switching. A real process restart and browser route acceptance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the config/path/API matrix: PASS across 3 config tests and 6 HTTP API tests. It covered entropy/reserved/unsafe path validation, active-path routing, traversal normalization, authorization and atomic path switching. The admin-secure-path browser test was attempted on chromium and mobile but timed out in finally while reading the rotated-path API (90s each); restart/browser acceptance is therefore NOT RUN/blocked by the harness cleanup path."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-09",
+      "number": 9,
+      "title": "用户生命周期和提现台账",
+      "work_item_ids": [
+        "FUNC-001",
+        "FUNC-002"
+      ],
+      "issue_numbers": [
+        114,
+        115
+      ],
+      "milestone": "M1",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_governance",
+      "finding": "Lifecycle, authorization, anonymization, credential revocation and concurrent/idempotent withdrawal tests pass locally; local work-item and remote Issue status drift still needs governance reconciliation.",
+      "completion_criteria": "Verify agreed D-011/D-012 semantics, concurrent/idempotent money changes, credential revocation, restore and anonymization.",
+      "entrypoint": "internal/store/user_lifecycle.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran go test ./internal/httpapi ./internal/store -run Test.*(UserLifecycle|Lifecycle|Withdraw|Withdrawal|AdminPath|SafeAccess) -count=1: both packages passed locally. Confirmed D-011/D-012 semantics, concurrency/idempotency and anonymization acceptance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 the targeted store/API matrix passed. It covered commission-withdrawal and lifecycle/ownership top-level tests in store plus withdrawal authorization and lifecycle HTTP tests, including duplicate receipts, concurrent terminal outcomes, rollback, credential revocation, restore and anonymization. Governance status reconciliation remains pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the focused lifecycle ownership/privacy store tests: PASS, 6 tests (Go test 1.493s). Credential revocation, recovery preservation, cancellation/in-flight CSV invalidation, mailbox ownership across email change/reuse and owned historical mail anonymization remain current local evidence; candidate governance and external acceptance remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-10",
+      "number": 10,
+      "title": "邮件队列、取消通知和凭据清理",
+      "work_item_ids": [
+        "FUNC-002"
+      ],
+      "issue_numbers": [
+        115
+      ],
+      "milestone": "M1",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Sandbox SMTP and worker tests plus queue cancellation, ownership and privacy tests pass locally; final candidate-bound evidence remains pending.",
+      "completion_criteria": "Prove disabled/anonymized users cannot receive stale queued notifications or retain credentials; sandbox sends only.",
+      "entrypoint": "internal/mailer/worker.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran go test ./internal/mailer ./internal/store -run TestWorkerDoesNotDeliverTicketMailCancelledAfterClaim|TestUserLifecycle(CancelsNotificationsAndInvalidatesInFlightCSV|AnonymizesHistoricalTicketMailWithoutChangingOtherRecipients|AnonymizesNotificationErrorsAndOnlyOwnedBulkFailure|AuthMailOwnershipSurvivesEmailChange|RegistrationMailboxReuseDoesNotAdoptUnknownHistory) -count=1 -v: all selected tests passed. Covered post-claim cancellation, lifecycle cancellation/in-flight CSV invalidation, owned mail/error anonymization, email-change ownership, and mailbox-reuse isolation. Sandbox delivery/concurrency breadth and candidate-bound CI evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 ran go test ./internal/mailer -run Test(Worker|SMTPSender) -count=1 -v: PASS, 7 top-level tests. Sandbox SMTP, encrypted one-time content, post-claim cancellation, bounded retry and both reminder kinds passed; matching store queue/lifecycle tests also passed in the targeted store matrix."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran go test ./internal/mailer -run '^Test(Worker|SMTPSender)' -count=1 -v: PASS, 7 top-level tests (Go test 1.907s). UTF-8 SMTP safety, encrypted one-time delivery, cancellation after claim, bounded retries and both reminder classes passed in the sandbox; no production SMTP was contacted."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-11",
+      "number": 11,
+      "title": "节点双向认证与运行时 telemetry",
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issue_numbers": [
+        121
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "passed_local",
+      "acceptance": "pending_governance",
+      "finding": "V1/V2 HTTP and WebSocket authentication, credential fencing, runtime ownership, telemetry persistence and schema-v60 validation pass locally; remote Issue and local work-item status still disagree.",
+      "completion_criteria": "Verify V1/V2 compatibility, unauthorized rejection, secret-free telemetry and runtime recovery.",
+      "entrypoint": "internal/httpapi/node_auth_telemetry.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran go test ./internal/httpapi -run Test.*Node.*(Auth|Telemetry)|TestNode -count=1: PASS at local candidate; V1/V2 matrix, runtime recovery and CI-bound candidate evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 targeted store and HTTP API matrices passed: telemetry persistence/schema checks, legacy authentication throttling, V1/V2 HTTP authorization, runtime ownership, and machine/legacy WebSocket credential fencing. Candidate-bound CI and governance reconciliation remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the node auth/telemetry matrix: PASS, 7 HTTP API tests (Go test 1.792s). It covered authentication throttling and negative IDs, telemetry coalescing/persistence, runtime ownership and field limits, plus legacy WebSocket fencing. Remote node recovery and candidate/governance binding remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-12",
+      "number": 12,
+      "title": "节点 release 包校验、隔离和可见性控制",
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issue_numbers": [
+        121
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Local release handler tests pass for configured-root serving, required checksums, unsafe names, traversal and symlink rejection; signature policy and actual archive extraction limits remain outside this handler's verified surface.",
+      "completion_criteria": "Verify checksum/signature policy, archive path limits, authorization, visibility and isolation.",
+      "entrypoint": "internal/httpapi/node_release_handlers.go",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran go test ./internal/httpapi -run Test.*Node.*Release|TestNodeRelease|Test.*Release -count=1: PASS at local candidate; archive/path/visibility isolation and CI-bound candidate evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "At backend HEAD faea5acd1c777add2f2a4a68f880bb4281335c13 ran the four NodeRelease HTTP tests: PASS. Verified configured-root manifest/artifact serving, checksum requirement, unsafe artifact-name rejection, traversal/symlink rejection and unconfigured-root failure. No signature or archive extraction implementation was identified by this handler matrix, so those acceptance clauses remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-13",
+      "number": 13,
+      "title": "管理员导航和 Dashboard",
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "issue_numbers": [
+        123
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Admin dashboard and App changes exist in the branch diff; live Chromium navigation and responsive shell acceptance now pass, while role-specific dashboard API/error/empty-state coverage remains partial.",
+      "completion_criteria": "Verify role-based navigation, actual API data, error/empty states and responsive rendering.",
+      "entrypoint": "web/src/features/system/AdminDashboardPage.tsx",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec vitest run src/features/admin/AdminResources.test.tsx src/features/servers/ServerManagementPage.test.tsx src/features/system/SystemOperationsPage.test.tsx --reporter=verbose: 3 test files and 13 tests passed. Admin resource modal/error behavior and system dashboard runtime/queue/audit filtering are covered; live role navigation, responsive browser acceptance and candidate-bound CI evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts --project chromium --project mobile-chromium: 3 applicable tests passed (3 skipped by project filters). Verified grouped admin navigation, desktop/tablet placement, mobile visibility and no document-level horizontal overflow. Dashboard role/API/empty-state acceptance remains partial."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "After clearing unused App lazy imports and stabilizing dashboard time/filter derivations, pnpm --dir web run lint, pnpm --dir web run typecheck and pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts --project chromium --project mobile-chromium all passed. Dashboard live API/error/empty-state role matrix remains pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-14",
+      "number": 14,
+      "title": "服务器管理页面",
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issue_numbers": [
+        121
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Server page targeted tests pass for CRUD, assignment, schedule lifecycle, error handling and filters; mobile browser and candidate-bound acceptance remain pending.",
+      "completion_criteria": "Compare legacy fields/actions and validate create/edit/delete boundaries, API errors and mobile layout.",
+      "entrypoint": "web/src/features/servers/ServerManagementPage.tsx",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec vitest run src/features/servers/ServerManagementPage.test.tsx --reporter=verbose: 1 test file and 7 server management tests passed, covering repeated drawer lifecycle, nested schedule modal, Escape/focus restoration, machine CRUD, node assignment, legacy schedule conversion, save failure and overview filters/trends. Mobile browser acceptance and candidate-bound CI evidence remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Current frontend typecheck and build also pass at candidate HEAD faea5acd1c777add2f2a4a68f880bb4281335c13; no server-management browser acceptance was claimed."
+        },
+    {
+      "date": "2026-09-17",
+      "action": "pnpm --dir web run lint and pnpm --dir web run typecheck pass after the pagination-reset lint clarification; ServerManagementPage targeted tests pass 8/8. Mobile server-management browser acceptance remains pending."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Updated stale browser selectors to the current server table rows, refreshed after API-created fixtures, and aligned the high-load/node filters with the current controls. pnpm --dir web exec playwright test e2e/machine-management.spec.ts --project chromium --project mobile-chromium: 2 tests passed; pnpm --dir web exec playwright test e2e/server-schedule.spec.ts --project chromium --project mobile-chromium: 2 tests passed. This is current-worktree browser evidence for CRUD, load/status filters, assignment and nested schedule behavior; candidate-bound and legacy visual acceptance remain pending."
+    }
+      ]
+    },
+    {
+      "id": "AUD18-15",
+      "number": 15,
+      "title": "节点管理页面和新增节点弹窗",
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issue_numbers": [
+        121
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "implemented_local",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Advanced protocol modal and node form integration are committed at 5dfa4527; targeted component/node tests, lint and typecheck pass locally, while browser interaction and candidate acceptance remain pending.",
+      "completion_criteria": "Reconcile uncommitted ownership, then verify protocol forms, persistence, permissions and responsive interaction.",
+      "entrypoint": "web/src/features/nodes/NodeDefinitionModal.tsx",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec vitest run src/features/nodes/NodeManagementPage.test.tsx --reporter=verbose: 1 test file and 12 node management tests passed. Covered legacy protocol defaults/order, table/filter/pagination, visibility revision, CRUD/copy/order persistence, parent search and stale-option handling, advanced transport fields, and destructive-action failures. User-owned modal files remain uncommitted; mobile browser and candidate-bound CI acceptance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Full pnpm --dir web test initially exposed a 5-second timeout in the advanced JSON/DNS case under suite load; replaced only non-interactive long text entry with fireEvent.change, preserving all assertions. Reran the focused file (13/13 PASS) and full suite (43 files, 187 tests PASS)."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec eslint src/features/nodes/NodeDefinitionModal.tsx src/features/nodes/AdvancedProtocolModal.tsx, pnpm --dir web exec vitest run src/features/nodes/NodeManagementPage.test.tsx --reporter=dot, and pnpm --dir web run typecheck: all PASS. Lint fixes only remove unused helpers and add unknown-to-record validation; the user-owned node files remain uncommitted."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "The shared frontend lint and typecheck gates now pass after preserving the uncommitted node modal edits; build also passes with the configured entry budget. Browser interaction for the advanced modal remains unverified."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Added AdvancedProtocolModal.test.tsx and committed the advanced node protocol editor plus styles at 5dfa4527. Focused NodeManagementPage and AdvancedProtocolModal tests pass 15/15; targeted ESLint and frontend typecheck pass. Tests cover invalid/valid outbound and route JSON, TLS mode/domain, MUX enablement/protocol/connection count, save payloads and close behavior. Browser interaction, permission/API persistence and candidate-bound acceptance remain pending."
+        },
+        {
+          "date": "2026-09-16",
+          "action": "Ran pnpm --dir web exec playwright test e2e/nodes.spec.ts --project chromium --project mobile-chromium: 8/8 PASS after commit 2788a659. The run covered visibility, CRUD/edit/copy/reorder/bulk actions, remote parent selection, all protocol persistence/reopen flows and desktop/mobile viewport checks. Root fixes were URL-cache invalidation for GET-prefixed keys and a unique navigation group accessible name; browser parity against the legacy oracle and candidate-bound CI remain pending."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-16",
+      "number": 16,
+      "title": "用户门户和礼品卡页面",
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issue_numbers": [
+        120
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed_uncommitted",
+      "verification": "passed_local",
+      "migration": "not_applicable",
+      "acceptance": "pending_candidate",
+      "finding": "Portal and gift-card targeted tests pass locally. The current worktree now passes the administrator-to-user gift-card lifecycle in desktop and mobile Chromium, including CSV export, disable/enable, preview, redeem, history refresh and repeat-use rejection; user-owned management-page/style edits remain uncommitted, so candidate-bound acceptance is pending.",
+      "completion_criteria": "Verify user isolation, giftcard redemption/idempotency, actual API flow and legacy parity.",
+      "entrypoint": "web/src/features/giftcards/UserGiftCardPage.tsx",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec vitest run src/features/giftcards/GiftCardManagementPage.test.tsx src/features/giftcards/UserGiftCardPage.test.tsx src/features/user/UserPortal.test.tsx --reporter=verbose: 25 tests passed across 3 files. Covered portal navigation/logout failure, gift-card preview/eligibility/history errors, management tabs/forms/filters/pagination/export/generation and expiry fields. User-owned GiftCardManagementPage.tsx remains uncommitted; full API isolation/idempotency, mobile browser and candidate-bound CI acceptance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec eslint src/features/giftcards/GiftCardManagementPage.tsx: PASS. This validates the dirty management-page change syntactically; it does not establish legacy browser parity or a clean candidate commit."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Fixed user gift-card history cache invalidation after redemption in web/src/lib/api.ts and raised the mobile user portal topbar above its fixed sidebar so the collapse control remains usable. Added API cache regression coverage and mobile sidebar handling in the acceptance flow. pnpm --dir web exec vitest run src/lib/api.test.ts src/features/giftcards/UserGiftCardPage.test.tsx --reporter=dot: 16 tests passed; pnpm --dir web run build: PASS; pnpm --dir web exec playwright test e2e/zz-gift-cards.spec.ts --project chromium --project mobile-chromium: 2 tests passed. Candidate-bound acceptance remains pending because user-owned GiftCardManagementPage.tsx and styles.css edits are still uncommitted."
+        }
+      ]
+    },
+    {
+      "id": "AUD18-17",
+      "number": 17,
+      "title": "所有后台列表页宽度、自适应和窄屏行为",
+      "work_item_ids": [
+        "CI-001"
+      ],
+      "issue_numbers": [
+        127
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "passed_local",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "PR #224 width change passed CI; current local styles.css contains existing user edits plus a narrow-screen topbar overflow fix; grouped navigation browser checks pass, but per-page legacy visual acceptance is incomplete.",
+      "completion_criteria": "List every affected page; compare desktop/mobile with legacy; ensure internal table scrolling and no controls clipping.",
+      "entrypoint": "web/src/styles.css",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web run typecheck and pnpm --dir web run build: both passed. Build transformed 236 modules and entry budget check passed (index JS 274152 bytes raw, 78733 bytes gzip). This proves current local frontend compiles and meets the configured budget; per-page legacy visual comparison, narrow viewport browser acceptance and candidate-bound CI evidence remain pending."
+        },
+    {
+      "date": "2026-09-17",
+      "action": "Ran pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts --project chromium --project mobile-chromium: 3 applicable tests passed. The mobile run confirms documentElement.scrollWidth equals clientWidth after constraining the topbar/search/actions at max-width 720px; table overflow remains internal to the content surface. Full per-page visual parity remains pending."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Re-ran pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts --project chromium --project mobile-chromium against the current built worktree: 3 applicable tests passed and 3 project-filtered tests skipped. Desktop, mobile and tablet-shell checks confirm vertical navigation geometry and no document-level horizontal overflow; every backend list page still lacks a separate legacy screenshot/interaction comparison, so acceptance remains pending."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Extended current browser checks to plans, users and tickets. Plans passed on desktop/mobile; users passed on desktop/mobile after the mobile acceptance flow explicitly collapsed the overlay sidebar; tickets passed on desktop. Mobile tickets still fail at native pointer interaction because responsive table cells/row actions intercept the ticket-detail button, so narrow-screen list acceptance remains partial and no legacy visual parity is claimed."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Fixed the mobile collapsed portal grid: when the sidebar is position:fixed, the collapsed layout now uses one content column; the mobile user ticket table also clears its desktop min-width constraint. Updated the viewport helper to ignore the intentionally off-canvas mobile brand. Rebuilt the frontend and ran e2e/tickets.spec.ts on chromium and mobile-chromium: 2/2 PASS. Per-page legacy visual comparison and candidate-bound CI remain pending."
+    }
+      ]
+    },
+    {
+      "id": "AUD18-18",
+      "number": 18,
+      "title": "完整 parity、浏览器、race、迁移和恢复验收",
+      "work_item_ids": [
+        "CI-001"
+      ],
+      "issue_numbers": [
+        127
+      ],
+      "milestone": "M3",
+      "status": "partial",
+      "scope": "original_task_breakdown",
+      "implementation": "reviewed",
+      "verification": "partial",
+      "migration": "not_assessed",
+      "acceptance": "pending",
+      "finding": "PR #224 normal CI passes; not proof for PR #211, full legacy parity or real disaster recovery.",
+      "completion_criteria": "Choose integrated candidate; run complete applicable parity/browser/race/migration/restore matrix; resolve release gates.",
+      "entrypoint": ".github/workflows/legacy-parity.yml",
+      "history": [
+        {
+          "date": "2026-09-16",
+          "action": "Recovered original item; triaged source and governance state; no new functional test claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran go test -race ./internal/store ./internal/httpapi -count=1: NOT RUN (exit 1) because runtime/cgo could not find gcc in PATH. No race acceptance is claimed; install/configure an authorized C compiler or use CI, then rerun on the selected candidate."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web run typecheck and pnpm --dir web run build: both passed; Vite transformed 236 modules and the entry budget check passed. This is current local build evidence only. Full parity/browser, migration/recovery matrix and single-candidate governance closure remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web test -- --reporter=dot after the focused test reliability fix: PASS, 43 test files and 187 tests. The suite is frontend-only; legacy browser parity, Go race (blocked by missing gcc), migration/recovery and candidate-bound governance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran go test ./... at the current local source tree: PASS across all Go packages, including cmd/xboard, httpapi, legacymigration, mailer, store and webui. This is non-race local evidence; race, browser parity, disaster recovery and exact candidate governance remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts --project chromium --project mobile-chromium: 3 applicable tests passed. A broader 48-test Chromium run was started but interrupted after baseline failures in account-security/admin-resources/secure-path/captcha; it is not accepted as a complete browser matrix."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web run lint: FAIL, exit 1, with 42 errors and 1 warning. Failures span existing App/dashboard/settings code and in-progress node files (including untracked AdvancedProtocolModal.tsx); this audit does not claim a green lint gate."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Re-ran pnpm --dir web run lint after scoped cleanup: PASS with no diagnostics. Also ran pnpm --dir web run typecheck, pnpm --dir web run build (235 modules; initial JS 273138 raw / 78605 gzip, budget passed), targeted ServerManagementPage 8/8, and admin navigation Chromium/mobile 3 applicable tests passed. Go race, full parity, migration/recovery and governance candidate binding remain pending."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Re-ran go test ./... at HEAD 0c84ab7c: PASS across all Go packages, including projectgovernance, cmd/xboard, httpapi, legacymigration, mailer, store and webui. The result is current non-race local evidence; gcc/race, external parity, recovery and stale governance evidence remain unresolved."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Re-ran go test -race ./internal/store ./internal/httpapi -count=1 at HEAD 82eda4f3: NOT RUN, exit 1, because runtime/cgo could not find C compiler gcc in PATH. No race acceptance is claimed."
+        },
+        {
+          "date": "2026-09-17",
+          "action": "Ran pnpm --dir web test -- --reporter=dot at HEAD e0b01762: PASS, 43 test files and 187 tests in 215.72s. This is current frontend unit evidence; browser parity, race, migration/recovery and governance candidate closure remain pending."
+        },
+    {
+      "date": "2026-09-16",
+      "action": "Re-ran go test ./... at HEAD c1e1ccaaedaf35e4de34515b01e8139a9e018973: PASS across all Go packages. This confirms the current non-race Go regression after the latest workflow and governance documentation changes; race, external parity, migration/recovery and candidate-bound governance remain pending."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Current-worktree browser evidence expanded: gift-card desktop/mobile lifecycle 2/2 passed; server-management machine lifecycle 2/2 passed; nested schedule modal 2/2 passed; admin navigation 3 applicable tests passed. These are local browser checks only. Governance check still fails on stale evidence, race remains blocked by missing gcc, and full legacy parity/migration/recovery remain NOT RUN."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Ran pnpm --dir web run typecheck: PASS. Ran pnpm --dir web test -- --reporter=dot: PASS, 44 test files and 190 tests in 174.65s. This updates current frontend regression evidence only; Go race, legacy parity, migration/recovery and governance candidate closure remain pending."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "Built the current frontend successfully (235 modules; initial JS 273337 bytes raw / 78653 bytes gzip). In the combined users/tickets browser run, chromium users and tickets passed and mobile users passed; mobile tickets failed after reaching the ticket list because the responsive row action could not receive a native pointer click. The mobile failure is retained as an unresolved acceptance blocker rather than bypassed with force-click."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "After the mobile single-column and table-width fixes, reran the built-worktree browser matrix: e2e/tickets.spec.ts chromium/mobile 2/2 PASS; e2e/users.spec.ts and e2e/plans.spec.ts chromium/mobile 4/4 PASS. This proves current-worktree desktop/mobile flows for tickets, users and plans; full legacy parity, candidate governance, race and migration/recovery gates remain incomplete."
+    },
+    {
+      "date": "2026-09-17",
+      "action": "At current HEAD 48ae1b45 ran go test ./...: PASS across all Go packages (command wall time 49.131s). This is current non-race backend evidence; go test -race remains unavailable because runtime/cgo cannot find gcc, and candidate governance, legacy parity, migration/recovery and deployment gates remain open."
+    }
+      ]
+    }
+  ]
+}
