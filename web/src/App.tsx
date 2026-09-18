@@ -322,6 +322,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
                   <button
                     type="button"
                     className="nav-group-header"
+                    aria-label={`${group.title} 菜单`}
                     onClick={() => toggleGroup(group.id)}
                     aria-expanded={isExpanded}
                     aria-controls={`admin-group-${group.id}`}
@@ -355,7 +356,6 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             })}
           </div>
         </nav>
-        <button className="admin-distributor-entry button secondary" onClick={() => navigateAdminPage("distributors")}>分销管理</button>
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
             {activeConfigTab !== undefined && <SystemConfigShell

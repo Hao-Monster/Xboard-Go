@@ -66,7 +66,7 @@ describe("App public identity bootstrap", () => {
 		expect(navigation.parentElement).toHaveClass("admin-layout");
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
-		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
+		expect(screen.queryByRole("button", { name: "分销管理" })).not.toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
@@ -523,7 +523,7 @@ describe("App public identity bootstrap", () => {
     for (const removed of ["个人中心", "账号安全", "邮件设置", "分销管理", "节点网络", "订阅财务", "用户支持"]) {
       expect(within(sidebar).queryByText(removed)).not.toBeInTheDocument();
     }
-    const group = within(sidebar).getByRole("button", { name: "系统管理" });
+    const group = within(sidebar).getByRole("button", { name: "系统管理 菜单" });
     await userEvent.click(group);
     expect(group).toHaveAttribute("aria-expanded", "false");
     expect(within(sidebar).queryByRole("button", { name: "系统配置" })).not.toBeInTheDocument();
