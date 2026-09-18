@@ -68,14 +68,7 @@ test("visitor registers with the legacy one-time email code through Mailpit", as
       smtp_from_address: "support@xboard-go.local"
     });
 
-    await page.getByRole("button", { name: "系统配置" }).click();
-    await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
-    const emailVerification = page.getByRole("checkbox", { name: "邮箱验证" });
-    if (!(await emailVerification.isChecked())) await emailVerification.click();
-    const saveResponse = page.waitForResponse((response) => response.url().endsWith(adminAPIPath("/api/v1/admin/site-settings")) && response.request().method() === "PUT");
-    await page.getByRole("button", { name: "保存站点设置" }).click();
-    expect((await saveResponse).status()).toBe(200);
-    await expect(page.getByRole("status")).toHaveText("站点设置已保存");
+    await saveSiteSettings(page, { ...originalSite, email_verify: true, revision: originalSite.revision });
     await logoutAndWait(page);
 
     await page.goto("/#/register");
