@@ -27,6 +27,10 @@ jobs:
       packaged_browser: ${{ steps.detect.outputs.packaged_browser }}
       split_runtime: ${{ steps.detect.outputs.split_runtime }}
       supply_chain: ${{ steps.detect.outputs.supply_chain }}
+      run_go: ${{ steps.detect.outputs.run_go }}
+      run_web: ${{ steps.detect.outputs.run_web }}
+      run_browser_smoke: ${{ steps.detect.outputs.run_browser_smoke }}
+      run_full_regression: ${{ steps.detect.outputs.run_full_regression }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -348,31 +352,31 @@ jobs:
         working-directory: web
     steps:
       - name: Skip web verification
-        if: needs.detect-changes.outputs.frontend != 'true'
+        if: needs.detect-changes.outputs.run_web != 'true'
         run: echo "Skipping web verification (no frontend changes)"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: needs.detect-changes.outputs.frontend == 'true'
+        if: needs.detect-changes.outputs.run_web == 'true'
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
-        if: needs.detect-changes.outputs.frontend == 'true'
+        if: needs.detect-changes.outputs.run_web == 'true'
         with:
           package_json_file: web/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        if: needs.detect-changes.outputs.frontend == 'true'
+        if: needs.detect-changes.outputs.run_web == 'true'
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm install --frozen-lockfile
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm typecheck
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm lint
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm test:coverage
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm build
-      - if: needs.detect-changes.outputs.frontend == 'true'
+      - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm audit --audit-level high
 
   browser:
@@ -383,33 +387,37 @@ jobs:
         working-directory: web
     steps:
       - name: Skip browser verification
-        if: needs.detect-changes.outputs.browser != 'true'
-        run: echo "Skipping browser E2E verification (no frontend or HTTP API changes)"
+        if: needs.detect-changes.outputs.run_browser_smoke != 'true'
+        run: echo "Skipping browser E2E verification (no browser smoke or full regression trigger)"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: needs.detect-changes.outputs.browser == 'true'
+        if: needs.detect-changes.outputs.run_browser_smoke == 'true'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        if: needs.detect-changes.outputs.browser == 'true'
+        if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         with:
           go-version-file: go.mod
           cache: true
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
-        if: needs.detect-changes.outputs.browser == 'true'
+        if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         with:
           package_json_file: web/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        if: needs.detect-changes.outputs.browser == 'true'
+        if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - if: needs.detect-changes.outputs.browser == 'true'
+      - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm install --frozen-lockfile
-      - if: needs.detect-changes.outputs.browser == 'true'
+      - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm build
-      - if: needs.detect-changes.outputs.browser == 'true'
+      - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm exec playwright install --with-deps chromium
-      - if: needs.detect-changes.outputs.browser == 'true'
+      - name: Run full browser regression
+        if: needs.detect-changes.outputs.run_full_regression == 'true'
         run: pnpm test:e2e
+      - name: Run browser smoke suite
+        if: needs.detect-changes.outputs.run_browser_smoke == 'true' && needs.detect-changes.outputs.run_full_regression != 'true'
+        run: pnpm exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium --project mobile-chromium
 
   packaged-browser:
     runs-on: ubuntu-latest

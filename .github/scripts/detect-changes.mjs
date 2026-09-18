@@ -66,6 +66,66 @@ const packagingTriggers = [
   "compose.local.yaml"
 ];
 
+const highRiskFrontendTriggers = [
+  "web/src/App.tsx",
+  "web/src/lib/",
+  "web/src/features/auth/",
+  "web/src/features/settings/",
+  "web/e2e/"
+];
+
+const fullRegressionFrontendTriggers = [
+  "web/src/App.tsx",
+  "web/src/routes/",
+  "web/src/auth/"
+];
+
+const highRiskBackendTriggers = [
+  "internal/security/",
+  "internal/model/",
+  "internal/database/",
+  "internal/ratelimit/",
+  "internal/devicestate/",
+  "internal/store/",
+  "internal/testdata/legacy/",
+  "internal/legacymigration/"
+];
+
+const fullRegressionDependencyTriggers = [
+  "go.mod",
+  "go.sum",
+  "web/package.json",
+  "web/pnpm-lock.yaml"
+];
+
+function matchesPrefix(file, prefixes) {
+  return prefixes.some((prefix) => file === prefix || file.startsWith(prefix));
+}
+
+function fullRegressionResult() {
+  return {
+    all: "true",
+    backend: "true",
+    backend_all: "true",
+    backend_store: "true",
+    backend_xboard: "true",
+    backend_services_a: "true",
+    backend_services_b: "true",
+    backend_remainder: "true",
+    migration_drill: "true",
+    real_client_compat: "true",
+    frontend: "true",
+    browser: "true",
+    packaged_browser: "true",
+    split_runtime: "true",
+    supply_chain: "true",
+    run_go: "true",
+    run_web: "true",
+    run_browser_smoke: "true",
+    run_full_regression: "true"
+  };
+}
+
 export function analyzeChangeSet(rawFiles) {
   const files = (rawFiles ?? [])
     .map((f) => f.trim().replace(/\\/g, "/"))
@@ -73,23 +133,7 @@ export function analyzeChangeSet(rawFiles) {
 
   // If no files were detected or diff failed, fail-safe to running all tests
   if (files.length === 0) {
-    return {
-      all: "true",
-      backend: "true",
-      backend_all: "true",
-      backend_store: "true",
-      backend_xboard: "true",
-      backend_services_a: "true",
-      backend_services_b: "true",
-      backend_remainder: "true",
-      migration_drill: "true",
-      real_client_compat: "true",
-      frontend: "true",
-      browser: "true",
-      packaged_browser: "true",
-      split_runtime: "true",
-      supply_chain: "true"
-    };
+    return fullRegressionResult();
   }
 
   const isFullRegression = files.some((f) =>
@@ -97,23 +141,7 @@ export function analyzeChangeSet(rawFiles) {
   );
 
   if (isFullRegression) {
-    return {
-      all: "true",
-      backend: "true",
-      backend_all: "true",
-      backend_store: "true",
-      backend_xboard: "true",
-      backend_services_a: "true",
-      backend_services_b: "true",
-      backend_remainder: "true",
-      migration_drill: "true",
-      real_client_compat: "true",
-      frontend: "true",
-      browser: "true",
-      packaged_browser: "true",
-      split_runtime: "true",
-      supply_chain: "true"
-    };
+    return fullRegressionResult();
   }
 
   const backendAll = files.some((f) =>
@@ -189,6 +217,16 @@ export function analyzeChangeSet(rawFiles) {
     dependencyTriggers.some((prefix) => f === prefix || f.startsWith(prefix))
   );
 
+  const runGo = backend;
+  const runWeb = frontend;
+  const runBrowserSmoke =
+    files.some((f) => matchesPrefix(f, highRiskFrontendTriggers)) ||
+    files.some((f) => f.startsWith("internal/httpapi/"));
+  const runFullRegression =
+    files.some((f) => matchesPrefix(f, highRiskBackendTriggers)) ||
+    files.some((f) => matchesPrefix(f, fullRegressionFrontendTriggers)) ||
+    files.some((f) => matchesPrefix(f, fullRegressionDependencyTriggers));
+
   return {
     all: "false",
     backend: String(backend),
@@ -204,7 +242,11 @@ export function analyzeChangeSet(rawFiles) {
     browser: String(browser),
     packaged_browser: String(packagedBrowser),
     split_runtime: String(splitRuntime),
-    supply_chain: String(supplyChain)
+    supply_chain: String(supplyChain),
+    run_go: String(runGo),
+    run_web: String(runWeb),
+    run_browser_smoke: String(runBrowserSmoke),
+    run_full_regression: String(runFullRegression)
   };
 }
 
