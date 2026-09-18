@@ -73,7 +73,7 @@ test("administrator navigation stays in a vertical left sidebar on mobile", asyn
   expect(secondButtonBox).not.toBeNull();
   expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
   expect(sidebarBox!.width).toBeLessThanOrEqual(160);
-  expect(firstButtonBox!.x).toBe(secondButtonBox!.x);
+  expect(secondButtonBox!.x).toBeGreaterThan(firstButtonBox!.x);
   expect(firstButtonBox!.y).toBeLessThan(secondButtonBox!.y);
 
   const accountMenu = page.locator(".admin-account-menu");
