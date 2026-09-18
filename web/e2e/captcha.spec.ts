@@ -22,12 +22,13 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
     for (const [index, provider] of providers.entries()) {
       if (index === 0) {
         await page.getByRole("button", { name: "系统配置", exact: true }).click();
+        await page.getByRole("button", { name: "安全设置", exact: true }).click();
         await page.getByRole("checkbox", { name: "验证码" }).check();
         await page.getByLabel("验证码类型").selectOption(provider.type);
         await page.getByLabel("reCAPTCHA v2 站点密钥").fill(provider.site);
         await page.getByLabel("reCAPTCHA v2 服务端密钥").fill(provider.secret);
         const updateResponse = page.waitForResponse((response) => response.url().endsWith(adminAPIPath("/api/v1/admin/site-settings")) && response.request().method() === "PUT");
-        await page.getByRole("button", { name: "保存站点设置" }).click();
+        await page.getByRole("button", { name: "保存安全设置" }).click();
         const update = await updateResponse;
         expect(update.status()).toBe(200);
         const updateBody = await update.text();
