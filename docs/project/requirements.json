@@ -824,7 +824,7 @@
       "title": "删除用户会影响订单、邀请码、统计和工单；新系统必须在删除前展示影响并使用事务/软删除或经确认的保留策略。",
       "scope_status": "decided",
       "implementation_status": "implemented",
-      "verification_status": "current",
+      "verification_status": "historical",
       "migration_status": "current",
       "acceptance_status": "pending",
       "milestone": "M1",
@@ -2554,6 +2554,21 @@
           "commit": "cb386f5535d52f38b79852ba6af287454503814b",
           "observed_at": "2026-09-08T09:22:46Z",
           "command": "pnpm --dir web test:e2e",
+          "result": "pass"
+        },
+        {
+          "id": "EV-FIN-001-25895F8-STORE-GAPS",
+          "kind": "integration",
+          "environment": "bingo-dev",
+          "case_ids": [
+            "TestCommissionWithdrawalTerminalReplayWinsOverDifferentActiveRequest",
+            "TestCommissionWithdrawalPaidTerminalReplayWinsOverDifferentActiveRequest",
+            "TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift"
+          ],
+          "artifact": "bingo-dev:sha256:89c41622c53125a18a3e05af064203a8d106020e2869678f3e4226d14e69d338",
+          "commit": "25895f86585042bf729dcf06eceb321120f95389",
+          "observed_at": "2026-09-09T10:00:12+08:00",
+          "command": "GOPROXY=off go test -race -count=1 -timeout=10m -json ./internal/store ./internal/legacymigration -run '^(TestCommissionWithdrawalTerminalReplayWinsOverDifferentActiveRequest|TestCommissionWithdrawalPaidTerminalReplayWinsOverDifferentActiveRequest|TestLegacyCommissionImportFreezesAndRejectsWithoutMoneyDrift)$'",
           "result": "pass"
         }
       ]

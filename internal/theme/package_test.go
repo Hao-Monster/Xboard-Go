@@ -144,6 +144,55 @@ func TestParseArchiveRejectsSymlinkCompressionBombAndEntryFlood(t *testing.T) {
 	})
 }
 
+func TestParseArchiveRejectsNormalizedDirectoryFileAmbiguity(t *testing.T) {
+	tests := []struct {
+		name        string
+		makeArchive func(t testing.TB) []byte
+	}{
+		{
+			name: "directory and file with same normalized path",
+			makeArchive: func(t testing.TB) []byte {
+				var output bytes.Buffer
+				writer := zip.NewWriter(&output)
+				manifest, err := writer.Create("manifest.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = manifest.Write([]byte(validManifest("Collision", "1.0.0")))
+				directory := &zip.FileHeader{Name: "assets/preview.png/", Method: zip.Store}
+				directory.SetMode(os.ModeDir | 0o755)
+				if _, err := writer.CreateHeader(directory); err != nil {
+					t.Fatal(err)
+				}
+				asset, err := writer.Create("assets/preview.png")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = asset.Write(testPNG(t))
+				if err := writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				return output.Bytes()
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			archive := tc.makeArchive(t)
+			parsed, err := ParseArchive(archive)
+			if err == nil {
+				t.Fatal("ParseArchive() unexpectedly accepted ambiguous directory/file paths")
+			}
+			if !strings.Contains(err.Error(), "ambiguous paths") {
+				t.Fatalf("ParseArchive() unexpected error=%v", err)
+			}
+			if len(parsed.Assets) != 0 || parsed.Manifest.Name != "" || parsed.ManifestJSON != nil {
+				t.Fatalf("ParseArchive() unexpectedly returned partial package: %#v", parsed)
+			}
+		})
+	}
+}
+
 func FuzzParseArchiveNeverPanics(f *testing.F) {
 	f.Add([]byte("not a zip"))
 	f.Add(themeArchive(f, validManifest("FuzzSeed", "1.0.0"), map[string][]byte{"assets/preview.png": testPNG(f)}))

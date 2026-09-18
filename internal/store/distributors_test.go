@@ -27,14 +27,14 @@ func TestCreateDistributorOrderBuildsIndependentCompletedSubscription(t *testing
 		created.Order.TotalAmount != 100_000 || created.Order.OriginalAmount != 100_000 || created.Order.DistributorOrderID == nil ||
 		*created.Order.DistributorOrderID != created.Subscription.ID || created.Subscription.CustomerName != nil ||
 		created.Subscription.DeliveryStatus != DistributorDeliveryPending || created.Subscription.SettlementStatus != DistributorSettlementUnsettled {
-		t.Fatalf("created distributor order = %#v", created)
+		t.Fatal("created distributor order did not preserve completed new-order and pending-delivery invariants")
 	}
 	if created.Subscription.SubscriptionToken == "" || created.Subscription.SubscriberUUID == "" || created.Subscription.ClaimToken == "" {
-		t.Fatalf("created secret identities were not generated: %#v", created.Subscription)
+		t.Fatal("created subscription did not generate every required secret identity")
 	}
 	account, err := database.FindSubscriptionAccount(ctx, created.Subscription.SubscriptionToken)
 	if err != nil || account.ID != created.Subscription.SubscriberUserID {
-		t.Fatalf("internal subscription token lookup = %#v err=%v", account, err)
+		t.Fatal("internal subscription token did not resolve its generated subscriber")
 	}
 	encoded, err := json.Marshal(created)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestCreateDistributorOrderBuildsIndependentCompletedSubscription(t *testing
 	}
 	if strings.Contains(string(encoded), created.Subscription.SubscriptionToken) || strings.Contains(string(encoded), created.Subscription.SubscriberUUID) ||
 		strings.Contains(string(encoded), created.Subscription.ClaimToken) {
-		t.Fatalf("serialized distributor response exposed a secret: %s", encoded)
+		t.Fatal("serialized distributor response exposed a secret identity")
 	}
 	var kind string
 	var planID, transferEnable, expiredAt int64
@@ -67,11 +67,14 @@ func TestCreateDistributorOrderBuildsIndependentCompletedSubscription(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Subscription.SubscriberUserID == created.Subscription.SubscriberUserID ||
-		second.Subscription.SubscriptionToken == created.Subscription.SubscriptionToken ||
-		second.Subscription.SubscriberUUID == created.Subscription.SubscriberUUID ||
-		second.Subscription.CustomerName == nil || *second.Subscription.CustomerName != "客户甲" {
-		t.Fatalf("second purchase was not independent: first=%#v second=%#v", created.Subscription, second.Subscription)
+	sameSubscriberUser := second.Subscription.SubscriberUserID == created.Subscription.SubscriberUserID
+	sameSubscriptionToken := second.Subscription.SubscriptionToken == created.Subscription.SubscriptionToken
+	sameSubscriberUUID := second.Subscription.SubscriberUUID == created.Subscription.SubscriberUUID
+	sameClaimToken := second.Subscription.ClaimToken == created.Subscription.ClaimToken
+	invalidCustomerName := second.Subscription.CustomerName == nil || *second.Subscription.CustomerName != "客户甲"
+	if sameSubscriberUser || sameSubscriptionToken || sameSubscriberUUID || sameClaimToken || invalidCustomerName {
+		t.Fatalf("second purchase independence failed: same_subscriber_user=%t same_subscription_token=%t same_subscriber_uuid=%t same_claim_token=%t invalid_customer_name=%t",
+			sameSubscriberUser, sameSubscriptionToken, sameSubscriberUUID, sameClaimToken, invalidCustomerName)
 	}
 }
 

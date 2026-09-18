@@ -144,6 +144,7 @@ func TestRepresentativeLegacyMigrationDrill(t *testing.T) {
 		"legacy_migration_runs": len(steps),
 	})
 	assertOperationalProjection(t, sourcePath, targetPath, config.Now, results["operational-logs"])
+	assertRollbackRestoreSafety(t, ctx, directory, results["operational-logs"].RollbackBackup.Path)
 	restoredOperationalPath := filepath.Join(directory, "restored-before-operational.db")
 	if _, err := backup.Restore(ctx, results["operational-logs"].RollbackBackup.Path, restoredOperationalPath); err != nil {
 		t.Fatalf("restore pre-operational rollback: %v", err)
@@ -182,6 +183,43 @@ func TestRepresentativeLegacyMigrationDrill(t *testing.T) {
 		"legacy_migration_runs": 0,
 	})
 	assertLegacyIdentitiesAbsent(t, restoredInitialPath)
+}
+
+// assertRollbackRestoreSafety binds archive-integrity and no-overwrite checks
+// to a rollback artifact created by the real migration CLI, not a fixture made
+// directly by the backup package.
+func assertRollbackRestoreSafety(t *testing.T, ctx context.Context, directory, rollbackPath string) {
+	t.Helper()
+	archive, err := os.ReadFile(rollbackPath)
+	if err != nil {
+		t.Fatalf("read operational rollback backup: %v", err)
+	}
+	corrupt := append([]byte(nil), archive...)
+	corrupt[len(corrupt)/2] ^= 0xff
+	corruptPath := filepath.Join(directory, "corrupt-operational-rollback.xbbackup")
+	if err := os.WriteFile(corruptPath, corrupt, 0o600); err != nil {
+		t.Fatalf("write corrupt operational rollback backup: %v", err)
+	}
+	corruptDestination := filepath.Join(directory, "corrupt-rollback-restore.db")
+	if _, err := backup.Restore(ctx, corruptPath, corruptDestination); err == nil {
+		t.Fatal("Restore() accepted a corrupted migration rollback backup")
+	}
+	if _, err := os.Stat(corruptDestination); !os.IsNotExist(err) {
+		t.Fatalf("corrupted rollback restore published destination: %v", err)
+	}
+
+	existingDestination := filepath.Join(directory, "existing-rollback-restore.db")
+	const sentinel = "synthetic-do-not-overwrite"
+	if err := os.WriteFile(existingDestination, []byte(sentinel), 0o600); err != nil {
+		t.Fatalf("write existing restore destination: %v", err)
+	}
+	if _, err := backup.Restore(ctx, rollbackPath, existingDestination); err == nil {
+		t.Fatal("Restore() overwrote an existing migration rollback destination")
+	}
+	content, err := os.ReadFile(existingDestination)
+	if err != nil || string(content) != sentinel {
+		t.Fatalf("existing restore destination changed: content=%q err=%v", content, err)
+	}
 }
 
 func initializeTarget(t *testing.T, ctx context.Context, targetPath string) {
