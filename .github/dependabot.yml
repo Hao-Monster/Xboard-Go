@@ -5,13 +5,34 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      go-runtime-security:
+        patterns:
+          - golang.org/x/*
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      frontend-react-runtime:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+      frontend-tooling:
+        patterns:
+          - vite
+          - '@vitejs/*'
+          - eslint
+          - '@types/node'
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - '*'
