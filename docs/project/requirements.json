@@ -2,7 +2,7 @@
   "schema_version": 1,
   "baseline": "M0",
   "as_of": "2026-09-08",
-  "baseline_commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+  "baseline_commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
   "source": "Canonicalized from local docs-dev/02-functional-requirements.md after review; historical implementation claims are not current acceptance evidence.",
   "requirements": [
     {
@@ -710,7 +710,7 @@
             "TestUserLifecycleMailOwnershipSchemaRejectsWeakenedProtection"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:30:43Z",
           "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -724,7 +724,7 @@
             "TestUserLifecycleHTTPExplicitAnonymizationAfterDeadline"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:19:03Z",
           "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -737,7 +737,7 @@
             "e2e/user-lifecycle.spec.ts:4"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:22:46Z",
           "command": "pnpm --dir web test:e2e",
           "result": "pass"
@@ -855,7 +855,7 @@
             "TestUserLifecycleMailOwnershipSchemaRejectsWeakenedProtection"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:30:43Z",
           "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -869,7 +869,7 @@
             "TestUserLifecycleHTTPExplicitAnonymizationAfterDeadline"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:19:03Z",
           "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -883,7 +883,7 @@
             "TestUserLifecycleCancelledBulkMailNeverReachesSender"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865221",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:18:51Z",
           "command": "GO_TEST_GROUP=services-b; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -896,7 +896,7 @@
             "TestUserLifecycleCancelledTelegramSnapshotNeverReachesTransport"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865003",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:16:25Z",
           "command": "GO_TEST_GROUP=remainder; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -910,7 +910,7 @@
             "src/features/users/UsersPage.test.tsx:50"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004864986",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:17:29Z",
           "command": "pnpm --dir web test:coverage",
           "result": "pass"
@@ -923,7 +923,7 @@
             "e2e/user-lifecycle.spec.ts:4"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:22:46Z",
           "command": "pnpm --dir web test:e2e",
           "result": "pass"
@@ -2512,7 +2512,7 @@
             "TestCommissionWithdrawalSchemaRejectsMissingOrWeakenedFinancialProtection"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:30:43Z",
           "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -2525,7 +2525,7 @@
             "TestCommissionWithdrawalHTTPFreezesApprovesPaysAndRejectsWithAuthorization"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865084",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:19:03Z",
           "command": "GO_TEST_GROUP=services-a; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -2538,7 +2538,7 @@
             "src/features/tickets/CommissionWithdrawalPanel.test.tsx"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004864986",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:17:29Z",
           "command": "pnpm --dir web test:coverage",
           "result": "pass"
@@ -2551,7 +2551,7 @@
             "e2e/commissions.spec.ts:31"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865037",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:22:46Z",
           "command": "pnpm --dir web test:e2e",
           "result": "pass"
@@ -6461,7 +6461,7 @@
             "TestReadOperationalLogsSnapshotCountsAllUserFactsWithoutIdentities"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865221",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:18:51Z",
           "command": "GO_TEST_GROUP=services-b; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -6484,7 +6484,7 @@
             "TestOperationalImportConcurrentConnectionsCommitOneReceipt"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865148",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:30:43Z",
           "command": "GO_TEST_GROUP=store; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -6499,7 +6499,7 @@
             "TestOperationalLogsCLIRejectsCorruptedRecordedBackupAndTarget"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865145",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:24:16Z",
           "command": "GO_TEST_GROUP=xboard; export XBOARD_TEST_REDIS_URL=redis://127.0.0.1:6379/15; mapfile -t packages < <(node .github/scripts/go-test-groups.mjs \"$GO_TEST_GROUP\"); go test -race -timeout=30m -coverprofile=\"coverage-${GO_TEST_GROUP}.out\" \"${packages[@]}\"",
           "result": "pass"
@@ -6512,7 +6512,7 @@
             "internal/testdata/legacy/drill:TestRepresentativeLegacyMigrationDrill"
           ],
           "artifact": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754/job/102004865096",
-          "commit": "fb894e75deb21cfb93d1f91bc777a56892ecae57",
+          "commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
           "observed_at": "2026-09-08T09:15:52Z",
           "command": "go test -timeout=10m ./internal/testdata/legacy/drill -run TestRepresentativeLegacyMigrationDrill -count=1 -v",
           "result": "pass"

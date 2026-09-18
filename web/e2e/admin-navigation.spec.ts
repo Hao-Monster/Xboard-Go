@@ -30,7 +30,7 @@ test("administrator navigation stays in a vertical left sidebar on desktop", asy
   const themedBackground = await sidebar.evaluate((element) => getComputedStyle(element).backgroundColor);
   await page.evaluate(() => document.documentElement.style.setProperty("--theme-surface", "#263044"));
   await expect.poll(() => sidebar.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(themedBackground);
-  await expect(navigation.getByRole("button", { name: "系统状态" })).toHaveCSS("color", "rgb(18, 171, 52)");
+  await expect(navigation.getByRole("button", { name: "仪表盘" })).toHaveCSS("color", "rgb(18, 171, 52)");
 
   const sidebarBox = await sidebar.boundingBox();
   const contentBox = await content.boundingBox();
@@ -39,8 +39,8 @@ test("administrator navigation stays in a vertical left sidebar on desktop", asy
   expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
   expect(sidebarBox!.width).toBeLessThan(contentBox!.width);
 
-  const firstButtonBox = await navigation.getByRole("button", { name: "系统状态" }).boundingBox();
-  const secondButtonBox = await navigation.getByRole("button", { name: "系统设置" }).boundingBox();
+  const firstButtonBox = await navigation.getByRole("button", { name: "仪表盘" }).boundingBox();
+  const secondButtonBox = await navigation.locator(".nav-group-header").first().boundingBox();
   expect(firstButtonBox).not.toBeNull();
   expect(secondButtonBox).not.toBeNull();
   expect(firstButtonBox!.x).toBe(secondButtonBox!.x);
@@ -65,20 +65,20 @@ test("administrator navigation stays in a vertical left sidebar on mobile", asyn
 
   const sidebarBox = await sidebar.boundingBox();
   const contentBox = await content.boundingBox();
-  const firstButtonBox = await navigation.getByRole("button", { name: "系统状态" }).boundingBox();
-  const secondButtonBox = await navigation.getByRole("button", { name: "系统设置" }).boundingBox();
+  const firstButtonBox = await navigation.getByRole("button", { name: "仪表盘" }).boundingBox();
+  const secondButtonBox = await navigation.getByRole("button", { name: "系统配置" }).boundingBox();
   expect(sidebarBox).not.toBeNull();
   expect(contentBox).not.toBeNull();
   expect(firstButtonBox).not.toBeNull();
   expect(secondButtonBox).not.toBeNull();
   expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
   expect(sidebarBox!.width).toBeLessThanOrEqual(160);
-  expect(firstButtonBox!.x).toBe(secondButtonBox!.x);
+  expect(secondButtonBox!.x).toBeGreaterThan(firstButtonBox!.x);
   expect(firstButtonBox!.y).toBeLessThan(secondButtonBox!.y);
 
-  const accountSecurity = navigation.getByRole("button", { name: "账号安全" });
-  await accountSecurity.scrollIntoViewIfNeeded();
-  await expect(accountSecurity).toBeVisible();
+  const accountMenu = page.locator(".admin-account-menu");
+  await accountMenu.locator("summary").click();
+  await expect(accountMenu.getByRole("button", { name: "账号安全" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -102,7 +102,7 @@ test("administrator sidebar leaves the management surface usable at tablet width
   expect(sidebarBox!.x).toBeLessThan(contentBox!.x);
   expect(sidebarBox!.width).toBeLessThan(contentBox!.width);
 
-  const users = sidebar.getByRole("button", { name: "用户管理" });
+  const users = sidebar.locator("#admin-group-users").getByRole("button", { name: "用户管理" });
   await users.scrollIntoViewIfNeeded();
   await users.click();
   await expect(page.getByRole("heading", { name: "用户管理" })).toBeVisible();

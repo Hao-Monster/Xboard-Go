@@ -10,7 +10,8 @@ test("node compatibility settings are complete, one-time, conflict-safe, and sec
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
   await login(page);
-  await page.getByRole("button", { name: "节点配置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
+    await page.getByRole("button", { name: "节点配置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "节点配置" })).toBeVisible();
 
   for (const label of ["通讯密钥操作", "拉取间隔（秒）", "推送间隔（秒）", "WebSocket 地址"]) {
@@ -39,7 +40,8 @@ test("node compatibility settings are complete, one-time, conflict-safe, and sec
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
-  await page.getByRole("button", { name: "节点配置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
+    await page.getByRole("button", { name: "节点配置", exact: true }).click();
   await expect(page.getByText(/已配置（前缀 .+…）/)).toBeVisible();
   expect(await page.locator("body").textContent()).not.toContain(token);
   const readBack = await adminRequest(page, "GET");

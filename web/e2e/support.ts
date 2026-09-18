@@ -93,7 +93,7 @@ export async function publicAppName(page: Page): Promise<string> {
 }
 
 export async function expectAuthPage(page: Page, action: "登录" | "注册" | "重置密码") {
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(new RegExp(`^${action} .+$`));
+  await expect(page.getByRole("heading", { name: new RegExp(`^${action} .+$`) })).toBeVisible();
 }
 
 export async function expectLoginPage(page: Page) {
@@ -108,7 +108,7 @@ export async function logoutAndWait(page: Page) {
   // App sign-out revokes the session before rendering the auth page. Wait for
   // that state transition before navigating to the public root; navigating
   // immediately can abort the in-flight logout request and retain the cookie.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^登录 .+$/, { timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: /^登录 .+$/ })).toBeVisible({ timeout: 10_000 });
   await page.goto("/");
   await expectLoginPage(page);
 }

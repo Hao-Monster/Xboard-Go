@@ -60,12 +60,13 @@ test("configurable password lockout persists successful attempts and resists ide
     await login(cleanupPage, adminEmail, adminPassword, true);
     await login(page, adminEmail, adminPassword, true);
     original = await getSiteSettings(cleanupPage);
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
+    await page.getByRole("button", { name: "安全设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     await page.getByRole("checkbox", { name: "密码错误次数限制" }).check();
     await page.getByLabel("密码错误次数", { exact: true }).fill("2");
     await page.getByLabel("登录锁定时长（分钟）", { exact: true }).fill("1");
-    await page.getByRole("button", { name: "保存站点设置" }).click();
+    await page.getByRole("button", { name: "保存安全设置" }).click();
     await expect(page.getByRole("status")).toHaveText("站点设置已保存");
 
     const createdResponse = await adminRequest(cleanupPage, "/api/v1/admin/users", "POST", {
@@ -136,7 +137,7 @@ test("configurable password lockout persists successful attempts and resists ide
 async function login(page: Page, email: string, password: string, administrator: boolean) {
   await page.goto(administrator ? adminEntryPath : "/");
   if (await page.getByRole("button", { name: "退出" }).count() > 0) {
-    if (administrator && await page.getByRole("button", { name: "系统设置", exact: true }).count() > 0) return;
+    if (administrator && await page.getByRole("button", { name: "系统配置", exact: true }).count() > 0) return;
     await logoutAndWait(page);
   }
   await submitLogin(page, email, password);

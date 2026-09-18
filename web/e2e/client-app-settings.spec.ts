@@ -41,7 +41,7 @@ test("client app settings show all legacy fields, guard edits, validate and pers
       expect(dialog.message()).toContain("未保存的修改");
       await dialog.dismiss();
     });
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
 
     const saveResponsePromise = page.waitForResponse((response) => response.url().includes(adminAPIPath("/api/v1/admin/client-app-settings")) && response.request().method() === "PUT");
@@ -103,6 +103,7 @@ async function login(page: Page) {
 }
 
 async function openClientAppSettings(page: Page) {
+  await page.getByRole("button", { name: "系统配置", exact: true }).click();
   await page.getByRole("button", { name: "客户端版本", exact: true }).click();
   await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
 }

@@ -24,7 +24,7 @@ test("administrator inspects worker health, failed mail, and body-free mutation 
   const noticeID = readNoticeIdentity(created.body);
 
   try {
-    await page.getByRole("button", { name: "系统状态", exact: true }).click();
+    await page.getByRole("button", { name: "仪表盘", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统状态" })).toBeVisible();
     await expect(page.getByText(/^Schema v\d+$/)).toBeVisible();
     await expect(page.getByText("正常", { exact: true }).first()).toBeVisible();

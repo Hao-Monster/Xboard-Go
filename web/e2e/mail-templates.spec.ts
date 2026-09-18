@@ -164,6 +164,7 @@ async function login(page: Page) {
 }
 
 async function openMailTemplates(page: Page) {
+  await page.getByRole("button", { name: "系统配置", exact: true }).click();
   await page.getByRole("button", { name: "邮件设置", exact: true }).click();
   await page.getByRole("tab", { name: "邮件模板", exact: true }).click();
   await expect(page.getByRole("heading", { name: "邮件模板", exact: true })).toBeVisible();

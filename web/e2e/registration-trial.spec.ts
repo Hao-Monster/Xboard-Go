@@ -24,12 +24,13 @@ test("administrator configures a registration trial and a public registration re
     expect(created.status, created.body).toBe(201);
     const planID = Number(decodeData(created.body).id);
 
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
+    await page.getByRole("button", { name: "安全设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     await page.getByLabel("注册试用").selectOption(String(planID));
     await expect(page.getByLabel("注册试用时长")).toBeVisible();
     await page.getByLabel("注册试用时长").fill("2");
-    await page.getByRole("button", { name: "保存站点设置" }).click();
+    await page.getByRole("button", { name: "保存安全设置" }).click();
     await expect(page.getByRole("status")).toHaveText("站点设置已保存");
 
     await logoutAndWait(page);
