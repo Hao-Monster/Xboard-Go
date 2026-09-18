@@ -873,6 +873,7 @@ test("legacy system configuration exposes its observable sections and API groups
   expect(goConfigResult.inviteStatus, goConfigResult.inviteBody).toBe(200);
   expect(Object.keys(readObjectProperty(JSON.parse(goConfigResult.inviteBody) as unknown, "data"))).toEqual(["invite"]);
 
+  await openGoSystemConfig(page);
   await page.getByRole("button", { name: "佣金设置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "佣金设置", exact: true })).toBeVisible();
   await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toBeVisible();
@@ -990,6 +991,7 @@ test("legacy and Go mail configuration expose the same seven business settings w
     ]));
 
     await loginGo(goPage);
+    await openGoSystemConfig(goPage);
     await goPage.getByRole("button", { name: "邮件设置", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "邮件设置", exact: true })).toBeVisible();
     for (const field of ["SMTP 主机", "SMTP 端口", "加密方式", "SMTP 用户名", "SMTP 密码", "发件人地址"]) {
@@ -1064,6 +1066,7 @@ test("legacy and Go Telegram configuration preserve four business settings while
     }
 
     await loginGo(goPage);
+    await openGoSystemConfig(goPage);
     await goPage.getByRole("button", { name: "Telegram 设置", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "Telegram 设置", exact: true })).toBeVisible();
     for (const field of ["启用 Telegram 绑定引导", "机器人令牌", "Webhook Base URL", "群组链接"]) {
@@ -1121,6 +1124,7 @@ test("legacy and Go node configuration preserve six settings while exposing only
     }
 
     await loginGo(goPage);
+    await openGoSystemConfig(goPage);
     await goPage.getByRole("button", { name: "节点配置", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "节点配置" })).toBeVisible();
     for (const field of ["通讯密钥操作", "拉取间隔（秒）", "推送间隔（秒）", "WebSocket 地址"]) {
@@ -2973,8 +2977,8 @@ test("implemented Go administrator concepts map to the legacy navigation", async
     await loginGo(goPage);
 
     for (const [legacyLabel, goLabel] of [
-      ["仪表盘", "系统状态"],
-      ["系统配置", "系统设置"],
+      ["仪表盘", "仪表盘"],
+      ["系统配置", "系统配置"],
       ["插件管理", "插件管理"],
       ["主题配置", "主题配置"],
       ["公告管理", "公告管理"],
@@ -2983,8 +2987,8 @@ test("implemented Go administrator concepts map to the legacy navigation", async
       ["客户端管理", "客户端管理"],
       ["服务器管理", "服务器管理"],
       ["节点管理", "节点管理"],
-      ["权限组管理", "权限组"],
-      ["路由管理", "路由规则"],
+      ["权限组管理", "权限组管理"],
+      ["路由管理", "路由管理"],
       ["套餐管理", "套餐管理"],
       ["订单管理", "订单管理"],
       ["优惠券管理", "优惠券管理"],
@@ -3067,7 +3071,7 @@ test("legacy resource editors map to Go management surfaces with approved plugin
     await legacyPage.getByRole("button", { name: "添加权限组", exact: true }).click();
     await expect(legacyPage.getByText("组名称", { exact: true }).last()).toBeVisible();
     await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
-    await goPage.getByRole("button", { name: "权限组", exact: true }).click();
+    await goPage.getByRole("button", { name: "权限组管理", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "权限组" })).toBeVisible();
     await goPage.getByRole("button", { name: "新增权限组", exact: true }).click();
     const goGroup = goPage.getByRole("dialog", { name: "新增权限组" });
@@ -3081,7 +3085,7 @@ test("legacy resource editors map to Go management surfaces with approved plugin
     const legacyAction = legacyPage.locator("select:visible").last();
     await expect(legacyAction.locator("option")).toHaveText(["禁止访问", "指定DNS服务器进行解析", "直连", "转发"]);
     await legacyPage.getByRole("button", { name: "取消", exact: true }).click();
-    await goPage.getByRole("button", { name: "路由规则", exact: true }).click();
+    await goPage.getByRole("button", { name: "路由管理", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "路由规则" })).toBeVisible();
     await goPage.getByRole("button", { name: "新增路由规则", exact: true }).click();
     const goRoute = goPage.getByRole("dialog", { name: "新增路由规则" });
@@ -3182,6 +3186,7 @@ test("legacy subscription settings remain observable and map to Go policy and ou
       await expect(legacyPage.getByRole("tab", { name: template, exact: true }).filter({ visible: true })).toBeVisible();
     }
 
+    await openGoSystemConfig(goPage);
     await goPage.getByRole("button", { name: "订阅设置", exact: true }).click();
     await expect(goPage.getByRole("heading", { name: "订阅设置" })).toBeVisible();
     await expect(goPage.getByRole("checkbox", { name: "允许用户更改订阅" })).toBeVisible();
@@ -3632,6 +3637,11 @@ async function loginGo(page: Page) {
   await page.getByLabel("密码").fill(goPassword);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible({ timeout: 60_000 });
+}
+
+async function openGoSystemConfig(page: Page) {
+  await page.getByRole("button", { name: "系统配置", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "系统设置", exact: true })).toBeVisible();
 }
 
 async function goAdminRequest(page: Page, path: string, method: string, body?: unknown) {
