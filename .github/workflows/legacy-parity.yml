@@ -50,7 +50,8 @@ jobs:
       http_proxy: http://100.120.174.30:7890
       https_proxy: http://100.120.174.30:7890
       all_proxy: socks5h://100.120.174.30:7890
-      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10
+      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10,github.com,api.github.com,raw.githubusercontent.com,githubusercontent.com
+      NO_PROXY: localhost,127.0.0.1,::1,100.64.0.0/10,github.com,api.github.com,raw.githubusercontent.com,githubusercontent.com
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
@@ -65,16 +66,6 @@ jobs:
       XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        env:
-          # The isolated runner's configured outbound proxy is unavailable for
-          # GitHub access. Keep the proxy for later dependency downloads, but
-          # make the exact source checkout use direct HTTPS connectivity.
-          HTTP_PROXY: ""
-          HTTPS_PROXY: ""
-          ALL_PROXY: ""
-          http_proxy: ""
-          https_proxy: ""
-          all_proxy: ""
         with:
           ref: ${{ needs.authorize.outputs.sha }}
           fetch-depth: 1
