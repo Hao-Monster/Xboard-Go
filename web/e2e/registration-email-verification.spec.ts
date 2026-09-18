@@ -68,7 +68,7 @@ test("visitor registers with the legacy one-time email code through Mailpit", as
       smtp_from_address: "support@xboard-go.local"
     });
 
-    await page.getByRole("button", { name: "系统设置" }).click();
+    await page.getByRole("button", { name: "系统配置" }).click();
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     const emailVerification = page.getByRole("checkbox", { name: "邮箱验证" });
     if (!(await emailVerification.isChecked())) await emailVerification.click();

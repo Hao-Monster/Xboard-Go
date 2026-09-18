@@ -60,7 +60,7 @@ test("configurable password lockout persists successful attempts and resists ide
     await login(cleanupPage, adminEmail, adminPassword, true);
     await login(page, adminEmail, adminPassword, true);
     original = await getSiteSettings(cleanupPage);
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     await page.getByRole("checkbox", { name: "密码错误次数限制" }).check();
     await page.getByLabel("密码错误次数", { exact: true }).fill("2");

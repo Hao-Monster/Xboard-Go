@@ -165,7 +165,7 @@ export function SystemConfigShell({
                 type="button"
                 className={`system-tab-button ${isActive ? "active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
-                aria-label={item.buttonName}
+                aria-label={item.label}
                 onClick={() => handleSelectTab(item.key)}
               >
                 <span className="system-tab-icon">

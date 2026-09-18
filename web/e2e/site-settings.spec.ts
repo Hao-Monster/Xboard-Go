@@ -66,7 +66,7 @@ test("administrator site identity persists into the public shell and can be rest
     await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
 
     original = await getAdminSiteSettings(page);
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
     await page.getByLabel("站点名称").fill(changed.app_name);
     await page.getByLabel("站点描述").fill(changed.app_description);
@@ -93,7 +93,7 @@ test("administrator site identity persists into the public shell and can be rest
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await expect(page.getByLabel("站点名称")).toHaveValue(changed.app_name);
     await expect(page.getByLabel("站点网址", { exact: true })).toHaveValue(changed.app_url);
     await expect(page.getByRole("checkbox", { name: "安全模式（仅允许站点网址的域名访问前端）" })).not.toBeChecked();

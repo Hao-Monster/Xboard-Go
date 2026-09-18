@@ -67,7 +67,7 @@ describe("App public identity bootstrap", () => {
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
-		expect(screen.getByRole("button", { name: "系统设置" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
@@ -107,8 +107,8 @@ describe("App public identity bootstrap", () => {
     const user = userEvent.setup();
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
-    await user.click(await screen.findByRole("button", { name: "系统设置" }));
-    await user.click(await screen.findByRole("button", { name: "客户端版本" }));
+    await user.click(await screen.findByRole("button", { name: "系统配置" }));
+    await user.click(await screen.findByRole("button", { name: "APP设置" }));
     const version = await screen.findByLabelText("Windows 版本");
     await user.clear(version);
     await user.type(version, "5.0.0");
@@ -515,16 +515,27 @@ describe("App public identity bootstrap", () => {
     const sidebar = await screen.findByRole("navigation", { name: "管理端导航" });
     expect(sidebar).toBeVisible();
 
-    const expectedTitles = ["仪表盘", "系统管理", "节点网络", "订阅财务", "用户支持", "个人中心"];
-    for (const title of expectedTitles) {
-      expect(sidebar).toHaveTextContent(title);
+    expect(within(sidebar).getAllByRole("button").map(button => button.textContent)).toEqual([
+      "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理",
+      "节点管理", "服务器管理", "节点管理", "权限组管理", "路由管理",
+      "订阅管理", "套餐管理", "订单管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
+    ]);
+    for (const removed of ["个人中心", "账号安全", "邮件设置", "分销管理", "节点网络", "订阅财务", "用户支持"]) {
+      expect(within(sidebar).queryByText(removed)).not.toBeInTheDocument();
     }
-    expect(within(sidebar).getByRole("button", { name: "系统状态" })).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "系统设置" })).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "节点管理" })).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "套餐管理" })).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "用户管理" })).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "账号安全" })).toBeVisible();
+    const group = within(sidebar).getByRole("button", { name: "系统管理" });
+    await userEvent.click(group);
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(within(sidebar).queryByRole("button", { name: "系统配置" })).not.toBeInTheDocument();
+    await userEvent.click(group);
+    await userEvent.click(within(sidebar).getByRole("button", { name: "系统配置" }));
+    const config = await screen.findByRole("navigation", { name: "系统配置子导航" });
+    expect(within(config).getAllByRole("button").map(button => button.textContent)).toEqual([
+      "站点设置", "安全设置", "订阅设置", "邀请&佣金设置", "节点配置", "邮件设置", "Telegram设置", "APP设置", "订阅模板"
+    ]);
+    await userEvent.click(within(config).getByRole("button", { name: "安全设置" }));
+    expect(within(sidebar).getByRole("button", { name: "系统配置" })).toHaveAttribute("aria-current", "page");
+
   });
 });
 

@@ -21,7 +21,7 @@ test("all legacy CAPTCHA providers protect registration and admin secrets never 
     ] as const;
     for (const [index, provider] of providers.entries()) {
       if (index === 0) {
-        await page.getByRole("button", { name: "系统设置", exact: true }).click();
+        await page.getByRole("button", { name: "系统配置", exact: true }).click();
         await page.getByRole("checkbox", { name: "验证码" }).check();
         await page.getByLabel("验证码类型").selectOption(provider.type);
         await page.getByLabel("reCAPTCHA v2 站点密钥").fill(provider.site);
