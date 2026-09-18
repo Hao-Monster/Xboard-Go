@@ -66,7 +66,7 @@ test("configurable password lockout persists successful attempts and resists ide
     await page.getByRole("checkbox", { name: "密码错误次数限制" }).check();
     await page.getByLabel("密码错误次数", { exact: true }).fill("2");
     await page.getByLabel("登录锁定时长（分钟）", { exact: true }).fill("1");
-    await page.getByRole("button", { name: "保存站点设置" }).click();
+    await page.getByRole("button", { name: "保存安全设置" }).click();
     await expect(page.getByRole("status")).toHaveText("站点设置已保存");
 
     const createdResponse = await adminRequest(cleanupPage, "/api/v1/admin/users", "POST", {

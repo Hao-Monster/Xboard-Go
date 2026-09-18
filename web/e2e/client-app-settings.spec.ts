@@ -104,7 +104,7 @@ async function login(page: Page) {
 
 async function openClientAppSettings(page: Page) {
   await page.getByRole("button", { name: "系统配置", exact: true }).click();
-  await page.getByRole("button", { name: "APP设置", exact: true }).click();
+  await page.getByRole("button", { name: "客户端版本", exact: true }).click();
   await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
 }
 
