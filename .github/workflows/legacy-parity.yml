@@ -65,6 +65,16 @@ jobs:
       XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        env:
+          # The isolated runner's configured outbound proxy is unavailable for
+          # GitHub access. Keep the proxy for later dependency downloads, but
+          # make the exact source checkout use direct HTTPS connectivity.
+          HTTP_PROXY: ""
+          HTTPS_PROXY: ""
+          ALL_PROXY: ""
+          http_proxy: ""
+          https_proxy: ""
+          all_proxy: ""
         with:
           ref: ${{ needs.authorize.outputs.sha }}
           fetch-depth: 1
