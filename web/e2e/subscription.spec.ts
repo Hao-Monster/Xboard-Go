@@ -38,6 +38,7 @@ test("administrator subscription settings drive the user dashboard, QR, output p
     await login(page, adminEmail, adminPassword);
     original = await getSubscriptionSettings(page);
     originalPolicy = await getSubscriptionPolicySettings(page);
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "订阅设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "订阅设置" })).toBeVisible();
     const planChange = page.getByRole("checkbox", { name: "允许用户更改订阅" });

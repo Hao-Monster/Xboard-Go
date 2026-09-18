@@ -79,6 +79,7 @@ const adminNavGroups: NavGroup[] = [
     items: [
       { page: "plans", label: "套餐管理" },
       { page: "orders", label: "订单管理" },
+      { page: "distributors", label: "分销管理" },
       { page: "coupons", label: "优惠券管理" },
       { page: "gift-cards", label: "礼品卡管理" },
     ],

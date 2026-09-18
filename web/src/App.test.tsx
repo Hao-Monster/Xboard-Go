@@ -66,7 +66,7 @@ describe("App public identity bootstrap", () => {
 		expect(navigation.parentElement).toHaveClass("admin-layout");
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
-		expect(screen.queryByRole("button", { name: "分销管理" })).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
 		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
@@ -108,7 +108,7 @@ describe("App public identity bootstrap", () => {
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
     await user.click(await screen.findByRole("button", { name: "系统配置" }));
-    await user.click(await screen.findByRole("button", { name: "APP设置" }));
+    await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");
     await user.clear(version);
     await user.type(version, "5.0.0");
@@ -518,9 +518,9 @@ describe("App public identity bootstrap", () => {
     expect(within(sidebar).getAllByRole("button").map(button => button.textContent)).toEqual([
       "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理",
       "节点管理", "服务器管理", "节点管理", "权限组管理", "路由管理",
-      "订阅管理", "套餐管理", "订单管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
+      "订阅管理", "套餐管理", "订单管理", "分销管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
     ]);
-    for (const removed of ["个人中心", "账号安全", "邮件设置", "分销管理", "节点网络", "订阅财务", "用户支持"]) {
+    for (const removed of ["个人中心", "账号安全", "邮件设置", "节点网络", "订阅财务", "用户支持"]) {
       expect(within(sidebar).queryByText(removed)).not.toBeInTheDocument();
     }
     const group = within(sidebar).getByRole("button", { name: "系统管理 菜单" });

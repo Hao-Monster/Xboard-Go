@@ -136,7 +136,7 @@ test("configurable password lockout persists successful attempts and resists ide
 async function login(page: Page, email: string, password: string, administrator: boolean) {
   await page.goto(administrator ? adminEntryPath : "/");
   if (await page.getByRole("button", { name: "退出" }).count() > 0) {
-    if (administrator && await page.getByRole("button", { name: "系统设置", exact: true }).count() > 0) return;
+    if (administrator && await page.getByRole("button", { name: "系统配置", exact: true }).count() > 0) return;
     await logoutAndWait(page);
   }
   await submitLogin(page, email, password);

@@ -30,6 +30,7 @@ test("administrator mail settings persist and the saved SMTP sends a real Mailpi
   const original = await getMailSettings(page);
   test.skip(original.smtp_password_set, "requires an isolated test database without an unrecoverable existing SMTP secret");
   try {
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "邮件设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "邮件设置" })).toBeVisible();
     await expect(page.getByLabel("SMTP 密码")).toHaveValue("");
@@ -44,6 +45,7 @@ test("administrator mail settings persist and the saved SMTP sends a real Mailpi
     await expect(page.getByRole("status")).toContainText("邮件设置已保存");
 
     await page.reload();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "邮件设置", exact: true }).click();
     await expect(page.getByLabel("SMTP 主机")).toHaveValue("mailpit");
     await expect(page.getByLabel("SMTP 端口")).toHaveValue("1025");
