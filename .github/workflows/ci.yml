@@ -347,9 +347,6 @@ jobs:
   web:
     runs-on: ubuntu-latest
     needs: detect-changes
-    defaults:
-      run:
-        working-directory: web
     steps:
       - name: Skip web verification
         if: needs.detect-changes.outputs.run_web != 'true'
@@ -368,23 +365,26 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm install --frozen-lockfile
+        working-directory: web
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm typecheck
+        working-directory: web
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm lint
+        working-directory: web
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm test:coverage
+        working-directory: web
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm build
+        working-directory: web
       - if: needs.detect-changes.outputs.run_web == 'true'
         run: pnpm audit --audit-level high
+        working-directory: web
 
   browser:
     runs-on: ubuntu-latest
     needs: detect-changes
-    defaults:
-      run:
-        working-directory: web
     steps:
       - name: Skip browser verification
         if: needs.detect-changes.outputs.run_browser_smoke != 'true'
@@ -408,16 +408,21 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm install --frozen-lockfile
+        working-directory: web
       - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm build
+        working-directory: web
       - if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
       - name: Run full browser regression
         if: needs.detect-changes.outputs.run_full_regression == 'true'
         run: pnpm test:e2e
+        working-directory: web
       - name: Run browser smoke suite
         if: needs.detect-changes.outputs.run_browser_smoke == 'true' && needs.detect-changes.outputs.run_full_regression != 'true'
         run: pnpm exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium --project mobile-chromium
+        working-directory: web
 
   packaged-browser:
     runs-on: ubuntu-latest
