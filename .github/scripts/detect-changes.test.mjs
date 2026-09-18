@@ -8,6 +8,9 @@ test("identifies pure frontend changes and isolates them from backend and packag
   assert.equal(changes.all, "false");
   assert.equal(changes.frontend, "true");
   assert.equal(changes.browser, "true");
+  assert.equal(changes.run_web, "true");
+  assert.equal(changes.run_browser_smoke, "true");
+  assert.equal(changes.run_full_regression, "true");
   assert.equal(changes.packaged_browser, "false");
   assert.equal(changes.split_runtime, "false");
   assert.equal(changes.backend, "false");
@@ -27,9 +30,19 @@ test("identifies pure documentation and governance changes", () => {
   assert.equal(changes.frontend, "false");
   assert.equal(changes.browser, "false");
   assert.equal(changes.packaged_browser, "false");
+  assert.equal(changes.run_go, "false");
+  assert.equal(changes.run_browser_smoke, "false");
+  assert.equal(changes.run_full_regression, "false");
   assert.equal(changes.split_runtime, "false");
   assert.equal(changes.backend, "false");
   assert.equal(changes.supply_chain, "false");
+});
+
+test("keeps an ordinary frontend page on the fast path", () => {
+  const changes = analyzeChangeSet(["web/src/features/notices/NoticeManagementPage.tsx", "web/src/styles.css"]);
+  assert.equal(changes.run_web, "true");
+  assert.equal(changes.run_browser_smoke, "false");
+  assert.equal(changes.run_full_regression, "false");
 });
 
 test("identifies dedicated store changes and skips unrelated service groups", () => {
@@ -45,6 +58,9 @@ test("identifies dedicated store changes and skips unrelated service groups", ()
   assert.equal(changes.frontend, "false");
   assert.equal(changes.browser, "false");
   assert.equal(changes.packaged_browser, "false");
+  assert.equal(changes.run_go, "true");
+  assert.equal(changes.run_browser_smoke, "false");
+  assert.equal(changes.run_full_regression, "true");
 });
 
 test("identifies httpapi changes and marks services-a and browser tests as affected", () => {
@@ -56,6 +72,8 @@ test("identifies httpapi changes and marks services-a and browser tests as affec
   assert.equal(changes.browser, "true");
   assert.equal(changes.frontend, "false");
   assert.equal(changes.packaged_browser, "false");
+  assert.equal(changes.run_browser_smoke, "true");
+  assert.equal(changes.run_full_regression, "false");
 });
 
 test("identifies dedicated services-b changes (mailer, bulkops, attachments)", () => {
@@ -74,6 +92,7 @@ test("identifies root Go changes or go.mod as shared backend triggers", () => {
   assert.equal(changes.backend_store, "true");
   assert.equal(changes.backend_xboard, "true");
   assert.equal(changes.supply_chain, "true");
+  assert.equal(changes.run_full_regression, "true");
 });
 
 test("triggers full regression when workflow or Dockerfile is touched", () => {
@@ -84,6 +103,10 @@ test("triggers full regression when workflow or Dockerfile is touched", () => {
   assert.equal(changes.packaged_browser, "true");
   assert.equal(changes.split_runtime, "true");
   assert.equal(changes.supply_chain, "true");
+  assert.equal(changes.run_go, "true");
+  assert.equal(changes.run_web, "true");
+  assert.equal(changes.run_browser_smoke, "true");
+  assert.equal(changes.run_full_regression, "true");
 });
 
 test("defaults to full regression fail-safe when change set is empty", () => {
@@ -91,4 +114,7 @@ test("defaults to full regression fail-safe when change set is empty", () => {
   assert.equal(changes.all, "true");
   assert.equal(changes.backend, "true");
   assert.equal(changes.frontend, "true");
+  assert.equal(changes.run_go, "true");
+  assert.equal(changes.run_web, "true");
+  assert.equal(changes.run_full_regression, "true");
 });
