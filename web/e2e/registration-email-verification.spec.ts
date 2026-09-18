@@ -68,7 +68,8 @@ test("visitor registers with the legacy one-time email code through Mailpit", as
       smtp_from_address: "support@xboard-go.local"
     });
 
-    await saveSiteSettings(page, { ...originalSite, email_verify: true, revision: originalSite.revision });
+    const siteBeforeVerification = await getSiteSettings(page);
+    await saveSiteSettings(page, { ...siteBeforeVerification, email_verify: true, revision: siteBeforeVerification.revision });
     await logoutAndWait(page);
 
     await page.goto("/#/register");
