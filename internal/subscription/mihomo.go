@@ -8,6 +8,8 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 )
 
+const defaultMihomoProbeURL = "http://cp.cloudflare.com/generate_204"
+
 func renderMihomo(input RenderInput) (Response, error) {
 	templateName := string(input.Client.Kind)
 	template := input.Templates[templateName]
@@ -82,8 +84,8 @@ func defaultMihomoTemplate(appName string) map[string]any {
 		"proxies": []any{},
 		"proxy-groups": []any{
 			map[string]any{"name": appName, "type": "select", "proxies": []any{"自动选择", "故障转移", "DIRECT"}},
-			map[string]any{"name": "自动选择", "type": "url-test", "proxies": []any{}, "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50},
-			map[string]any{"name": "故障转移", "type": "fallback", "proxies": []any{}, "url": "http://www.gstatic.com/generate_204", "interval": 300},
+			map[string]any{"name": "自动选择", "type": "url-test", "proxies": []any{}, "url": defaultMihomoProbeURL, "interval": 300, "tolerance": 50},
+			map[string]any{"name": "故障转移", "type": "fallback", "proxies": []any{}, "url": defaultMihomoProbeURL, "interval": 300},
 		},
 		"rules": []any{"MATCH," + appName},
 	}

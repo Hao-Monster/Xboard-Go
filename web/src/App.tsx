@@ -4,6 +4,9 @@ import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings,
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 
+import type { SystemConfigTab } from "./features/settings/SystemConfigShell";
+const SystemConfigShell = lazy(async () => import("./features/settings/SystemConfigShell").then(module => ({ default: module.SystemConfigShell })));
+
 const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
 const RoutingRulesPage = lazy(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
 const ServerGroupsPage = lazy(async () => import("./features/admin/ServerGroupsPage").then((module) => ({ default: module.ServerGroupsPage })));
@@ -14,17 +17,10 @@ const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeM
 const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
-const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
-const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
 const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
 const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
 const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
-const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
-const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
-const EmailSettingsPage = lazy(async () => import("./features/settings/EmailSettingsPage").then((module) => ({ default: module.EmailSettingsPage })));
-const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
-const ClientAppSettingsPage = lazy(async () => import("./features/settings/ClientAppSettingsPage").then((module) => ({ default: module.ClientAppSettingsPage })));
 const ThemeManagementPage = lazy(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const PluginManagementPage = lazy(async () => import("./features/plugins/PluginManagementPage").then((module) => ({ default: module.PluginManagementPage })));
@@ -45,7 +41,59 @@ const defaultGuestConfig: GuestConfig = {
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0, theme: defaultThemeAppearance
 };
 type AuthMode = "login" | "register" | "recover";
-type AdminPage = "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+
+type NavGroup = {
+  id: string;
+  title: string;
+  items: { page: AdminPage; label: string }[];
+};
+
+const adminNavGroups: NavGroup[] = [
+  {
+    id: "system",
+    title: "系统管理",
+    items: [
+      { page: "settings", label: "系统配置" },
+      { page: "plugins", label: "插件管理" },
+      { page: "themes", label: "主题配置" },
+      { page: "notices", label: "公告管理" },
+      { page: "payments", label: "支付配置" },
+      { page: "knowledge", label: "知识库管理" },
+      { page: "clients", label: "客户端管理" },
+    ],
+  },
+  {
+    id: "nodes",
+    title: "节点管理",
+    items: [
+      { page: "servers", label: "服务器管理" },
+      { page: "nodes", label: "节点管理" },
+      { page: "groups", label: "权限组管理" },
+      { page: "routes", label: "路由管理" },
+    ],
+  },
+  {
+    id: "finance",
+    title: "订阅管理",
+    items: [
+      { page: "plans", label: "套餐管理" },
+      { page: "orders", label: "订单管理" },
+      { page: "distributors", label: "分销管理" },
+      { page: "coupons", label: "优惠券管理" },
+      { page: "gift-cards", label: "礼品卡管理" },
+    ],
+  },
+  {
+    id: "users",
+    title: "用户管理",
+    items: [
+      { page: "users", label: "用户管理" },
+      { page: "tickets", label: "工单管理" },
+    ],
+  },
+
+];
 
 export type AppSurface = { kind: "public" } | { kind: "admin"; path: string };
 
@@ -66,9 +114,19 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<AdminPage>("servers");
+  const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(adminNavGroups.map((g) => [g.id, true]))
+  );
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedAdminGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -177,6 +235,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const authenticated = (nextSession: UserSession) => {
     setBootstrapAuthError("");
     setSession(nextSession);
+    setPage("servers");
+    window.scrollTo(0, 0);
     window.history.replaceState(null, "", "#/");
     setAuthLocation(window.location.hash);
   };
@@ -211,7 +271,11 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const signOut = () => {
     if (!canLeaveAdminPage()) return;
-    void api.logout().catch(() => undefined).then(() => setSession(null));
+    void api.logout().catch(() => undefined).then(() => {
+      setPage("servers");
+      window.scrollTo(0, 0);
+      setSession(null);
+    });
   };
 
   if (loading) {
@@ -229,74 +293,98 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   if (!session.is_admin) {
     return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>退出登录</button></section></main>;
   }
+  const configPages: Partial<Record<AdminPage, SystemConfigTab>> = {
+    settings: "site", security: "security", subscriptions: "subscriptions", commissions: "commissions",
+    "node-settings": "node-settings", mail: "mail", telegram: "telegram", "client-app": "client-app", templates: "templates"
+  };
+  const activeConfigTab = configPages[page];
+  const configDestinations: Record<SystemConfigTab, AdminPage> = {
+    site: "settings", security: "security", subscriptions: "subscriptions", commissions: "commissions",
+    "node-settings": "node-settings", mail: "mail", telegram: "telegram", "client-app": "client-app", templates: "templates"
+  };
+
   return (
     <div className="app-frame">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
         <div className="account">
-          <span>{session.email}</span>
+          <details className="admin-account-menu"><summary>{session.email}</summary><button type="button" className="button secondary compact" onClick={() => navigateAdminPage("account")}>账号安全</button></details>
           <button className="button ghost compact" onClick={signOut}>退出</button>
         </div>
       </header>
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>系统状态</button>
-            <button className="nav-link" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigateAdminPage("settings")}>系统设置</button>
-            <button className="nav-link" aria-current={page === "themes" ? "page" : undefined} onClick={() => navigateAdminPage("themes")}>主题配置</button>
-            <button className="nav-link" aria-current={page === "mail" ? "page" : undefined} onClick={() => navigateAdminPage("mail")}>邮件设置</button>
-            <button className="nav-link" aria-current={page === "telegram" ? "page" : undefined} onClick={() => navigateAdminPage("telegram")}>Telegram 设置</button>
-            <button className="nav-link" aria-current={page === "client-app" ? "page" : undefined} onClick={() => navigateAdminPage("client-app")}>客户端版本</button>
-            <button className="nav-link" aria-current={page === "commissions" ? "page" : undefined} onClick={() => navigateAdminPage("commissions")}>佣金设置</button>
-            <button className="nav-link" aria-current={page === "subscriptions" ? "page" : undefined} onClick={() => navigateAdminPage("subscriptions")}>订阅设置</button>
-            <button className="nav-link" aria-current={page === "node-settings" ? "page" : undefined} onClick={() => navigateAdminPage("node-settings")}>节点配置</button>
-            <button className="nav-link" aria-current={page === "servers" ? "page" : undefined} onClick={() => navigateAdminPage("servers")}>服务器管理</button>
-            <button className="nav-link" aria-current={page === "nodes" ? "page" : undefined} onClick={() => navigateAdminPage("nodes")}>节点管理</button>
-            <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => navigateAdminPage("plans")}>套餐管理</button>
-            <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => navigateAdminPage("orders")}>订单管理</button>
-            <button className="nav-link" aria-current={page === "distributors" ? "page" : undefined} onClick={() => navigateAdminPage("distributors")}>分销管理</button>
-            <button className="nav-link" aria-current={page === "plugins" ? "page" : undefined} onClick={() => navigateAdminPage("plugins")}>插件管理</button>
-            <button className="nav-link" aria-current={page === "payments" ? "page" : undefined} onClick={() => navigateAdminPage("payments")}>支付配置</button>
-            <button className="nav-link" aria-current={page === "coupons" ? "page" : undefined} onClick={() => navigateAdminPage("coupons")}>优惠券管理</button>
-            <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => navigateAdminPage("gift-cards")}>礼品卡管理</button>
-            <button className="nav-link" aria-current={page === "users" ? "page" : undefined} onClick={() => navigateAdminPage("users")}>用户管理</button>
-            <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => navigateAdminPage("tickets")}>工单管理</button>
-            <button className="nav-link" aria-current={page === "groups" ? "page" : undefined} onClick={() => navigateAdminPage("groups")}>权限组</button>
-            <button className="nav-link" aria-current={page === "routes" ? "page" : undefined} onClick={() => navigateAdminPage("routes")}>路由规则</button>
-            <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => navigateAdminPage("notices")}>公告管理</button>
-            <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => navigateAdminPage("knowledge")}>知识库管理</button>
-            <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => navigateAdminPage("clients")}>客户端管理</button>
-            <button className="nav-link" aria-current={page === "account" ? "page" : undefined} onClick={() => navigateAdminPage("account")}>账号安全</button>
+            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>仪表盘</button>
+            {adminNavGroups.map((group) => {
+              const isExpanded = expandedAdminGroups[group.id] ?? true;
+              return (
+                <div key={group.id} className="nav-group" role="group" aria-label={group.title}>
+                  <button
+                    type="button"
+                    className="nav-group-header"
+                    aria-label={`${group.title} 菜单`}
+                    onClick={() => toggleGroup(group.id)}
+                    aria-expanded={isExpanded}
+                    aria-controls={`admin-group-${group.id}`}
+                  >
+                    <span className="nav-group-title">{group.title}</span>
+                    <span className={`nav-group-chevron ${isExpanded ? "open" : ""}`} aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="nav-group-items" id={`admin-group-${group.id}`}>
+                      {group.items.map((item) => {
+                        const isActive = page === item.page || (item.page === "settings" && activeConfigTab !== undefined);
+                        return (
+                          <button
+                            key={item.page}
+                            className={`nav-link ${isActive ? "active" : ""}`}
+                            aria-current={isActive ? "page" : undefined}
+                            onClick={() => navigateAdminPage(item.page)}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </nav>
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
-        {page === "system" && <SystemOperationsPage api={api} />}
-        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
-        {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-        {page === "mail" && <EmailSettingsPage api={api} />}
-        {page === "telegram" && <TelegramSettingsPage api={api} />}
-        {page === "client-app" && <ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} />}
-        {page === "commissions" && <CommissionSettingsPage api={api} />}
-        {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
-        {page === "node-settings" && <NodeAgentSettingsPage api={api} />}
-        {page === "servers" && <ServerManagementPage api={api} />}
-        {page === "nodes" && <NodeManagementPage api={api} />}
-        {page === "plans" && <PlanManagementPage api={api} />}
-        {page === "orders" && <OrderManagementPage api={api} />}
-        {page === "distributors" && <AdminDistributorPage api={api} />}
-        {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
-        {page === "payments" && <PaymentManagementPage api={api} />}
-        {page === "coupons" && <CouponManagementPage api={api} />}
-        {page === "gift-cards" && <GiftCardManagementPage api={api} />}
-        {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
-        {page === "tickets" && <TicketManagementPage api={api} />}
-        {page === "groups" && <ServerGroupsPage api={api} />}
-        {page === "routes" && <RoutingRulesPage api={api} />}
-        {page === "notices" && <NoticeManagementPage api={api} />}
-        {page === "knowledge" && <KnowledgeManagementPage api={api} />}
-        {page === "clients" && <ClientCatalogManagementPage api={api} />}
-        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => setSession(null)} />}
+            {activeConfigTab !== undefined && <SystemConfigShell
+              api={api} activeTab={activeConfigTab}
+              onTabChange={(tab) => navigateAdminPage(configDestinations[tab])}
+              onIdentityChanged={identityChanged}
+              onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)}
+              onClientAppDirtyChange={setClientAppSettingsDirty}
+            />}
+            {page === "system" && <SystemOperationsPage api={api} />}
+            {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
+            {page === "servers" && <ServerManagementPage api={api} />}
+            {page === "nodes" && <NodeManagementPage api={api} />}
+            {page === "plans" && <PlanManagementPage api={api} />}
+            {page === "orders" && <OrderManagementPage api={api} />}
+            {page === "distributors" && <AdminDistributorPage api={api} />}
+            {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
+            {page === "payments" && <PaymentManagementPage api={api} />}
+            {page === "coupons" && <CouponManagementPage api={api} />}
+            {page === "gift-cards" && <GiftCardManagementPage api={api} />}
+            {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
+            {page === "tickets" && <TicketManagementPage api={api} />}
+            {page === "groups" && <ServerGroupsPage api={api} />}
+            {page === "routes" && <RoutingRulesPage api={api} />}
+            {page === "notices" && <NoticeManagementPage api={api} />}
+            {page === "knowledge" && <KnowledgeManagementPage api={api} />}
+            {page === "clients" && <ClientCatalogManagementPage api={api} />}
+            {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
           </Suspense>
         </div>
       </div>

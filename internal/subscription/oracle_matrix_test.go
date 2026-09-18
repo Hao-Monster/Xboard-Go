@@ -107,6 +107,24 @@ func validateMihomo(kind Kind, want int) func(*testing.T, Response) {
 		if !ok || len(proxies) != want {
 			t.Fatalf("YAML proxies = %#v, want %d", payload["proxies"], want)
 		}
+		if payload["allow-lan"] != false {
+			t.Errorf("YAML allow-lan = %#v, want false", payload["allow-lan"])
+		}
+		groups, ok := payload["proxy-groups"].([]any)
+		if !ok {
+			t.Fatalf("YAML proxy-groups = %#v, want a sequence", payload["proxy-groups"])
+		}
+		for _, raw := range groups {
+			group, ok := raw.(map[string]any)
+			if !ok {
+				t.Fatalf("YAML proxy-group entry = %#v, want an object", raw)
+			}
+			if group["name"] == "自动选择" || group["name"] == "故障转移" {
+				if group["url"] != defaultMihomoProbeURL {
+					t.Errorf("proxy-group %v probe URL = %v, want %q", group["name"], group["url"], defaultMihomoProbeURL)
+				}
+			}
+		}
 		byName := namedObjects(t, proxies, "name")
 		switch kind {
 		case KindClash:

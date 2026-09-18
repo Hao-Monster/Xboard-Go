@@ -18,7 +18,7 @@ test("administrator manages permission groups and routing rules", async ({ page 
   const unique = `${Date.now()}`;
   const groupName = `E2E 权限组 ${unique}`;
   const renamedGroup = `${groupName} 已编辑`;
-  await page.getByRole("button", { name: "权限组", exact: true }).click();
+  await page.getByRole("button", { name: "权限组管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "权限组" })).toBeVisible();
   const originalGroups = await readAdminResources(page, "/api/v1/admin/server-groups");
   for (const group of originalGroups) await expect(page.getByText(group.name, { exact: true })).toBeVisible();
@@ -39,7 +39,7 @@ test("administrator manages permission groups and routing rules", async ({ page 
   expect(await readAdminResources(page, "/api/v1/admin/server-groups")).toEqual(originalGroups);
 
   const routeName = `E2E route ${unique}`;
-  await page.getByRole("button", { name: "路由规则", exact: true }).click();
+  await page.getByRole("button", { name: "路由管理", exact: true }).click();
   await expect(page.getByRole("heading", { name: "路由规则" })).toBeVisible();
   const originalRoutes = await readAdminResources(page, "/api/v1/admin/routing-rules");
   for (const route of originalRoutes) await expect(page.getByText(route.name, { exact: true })).toBeVisible();

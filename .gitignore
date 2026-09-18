@@ -31,6 +31,9 @@ Thumbs.db
 /.local/
 /tmp/
 /data/
+/.gocache/
+/.gomodcache/
+/output/
 *.log
 *.db
 *.db-shm

@@ -90,6 +90,7 @@ async function login(page: Page) {
 }
 
 async function openTelegramSettings(page: Page) {
+  await page.getByRole("button", { name: "系统配置", exact: true }).click();
   await page.getByRole("button", { name: "Telegram 设置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Telegram 设置", exact: true })).toBeVisible();
 }

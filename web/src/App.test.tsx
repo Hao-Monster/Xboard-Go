@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,7 +67,7 @@ describe("App public identity bootstrap", () => {
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
-		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
@@ -85,6 +85,16 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         id: 92, email: "client-admin@example.test", is_admin: true, is_staff: false, is_distributor: false
       } }));
+      if (path.endsWith("/api/v1/admin/admin/site-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        revision: 1, app_name: "Client Board", app_description: "", app_url: "", tos_url: "", logo: "",
+        force_https: false, stop_register: false, coupon_enabled: true, currency: "CNY", currency_symbol: "¥",
+        traffic_reset_method: 0, safe_mode_enable: false, secure_path: "admin", email_verify: false,
+        email_whitelist_enable: false, email_whitelist_suffix: [], captcha_enable: false, captcha_type: "recaptcha",
+        recaptcha_site_key: "", recaptcha_v3_site_key: "", recaptcha_v3_score_threshold: 0.5, turnstile_site_key: "",
+        try_out_plan_id: 0, try_out_hour: 1, login_with_mail_link_enable: false, subscribe_url: ""
+      } }));
+      if (path.endsWith("/api/v1/admin/admin/plans")) return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
+      if (path.endsWith("/api/v1/admin/admin/plugins")) return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
       if (path.endsWith("/api/v1/admin/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         revision: 1,
         windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
@@ -97,17 +107,18 @@ describe("App public identity bootstrap", () => {
     const user = userEvent.setup();
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
+    await user.click(await screen.findByRole("button", { name: "系统配置" }));
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");
     await user.clear(version);
     await user.type(version, "5.0.0");
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     expect(screen.getByRole("heading", { name: "客户端版本" })).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(await screen.findByRole("heading", { name: "系统设置" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
   });
 
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
@@ -483,6 +494,48 @@ describe("App public identity bootstrap", () => {
         email: "verified@example.test", email_code: "482731", password: "password-123", password_confirmation: "password-123"
       } }
     ]);
+  });
+
+  it("renders categorized navigation groups in the administrator sidebar", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        app_name: "Grouped Board", app_description: null, app_url: null, tos_url: null, logo: null,
+        is_email_verify: 0, is_invite_force: 0, enable_coupon_system: 1, email_whitelist_suffix: 0, is_captcha: 0,
+        captcha_type: "recaptcha", recaptcha_site_key: null, recaptcha_v3_site_key: null,
+        recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0
+      } }));
+      if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        id: 99, email: "admin@example.test", is_admin: true, is_staff: false, is_distributor: false
+      } }));
+      return Promise.resolve(jsonResponse(503, { status: "fail", error: { code: "test_unavailable", message: "测试未提供运行状态" } }));
+    }));
+
+    render(<App surface={{ kind: "admin", path: "admin" }} />);
+    const sidebar = await screen.findByRole("navigation", { name: "管理端导航" });
+    expect(sidebar).toBeVisible();
+
+    expect(within(sidebar).getAllByRole("button").map(button => button.textContent)).toEqual([
+      "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理",
+      "节点管理", "服务器管理", "节点管理", "权限组管理", "路由管理",
+      "订阅管理", "套餐管理", "订单管理", "分销管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
+    ]);
+    for (const removed of ["个人中心", "账号安全", "邮件设置", "节点网络", "订阅财务", "用户支持"]) {
+      expect(within(sidebar).queryByText(removed)).not.toBeInTheDocument();
+    }
+    const group = within(sidebar).getByRole("button", { name: "系统管理 菜单" });
+    await userEvent.click(group);
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(within(sidebar).queryByRole("button", { name: "系统配置" })).not.toBeInTheDocument();
+    await userEvent.click(group);
+    await userEvent.click(within(sidebar).getByRole("button", { name: "系统配置" }));
+    const config = await screen.findByRole("navigation", { name: "系统配置子导航" });
+    expect(within(config).getAllByRole("button").map(button => button.textContent)).toEqual([
+      "站点设置", "安全设置", "订阅设置", "邀请&佣金设置", "节点配置", "邮件设置", "Telegram设置", "APP设置", "订阅模板"
+    ]);
+    await userEvent.click(within(config).getByRole("button", { name: "安全设置" }));
+    expect(within(sidebar).getByRole("button", { name: "系统配置" })).toHaveAttribute("aria-current", "page");
+
   });
 });
 

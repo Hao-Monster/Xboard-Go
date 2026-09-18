@@ -40,12 +40,17 @@ jobs:
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
+    environment: development
     env:
       COREPACK_ENABLE_NETWORK: "0"
       GOTOOLCHAIN: local
       # The isolated server cannot reach proxy.golang.org reliably. Downloads
       # still use go.sum and the standard checksum database for verification.
       GOPROXY: https://goproxy.cn,direct
+      http_proxy: http://100.120.174.30:7890
+      https_proxy: http://100.120.174.30:7890
+      all_proxy: socks5h://100.120.174.30:7890
+      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
@@ -167,6 +172,83 @@ jobs:
           TARGET_SHA: ${{ needs.authorize.outputs.sha }}
         run: |
           printf '### Legacy parity\n\n- Commit: `%s`\n- Oracle: `xboard-legacy-parity:8065164`\n- Result: PASS\n' "$TARGET_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Deploy to development server (freedom) with atomic rollback
+        if: success()
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+          DEPLOY_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+        run: |
+          echo "Starting automated deployment for candidate: ${TARGET_SHA}"
+          # 1. Configure SSH client
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # 2. Tag and stream the candidate image directly to bingo's system docker
+          docker tag "$XBOARD_GO_IMAGE" "xboard-go:${TARGET_SHA}"
+          docker save "xboard-go:${TARGET_SHA}" | gzip -1 | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "gunzip | docker load"
+
+          # 3. Deploy remotely on bingo-dev as user bingo
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "REVISION=${TARGET_SHA} bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/bingo/apps/xboard-go-freedom
+          previous="$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}' 2>/dev/null || echo 'xboard-go:38a6d3f0')"
+          echo "Current running image: ${previous}"
+          echo "Deploying target image: xboard-go:${REVISION}"
+
+          backup_suffix="pre-${REVISION}-$(date -u +%Y%m%dT%H%M%SZ)"
+          cp -p compose.yaml "compose.yaml.${backup_suffix}"
+          cp -p .env ".env.${backup_suffix}"
+
+          rollback() {
+            echo "[-] Deployment failed! Rolling back to ${previous}..."
+            cp -p "compose.yaml.${backup_suffix}" compose.yaml
+            cp -p ".env.${backup_suffix}" .env
+            docker compose up -d --no-build app
+            exit 1
+          }
+          trap 'rollback' ERR
+
+          sed -i "s/^XBOARD_GO_REVISION=.*/XBOARD_GO_REVISION=${REVISION}/" .env
+          docker compose up -d --no-build app
+
+          echo "Waiting for container healthcheck..."
+          healthy=0
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' xboard-go-freedom-app-1 2>/dev/null || true)"
+            echo "Check $i/30: health status is '$status'"
+            if [ "$status" = "healthy" ]; then
+              healthy=1
+              break
+            elif [ "$status" = "unhealthy" ]; then
+              echo "[-] Container reported unhealthy!"
+              rollback
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo "[-] Container health check timed out!"
+            rollback
+          fi
+
+          echo "Testing loopback endpoint 127.0.0.1:18082/healthz..."
+          curl --fail --silent --show-error http://127.0.0.1:18082/healthz >/dev/null
+
+          echo "Deployment successful for revision: ${REVISION}"
+          trap - ERR
+          REMOTE
+
+          rm -f ~/.ssh/deploy_key
+      - name: Verify public HTTPS endpoint
+        if: success()
+        run: |
+          echo "Verifying public HTTPS endpoint..."
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/healthz >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
+          echo "Public HTTPS smoke verification SUCCESS!"
       - name: Capture candidate diagnostics
         if: failure()
         env:

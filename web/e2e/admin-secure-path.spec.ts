@@ -15,7 +15,7 @@ test("administrator path rotation isolates the UI and V1 admin API", async ({ pa
 
   const original = await readSiteSettings(page, adminSecurePath);
   try {
-    await page.getByRole("button", { name: "系统设置", exact: true }).click();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByLabel("管理员安全路径").fill(rotatedPath);
     await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
     await page.waitForURL((url) => url.pathname === `/${rotatedPath}/` && url.hash === "#/", { timeout: 15_000 });

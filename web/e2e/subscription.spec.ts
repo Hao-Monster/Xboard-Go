@@ -38,6 +38,7 @@ test("administrator subscription settings drive the user dashboard, QR, output p
     await login(page, adminEmail, adminPassword);
     original = await getSubscriptionSettings(page);
     originalPolicy = await getSubscriptionPolicySettings(page);
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "订阅设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "订阅设置" })).toBeVisible();
     const planChange = page.getByRole("checkbox", { name: "允许用户更改订阅" });
@@ -56,10 +57,14 @@ test("administrator subscription settings drive the user dashboard, QR, output p
     await page.getByLabel("订阅路径").fill(path);
     await page.getByRole("checkbox", { name: "在订阅中展示订阅信息" }).check();
     await page.getByRole("checkbox", { name: "在线路名称中显示协议名称" }).check();
-    await page.getByRole("button", { name: "Clash", exact: true }).click();
-    await expect(page.getByLabel("Clash 订阅模板")).toHaveValue(original.templates.clash);
     await page.getByRole("button", { name: "保存订阅设置" }).click();
     await expect(page.getByText("订阅设置已保存", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "订阅模板", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "订阅模板" }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Clash", exact: true }).click();
+    await expect(page.getByLabel("Clash 订阅模板")).toHaveValue(original.templates.clash);
+    await page.getByRole("button", { name: "保存订阅模板" }).click();
+    await expect(page.getByText("订阅模板已保存", { exact: true })).toBeVisible();
 
     const created = await adminRequest(page, "/api/v1/admin/users", "POST", {
       email, password, group_id: null, transfer_enable: 10 * 1024 * 1024 * 1024,

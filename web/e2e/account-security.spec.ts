@@ -14,7 +14,7 @@ test("administrator creates, uses, and revokes a long-lived credential without b
   });
 
   await login(page, originalPassword);
-  await page.getByRole("button", { name: "账号安全", exact: true }).click();
+  await openAccountSecurity(page);
   const credentialSection = page.getByRole("region", { name: "长期访问凭证" });
   while (await credentialSection.getByRole("button", { name: "撤销凭证", exact: true }).count() > 0) {
     await credentialSection.getByRole("button", { name: "撤销凭证", exact: true }).first().click();
@@ -64,7 +64,7 @@ test("administrator revokes other sessions and changes the password without accu
   try {
     await login(first, originalPassword);
     await login(second, originalPassword);
-    await first.getByRole("button", { name: "账号安全", exact: true }).click();
+    await openAccountSecurity(first);
     await expect(first.getByRole("heading", { name: "账号安全" })).toBeVisible();
     await expect(first.getByText("当前会话", { exact: true })).toBeVisible();
 
@@ -88,8 +88,7 @@ test("administrator revokes other sessions and changes the password without accu
     await first.getByLabel("邮箱").fill(adminEmail);
     await first.getByLabel("密码").fill(replacementPassword);
     await first.getByRole("button", { name: "登录" }).click();
-    await expect(first.getByRole("button", { name: "账号安全", exact: true })).toBeVisible();
-    await first.getByRole("button", { name: "账号安全", exact: true }).click();
+    await openAccountSecurity(first);
     await first.getByLabel("当前密码").fill(replacementPassword);
     await first.getByLabel("新密码", { exact: true }).fill(originalPassword);
     await first.getByLabel("确认新密码").fill(originalPassword);
@@ -112,7 +111,18 @@ async function login(page: Page, password: string) {
   await page.getByLabel("邮箱").fill(adminEmail);
   await page.getByLabel("密码").fill(password);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(page.getByRole("button", { name: "账号安全", exact: true })).toBeVisible();
+  await page.locator(".admin-account-menu summary").click();
+  await expect(page.locator(".admin-account-menu").getByRole("button", { name: "账号安全", exact: true })).toBeVisible();
+}
+
+async function openAccountSecurity(page: Page) {
+  const menu = page.locator(".admin-account-menu");
+  if (await menu.getByRole("button", { name: "账号安全", exact: true }).isVisible().catch(() => false)) {
+    await menu.getByRole("button", { name: "账号安全", exact: true }).click();
+    return;
+  }
+  await menu.locator("summary").click();
+  await menu.getByRole("button", { name: "账号安全", exact: true }).click();
 }
 
 async function restoreOriginalPassword(browser: Browser) {
@@ -123,7 +133,9 @@ async function restoreOriginalPassword(browser: Browser) {
     await page.getByLabel("邮箱").fill(adminEmail);
     await page.getByLabel("密码").fill(replacementPassword);
     await page.getByRole("button", { name: "登录" }).click();
-    const accountButton = page.getByRole("button", { name: "账号安全", exact: true });
+    const menu = page.locator(".admin-account-menu");
+    await menu.locator("summary").click();
+    const accountButton = menu.getByRole("button", { name: "账号安全", exact: true });
     const loggedIn = await accountButton.isVisible({ timeout: 5_000 }).catch(() => false);
     if (!loggedIn) return;
     await accountButton.click();

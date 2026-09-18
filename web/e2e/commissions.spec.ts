@@ -46,6 +46,7 @@ test("commission funds freeze atomically and support rejected refunds and approv
   try {
     await login(page, adminEmail, adminPassword);
     original = await getCommissionSettings(page);
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "佣金设置", exact: true }).click();
     await expect(page.getByRole("heading", { name: "邀请佣金设置" })).toBeVisible();
     await page.getByLabel("全局邀请佣金比例（%）").fill("20");
@@ -64,6 +65,7 @@ test("commission funds freeze atomically and support rejected refunds and approv
     await page.getByRole("button", { name: "保存佣金设置" }).click();
     await expect(page.getByRole("status")).toHaveText("佣金设置已保存");
     await page.reload();
+    await page.getByRole("button", { name: "系统配置", exact: true }).click();
     await page.getByRole("button", { name: "佣金设置", exact: true }).click();
     await expect(page.getByLabel("全局邀请佣金比例（%）")).toHaveValue("20");
     await expect(page.locator("label").filter({ hasText: "最低提现金额" }).locator("input")).toHaveValue("5.25");
