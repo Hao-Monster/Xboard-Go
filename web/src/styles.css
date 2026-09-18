@@ -853,54 +853,24 @@ html[data-theme-sidebar-style="light"] .app-frame > .admin-layout > .admin-sideb
   .theme-config-preview { align-items: flex-start; flex-direction: column; }
 }
 
-/* System Configuration 9-Tab Workbench */
-.system-config-page {
-  width: 100%;
-  max-width: 1280px;
-  box-sizing: border-box;
-  margin: 0 auto;
-  padding: 24px clamp(16px, 2.5vw, 40px) 48px;
-}
-.system-page-header {
-  margin-bottom: 20px;
-}
-.system-page-title {
-  margin: 0 0 6px;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--theme-text);
-}
-.system-page-desc {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--theme-muted);
-}
-.system-config-container {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-.system-tabs-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid var(--theme-border);
-  border-radius: var(--theme-card-radius);
-  background: color-mix(in srgb, var(--theme-surface) 96%, transparent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  position: sticky;
-  top: 84px;
-}
-.system-tab-button {
+/* System Configuration Horizontal Quick Tab Bar */
+.system-config-nav {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
+  gap: 6px;
+  margin: 16px 24px 0;
+  padding: 6px;
+  background: color-mix(in srgb, var(--theme-surface) 96%, transparent);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-card-radius);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.system-config-nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
   border-radius: var(--theme-control-radius);
   border: none;
   background: transparent;
@@ -908,60 +878,17 @@ html[data-theme-sidebar-style="light"] .app-frame > .admin-layout > .admin-sideb
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  text-align: left;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
-.system-tab-button:hover {
+.system-config-nav-tab:hover {
   background: color-mix(in srgb, var(--theme-text) 6%, transparent);
   color: var(--theme-text);
 }
-.system-tab-button.active {
-  background: color-mix(in srgb, var(--theme-primary) 14%, transparent);
+.system-config-nav-tab.active {
+  background: color-mix(in srgb, var(--theme-primary) 15%, transparent);
   color: var(--theme-primary);
   font-weight: 600;
 }
-.system-tab-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  opacity: 0.8;
-}
-.system-tab-button.active .system-tab-icon {
-  opacity: 1;
-  color: var(--theme-primary);
-}
-.system-tab-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.system-content-area {
-  min-width: 0;
-}
-.system-content-area .site-settings-page,
-.system-content-area .subscription-settings-page,
-.system-content-area .commission-settings-page,
-.system-content-area .node-agent-settings-page,
-.system-content-area .email-settings-shell,
-.system-content-area .client-app-settings-page {
-  padding: 0;
-  max-width: none;
-}
-.system-content-area .site-settings-card {
-  margin-top: 0;
-}
 
-@media (max-width: 900px) {
-  .system-config-container {
-    grid-template-columns: 1fr;
-  }
-  .system-tabs-nav {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
 

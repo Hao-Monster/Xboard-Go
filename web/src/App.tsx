@@ -14,7 +14,13 @@ const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeM
 const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
-const SystemConfigShell = lazy(async () => import("./features/settings/SystemConfigShell").then((module) => ({ default: module.SystemConfigShell })));
+const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
+const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
+const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
+const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
+const EmailSettingsPage = lazy(async () => import("./features/settings/EmailSettingsPage").then((module) => ({ default: module.EmailSettingsPage })));
+const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
+const ClientAppSettingsPage = lazy(async () => import("./features/settings/ClientAppSettingsPage").then((module) => ({ default: module.ClientAppSettingsPage })));
 const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
 const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
 const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
@@ -60,6 +66,12 @@ const adminNavGroups: NavGroup[] = [
     title: "系统管理",
     items: [
       { page: "settings", label: "系统设置" },
+      { page: "mail", label: "邮件设置" },
+      { page: "telegram", label: "Telegram 设置" },
+      { page: "client-app", label: "客户端版本" },
+      { page: "commissions", label: "佣金设置" },
+      { page: "subscriptions", label: "订阅设置" },
+      { page: "node-settings", label: "节点配置" },
       { page: "plugins", label: "插件管理" },
       { page: "themes", label: "主题配置" },
       { page: "notices", label: "公告管理" },
@@ -345,7 +357,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
                   {isExpanded && (
                     <div className="nav-group-items">
                       {group.items.map((item) => {
-                        const isActive = item.page === "settings" ? isSystemConfigPage : page === item.page;
+                        const isActive = page === item.page;
                         return (
                           <button
                             key={item.page}
@@ -366,40 +378,41 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
         </nav>
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
-            {page === "system" && <SystemOperationsPage api={api} />}
             {isSystemConfigPage && (
-              <SystemConfigShell
-                api={api}
-                activeTab={
-                  page === "mail"
-                    ? "mail"
-                    : page === "telegram"
-                    ? "telegram"
-                    : page === "client-app"
-                    ? "client-app"
-                    : page === "commissions"
-                    ? "commissions"
-                    : page === "subscriptions"
-                    ? "subscriptions"
-                    : page === "node-settings"
-                    ? "node-settings"
-                    : "site"
-                }
-                onTabChange={(tab) => {
-                  if (tab === "mail") setPage("mail");
-                  else if (tab === "telegram") setPage("telegram");
-                  else if (tab === "client-app") setPage("client-app");
-                  else if (tab === "commissions") setPage("commissions");
-                  else if (tab === "subscriptions") setPage("subscriptions");
-                  else if (tab === "node-settings") setPage("node-settings");
-                  else setPage("settings");
-                }}
-                onIdentityChanged={identityChanged}
-                onBeforeTabChange={canLeaveAdminPage}
-                onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)}
-                onClientAppDirtyChange={setClientAppSettingsDirty}
-              />
+              <div className="system-config-nav" role="tablist" aria-label="系统配置快捷导航">
+                {[
+                  { page: "settings" as AdminPage, label: "系统设置" },
+                  { page: "mail" as AdminPage, label: "邮件设置" },
+                  { page: "telegram" as AdminPage, label: "Telegram 设置" },
+                  { page: "client-app" as AdminPage, label: "客户端版本" },
+                  { page: "commissions" as AdminPage, label: "佣金设置" },
+                  { page: "subscriptions" as AdminPage, label: "订阅设置" },
+                  { page: "node-settings" as AdminPage, label: "节点配置" },
+                ].map((item) => {
+                  const isCurrent = page === item.page;
+                  return (
+                    <button
+                      key={item.page}
+                      role="tab"
+                      type="button"
+                      className={`system-config-nav-tab ${isCurrent ? "active" : ""}`}
+                      aria-selected={isCurrent}
+                      onClick={() => navigateAdminPage(item.page)}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
             )}
+            {page === "system" && <SystemOperationsPage api={api} />}
+            {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
+            {page === "mail" && <EmailSettingsPage api={api} />}
+            {page === "telegram" && <TelegramSettingsPage api={api} />}
+            {page === "client-app" && <ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} />}
+            {page === "commissions" && <CommissionSettingsPage api={api} />}
+            {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
+            {page === "node-settings" && <NodeAgentSettingsPage api={api} />}
             {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
             {page === "servers" && <ServerManagementPage api={api} />}
             {page === "nodes" && <NodeManagementPage api={api} />}
