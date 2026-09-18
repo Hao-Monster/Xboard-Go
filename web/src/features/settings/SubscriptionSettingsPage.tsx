@@ -32,7 +32,13 @@ const resetOptions = [
 ] as const;
 const eventOptions = [[0, "不执行任何动作"], [1, "重置用户流量"]] as const;
 
-export function SubscriptionSettingsPage({ api }: { api: SubscriptionSettingsAPI }) {
+export function SubscriptionSettingsPage({
+  api,
+  displayMode = "all"
+}: {
+  api: SubscriptionSettingsAPI;
+  displayMode?: "all" | "settings" | "templates";
+}) {
   const [current, setCurrent] = useState<SubscriptionSettings | null>(null);
   const [draft, setDraft] = useState<SubscriptionDraft | null>(null);
   const [policyCurrent, setPolicyCurrent] = useState<SubscriptionPolicySettings | null>(null);
@@ -144,12 +150,25 @@ export function SubscriptionSettingsPage({ api }: { api: SubscriptionSettingsAPI
   };
 
   const absent = draft === null || current === null || policyDraft === null || policyCurrent === null;
+  const showSettings = displayMode === "all" || displayMode === "settings";
+  const showTemplates = displayMode === "all" || displayMode === "templates";
+
   return <main className="page-shell subscription-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Subscription</p><h1>订阅设置</h1><p className="muted">配置套餐变更策略、订单事件、订阅输出和六类客户端模板。</p></div></header>
+    <header className="page-header">
+      <div>
+        <p className="eyebrow">Subscription</p>
+        <h1>{displayMode === "templates" ? "订阅模板" : "订阅设置"}</h1>
+        <p className="muted">
+          {displayMode === "templates"
+            ? "配置六类客户端订阅输出模板。"
+            : "配置套餐变更策略、订单事件、订阅输出和六类客户端模板。"}
+        </p>
+      </div>
+    </header>
     {loading && absent && <div className="empty-card">正在加载订阅设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {absent && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载订阅设置</button>}
-    {policyDraft !== null && policyCurrent !== null && <form className="subscription-settings-layout" onSubmit={(event) => void savePolicy(event)}>
+    {showSettings && policyDraft !== null && policyCurrent !== null && <form className="subscription-settings-layout" onSubmit={(event) => void savePolicy(event)}>
       <section className="site-settings-card subscription-policy" aria-labelledby="subscription-policy-heading">
         <div className="section-heading"><div><h2 id="subscription-policy-heading">订阅策略</h2><p className="muted">订单开关和事件在保存后立即用于后续订单。</p></div><span className="count-pill">策略 Revision {policyCurrent.revision}</span></div>
         <div className="form-stack">
@@ -168,7 +187,7 @@ export function SubscriptionSettingsPage({ api }: { api: SubscriptionSettingsAPI
       <div className="form-actions"><button className="button primary" type="submit" disabled={policySaving}>{policySaving ? "正在保存…" : "保存订阅策略"}</button></div>
     </form>}
     {draft !== null && current !== null && <form className="subscription-settings-layout" onSubmit={(event) => void save(event)}>
-      <section className="site-settings-card subscription-options" aria-labelledby="subscription-options-heading">
+      {showSettings && <section className="site-settings-card subscription-options" aria-labelledby="subscription-options-heading">
         <div className="section-heading"><div><h2 id="subscription-options-heading">订阅输出</h2><p className="muted">修改路径后，旧路径下的所有订阅地址立即失效。</p></div><span className="count-pill">Revision {current.revision}</span></div>
         <div className="form-stack">
           <label>订阅路径<input required name="path" pattern="[A-Za-z0-9_-]{1,64}" maxLength={64} placeholder="s" value={draft.path} onChange={(event) => update("path", event.target.value)} /></label>
@@ -176,8 +195,8 @@ export function SubscriptionSettingsPage({ api }: { api: SubscriptionSettingsAPI
           <label className="switch-label"><input type="checkbox" checked={draft.show_info} onChange={(event) => update("show_info", event.target.checked)} />在订阅中展示订阅信息</label>
           <label className="switch-label"><input type="checkbox" checked={draft.show_protocol} onChange={(event) => update("show_protocol", event.target.checked)} />在线路名称中显示协议名称</label>
         </div>
-      </section>
-      <section className="site-settings-card subscription-template-editor" aria-labelledby="subscription-template-heading">
+      </section>}
+      {showTemplates && <section className="site-settings-card subscription-template-editor" aria-labelledby="subscription-template-heading">
         <div className="section-heading"><div><h2 id="subscription-template-heading">订阅模板</h2><p className="muted">六个模板与路径、开关在同一事务中保存。</p></div></div>
         <nav className="subscription-template-tabs" aria-label="订阅模板类型">
           {templateNames.map((name) => <button type="button" className={activeTemplate === name ? "active" : ""} aria-pressed={activeTemplate === name} key={name} onClick={() => setActiveTemplate(name)}>{templateLabels[name]}</button>)}
@@ -186,9 +205,9 @@ export function SubscriptionSettingsPage({ api }: { api: SubscriptionSettingsAPI
           <textarea className="monospace" aria-label={`${templateLabels[activeTemplate]} 订阅模板`} spellCheck={false} value={draft.templates[activeTemplate]} onChange={(event) => updateTemplate(event.target.value)} />
         </label>
         <p className="small muted">{new TextEncoder().encode(draft.templates[activeTemplate]).length.toLocaleString()} / 1,048,576 bytes；JSON/YAML 模板保存时由服务端校验结构。</p>
-      </section>
-      {saved && <div className="alert success" role="status">订阅设置已保存</div>}
-      <div className="form-actions"><button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : "保存订阅设置"}</button></div>
+      </section>}
+      {saved && <div className="alert success" role="status">{displayMode === "templates" ? "订阅模板已保存" : "订阅设置已保存"}</div>}
+      <div className="form-actions"><button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : displayMode === "templates" ? "保存订阅模板" : "保存订阅设置"}</button></div>
     </form>}
     {error !== "" && !absent && <div className="form-actions"><button className="button secondary" type="button" disabled={saving || policySaving} onClick={() => void load()}>刷新最新设置</button></div>}
   </main>;

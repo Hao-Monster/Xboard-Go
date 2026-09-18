@@ -14,17 +14,11 @@ const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeM
 const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
 const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
 const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
-const SiteSettingsPage = lazy(async () => import("./features/settings/SiteSettingsPage").then((module) => ({ default: module.SiteSettingsPage })));
-const SubscriptionSettingsPage = lazy(async () => import("./features/settings/SubscriptionSettingsPage").then((module) => ({ default: module.SubscriptionSettingsPage })));
+const SystemConfigShell = lazy(async () => import("./features/settings/SystemConfigShell").then((module) => ({ default: module.SystemConfigShell })));
 const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
 const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
 const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
 const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
-const NodeAgentSettingsPage = lazy(async () => import("./features/settings/NodeAgentSettingsPage").then((module) => ({ default: module.NodeAgentSettingsPage })));
-const CommissionSettingsPage = lazy(async () => import("./features/settings/CommissionSettingsPage").then((module) => ({ default: module.CommissionSettingsPage })));
-const EmailSettingsPage = lazy(async () => import("./features/settings/EmailSettingsPage").then((module) => ({ default: module.EmailSettingsPage })));
-const TelegramSettingsPage = lazy(async () => import("./features/settings/TelegramSettingsPage").then((module) => ({ default: module.TelegramSettingsPage })));
-const ClientAppSettingsPage = lazy(async () => import("./features/settings/ClientAppSettingsPage").then((module) => ({ default: module.ClientAppSettingsPage })));
 const ThemeManagementPage = lazy(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
 const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
 const PluginManagementPage = lazy(async () => import("./features/plugins/PluginManagementPage").then((module) => ({ default: module.PluginManagementPage })));
@@ -66,16 +60,10 @@ const adminNavGroups: NavGroup[] = [
     title: "系统管理",
     items: [
       { page: "settings", label: "系统设置" },
-      { page: "themes", label: "主题配置" },
-      { page: "mail", label: "邮件设置" },
-      { page: "telegram", label: "Telegram 设置" },
-      { page: "client-app", label: "客户端版本" },
-      { page: "commissions", label: "佣金设置" },
-      { page: "subscriptions", label: "订阅设置" },
-      { page: "node-settings", label: "节点配置" },
       { page: "plugins", label: "插件管理" },
-      { page: "payments", label: "支付配置" },
+      { page: "themes", label: "主题配置" },
       { page: "notices", label: "公告管理" },
+      { page: "payments", label: "支付配置" },
       { page: "knowledge", label: "知识库管理" },
       { page: "clients", label: "客户端管理" },
     ],
@@ -137,9 +125,19 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
   const [page, setPage] = useState<AdminPage>("servers");
+  const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(adminNavGroups.map((g) => [g.id, true]))
+  );
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedAdminGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -306,6 +304,15 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   if (!session.is_admin) {
     return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>退出登录</button></section></main>;
   }
+  const isSystemConfigPage =
+    page === "settings" ||
+    page === "mail" ||
+    page === "telegram" ||
+    page === "client-app" ||
+    page === "commissions" ||
+    page === "subscriptions" ||
+    page === "node-settings";
+
   return (
     <div className="app-frame">
       <header className="topbar">
@@ -318,53 +325,99 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            {adminNavGroups.map((group) => (
-              <div key={group.id} className="nav-group">
-                <div className="nav-group-title">{group.title}</div>
-                <div className="nav-group-items">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.page}
-                      className="nav-link"
-                      aria-current={page === item.page ? "page" : undefined}
-                      onClick={() => navigateAdminPage(item.page)}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+            {adminNavGroups.map((group) => {
+              const isExpanded = expandedAdminGroups[group.id] ?? true;
+              return (
+                <div key={group.id} className="nav-group">
+                  <button
+                    type="button"
+                    className="nav-group-header"
+                    onClick={() => toggleGroup(group.id)}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="nav-group-title">{group.title}</span>
+                    <span className={`nav-group-chevron ${isExpanded ? "open" : ""}`} aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="nav-group-items">
+                      {group.items.map((item) => {
+                        const isActive = item.page === "settings" ? isSystemConfigPage : page === item.page;
+                        return (
+                          <button
+                            key={item.page}
+                            className={`nav-link ${isActive ? "active" : ""}`}
+                            aria-current={isActive ? "page" : undefined}
+                            onClick={() => navigateAdminPage(item.page)}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </nav>
         <div className="admin-content">
           <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
-        {page === "system" && <SystemOperationsPage api={api} />}
-        {page === "settings" && <SiteSettingsPage api={api} onIdentityChanged={identityChanged} onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)} />}
-        {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-        {page === "mail" && <EmailSettingsPage api={api} />}
-        {page === "telegram" && <TelegramSettingsPage api={api} />}
-        {page === "client-app" && <ClientAppSettingsPage api={api} onDirtyChange={setClientAppSettingsDirty} />}
-        {page === "commissions" && <CommissionSettingsPage api={api} />}
-        {page === "subscriptions" && <SubscriptionSettingsPage api={api} />}
-        {page === "node-settings" && <NodeAgentSettingsPage api={api} />}
-        {page === "servers" && <ServerManagementPage api={api} />}
-        {page === "nodes" && <NodeManagementPage api={api} />}
-        {page === "plans" && <PlanManagementPage api={api} />}
-        {page === "orders" && <OrderManagementPage api={api} />}
-        {page === "distributors" && <AdminDistributorPage api={api} />}
-        {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
-        {page === "payments" && <PaymentManagementPage api={api} />}
-        {page === "coupons" && <CouponManagementPage api={api} />}
-        {page === "gift-cards" && <GiftCardManagementPage api={api} />}
-        {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
-        {page === "tickets" && <TicketManagementPage api={api} />}
-        {page === "groups" && <ServerGroupsPage api={api} />}
-        {page === "routes" && <RoutingRulesPage api={api} />}
-        {page === "notices" && <NoticeManagementPage api={api} />}
-        {page === "knowledge" && <KnowledgeManagementPage api={api} />}
-        {page === "clients" && <ClientCatalogManagementPage api={api} />}
-        {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
+            {page === "system" && <SystemOperationsPage api={api} />}
+            {isSystemConfigPage && (
+              <SystemConfigShell
+                api={api}
+                activeTab={
+                  page === "mail"
+                    ? "mail"
+                    : page === "telegram"
+                    ? "telegram"
+                    : page === "client-app"
+                    ? "client-app"
+                    : page === "commissions"
+                    ? "commissions"
+                    : page === "subscriptions"
+                    ? "subscriptions"
+                    : page === "node-settings"
+                    ? "node-settings"
+                    : "site"
+                }
+                onTabChange={(tab) => {
+                  if (tab === "mail") setPage("mail");
+                  else if (tab === "telegram") setPage("telegram");
+                  else if (tab === "client-app") setPage("client-app");
+                  else if (tab === "commissions") setPage("commissions");
+                  else if (tab === "subscriptions") setPage("subscriptions");
+                  else if (tab === "node-settings") setPage("node-settings");
+                  else setPage("settings");
+                }}
+                onIdentityChanged={identityChanged}
+                onBeforeTabChange={canLeaveAdminPage}
+                onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)}
+                onClientAppDirtyChange={setClientAppSettingsDirty}
+              />
+            )}
+            {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
+            {page === "servers" && <ServerManagementPage api={api} />}
+            {page === "nodes" && <NodeManagementPage api={api} />}
+            {page === "plans" && <PlanManagementPage api={api} />}
+            {page === "orders" && <OrderManagementPage api={api} />}
+            {page === "distributors" && <AdminDistributorPage api={api} />}
+            {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
+            {page === "payments" && <PaymentManagementPage api={api} />}
+            {page === "coupons" && <CouponManagementPage api={api} />}
+            {page === "gift-cards" && <GiftCardManagementPage api={api} />}
+            {page === "users" && <UsersPage api={api} currentUserID={session.id} />}
+            {page === "tickets" && <TicketManagementPage api={api} />}
+            {page === "groups" && <ServerGroupsPage api={api} />}
+            {page === "routes" && <RoutingRulesPage api={api} />}
+            {page === "notices" && <NoticeManagementPage api={api} />}
+            {page === "knowledge" && <KnowledgeManagementPage api={api} />}
+            {page === "clients" && <ClientCatalogManagementPage api={api} />}
+            {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
           </Suspense>
         </div>
       </div>

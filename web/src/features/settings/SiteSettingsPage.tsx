@@ -5,10 +5,11 @@ import type { AdminAPI, Plan, SiteSettings, SiteSettingsInput } from "../../lib/
 type SiteSettingsAPI = Pick<AdminAPI, "getSiteSettings" | "updateSiteSettings" | "listPlans">;
 type SiteDraft = Omit<SiteSettingsInput, "revision">;
 
-export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged }: {
+export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, activeSubTab }: {
   api: SiteSettingsAPI;
   onIdentityChanged: (settings: SiteSettings) => void;
   onSecurePathChanged?: (nextPath: string) => void;
+  activeSubTab?: "site" | "security";
 }) {
   const [current, setCurrent] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteDraft | null>(null);
@@ -79,64 +80,90 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged }
     setSaved(false);
   };
 
+  const showSite = activeSubTab === undefined || activeSubTab === "site";
+  const showSecurity = activeSubTab === undefined || activeSubTab === "security";
+
   return <main className="page-shell site-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Configuration</p><h1>系统设置</h1><p className="muted">配置站点身份、订阅公开地址和注册安全策略。</p></div></header>
+    {activeSubTab === undefined && (
+      <header className="page-header"><div><p className="eyebrow">Configuration</p><h1>系统设置</h1><p className="muted">配置站点身份、订阅公开地址和注册安全策略。</p></div></header>
+    )}
     {loading && draft === null && <div className="empty-card">正在加载站点设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {draft === null && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载站点设置</button>}
     {draft !== null && current !== null && <section className="site-settings-card" aria-labelledby="site-settings-heading">
-      <div className="section-heading"><div><h2 id="site-settings-heading">站点设置</h2><p className="muted">字段与旧 Xboard 站点设置保持同一业务含义。</p></div><span className="count-pill">Revision {current.revision}</span></div>
+      <div className="section-heading">
+        <div>
+          <h2 id="site-settings-heading">{activeSubTab === "security" ? "安全设置" : "站点设置"}</h2>
+          <p className="muted">
+            {activeSubTab === "security"
+              ? "配置管理端安全访问路径、图形验证码及防刷防爆破安全策略。"
+              : "字段与旧 Xboard 站点设置保持同一业务含义。"}
+          </p>
+        </div>
+        <span className="count-pill">Revision {current.revision}</span>
+      </div>
       <form className="form-stack site-settings-form" onSubmit={(event) => void save(event)}>
-        <label>站点名称<input required value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
-        <label>站点描述<textarea value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
-        <div className="site-settings-url-grid">
-          <label>站点网址<input type="url" placeholder="https://panel.example.com" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
-          <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
-          <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
-        </div>
-        <fieldset className="settings-fieldset">
-          <legend>访问安全</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
-          <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
-          <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
-          {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
-        </fieldset>
-        <fieldset className="settings-fieldset">
-          <legend>订阅公开地址</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
-          <label>订阅公开地址<textarea aria-describedby="subscribe-url-help" placeholder={"https://subscribe-a.example.com\nhttps://subscribe-b.example.com"} value={draft.subscribe_url.split(",").join("\n")} onChange={(event) => updateDraft("subscribe_url", event.target.value)} /></label>
-          <p className="small muted" id="subscribe-url-help">每行一个地址，最多 32 个。外网地址必须使用 HTTPS，不能包含账号、查询参数或片段；留空时使用站点网址。</p>
-        </fieldset>
-        <div className="site-settings-url-grid">
-          <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
-          <label>货币符号<input maxLength={16} value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
-        </div>
-        <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
-        <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
-        <fieldset className="settings-fieldset">
-          <legend>流量重置策略</legend>
-          <label>系统默认重置方式<select value={draft.traffic_reset_method} onChange={(event) => updateDraft("traffic_reset_method", Number(event.target.value))}>
-            <option value={0}>每月 1 日</option><option value={1}>按用户到期日每月重置</option><option value={2}>永不重置</option><option value={3}>每年 1 月 1 日</option><option value={4}>按用户到期月日每年重置</option>
-          </select></label>
-          <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
-        </fieldset>
-        <fieldset className="settings-fieldset">
-          <legend>优惠券系统</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
-          <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
-        </fieldset>
-        <fieldset className="settings-fieldset">
-          <legend>注册安全策略</legend>
-          <label>注册试用<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
-            <option value={0}>关闭</option>
-            {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-          </select></label>
-          <p className="small muted" id="registration-trial-plan-help">选择需要试用的订阅，如果没有选项请先前往订阅管理添加。</p>
-          {draft.try_out_plan_id !== 0 && <label>注册试用时长<input aria-describedby="registration-trial-duration-help" type="number" required min={1} max={8760} step={1} value={draft.try_out_hour} onChange={(event) => updateDraft("try_out_hour", Number(event.target.value))} /></label>}
-          {draft.try_out_plan_id !== 0 && <p className="small muted" id="registration-trial-duration-help">注册试用时长，单位为小时。</p>}
-          <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
-          <p className="small muted">保护直接注册、注册邮箱验证码和找回密码验证码请求；密码登录不使用此策略。</p>
-          {draft.captcha_enable && <label>验证码类型<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
+        {showSite && <div className="site-settings-fields">
+          <label>站点名称<input required value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
+          <label>站点描述<textarea value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
+          <div className="site-settings-url-grid">
+            <label>站点网址<input type="url" placeholder="https://panel.example.com" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
+            <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
+            <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
+          </div>
+          <fieldset className="settings-fieldset">
+            <legend>访问安全</legend>
+            <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
+            <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
+            <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
+            {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
+          </fieldset>
+          <fieldset className="settings-fieldset">
+            <legend>订阅公开地址</legend>
+            <label className="switch-label"><input type="checkbox" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
+            <label>订阅公开地址<textarea aria-describedby="subscribe-url-help" placeholder={"https://subscribe-a.example.com\nhttps://subscribe-b.example.com"} value={(draft.subscribe_url ?? "").split(",").join("\n")} onChange={(event) => updateDraft("subscribe_url", event.target.value)} /></label>
+            <p className="small muted" id="subscribe-url-help">每行一个地址，最多 32 个。外网地址必须使用 HTTPS，不能包含账号、查询参数或片段；留空时使用站点网址。</p>
+          </fieldset>
+          <div className="site-settings-url-grid">
+            <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
+            <label>货币符号<input maxLength={16} value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
+          </div>
+          <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
+          <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
+          <fieldset className="settings-fieldset">
+            <legend>流量重置策略</legend>
+            <label>系统默认重置方式<select value={draft.traffic_reset_method} onChange={(event) => updateDraft("traffic_reset_method", Number(event.target.value))}>
+              <option value={0}>每月 1 日</option><option value={1}>按用户到期日每月重置</option><option value={2}>永不重置</option><option value={3}>每年 1 月 1 日</option><option value={4}>按用户到期月日每年重置</option>
+            </select></label>
+            <p className="small muted">套餐选择“跟随系统”时使用此规则；永久有效用户不安排自动重置。计算时区与旧 Xboard 一致，固定为 Asia/Shanghai。</p>
+          </fieldset>
+          <fieldset className="settings-fieldset">
+            <legend>优惠券系统</legend>
+            <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
+            <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
+          </fieldset>
+        </div>}
+
+        {showSecurity && <div className="security-settings-fields">
+          {activeSubTab === "security" && <fieldset className="settings-fieldset">
+            <legend>访问安全</legend>
+            <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
+            <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
+            <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
+            {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
+          </fieldset>}
+          <fieldset className="settings-fieldset">
+            <legend>注册安全策略</legend>
+            <label>注册试用<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
+              <option value={0}>关闭</option>
+              {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+            </select></label>
+            <p className="small muted" id="registration-trial-plan-help">选择需要试用的订阅，如果没有选项请先前往订阅管理添加。</p>
+            {draft.try_out_plan_id !== 0 && <label>注册试用时长<input aria-describedby="registration-trial-duration-help" type="number" required min={1} max={8760} step={1} value={draft.try_out_hour} onChange={(event) => updateDraft("try_out_hour", Number(event.target.value))} /></label>}
+            {draft.try_out_plan_id !== 0 && <p className="small muted" id="registration-trial-duration-help">注册试用时长，单位为小时。</p>}
+            <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
+            <p className="small muted">保护直接注册、注册邮箱验证码和找回密码验证码请求；密码登录不使用此策略。</p>
+            {draft.captcha_enable && <label>验证码类型<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
             <option value="recaptcha">Google reCAPTCHA v2</option><option value="recaptcha-v3">Google reCAPTCHA v3</option><option value="turnstile">Cloudflare Turnstile</option>
           </select></label>}
           {draft.captcha_enable && draft.captcha_type === "recaptcha" && <div className="captcha-settings-grid">
@@ -187,10 +214,13 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged }
           <label className="switch-label"><input type="checkbox" checked={draft.login_with_mail_link_enable} onChange={(event) => updateDraft("login_with_mail_link_enable", event.target.checked)} />邮件链接登录</label>
           <p className="small muted">启用后，已有用户可通过 5 分钟有效、仅能使用一次的邮件链接登录；请先在邮件设置中启用 SMTP。</p>
         </fieldset>
+        </div>}
         {saved && <div className="alert success" role="status">站点设置已保存</div>}
         <div className="form-actions">
           {error !== "" && draft !== null && <button className="button secondary" type="button" disabled={saving} onClick={() => void load()}>刷新最新设置</button>}
-          <button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : "保存站点设置"}</button>
+          <button className="button primary" type="submit" disabled={saving}>
+            {saving ? "正在保存…" : activeSubTab === "security" ? "保存安全设置" : "保存站点设置"}
+          </button>
         </div>
       </form>
     </section>}
