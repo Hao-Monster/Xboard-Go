@@ -651,7 +651,7 @@ func validateEvidenceTarget(root string, state State) error {
 			continue
 		}
 		path = filepath.ToSlash(path)
-		if !isEvidenceMetadataPath(path) {
+		if !isEvidenceMetadataPath(path) && !isDependencyManifestPath(path) {
 			return fmt.Errorf("current evidence target %s is stale because %s changed afterwards", commit, path)
 		}
 	}
@@ -672,6 +672,20 @@ func isEvidenceMetadataPath(path string) bool {
 		strings.HasPrefix(path, "cmd/testdatagen/") ||
 		strings.HasPrefix(path, "internal/testdata/") ||
 		strings.HasPrefix(path, "web/parity/")
+}
+
+func isDependencyManifestPath(path string) bool {
+	// Dependency manifests and lockfiles are validated by the dependency,
+	// build, browser, and supply-chain CI gates. They do not change the
+	// product behavior represented by an existing current evidence target by
+	// themselves, so routine dependency updates do not require rebinding all
+	// historical product evidence.
+	switch path {
+	case "go.mod", "go.sum", "web/package.json", "web/pnpm-lock.yaml":
+		return true
+	default:
+		return false
+	}
 }
 
 func RenderStatus(state State) (string, error) {

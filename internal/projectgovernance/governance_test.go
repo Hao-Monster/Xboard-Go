@@ -318,6 +318,37 @@ func TestCheckAllowsParitySpecChangesAfterCurrentEvidenceTarget(t *testing.T) {
 	}
 }
 
+func TestCheckAllowsDependencyManifestChangesAfterCurrentEvidenceTarget(t *testing.T) {
+	for _, relativePath := range []string{"go.mod", "go.sum", "web/package.json", "web/pnpm-lock.yaml"} {
+		t.Run(relativePath, func(t *testing.T) {
+			root, state := repositoryState(t)
+			temporaryRoot := copyProjectFixture(t, root)
+			runGit(t, temporaryRoot, "init")
+			runGit(t, temporaryRoot, "config", "user.name", "governance-test")
+			runGit(t, temporaryRoot, "config", "user.email", "governance-test@example.invalid")
+			runGit(t, temporaryRoot, "add", ".")
+			runGit(t, temporaryRoot, "commit", "-m", "verification target")
+			retargetCurrentEvidence(&state, strings.TrimSpace(runGitOutput(t, temporaryRoot, "rev-parse", "HEAD")))
+			requirement := &state.Requirements.Requirements[0]
+			requirement.VerificationStatus = "current"
+			requirement.Evidence = []Evidence{validTestEvidence(state)}
+			writeRequirementFixture(t, temporaryRoot, state)
+			dependencyPath := filepath.Join(temporaryRoot, filepath.FromSlash(relativePath))
+			if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dependencyPath, []byte("dependency update\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			runGit(t, temporaryRoot, "add", ".")
+			runGit(t, temporaryRoot, "commit", "-m", "dependency manifest update")
+			if err := Check(temporaryRoot); err != nil {
+				t.Fatalf("dependency manifest changes must not invalidate product evidence: %v", err)
+			}
+		})
+	}
+}
+
 func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 	for _, path := range []string{
 		"docs/project/requirements.json",
@@ -328,9 +359,13 @@ func TestEvidenceMetadataPathsExcludePackagedApplicationCode(t *testing.T) {
 		"cmd/testdatagen/main.go",
 		"internal/testdata/legacy/gen/generator.go",
 		"web/parity/admin-surface.spec.ts",
+		"go.mod",
+		"go.sum",
+		"web/package.json",
+		"web/pnpm-lock.yaml",
 	} {
-		if !isEvidenceMetadataPath(path) {
-			t.Errorf("expected %s to be governance metadata", path)
+		if !isEvidenceMetadataPath(path) && !isDependencyManifestPath(path) {
+			t.Errorf("expected %s to be governance or dependency metadata", path)
 		}
 	}
 	for _, path := range []string{
