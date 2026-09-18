@@ -3,13 +3,13 @@
   "purpose": "Reviewed execution provenance and bounded remaining scope for PR #202. Requirement and work-item states remain in their registries; this manifest does not declare whole-project acceptance.",
   "as_of": "2026-09-08",
   "pull_request": "https://github.com/Hao-Monster/Xboard-Go/pull/202",
-  "implementation_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+  "implementation_commit": "67f2991160643f21ab400a697943a290d9aeea8f",
   "verified_candidate_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
   "ci": {
     "run": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754",
-    "actual_checkout": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-    "actual_checkout_and_candidate_tree": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-    "checkout_parents": ["aebf5ecea99ec21056c7f9a0e25bad33657e347d", "aebf5ecea99ec21056c7f9a0e25bad33657e347d"],
+    "actual_checkout": "2995274154236cd3c216f981c38dc73066838591",
+    "actual_checkout_and_candidate_tree": "154004b3d9c9fa3e75e5c2812dccd5acf4a2f27d",
+    "checkout_parents": ["5a6c76f5f27410b4d4e3396270b4e583652b3433", "aebf5ecea99ec21056c7f9a0e25bad33657e347d"],
     "completed_at": "2026-09-08T09:30:49Z",
     "passed_jobs": 15,
     "failed_jobs": 0,
@@ -23,7 +23,7 @@
     "codeql_passed_languages": ["Go", "JavaScript/TypeScript"]
   },
   "runtime_provenance": {
-    "runtime_unchanged_after": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+    "runtime_unchanged_after": "67f2991160643f21ab400a697943a290d9aeea8f",
     "changes_through_verified_candidate": [
       "internal/store/store_test.go",
       "web/playwright.parity.config.ts",
@@ -37,7 +37,7 @@
     {
       "kind": "browser",
       "environment": "bingo-dev isolated loopback Compose",
-      "source_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "source_commit": "67f2991160643f21ab400a697943a290d9aeea8f",
       "passed": 95,
       "failed": 0,
       "skipped": 3,
@@ -48,7 +48,7 @@
       "kind": "differential",
       "environment": "bingo-dev fixed rootless legacy Oracle and isolated Go candidate",
       "legacy_image": "xboard-legacy-parity:8065164",
-      "runtime_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "runtime_commit": "67f2991160643f21ab400a697943a290d9aeea8f",
       "test_source_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
       "command": "pnpm --dir web exec playwright test --config playwright.parity.config.ts --reporter=list,json,html --trace off",
       "started_at": "2026-09-08T09:24:53.010Z",
@@ -60,19 +60,19 @@
       "flaky": 0,
       "report_errors": 0,
       "exit_code": 0,
-      "report_sha256": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-      "log_sha256": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "report_sha256": "5df72e15831f886a029471a56152882de086503d29c148a24be31c7b975dda66",
+      "log_sha256": "079f827317d614237223b6e0fd0d2be32e644a87dba61d31c53f253a0685af39",
       "test_file_sha256": {
-        "web/parity/admin-surface.spec.ts": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-        "web/parity/node-dual-auth.spec.ts": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-        "web/playwright.parity.config.ts": "aebf5ecea99ec21056c7f9a0e25bad33657e347d"
+        "web/parity/admin-surface.spec.ts": "24861dde84ff0b7a117121fd7f9cac8c9472e61559fc9e9a67b4e4a35b2133b2",
+        "web/parity/node-dual-auth.spec.ts": "d755b4eabe797062346ef9a5d1ebc98c57e02920320baa797333f4f071d13dec",
+        "web/playwright.parity.config.ts": "28048668d9e100e884eebe3e2ecfce1d07848567fa774ac8b989f8914202587c"
       },
       "fixture_correction": "Preserve CE-009 shared ticket behavior while checking Go atomic freezing; use the existing secure admin path; explicitly prepare disposable Go WebSocket capability and administrator state to match the fixed Oracle. Product persistence behavior and assertions were not weakened.",
       "mapping_limit": "Several historical line references were already misaligned. Forty passing tests are not evidence for every requirement: old-only observations, intercepted UI requests and persisted Go behavior must be mapped separately."
     },
     {
       "kind": "migration_and_opt_in",
-      "source_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "source_commit": "5c9ac46402ff2d9943517db9b4102c7edfc710c9",
       "environment": "bingo-dev isolated synthetic data",
       "results": [
         "Representative generator: 26 top-level/subtest results passed, no failed/skipped results.",
@@ -86,8 +86,8 @@
     {
       "kind": "external_node_reconnect",
       "repository": "Xboard-Node",
-      "commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-      "additional_test_sha256": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "commit": "a95b06fb6d517328018df388cfe8c8e90590d4be",
+      "additional_test_sha256": "ee4b2975f4d2e827c00d6035d193da59cd01ab4ac90c9db5a2f18a444e916c35",
       "command": "go test -race ./internal/panel -run '^(TestR014ReconnectJitterDistribution|TestWSClient_ReconnectOnDisconnect)$' -count=5 -v -timeout=15m",
       "passed_executions": 10,
       "failed": 0,
@@ -97,7 +97,7 @@
     },
     {
       "kind": "performance_characterization",
-      "source_commit": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
+      "source_commit": "5c9ac46402ff2d9943517db9b4102c7edfc710c9",
       "environment": "bingo-dev; Go 1.26.8; GOMAXPROCS=2; benchmark modes serialized",
       "flags": "-p 1 -run ^$ -benchmem -benchtime=1s -count=3 -v",
       "top_level_benchmarks": 29,
@@ -106,10 +106,10 @@
       "samples_per_leaf": 3,
       "skipped_leaves": 0,
       "sample_log_sha256": {
-        "business": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-        "node_redis": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-        "node_report": "aebf5ecea99ec21056c7f9a0e25bad33657e347d",
-        "content": "aebf5ecea99ec21056c7f9a0e25bad33657e347d"
+        "business": "88ebda3b4f8327ca541145eb0e6c2579735fb3baf677414d08bb0fe63cf784b2",
+        "node_redis": "be8ab740301254d4a158fe14e9ddb48a02000756a8751937aba20fa5ffb218c3",
+        "node_report": "fa9097becc9a09635c7e7c6bfbd0f2ad5d0f42f862c1bbfdd45b3bec6473aa2d",
+        "content": "6fdba8a2c61f21ea7b109ece923203b5544b2758058ba43795f2b4ab311b56c1"
       },
       "finite_followup": "The 100K distributor order benchmark page-1/200-row query took 0.902-1.059s. Existing exact COUNT and whole-match sorting explain work beyond 200 rows; it is not N+1 or deep pagination. Relevant query/benchmark/index code is unchanged from main 5a6c76f through 67f29911 and 48db576. No new regression or agreed SLO violation was established; no optimization or new merge blocker was introduced.",
       "scope_limit": "Narrow operation measurements only. Distributor list/export does not measure all distributor business flows; Redis snapshot benchmark omits SQLite flush cost; cumulative B/op is not RSS. D-015 production SLO remains unresolved."
@@ -120,7 +120,7 @@
     {"requirement": "USER-001", "category": "verified_but_full_mapping_pending", "detail": "The new lifecycle portion has current multi-layer evidence. Full querying/filtering, create/bulk-generate, edit/ban/key/inviter, mail and export evidence needs business-point mapping from existing CI/packaged/Oracle results; do not rerun all flows merely to unify metadata commits or claim intercepted UI writes were persisted."},
     {"requirement": "USER-003", "category": "scoped_current_verification", "detail": "Current evidence is SQLite v63 lifecycle, exact 30-day boundaries, explicit anonymization, authority, rollback, credential revocation, owned-notification fencing and retained business facts. Browser proves deactivate/recover; final anonymization is exercised at API/store and component levels. Unknown historical mail ownership and already-started network sends retain the documented limits. Formal acceptance stays pending."},
     {"requirement": "OPS-002", "category": "verified_components_with_environment_gates", "detail": "D-013 offline 90-day metadata preservation, fact reconciliation, fixed replay and rollback are verified. No historical-query UI was requested by D-013. Actual off-site restore and production database/token-transition decisions are separate; representative synthetic migration is not a production migration rehearsal."},
-    {"requirement": "PLUG-001/PLUG-002", "category": "not_run", "detail": "The captured real snapshot identified by SHA-256 aebf5ecea99ec21056c7f9a0e25bad33657e347d was not available in the inspected test locations. Synthetic adapter, migration and plugin UI tests are not a substitute for this opt-in snapshot identity test."},
+    {"requirement": "PLUG-001/PLUG-002", "category": "not_run", "detail": "The captured real snapshot identified by SHA-256 a23d9a90866b4aec783a617afe766c227221cf7fbde272ae1f261ddb5f02ac9b was not available in the inspected test locations. Synthetic adapter, migration and plugin UI tests are not a substitute for this opt-in snapshot identity test."},
     {"requirement": "SUB-005/CLIENT-001", "category": "not_run", "detail": "Proprietary Stash, Surge, Shadowrocket, Quantumult X, Loon and Surfboard real-import execution is unavailable. Pinned Mihomo and sing-box CI results cover only their actual binaries and formats, not those proprietary products."},
     {"category": "formal_acceptance_choices", "decision_ids": ["D-007", "D-014", "D-017"], "detail": "Supported-browser/accessibility scope, real third-party sandbox endpoints and visual compatibility sign-off remain explicit choices. No extra UI or third-party production calls were added during closeout."},
     {"category": "production_independent_gates", "decision_ids": ["D-006", "D-009", "D-015", "D-016", "D-018"], "detail": "Production database compatibility, legacy-token retirement, SLO/capacity, cutover/rollback, administrator MFA, real off-site recovery and independent production authorization are not released by this development candidate."}
