@@ -59,20 +59,20 @@ test("legacy and Go preserve an owner ticket against another user", async ({
     if (legacyAdminPage === null || goAdminPage === null) {
       throw new Error("admin pages were not created");
     }
-    legacyAuthorization = await loginLegacyAdmin(legacyAdminPage!);
-    await loginGoAdmin(goAdminPage!);
+    legacyAuthorization = await loginLegacyAdmin(legacyAdminPage);
+    await loginGoAdmin(goAdminPage);
     legacyOwnerID = await generateLegacyUser(
-      legacyAdminPage!.request,
+      legacyAdminPage.request,
       legacyAuthorization,
       legacyOwner,
     );
     legacyOtherID = await generateLegacyUser(
-      legacyAdminPage!.request,
+      legacyAdminPage.request,
       legacyAuthorization,
       legacyOther,
     );
-    goOwnerID = await generateGoUser(goAdminPage!, goOwner);
-    goOtherID = await generateGoUser(goAdminPage!, goOther);
+    goOwnerID = await generateGoUser(goAdminPage, goOwner);
+    goOtherID = await generateGoUser(goAdminPage, goOther);
     const results = await Promise.allSettled([
       exerciseLegacy(browser, legacyOwner, legacyOther, subject, message),
       exerciseGo(browser, goOwner, goOther, subject, message),
@@ -141,35 +141,38 @@ async function exerciseLegacy(
 ) {
   let ownerContext: BrowserContext | null = null;
   let otherContext: BrowserContext | null = null;
+  let failed: PromiseRejectedResult | undefined;
   try {
     ownerContext = await browser.newContext({ locale: "zh-CN" });
     otherContext = await browser.newContext({ locale: "zh-CN" });
     if (ownerContext === null || otherContext === null) {
       throw new Error("legacy user contexts were not created");
     }
-    const ownerAuth = await loginLegacyUser(ownerContext!.request, owner);
-    const otherAuth = await loginLegacyUser(otherContext!.request, other);
+    const ownerRequest = ownerContext.request;
+    const otherRequest = otherContext.request;
+    const ownerAuth = await loginLegacyUser(ownerRequest, owner);
+    const otherAuth = await loginLegacyUser(otherRequest, other);
     const ownerHeaders = { authorization: ownerAuth };
     const otherHeaders = { authorization: otherAuth };
-    const created = await ownerContext!.request.post(
+      const created = await ownerRequest.post(
       legacyUserAPI("/ticket/save"),
       { headers: ownerHeaders, data: { subject, level: 2, message } },
     );
     expect(created.status()).toBe(200);
     const ticketID = await legacyTicketID(
-      ownerContext!.request,
+      ownerRequest,
       ownerHeaders,
       subject,
     );
     const before = await legacySnapshot(
-      ownerContext!.request,
+      ownerRequest,
       ownerHeaders,
       ticketID,
     );
     for (const { request, status, message: expectedMessage } of [
       {
         request: () =>
-          otherContext!.request.get(
+          otherRequest.get(
             legacyUserAPI(`/ticket/fetch?id=${ticketID}`),
             { headers: otherHeaders },
           ),
@@ -178,7 +181,7 @@ async function exerciseLegacy(
       },
       {
         request: () =>
-          otherContext!.request.post(legacyUserAPI("/ticket/reply"), {
+          otherRequest.post(legacyUserAPI("/ticket/reply"), {
             headers: otherHeaders,
             data: { id: ticketID, message: "Unauthorized" },
           }),
@@ -187,7 +190,7 @@ async function exerciseLegacy(
       },
       {
         request: () =>
-          otherContext!.request.post(legacyUserAPI("/ticket/close"), {
+          otherRequest.post(legacyUserAPI("/ticket/close"), {
             headers: otherHeaders,
             data: { id: ticketID },
           }),
@@ -206,7 +209,7 @@ async function exerciseLegacy(
           readStringProperty(JSON.parse(responseBody) as unknown, "message"),
         ).toBe(expectedMessage);
       expect(
-        await legacySnapshot(ownerContext!.request, ownerHeaders, ticketID),
+        await legacySnapshot(ownerRequest, ownerHeaders, ticketID),
       ).toEqual(before);
     }
   } finally {
@@ -215,11 +218,11 @@ async function exerciseLegacy(
         .filter((context): context is BrowserContext => context !== null)
         .map((context) => context.close()),
     );
-    const failed = closures.find(
+    failed = closures.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
-    if (failed !== undefined) throw failed.reason;
   }
+  if (failed !== undefined) throw failed.reason;
 }
 
 async function exerciseGo(
@@ -231,16 +234,19 @@ async function exerciseGo(
 ) {
   let ownerContext: BrowserContext | null = null;
   let otherContext: BrowserContext | null = null;
+  let failed: PromiseRejectedResult | undefined;
   try {
     ownerContext = await browser.newContext({ locale: "zh-CN" });
     otherContext = await browser.newContext({ locale: "zh-CN" });
     if (ownerContext === null || otherContext === null) {
       throw new Error("Go user contexts were not created");
     }
-    const ownerAuth = await loginGoUser(ownerContext!.request, owner);
-    const otherAuth = await loginGoUser(otherContext!.request, other);
+    const ownerRequest = ownerContext.request;
+    const otherRequest = otherContext.request;
+    const ownerAuth = await loginGoUser(ownerRequest, owner);
+    const otherAuth = await loginGoUser(otherRequest, other);
     const created = await goUserRequest(
-      ownerContext!.request,
+      ownerRequest,
       "/api/v1/tickets",
       "POST",
       { subject, level: 2, message },
@@ -251,11 +257,11 @@ async function exerciseGo(
       readProperty(parseJSONBody(created.body), "data"),
       "id",
     );
-    const before = await goSnapshot(ownerContext!.request, ownerAuth, ticketID);
+    const before = await goSnapshot(ownerRequest, ownerAuth, ticketID);
     for (const request of [
       () =>
         goUserRequest(
-          otherContext!.request,
+          otherRequest,
           `/api/v1/tickets/${ticketID}`,
           "GET",
           undefined,
@@ -263,7 +269,7 @@ async function exerciseGo(
         ),
       () =>
         goUserRequest(
-          otherContext!.request,
+          otherRequest,
           `/api/v1/tickets/${ticketID}/messages`,
           "POST",
           { message: "Unauthorized" },
@@ -271,7 +277,7 @@ async function exerciseGo(
         ),
       () =>
         goUserRequest(
-          otherContext!.request,
+          otherRequest,
           `/api/v1/tickets/${ticketID}/close`,
           "POST",
           {},
@@ -290,7 +296,7 @@ async function exerciseGo(
         ),
       ).toBe("not_found");
       expect(
-        await goSnapshot(ownerContext!.request, ownerAuth, ticketID),
+        await goSnapshot(ownerRequest, ownerAuth, ticketID),
       ).toEqual(before);
     }
   } finally {
@@ -299,11 +305,11 @@ async function exerciseGo(
         .filter((context): context is BrowserContext => context !== null)
         .map((context) => context.close()),
     );
-    const failed = closures.find(
+    failed = closures.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
-    if (failed !== undefined) throw failed.reason;
   }
+  if (failed !== undefined) throw failed.reason;
 }
 
 type User = { email: string; password: string };
