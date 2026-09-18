@@ -4,7 +4,7 @@
   "as_of": "2026-09-08",
   "pull_request": "https://github.com/Hao-Monster/Xboard-Go/pull/202",
   "implementation_commit": "67f2991160643f21ab400a697943a290d9aeea8f",
-  "verified_candidate_commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
+  "verified_candidate_commit": "bc5b3851fb5034501291a12b5be820708de9d32a",
   "ci": {
     "run": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/34208882754",
     "actual_checkout": "2995274154236cd3c216f981c38dc73066838591",
@@ -49,7 +49,7 @@
       "environment": "bingo-dev fixed rootless legacy Oracle and isolated Go candidate",
       "legacy_image": "xboard-legacy-parity:8065164",
       "runtime_commit": "67f2991160643f21ab400a697943a290d9aeea8f",
-      "test_source_commit": "e65942588d4fca9895a03c886c720a8ac43b68e8",
+      "test_source_commit": "bc5b3851fb5034501291a12b5be820708de9d32a",
       "command": "pnpm --dir web exec playwright test --config playwright.parity.config.ts --reporter=list,json,html --trace off",
       "started_at": "2026-09-08T09:24:53.010Z",
       "completed_at": "2026-09-08T09:29:00Z",
