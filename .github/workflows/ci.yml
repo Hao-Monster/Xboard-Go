@@ -482,20 +482,6 @@ jobs:
           XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
           XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
         run: pnpm --dir web exec playwright test e2e/registration-trial.spec.ts --project chromium
-      - name: Reset in-memory request limiters before the isolated email verification test
-        if: needs.detect-changes.outputs.packaged_browser == 'true'
-        run: |
-          docker compose -f compose.local.yaml --profile e2e restart xboard-go
-          docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
-      - name: Run isolated email verification desktop browser test
-        if: needs.detect-changes.outputs.packaged_browser == 'true'
-        env:
-          XBOARD_E2E_BASE_URL: http://127.0.0.1:7080
-          XBOARD_E2E_EXTERNAL_SERVER: "true"
-          XBOARD_E2E_ADMIN_EMAIL: admin@xboard-go.local
-          XBOARD_E2E_ADMIN_PASSWORD: ${{ env.XBOARD_PACKAGED_PASSWORD }}
-          XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
-        run: pnpm --dir web exec playwright test e2e/registration-email-verification.spec.ts --project chromium
       - name: Reset in-memory request limiters before the desktop regression suite
         if: needs.detect-changes.outputs.packaged_browser == 'true'
         run: |
@@ -511,7 +497,7 @@ jobs:
           XBOARD_E2E_MAILPIT_URL: http://127.0.0.1:7082
         run: >-
           pnpm --dir web exec playwright test --project chromium
-          --grep-invert "administrator configures a registration trial and a public registration receives its full entitlement|visitor registers with the legacy one-time email code through Mailpit"
+          --grep-invert "administrator configures a registration trial and a public registration receives its full entitlement"
       - name: Reset in-memory request limiters before the mobile project
         if: needs.detect-changes.outputs.packaged_browser == 'true'
         run: |
