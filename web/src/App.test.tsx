@@ -67,7 +67,7 @@ describe("App public identity bootstrap", () => {
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
 		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
-		expect(screen.getByRole("button", { name: "邮件设置" })).toBeVisible();
+		expect(screen.getByRole("button", { name: "系统设置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
@@ -85,6 +85,16 @@ describe("App public identity bootstrap", () => {
       if (path.endsWith("/api/v1/auth/session")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         id: 92, email: "client-admin@example.test", is_admin: true, is_staff: false, is_distributor: false
       } }));
+      if (path.endsWith("/api/v1/admin/admin/site-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
+        revision: 1, app_name: "Client Board", app_description: "", app_url: "", tos_url: "", logo: "",
+        force_https: false, stop_register: false, coupon_enabled: true, currency: "CNY", currency_symbol: "¥",
+        traffic_reset_method: 0, safe_mode_enable: false, secure_path: "admin", email_verify: false,
+        email_whitelist_enable: false, email_whitelist_suffix: [], captcha_enable: false, captcha_type: "recaptcha",
+        recaptcha_site_key: "", recaptcha_v3_site_key: "", recaptcha_v3_score_threshold: 0.5, turnstile_site_key: "",
+        try_out_plan_id: 0, try_out_hour: 1, login_with_mail_link_enable: false, subscribe_url: ""
+      } }));
+      if (path.endsWith("/api/v1/admin/admin/plans")) return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
+      if (path.endsWith("/api/v1/admin/admin/plugins")) return Promise.resolve(jsonResponse(200, { status: "success", data: [] }));
       if (path.endsWith("/api/v1/admin/admin/client-app-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         revision: 1,
         windows_version: "4.8.1", windows_download_url: "https://download.example.test/windows.exe",
@@ -97,17 +107,18 @@ describe("App public identity bootstrap", () => {
     const user = userEvent.setup();
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
+    await user.click(await screen.findByRole("button", { name: "系统设置" }));
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");
     await user.clear(version);
     await user.type(version, "5.0.0");
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     expect(screen.getByRole("heading", { name: "客户端版本" })).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "系统设置" }));
+    await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(await screen.findByRole("heading", { name: "系统设置" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
   });
 
 	it("does not let a stale session bootstrap overwrite a newer login-link exchange", async () => {
