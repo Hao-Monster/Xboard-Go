@@ -257,6 +257,10 @@
         {
           "date": "2026-09-19",
           "action": "At exact main candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 ran go test ./cmd/xboard ./internal/backup ./internal/store -run Test.*(Backup|Restore|Migration|Migrate|Commission|Ledger|SQLite) -count=1 -v: PASS. Backup CLI create/verify/restore and invalid-argument tests passed; internal backup round trips, encryption/tamper protection, attachment restore and destination safety passed; store migration and financial recovery tests passed. This is candidate-bound isolated evidence, not a representative operational recovery drill."
+        },
+        {
+          "date": "2026-09-19",
+          "action": "Development server drill against app revision bb9aeb88b7af04c28fbf49ba3a1f172a2c003271: /xboard backup create produced /var/lib/xboard-backups/ops-002-20260919T161620Z.xbbackup with schema 63 and database SHA-256 1b9f29c82b3ccacb7a12a387b92c125b42b0bc299b0069a19d357ee3be3398; backup verify PASS; backup restore PASS to a new database and attachment directory after supplying the required format-v2 attachment destination. Observed wall times were create 27.8s, verify 12.6s and restore 12.1s. Existing database and running container were not replaced. This is development-scale evidence; production-sized RTO/RPO remains unmeasured."
         }
       ]
     },
