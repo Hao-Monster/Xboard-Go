@@ -35,8 +35,30 @@ jobs:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node .github/scripts/authorize-legacy-parity.mjs
 
-  legacy-parity:
+  scope:
     needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.scope.outputs.tier }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - id: scope
+        name: Classify parity scope from the exact candidate
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          changed_files="$(git diff-tree --root --no-commit-id --name-only -r "$TARGET_SHA^" "$TARGET_SHA")"
+          CHANGED_FILES="$changed_files" node .github/scripts/classify-legacy-parity.mjs
+      - name: Verify parity classifier
+        run: node --test .github/scripts/classify-legacy-parity.test.mjs
+
+  legacy-parity:
+    needs: [authorize, scope]
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
@@ -157,6 +179,7 @@ jobs:
             printf 'LEGACY_ADMIN_PASSWORD=%s\n' "$legacy_password"
           } >> "$GITHUB_ENV"
       - name: Compare the complete parity suite with the fixed legacy Oracle
+        if: needs.scope.outputs.tier == 'full'
         env:
           LEGACY_DOCKER_CONTAINER: xboard-legacy-ci-oracle
           XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
@@ -166,6 +189,11 @@ jobs:
           test "$XBOARD_GO_ADMIN_PASSWORD" = "$(tr -d '\r\n' < .local/bootstrap-password.txt)"
           pnpm --dir web exec playwright test \
             --config playwright.parity.config.ts
+      - name: Run lightweight candidate smoke checks
+        if: needs.scope.outputs.tier == 'smoke'
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:17550/healthz >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:17550/ >/dev/null
       - name: Record exact-commit evidence
         if: success()
         env:
