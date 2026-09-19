@@ -234,7 +234,7 @@
       "verification": "passed_local",
       "migration": "not_applicable",
       "acceptance": "pending_candidate",
-      "finding": "Isolated local backup create, hash/integrity verification, restore, remote readback and invalid archive cases pass; release-candidate binding and operational recovery timing remain pending.",
+      "finding": "Exact candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 passes the isolated backup create/verify/restore, encrypted integrity, replica readback and invalid archive tests. A representative operational recovery drill and measured recovery target remain pending.",
       "completion_criteria": "Create isolated backup, verify hashes and integrity, restore database/files, measure recovery and validate business state.",
       "entrypoint": "cmd/xboard/backup_cli_test.go",
       "history": [
@@ -253,6 +253,10 @@
         {
           "date": "2026-09-17",
           "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the six isolated backup CLI tests: PASS (Go test 1.150s; command wall time 4.530s). Create/verify/restore completed in 0.56s and remote integrity/invalid archive/private default cases passed. This is local synthetic timing on Windows, not a representative operational recovery target; a clean governed release candidate and production-sized recovery drill remain pending."
+        },
+        {
+          "date": "2026-09-19",
+          "action": "At exact main candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 ran go test ./cmd/xboard ./internal/backup ./internal/store -run Test.*(Backup|Restore|Migration|Migrate|Commission|Ledger|SQLite) -count=1 -v: PASS. Backup CLI create/verify/restore and invalid-argument tests passed; internal backup round trips, encryption/tamper protection, attachment restore and destination safety passed; store migration and financial recovery tests passed. This is candidate-bound isolated evidence, not a representative operational recovery drill."
         }
       ]
     },
