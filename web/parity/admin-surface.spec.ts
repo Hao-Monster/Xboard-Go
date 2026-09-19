@@ -3199,7 +3199,7 @@ test("legacy subscription settings remain observable and map to Go policy and ou
     await expect(goPage.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).toBeVisible();
     await expect(goPage.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeVisible();
     await goPage.getByRole("button", { name: "订阅模板", exact: true }).click();
-    await expect(goPage.getByRole("heading", { name: "订阅模板", exact: true })).toBeVisible();
+    await expect(goPage.locator("h1").filter({ hasText: "订阅模板" })).toBeVisible();
     for (const template of ["Sing-box", "Clash", "Clash Meta", "Stash", "Surge", "Surfboard"]) {
       await expect(goPage.getByRole("button", { name: template, exact: true })).toBeVisible();
     }
