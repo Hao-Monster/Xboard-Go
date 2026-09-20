@@ -139,7 +139,7 @@ jobs:
           cp -p .env ".env.${backup_suffix}"
           # SQLite schema upgrades require a database rollback point, not only an image.
           database_backup="/var/lib/xboard-backups/${backup_suffix}.xbbackup"
-          docker compose exec -T app /xboard backup create --attachment-root "" --output "$database_backup" >/dev/null
+          docker compose exec -T app /xboard backup create --attachment-root "" --output "$database_backup" </dev/null >/dev/null
 
           rollback() {
             trap - ERR
@@ -148,7 +148,7 @@ jobs:
             cp -p "compose.yaml.${backup_suffix}" compose.yaml
             cp -p ".env.${backup_suffix}" .env
             restored_database="/var/lib/xboard/rollback-${backup_suffix}.db"
-            docker compose run --rm --no-deps app backup restore --input "$database_backup" --output "$restored_database" >/dev/null
+            docker compose run --rm --no-deps app backup restore --input "$database_backup" --output "$restored_database" </dev/null >/dev/null
             # Keep the failed candidate database intact for diagnosis.
             sed -i "s#XBOARD_DATABASE_DSN: .*#XBOARD_DATABASE_DSN: file:${restored_database}#" compose.yaml
             docker compose up -d --no-build app
@@ -181,6 +181,7 @@ jobs:
 
           echo "Testing loopback endpoint 127.0.0.1:18082/healthz..."
           curl --fail --silent --show-error http://127.0.0.1:18082/healthz >/dev/null
+          test "$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')" = "xboard-go:${REVISION}"
 
           echo "Deployment successful for revision: ${REVISION}"
           trap - ERR
