@@ -2,7 +2,19 @@
    PlanManagementPage — 套餐管理 styles
    ============================================================ */
 
-.pm-page { max-width: 1400px; }
+.pm-page {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.pm-page.page-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px 32px 64px;
+  box-sizing: border-box;
+}
 
 /* Empty row */
 .pm-empty-row .pm-empty-cell {
@@ -67,14 +79,18 @@
 .pm-search::placeholder { color: var(--theme-muted, #8f99ad); }
 
 /* Table */
-.pm-table-wrap { margin-top: 0; }
-.pm-th-plan   { width: 200px; }
-.pm-th-benefit{ width: 180px; }
-.pm-th-stat   { width: 120px; }
-.pm-th-price  { width: 200px; }
-.pm-th-cap    { width: 90px; }
-.pm-th-state  { width: 110px; }
-.pm-th-ops    { width: 90px; text-align: right !important; }
+.pm-table-wrap {
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.pm-th-plan   { min-width: 180px; }
+.pm-th-benefit{ min-width: 170px; }
+.pm-th-stat   { min-width: 110px; }
+.pm-th-price  { min-width: 200px; }
+.pm-th-cap    { min-width: 80px; }
+.pm-th-state  { min-width: 110px; }
+.pm-th-ops    { min-width: 90px; text-align: right !important; }
 
 .pm-row-busy { opacity: 0.65; }
 
