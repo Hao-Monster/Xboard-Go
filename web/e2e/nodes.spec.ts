@@ -438,8 +438,6 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
     }
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "服务器管理" })).toBeVisible();
-    await page.getByRole("button", { name: "节点管理", exact: true }).click();
     await expect(page.getByRole("heading", { name: "节点管理" })).toBeVisible();
     await page.getByLabel("搜索节点").fill(prefix);
     await expect(page.getByText(`已选择 0 项，共 ${protocolScenarios.length} 项`, { exact: true })).toBeVisible();
