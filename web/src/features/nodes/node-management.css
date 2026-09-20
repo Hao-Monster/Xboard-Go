@@ -141,7 +141,9 @@
 }
 
 .node-management-page .node-table {
+  width: 100%;
   min-width: 1180px;
+  border-collapse: collapse;
 }
 
 .node-management-page .node-table th,
@@ -149,6 +151,8 @@
   padding: 8px 10px;
   font-size: .78rem;
   vertical-align: middle;
+  text-align: left;
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .node-management-page .node-table th {
@@ -166,8 +170,8 @@
   cursor: not-allowed;
 }
 
-.node-management-page .resource-table.node-table td:first-child,
-.node-management-page .resource-table.node-table th:first-child {
+.node-management-page .node-table td:first-child,
+.node-management-page .node-table th:first-child {
   display: table-cell;
   width: 36px;
 }
@@ -206,15 +210,15 @@
   cursor: grabbing;
 }
 
-.node-row.is-dragging {
+.admin-node-table-row.is-dragging {
   opacity: .45;
 }
 
-.node-row.is-drop-target td {
+.admin-node-table-row.is-drop-target td {
   box-shadow: inset 0 2px 0 var(--theme-primary);
 }
 
-.node-row.is-disabled {
+.admin-node-table-row.is-disabled {
   opacity: .72;
 }
 
@@ -485,7 +489,7 @@
   }
 
   .node-management-page .node-table {
-    min-width: 0;
+    min-width: 1180px;
   }
 
   .node-pagination {
@@ -500,3 +504,12 @@
     margin-top: 6px;
   }
 }
+
+/* Keep native column sizing; global node cards and mobile resource cards are unrelated. */
+.node-table tbody tr:last-child td { border-bottom: 0; }
+.node-table td small { font-size: .68rem; }
+.node-table .node-name-button,
+.node-table .node-address code,
+.node-table .node-status,
+.node-table .node-group-badge { white-space: nowrap; overflow-wrap: normal; }
+.node-table tbody tr:hover { background: color-mix(in srgb, var(--theme-primary) 5%, var(--theme-surface)); }

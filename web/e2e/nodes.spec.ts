@@ -209,6 +209,23 @@ test("administrator node management preserves the observed Xboard workflow on ev
     await expect(page.getByText(firstName, { exact: true })).toBeVisible();
     await expect(page.getByText(secondName, { exact: true })).toBeVisible();
 
+    const originalViewport = page.viewportSize();
+    for (const width of [1280, 3414]) {
+      await page.setViewportSize({ width, height: 1026 });
+      const layout = await page.getByRole("table", { name: "节点列表" }).evaluate((table) => {
+        const header = Array.from(table.querySelectorAll("thead th"));
+        const row = table.querySelector("tbody tr")!;
+        const cells = Array.from(row.querySelectorAll("td"));
+        return {
+          display: getComputedStyle(row).display,
+          aligned: cells.every((cell, i) => Math.abs(cell.getBoundingClientRect().x - header[i].getBoundingClientRect().x) < 2),
+          fullWidth: Math.abs(row.getBoundingClientRect().width - table.getBoundingClientRect().width) < 2,
+        };
+      });
+      expect(layout).toEqual({ display: "table-row", aligned: true, fullWidth: true });
+    }
+    if (originalViewport) await page.setViewportSize(originalViewport);
+
     const expectedColumns = ["节点ID", "显隐", "节点", "部署方式", "地址", "在线人数", "倍率", "权限组", "流量使用", "操作"];
     expect((await page.getByRole("table", { name: "节点列表" }).locator("th").allTextContents()).slice(1)).toEqual(expectedColumns);
     await page.getByRole("button", {name:"类型",exact:true}).click();

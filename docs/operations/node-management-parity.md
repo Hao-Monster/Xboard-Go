@@ -30,3 +30,9 @@ Browser checks use isolated local in-memory SQLite and fictional credentials/dat
 No schema migration, dependency upgrade or deployment-workflow change is required. Business acceptance, live node handshakes and production-capacity acceptance are not claimed by these local checks. No full regression/race/CodeQL gate is added to development deployment.
 
 Use the existing main CI -> workflow_run development pipeline only. Confirm the completed deployment and exact image commit plus health endpoint. Roll back through the existing pipeline using a revert PR; do not manually transfer artifacts or restart services from the local workstation. Keep #121 open for its remaining acceptance scope.
+
+## Layout collision regression (2026-09-20)
+
+Node directory rows and table containers use dedicated classes, avoiding global `.node-row` flex-card and `.resource-table` mobile-card rules. Narrow screens scroll the table horizontally; header and body retain native column alignment. Long addresses and permission badges stay readable. Bulk operations sit beside filters, while ordering remains at the toolbar end.
+
+The directory browser scenario asserts native table-row display, matching header/cell positions, and full row width at 1280px and 3414px before continuing desktop/mobile interactions. This assertion failed against the previous release and passes with the isolated styles.
