@@ -32,19 +32,19 @@ describe("ServerGroupsPage", () => {
     expect(await screen.findByText("Premium")).toBeVisible();
     expect(screen.getByRole("region", { name: "权限组列表" })).toHaveTextContent("3");
 
-    await user.click(screen.getByRole("button", { name: "新增权限组" }));
-    let dialog = screen.getByRole("dialog", { name: "新增权限组" });
-    await user.type(within(dialog).getByLabelText("权限组名称"), "New group");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "添加权限组" }));
+    let dialog = screen.getByRole("dialog", { name: "创建权限组" });
+    await user.type(within(dialog).getByLabelText("组名称"), "New group");
+    await user.click(within(dialog).getByRole("button", { name: "创建权限组" }));
     await waitFor(() => expect(api.createServerGroup).toHaveBeenCalledWith("New group"));
     expect(await screen.findByText("New group")).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "编辑权限组：Premium" }));
     dialog = screen.getByRole("dialog", { name: "编辑权限组" });
-    const name = within(dialog).getByLabelText("权限组名称");
+    const name = within(dialog).getByLabelText("组名称");
     await user.clear(name);
     await user.type(name, "Premium renamed");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(within(dialog).getByRole("button", { name: "更新" }));
     await waitFor(() => expect(api.updateServerGroup).toHaveBeenCalledWith(7, "Premium renamed"));
     expect(await screen.findByText("Premium renamed")).toBeVisible();
 
@@ -84,34 +84,34 @@ describe("RoutingRulesPage", () => {
     render(<RoutingRulesPage api={api} />);
     expect(await screen.findByText("Domestic direct")).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "新增路由规则" }));
-    let dialog = screen.getByRole("dialog", { name: "新增路由规则" });
-    await user.type(within(dialog).getByLabelText("备注"), "Proxy overseas");
-    await user.type(within(dialog).getByLabelText("匹配规则"), "*.example.com{enter}geoip:us");
-    await user.selectOptions(within(dialog).getByLabelText("动作"), "proxy");
-    await user.type(within(dialog).getByLabelText("代理出站标记"), "warp-out");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "添加路由" }));
+    let dialog = screen.getByRole("dialog", { name: "创建路由" });
+    await user.type(within(dialog).getByLabelText(/备注/), "Proxy overseas");
+    await user.type(within(dialog).getByLabelText(/匹配规则/), "*.example.com{enter}geoip:us");
+    await user.selectOptions(within(dialog).getByLabelText(/动作/), "proxy");
+    await user.type(within(dialog).getByLabelText(/代理出站标记/), "warp-out");
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.createRoutingRule).toHaveBeenCalledWith({
       remarks: "Proxy overseas", match: ["*.example.com", "geoip:us"], action: "proxy", action_value: "warp-out"
     }));
     expect(await screen.findByText("Proxy overseas")).toBeVisible();
 
-    const search = screen.getByRole("searchbox", { name: "搜索规则" });
+    const search = screen.getByRole("searchbox", { name: "搜索路由" });
     await user.type(search, "geoip:us");
     expect(screen.queryByText("Domestic direct")).not.toBeInTheDocument();
     await user.clear(search);
 
     await user.click(screen.getByRole("button", { name: "编辑路由规则：Proxy overseas" }));
-    dialog = screen.getByRole("dialog", { name: "编辑路由规则" });
-    await user.selectOptions(within(dialog).getByLabelText("动作"), "direct");
-    expect(within(dialog).queryByLabelText("代理出站标记")).not.toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    dialog = screen.getByRole("dialog", { name: "编辑路由" });
+    await user.selectOptions(within(dialog).getByLabelText(/动作/), "direct");
+    expect(within(dialog).queryByLabelText(/代理出站标记/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.updateRoutingRule).toHaveBeenCalledWith(12, {
       remarks: "Proxy overseas", match: ["*.example.com", "geoip:us"], action: "direct", action_value: ""
     }));
 
     await user.click(screen.getByRole("button", { name: "删除路由规则：Proxy overseas" }));
-    dialog = screen.getByRole("dialog", { name: "删除路由规则" });
+    dialog = screen.getByRole("dialog", { name: "删除路由" });
     await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(api.deleteRoutingRule).toHaveBeenCalledWith(12));
   });
@@ -130,9 +130,9 @@ describe("RoutingRulesPage", () => {
     render(<RoutingRulesPage api={api} />);
 
     expect(await screen.findByText("Domestic direct")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "新增路由规则" }));
-    const dialog = screen.getByRole("dialog", { name: "新增路由规则" });
-    const remarks = within(dialog).getByLabelText("备注");
+    await user.click(screen.getByRole("button", { name: "添加路由" }));
+    const dialog = screen.getByRole("dialog", { name: "创建路由" });
+    const remarks = within(dialog).getByLabelText(/备注/);
     remarks.focus();
     act(() => {
       frames.splice(0).forEach((frame) => frame(0));
