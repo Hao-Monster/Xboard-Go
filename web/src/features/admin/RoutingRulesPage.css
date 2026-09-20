@@ -4,6 +4,14 @@
 
 .rr-page { max-width: 1200px; }
 
+/* Empty row inside table */
+.rr-empty-row .rr-empty-cell {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--theme-muted, #8f99ad);
+  font-size: 0.88rem;
+}
+
 /* Header */
 .rr-header { margin-bottom: 18px; }
 

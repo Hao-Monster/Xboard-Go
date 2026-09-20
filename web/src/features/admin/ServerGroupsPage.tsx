@@ -121,8 +121,6 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
       {/* Table */}
       {loading ? (
         <div className="empty-card">正在加载权限组…</div>
-      ) : sorted.length === 0 ? (
-        <div className="empty-card">{search ? "没有匹配的权限组。" : "尚未创建权限组。"}</div>
       ) : (
         <section className="resource-table-wrap sg-table-wrap" aria-label="权限组列表">
           <table className="resource-table sg-table">
@@ -152,7 +150,11 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
               </tr>
             </thead>
             <tbody>
-              {paged.map((group) => (
+              {paged.length === 0 ? (
+                <tr className="sg-empty-row">
+                  <td colSpan={5} className="sg-empty-cell">{search ? "没有匹配的权限组。" : "暂无数据"}</td>
+                </tr>
+              ) : paged.map((group) => (
                 <tr key={group.id}>
                   <td data-label="组ID" className="sg-td-id">
                     <span className="sg-id-badge">{group.id}</span>
@@ -211,10 +213,10 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
         </section>
       )}
 
-      {/* Footer / Pagination */}
-      {!loading && sorted.length > 0 && (
+      {/* Footer / Pagination — always visible when loaded */}
+      {!loading && (
         <div className="sg-footer">
-          <span className="sg-footer-status">共 {sorted.length} 项</span>
+          <span className="sg-footer-status">已选择 0 项，共 {sorted.length} 项</span>
           <div className="sg-pagination">
             <label className="sg-page-size-label">
               每页显示
@@ -233,7 +235,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
                 className="sg-page-input"
                 type="number"
                 min={1}
-                max={totalPages}
+                max={Math.max(1, totalPages)}
                 value={currentPage}
                 onChange={(e) => goPage(Number(e.target.value))}
                 aria-label="页码"
@@ -241,10 +243,10 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
               页，共 {totalPages} 页
             </span>
             <div className="sg-page-btns">
-              <button className="sg-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1} aria-label="首页">«</button>
-              <button className="sg-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1} aria-label="上一页">‹</button>
-              <button className="sg-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages} aria-label="下一页">›</button>
-              <button className="sg-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages} aria-label="末页">»</button>
+              <button className="sg-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="首页">«</button>
+              <button className="sg-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="上一页">‹</button>
+              <button className="sg-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="下一页">›</button>
+              <button className="sg-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="末页">»</button>
             </div>
           </div>
         </div>
