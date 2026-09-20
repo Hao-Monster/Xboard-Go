@@ -251,7 +251,7 @@ describe("ServerManagementPage", () => {
     await user.clear(screen.getByRole("searchbox", { name: "搜索" }));
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
     expect(await screen.findByRole("img", { name: "CPU负载趋势" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "↓ IN", exact: true }));
+    await user.click(screen.getByRole("button", { name: "↓ IN" }));
     expect(screen.getByRole("img", { name: "↓ IN负载趋势" })).toBeVisible();
     expect(screen.getByText("2.0 KiB/s / 4.0 KiB/s")).toBeVisible();
   });
