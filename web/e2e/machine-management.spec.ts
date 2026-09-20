@@ -34,14 +34,14 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   const renamedMachine = `${machineName} 已停用`;
   const node = await createNode(page, nodeName);
 
-  await page.getByRole("button", { name: "新增服务器" }).click();
-  const createDialog = page.getByRole("dialog", { name: "新增服务器" });
+  await page.getByRole("button", { name: "＋ 添加服务器" }).click();
+  const createDialog = page.getByRole("dialog", { name: "新建服务器" });
   await createDialog.getByLabel("服务器名称").fill(machineName);
   await createDialog.getByLabel("备注").fill("机器管理浏览器验收夹具");
   const createResponse = page.waitForResponse((response) =>
     response.request().method() === "POST" && new URL(response.url()).pathname === adminAPIPath("/api/v1/admin/machines")
   );
-  await createDialog.getByRole("button", { name: "创建服务器" }).click();
+  await createDialog.getByRole("button", { name: "提交" }).click();
   const created = await createResponse;
   const createdBody = await created.text();
   expect(created.status()).toBe(201);
@@ -88,26 +88,26 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
 
   const search = page.getByRole("searchbox", { name: "搜索" });
   await search.fill(machineName);
-  let machineCard = page.locator("article.machine-card", { hasText: machineName });
+  let machineCard = page.locator("tr.machine-row", { hasText: machineName });
   await expect(machineCard).toBeVisible();
   await page.getByLabel("状态").selectOption("online");
   await expect(machineCard).toBeVisible();
-  await page.getByRole("region", { name: "服务器筛选" }).locator('select:has(option[value="high"])').selectOption("high");
   await expect(machineCard).toBeVisible();
-  await page.getByRole("button", { name: "重置" }).click();
+  await search.fill("");
   await search.fill(`missing-${unique}`);
-  await expect(page.getByText("没有符合当前筛选条件的服务器。")).toBeVisible();
-  await page.getByRole("button", { name: "重置" }).click();
+  await expect(page.getByText("暂无服务器")).toBeVisible();
+  await search.fill("");
   await expect(machineCard).toBeVisible();
 
-  await machineCard.getByRole("button", { name: "服务器详情" }).click();
+  await machineCard.getByRole("button", { name: "服务器详情", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "服务器详情" });
-  await expect(drawer.getByRole("heading", { name: "负载与网络" })).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "负载趋势" })).toBeVisible();
   await expect(drawer.getByText("86.0%", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("93.0%", { exact: true })).toBeVisible();
+  await expect(drawer.getByText(/^93.0% ·/)).toBeVisible();
   await expect(drawer.getByText("3.0 KiB/s / 5.0 KiB/s", { exact: true })).toBeVisible();
-  await expect(drawer.getByRole("img", { name: "CPU（蓝）和内存（绿）趋势" })).toBeVisible();
-  await expect(drawer.getByRole("img", { name: "网络入站（蓝）和出站（绿）趋势" })).toBeVisible();
+  await expect(drawer.getByRole("img", { name: "CPU负载趋势" })).toBeVisible();
+  await drawer.getByRole("button", { name: "↓ IN", exact: true }).click();
+  await expect(drawer.getByRole("img", { name: "↓ IN负载趋势" })).toBeVisible();
   await expect(drawer.getByText("暂无关联节点。")).toBeVisible();
 
   const rotateButton = drawer.getByRole("button", { name: "生成新的接入命令" });
@@ -159,7 +159,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   const editDialog = page.getByRole("dialog", { name: "编辑服务器" });
   await editDialog.getByLabel("服务器名称").fill(renamedMachine);
   await editDialog.getByLabel("备注").fill("失败后保留，再成功提交");
-  await editDialog.getByLabel("允许机器接入").uncheck();
+  await editDialog.getByLabel("启用服务器").uncheck();
   let rejectUpdate = true;
   await page.route(`**${adminAPIPath(`/api/v1/admin/machines/${machineID}`)}`, async (route) => {
     if (route.request().method() === "PATCH" && rejectUpdate) {
@@ -173,7 +173,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
     }
     await route.continue();
   });
-  await editDialog.getByRole("button", { name: "保存修改" }).click();
+  await editDialog.getByRole("button", { name: "更新" }).click();
   await expect(editDialog.getByRole("alert")).toHaveText("模拟服务器保存失败");
   await expect(editDialog.getByLabel("服务器名称")).toHaveValue(renamedMachine);
   await expect(editDialog.getByLabel("备注")).toHaveValue("失败后保留，再成功提交");
@@ -183,7 +183,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   const updateResponse = page.waitForResponse((response) =>
     response.request().method() === "PATCH" && new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}`)
   );
-  await editDialog.getByRole("button", { name: "保存修改" }).click();
+  await editDialog.getByRole("button", { name: "更新" }).click();
   expect((await updateResponse).status()).toBe(200);
   await expect(editDialog).toBeHidden();
   await expect(drawer.getByRole("heading", { name: renamedMachine })).toBeVisible();
@@ -191,13 +191,13 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await drawer.getByRole("button", { name: "关闭服务器详情" }).click();
 
   await page.getByLabel("状态").selectOption("inactive");
-  machineCard = page.locator("article.machine-card", { hasText: renamedMachine });
+  machineCard = page.locator("tr.machine-row", { hasText: renamedMachine });
   await expect(machineCard).toBeVisible();
-  await page.getByLabel("承载节点").selectOption("yes");
+  await page.getByLabel("节点", { exact: true }).selectOption("yes");
   await expect(machineCard).toBeVisible();
-  await page.getByRole("button", { name: "重置" }).click();
+  await search.fill("");
 
-  await machineCard.getByRole("button", { name: "服务器详情" }).click();
+  await machineCard.getByRole("button", { name: "服务器详情", exact: true }).click();
   await expect(drawer.getByRole("button", { name: `定时设置：${nodeName}` })).toBeVisible();
   const unassignResponse = page.waitForResponse((response) =>
     response.request().method() === "DELETE" &&
@@ -246,7 +246,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   expect((await deleteResponse).status()).toBe(204);
   await expect(deleteDialog).toBeHidden();
   await expect(drawer).toBeHidden();
-  await expect(page.locator("article.machine-card", { hasText: renamedMachine })).toHaveCount(0);
+  await expect(page.locator("tr.machine-row", { hasText: renamedMachine })).toHaveCount(0);
 
   const survivingNode = await adminRequest(page, `/api/v1/admin/nodes/${node.id}`, "GET");
   expect(survivingNode.status, survivingNode.body).toBe(200);

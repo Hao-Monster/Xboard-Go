@@ -14,6 +14,7 @@ export interface NodeDefinitionAPI {
 
 interface Props {
   api: NodeDefinitionAPI;
+  initialMachineID?: number;
   node: AdminNode | null;
   machines: Machine[];
   groups: ServerGroup[];
@@ -52,8 +53,8 @@ const networkTemplates: Record<string, Array<{ label: string; value: Record<stri
   } }]
 };
 
-export function NodeDefinitionModal({ api, node, machines, groups, routes, onClose, onSaved }: Props) {
-  const [input, setInput] = useState<AdminNodeDefinitionInput>(() => newNodeInput());
+export function NodeDefinitionModal({ api, node, machines, groups, routes, onClose, onSaved, initialMachineID }: Props) {
+  const [input, setInput] = useState<AdminNodeDefinitionInput>(() => ({ ...newNodeInput(), machine_id: initialMachineID ?? null }));
   const [loading, setLoading] = useState(node !== null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

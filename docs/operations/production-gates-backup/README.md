@@ -1,0 +1,1 @@
+Production gate baseline: fc2d41d2 (main baseline 7d51f2ef). Original workflow files are preserved verbatim with .backup suffix and are not automatically executed. Restore/review them before production activation. Development uses the same application and build, without automated regression gates. User performs business acceptance.

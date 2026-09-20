@@ -39,6 +39,34 @@ const node: Node = {
 };
 
 describe("ServerManagementPage", () => {
+  it("paginates the server table and resets the page when searching", async () => {
+    const api = createAPI();
+    vi.mocked(api.listMachines).mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({ ...machine, id: index + 1, name: `edge-${String(index + 1).padStart(2, "0")}` })));
+    const user = userEvent.setup();
+    render(<ServerManagementPage api={api} />);
+    const table = await screen.findByRole("table", { name: "服务器列表" });
+    await screen.findByText("edge-01");
+    expect(within(table).getAllByRole("row")).toHaveLength(11);
+    expect(within(table).queryByText("edge-12")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(within(table).getByText("edge-12")).toBeVisible();
+    await user.type(screen.getByRole("searchbox", { name: "搜索" }), "edge-01");
+    expect(within(table).getByText("edge-01")).toBeVisible();
+    expect(screen.getByRole("spinbutton", { name: "页码" })).toHaveValue(1);
+  });
+
+  it("requests the selected history range and passes the machine to node creation", async () => {
+    const api = createAPI();
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    render(<ServerManagementPage api={api} onNavigateNodes={navigate} />);
+    await user.click(await screen.findByRole("button", { name: "服务器详情" }));
+    await user.click(screen.getByRole("button", { name: "24h" }));
+    await waitFor(() => expect(api.listLoadHistory).toHaveBeenLastCalledWith(7, 24, 240));
+    await user.click(screen.getByRole("button", { name: "新增节点到此服务器" }));
+    expect(navigate).toHaveBeenCalledWith(7, true);
+  });
+
   it("shows exactly one schedule button on the first and every later drawer open", async () => {
     const api = createAPI();
     const user = userEvent.setup();
@@ -113,11 +141,11 @@ describe("ServerManagementPage", () => {
     render(<ServerManagementPage api={api} />);
 
     await screen.findByRole("button", { name: "服务器详情" });
-    await user.click(screen.getByRole("button", { name: "新增服务器" }));
-    const createDialog = screen.getByRole("dialog", { name: "新增服务器" });
+    await user.click(screen.getByRole("button", { name: "＋ 添加服务器" }));
+    const createDialog = screen.getByRole("dialog", { name: "新建服务器" });
     await user.type(within(createDialog).getByLabelText("服务器名称"), "edge-new");
     await user.type(within(createDialog).getByLabelText("备注"), "new edge");
-    await user.click(within(createDialog).getByRole("button", { name: "创建服务器" }));
+    await user.click(within(createDialog).getByRole("button", { name: "提交" }));
     await waitFor(() => expect(api.createMachine).toHaveBeenCalledWith({ name: "edge-new", notes: "new edge", is_active: true }));
     expect(await screen.findByRole("dialog", { name: "服务器接入命令" })).toHaveTextContent("--enrollment-code");
     await user.click(screen.getByRole("button", { name: "关闭服务器接入命令" }));
@@ -128,8 +156,8 @@ describe("ServerManagementPage", () => {
     const nameInput = within(editDialog).getByLabelText("服务器名称");
     await user.clear(nameInput);
     await user.type(nameInput, "edge-sg-renamed");
-    await user.click(within(editDialog).getByLabelText("允许机器接入"));
-    await user.click(within(editDialog).getByRole("button", { name: "保存修改" }));
+    await user.click(within(editDialog).getByLabelText("启用服务器"));
+    await user.click(within(editDialog).getByRole("button", { name: "更新" }));
     await waitFor(() => expect(api.updateMachine).toHaveBeenCalledWith(7, { name: "edge-sg-renamed", notes: "Singapore edge", is_active: false }));
     expect(await screen.findByRole("heading", { name: "edge-sg-renamed" })).toBeVisible();
 
@@ -219,11 +247,12 @@ describe("ServerManagementPage", () => {
     const highLoad = within(overview).getByText("高负载");
     expect(highLoad.parentElement).toHaveTextContent("1");
     await user.type(screen.getByRole("searchbox", { name: "搜索" }), "不存在");
-    expect(screen.getByText("没有符合当前筛选条件的服务器。")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "重置" }));
+    expect(screen.getByText("暂无服务器")).toBeVisible();
+    await user.clear(screen.getByRole("searchbox", { name: "搜索" }));
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
-    expect(await screen.findByRole("img", { name: "CPU（蓝）和内存（绿）趋势" })).toBeVisible();
-    expect(screen.getByRole("img", { name: "网络入站（蓝）和出站（绿）趋势" })).toBeVisible();
+    expect(await screen.findByRole("img", { name: "CPU负载趋势" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "↓ IN", exact: true }));
+    expect(screen.getByRole("img", { name: "↓ IN负载趋势" })).toBeVisible();
     expect(screen.getByText("2.0 KiB/s / 4.0 KiB/s")).toBeVisible();
   });
 });
