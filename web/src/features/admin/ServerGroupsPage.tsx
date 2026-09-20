@@ -1,3 +1,4 @@
+// Responsive full-width server groups management
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";

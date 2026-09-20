@@ -5,13 +5,13 @@
 /* Page Layout */
 .sg-page {
   width: 100%;
-  max-width: none;
+  max-width: none !important;
   box-sizing: border-box;
 }
 
 .sg-page.page-shell {
   width: 100%;
-  max-width: none;
+  max-width: none !important;
   margin: 0;
   padding: 24px 32px 64px;
   box-sizing: border-box;
