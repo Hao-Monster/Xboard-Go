@@ -180,8 +180,7 @@ describe("ServerManagementPage", () => {
     expect(await screen.findByRole("dialog", { name: "服务器接入命令" })).toHaveTextContent("--enrollment-code");
     await user.click(screen.getByRole("button", { name: "关闭服务器接入命令" }));
 
-    await user.click(screen.getByRole("button", { name: "服务器详情" }));
-    await user.click(await screen.findByRole("button", { name: "编辑信息" }));
+    await user.click(screen.getByRole("button", { name: "编辑服务器：edge-sg-01" }));
     const editDialog = screen.getByRole("dialog", { name: "编辑服务器" });
     const nameInput = within(editDialog).getByLabelText("服务器名称");
     await user.clear(nameInput);
@@ -189,9 +188,9 @@ describe("ServerManagementPage", () => {
     await user.click(within(editDialog).getByLabelText("启用服务器"));
     await user.click(within(editDialog).getByRole("button", { name: "更新" }));
     await waitFor(() => expect(api.updateMachine).toHaveBeenCalledWith(7, { name: "edge-sg-renamed", notes: "Singapore edge", is_active: false }));
-    expect(await screen.findByRole("heading", { name: "edge-sg-renamed" })).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑服务器" })).not.toBeInTheDocument());
 
-    await user.click(screen.getByRole("button", { name: "删除服务器" }));
+    await user.click(screen.getByRole("button", { name: "删除服务器：edge-sg-01" }));
     const deleteDialog = screen.getByRole("dialog", { name: "删除服务器" });
     await user.click(within(deleteDialog).getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(api.deleteMachine).toHaveBeenCalledWith(7));
@@ -205,7 +204,7 @@ describe("ServerManagementPage", () => {
     render(<ServerManagementPage api={api} />);
 
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
-    const enabled = await screen.findByRole("checkbox", { name: "启用节点：SG VLESS" });
+    const enabled = await screen.findByRole("switch", { name: "启用节点：SG VLESS" });
     await user.click(enabled);
     await waitFor(() => expect(api.setNodeEnabled).toHaveBeenCalledWith(7, 41, 1, false));
     expect(screen.getByRole("button", { name: "定时设置：SG VLESS" })).toBeVisible();
@@ -257,6 +256,42 @@ describe("ServerManagementPage", () => {
     expect(modal).toBeVisible();
   });
 
+  it("views tokens only on request and confirms reset before changing credentials", async () => {
+    const api = createAPI(); const user = userEvent.setup();
+    render(<ServerManagementPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: "服务器详情" }));
+    await waitFor(() => expect(api.createEnrollment).toHaveBeenCalledWith(7, false));
+    expect(api.getMachineToken).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "查看 Token" }));
+    expect(await screen.findByText("fixture-machine-token")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "隐藏 Token" }));
+    expect(screen.queryByText("fixture-machine-token")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重置 Token" }));
+    expect(api.resetMachineToken).not.toHaveBeenCalled();
+    const confirm = screen.getByRole("alertdialog", { name: "重置 Token" });
+    expect(confirm).toHaveTextContent("旧 Token 和未使用的安装命令立即失效");
+    await user.click(within(confirm).getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(api.resetMachineToken).toHaveBeenCalledWith(7));
+    expect(await screen.findByText("fixture-reset-token")).toBeVisible();
+    expect(api.createEnrollment).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps edit values after an error and blocks blank names", async () => {
+    const api = createAPI(); const user = userEvent.setup();
+    vi.mocked(api.updateMachine).mockRejectedValue(new Error("保存失败"));
+    render(<ServerManagementPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: "编辑服务器：edge-sg-01" }));
+    const modal = screen.getByRole("dialog", { name: "编辑服务器" });
+    const input = within(modal).getByLabelText("服务器名称");
+    expect(input).toHaveValue("edge-sg-01");
+    await user.clear(input); await user.type(input,"   ");
+    expect(within(modal).getByRole("button", { name: "更新" })).toBeDisabled();
+    await user.clear(input); await user.type(input,"changed");
+    await user.click(within(modal).getByRole("button", { name: "更新" }));
+    expect(await within(modal).findByRole("alert")).toHaveTextContent("保存失败");
+    expect(input).toHaveValue("changed");
+  });
+
   it("filters the overview and renders load and network trends", async () => {
     const api = createAPI();
     vi.mocked(api.listMachines).mockResolvedValue([{ ...machine, load_status: {
@@ -280,10 +315,10 @@ describe("ServerManagementPage", () => {
     expect(screen.getByText("暂无服务器")).toBeVisible();
     await user.clear(screen.getByRole("searchbox", { name: "搜索" }));
     await user.click(await screen.findByRole("button", { name: "服务器详情" }));
-    expect(await screen.findByRole("img", { name: "CPU负载趋势" })).toBeVisible();
+    expect(await screen.findByRole("img", { name: "多指标负载趋势图" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "↓ IN" }));
-    expect(screen.getByRole("img", { name: "↓ IN负载趋势" })).toBeVisible();
-    expect(screen.getByText("2.0 KiB/s / 4.0 KiB/s")).toBeVisible();
+    expect(screen.getByRole("img", { name: "多指标负载趋势图" })).toBeVisible();
+    expect(screen.getByText("↓2.0 KB/s ↑4.0 KB/s")).toBeVisible();
   });
 });
 
@@ -306,7 +341,9 @@ function createAPI(): AdminAPI & { saveActivationSchedule: ReturnType<typeof vi.
     createMachine: vi.fn().mockResolvedValue(undefined),
     updateMachine: vi.fn().mockResolvedValue(undefined),
     deleteMachine: vi.fn().mockResolvedValue(undefined),
-    createEnrollment: vi.fn(),
+    createEnrollment: vi.fn().mockResolvedValue({ token: "fixture-enrollment", token_type: "enrollment_code", expires_at: "2099-01-01T00:00:00Z", install_command: "fixture-install-command" }),
+    getMachineToken: vi.fn().mockResolvedValue({ token: "fixture-machine-token", available: true }),
+    resetMachineToken: vi.fn().mockResolvedValue({ token: "fixture-reset-token", available: true }),
     listMachineNodes: vi.fn().mockResolvedValue([node]),
     listLoadHistory: vi.fn().mockResolvedValue([]),
     listAdminOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),

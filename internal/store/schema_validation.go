@@ -443,6 +443,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 64 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"server_machine_credentials": {"token_cipher"}}); err != nil {
+			return err
+		}
+	}
 	if schemaVersion >= 42 {
 		rows, err := database.QueryContext(ctx, `
 			SELECT n.id FROM nodes n

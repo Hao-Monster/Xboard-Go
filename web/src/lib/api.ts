@@ -1729,6 +1729,9 @@ export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "passwo
 }
 
 export interface AdminAPI {
+
+  getMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
+  resetMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
   getNodeAgentSettings: () => Promise<NodeAgentSettings>;
   updateNodeAgentSettings: (input: NodeAgentSettingsInput) => Promise<NodeAgentSettings>;
   listMachines: () => Promise<Machine[]>;
@@ -2066,6 +2069,14 @@ export class APIClient implements AdminAPI {
       method: "POST",
       body: { revoke_existing: revokeExisting }
     });
+  }
+
+  async getMachineToken(machineID: number): Promise<{ token: string; available: boolean }> {
+    return this.request(`/api/v1/admin/machines/${machineID}/token`);
+  }
+
+  async resetMachineToken(machineID: number): Promise<{ token: string; available: boolean }> {
+    return this.request(`/api/v1/admin/machines/${machineID}/token/reset`, { method: "POST", body: {} });
   }
 
   async listMachineNodes(machineID: number): Promise<Node[]> {
