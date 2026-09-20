@@ -132,3 +132,111 @@ test("admin navigation survives reload and browser history", async ({ page }) =>
   await page.goto(adminEntryPath.split("#")[0] + "#/server/manage");
   await expect(page.getByRole("heading", {name:"节点管理",exact:true})).toBeVisible();
 });
+
+test("administrator navigation keeps the current page visible while an uncached page chunk loads", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop navigation loading regression");
+
+  let releaseGiftCardChunk!: () => void;
+  const giftCardChunkBlocked = new Promise<void>((resolve) => { releaseGiftCardChunk = resolve; });
+  let giftCardChunkRequested = false;
+  await page.route("**/assets/GiftCardManagementPage-*.js", async (route) => {
+    giftCardChunkRequested = true;
+    await giftCardChunkBlocked;
+    await route.continue();
+  });
+
+  await page.goto(adminEntryPath);
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  const serverHeading = page.getByRole("heading", { name: "服务器管理", exact: true });
+  await expect(serverHeading).toBeVisible();
+  await expect.poll(() => giftCardChunkRequested).toBe(true);
+
+  await page.getByRole("navigation", { name: "管理端导航" }).getByRole("button", { name: "礼品卡管理", exact: true }).click();
+  await expect(page).toHaveURL(/#\/server\/machine$/);
+  await expect(page.getByText("正在加载管理页面…", { exact: true })).toHaveCount(0);
+  await expect(serverHeading).toBeVisible();
+
+  releaseGiftCardChunk();
+  await expect(page).toHaveURL(/#\/finance\/gift-card$/);
+  await expect(page.getByRole("heading", { name: "礼品卡管理", exact: true })).toBeVisible();
+});
+
+test("browser history cancels a stale navigation waiting on a page chunk", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop navigation history race regression");
+
+  let releaseGiftCardChunk!: () => void;
+  const giftCardChunkBlocked = new Promise<void>((resolve) => { releaseGiftCardChunk = resolve; });
+  let giftCardChunkRequested = false;
+  await page.route("**/assets/GiftCardManagementPage-*.js", async (route) => {
+    giftCardChunkRequested = true;
+    await giftCardChunkBlocked;
+    await route.continue();
+  });
+
+  await page.goto(adminEntryPath);
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  const navigation = page.getByRole("navigation", { name: "管理端导航" });
+  await expect(page.getByRole("heading", { name: "服务器管理", exact: true })).toBeVisible();
+  await expect.poll(() => giftCardChunkRequested).toBe(true);
+
+  await navigation.getByRole("button", { name: "节点管理", exact: true }).click();
+  await expect(page).toHaveURL(/#\/server\/manage$/);
+  await expect(page.getByRole("heading", { name: "节点管理", exact: true })).toBeVisible();
+  await navigation.getByRole("button", { name: "礼品卡管理", exact: true }).click();
+  await expect(page).toHaveURL(/#\/server\/manage$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/server\/machine$/);
+  await expect(page.getByRole("heading", { name: "服务器管理", exact: true })).toBeVisible();
+
+  releaseGiftCardChunk();
+  await expect(page).toHaveURL(/#\/server\/machine$/);
+  await expect(page.getByRole("heading", { name: "礼品卡管理", exact: true })).toHaveCount(0);
+});
+
+test("canceling a newer leave confirmation also cancels an older pending navigation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop unsaved-change navigation race regression");
+
+  let releaseGiftCardChunk!: () => void;
+  const giftCardChunkBlocked = new Promise<void>((resolve) => { releaseGiftCardChunk = resolve; });
+  let giftCardChunkRequested = false;
+  await page.route("**/assets/GiftCardManagementPage-*.js", async (route) => {
+    giftCardChunkRequested = true;
+    await giftCardChunkBlocked;
+    await route.continue();
+  });
+
+  await page.goto(adminEntryPath);
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  const navigation = page.getByRole("navigation", { name: "管理端导航" });
+  await expect(page.getByRole("heading", { name: "服务器管理", exact: true })).toBeVisible();
+  await expect.poll(() => giftCardChunkRequested).toBe(true);
+
+  await navigation.getByRole("button", { name: "系统配置", exact: true }).click();
+  await page.getByRole("navigation", { name: "系统配置子导航" }).getByRole("button", { name: "客户端版本", exact: true }).click();
+  const windowsVersion = page.getByLabel("Windows 版本");
+  await windowsVersion.fill("unsaved-performance-test");
+  await expect(windowsVersion).toHaveValue("unsaved-performance-test");
+
+  let confirmationCount = 0;
+  page.on("dialog", async (dialog) => {
+    confirmationCount += 1;
+    if (confirmationCount === 1) await dialog.accept();
+    else await dialog.dismiss();
+  });
+  await navigation.getByRole("button", { name: "礼品卡管理", exact: true }).click();
+  await navigation.getByRole("button", { name: "插件管理", exact: true }).click();
+  await expect.poll(() => confirmationCount).toBe(2);
+
+  const giftCardChunkLoaded = page.waitForResponse((response) => response.url().includes("/assets/GiftCardManagementPage-") && response.ok());
+  releaseGiftCardChunk();
+  await giftCardChunkLoaded;
+  await expect(page).toHaveURL(/#\/config\/system\/client-app$/);
+  await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "礼品卡管理", exact: true })).toHaveCount(0);
+});

@@ -107,6 +107,7 @@ describe("App public identity bootstrap", () => {
     const user = userEvent.setup();
     render(<App surface={{ kind: "admin", path: "admin" }} />);
 
+    await screen.findByRole("heading", { name: "服务器管理" });
     await user.click(await screen.findByRole("button", { name: "系统配置" }));
     await user.click(await screen.findByRole("button", { name: "客户端版本" }));
     const version = await screen.findByLabelText("Windows 版本");
