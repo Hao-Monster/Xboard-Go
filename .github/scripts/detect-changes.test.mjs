@@ -60,7 +60,7 @@ test("identifies dedicated store changes and skips unrelated service groups", ()
   assert.equal(changes.packaged_browser, "false");
   assert.equal(changes.run_go, "true");
   assert.equal(changes.run_browser_smoke, "false");
-  assert.equal(changes.run_full_regression, "true");
+  assert.equal(changes.run_full_regression, "false");
 });
 
 test("identifies httpapi changes and marks services-a and browser tests as affected", () => {

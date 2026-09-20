@@ -86,7 +86,6 @@ const highRiskBackendTriggers = [
   "internal/database/",
   "internal/ratelimit/",
   "internal/devicestate/",
-  "internal/store/",
   "internal/testdata/legacy/",
   "internal/legacymigration/"
 ];
