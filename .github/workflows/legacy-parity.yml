@@ -35,12 +35,37 @@ jobs:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node .github/scripts/authorize-legacy-parity.mjs
 
-  legacy-parity:
+  scope:
     needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.scope.outputs.tier }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - id: scope
+        name: Classify parity scope from the exact candidate
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          changed_files="$(git diff-tree --root --no-commit-id --name-only -r "$TARGET_SHA^" "$TARGET_SHA")"
+          CHANGED_FILES="$changed_files" node .github/scripts/classify-legacy-parity.mjs
+      - name: Verify parity classifier
+        run: node --test .github/scripts/classify-legacy-parity.test.mjs
+
+  legacy-parity:
+    needs: [authorize, scope]
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
     environment: development
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/candidate-${{ github.run_id }}-${{ github.run_attempt }}
     env:
       COREPACK_ENABLE_NETWORK: "0"
       GOTOOLCHAIN: local
@@ -50,7 +75,7 @@ jobs:
       http_proxy: http://100.120.174.30:7890
       https_proxy: http://100.120.174.30:7890
       all_proxy: socks5h://100.120.174.30:7890
-      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10
+      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10,github.com,api.github.com,raw.githubusercontent.com,githubusercontent.com,registry.npmjs.org,npmjs.org,freedom.openal.uk,.openal.uk
       XBOARD_GO_PORT: "17550"
       XBOARD_MAILPIT_PORT: "17552"
       XBOARD_GO_BOOTSTRAP_ADMIN_EMAIL: admin@legacy-parity.test
@@ -64,12 +89,29 @@ jobs:
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
       XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.authorize.outputs.sha }}
-          fetch-depth: 1
-          clean: true
-          persist-credentials: false
+      - name: Download the authorized source archive
+        working-directory: ${{ github.workspace }}
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+          CANDIDATE_DIRECTORY: candidate-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANDIDATE_DIRECTORY" =~ ^candidate-[0-9]+-[0-9]+$ ]]
+          # A fresh directory prevents files from an earlier job entering the build.
+          # Codeload is GitHub's archive host; no Git credentials or proxy are needed.
+          mkdir -m 700 "$CANDIDATE_DIRECTORY"
+          archive="$(mktemp "$RUNNER_TEMP/xboard-source.XXXXXX.tar.gz")"
+          trap 'rm -f "$archive"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --noproxy codeload.github.com --connect-timeout 10 --max-time 120 \
+            --retry 2 --retry-delay 3 \
+            "https://codeload.github.com/Hao-Monster/Xboard-Go/tar.gz/$TARGET_SHA" \
+            --output "$archive"
+          tar --extract --gzip --file "$archive" --strip-components=1 \
+            --no-same-owner --directory "$CANDIDATE_DIRECTORY"
+          test -f "$CANDIDATE_DIRECTORY/go.mod"
+          test -f "$CANDIDATE_DIRECTORY/web/pnpm-lock.yaml"
       - name: Configure the pinned server toolchain
         run: |
           echo '/opt/xboard-go-ci-tools/node-v24.20.0-linux-x64/bin' >> "$GITHUB_PATH"
@@ -157,6 +199,7 @@ jobs:
             printf 'LEGACY_ADMIN_PASSWORD=%s\n' "$legacy_password"
           } >> "$GITHUB_ENV"
       - name: Compare the complete parity suite with the fixed legacy Oracle
+        if: needs.scope.outputs.tier == 'full'
         env:
           LEGACY_DOCKER_CONTAINER: xboard-legacy-ci-oracle
           XBOARD_GO_URL: http://127.0.0.1:17550/e2e-admin-secure
@@ -166,6 +209,11 @@ jobs:
           test "$XBOARD_GO_ADMIN_PASSWORD" = "$(tr -d '\r\n' < .local/bootstrap-password.txt)"
           pnpm --dir web exec playwright test \
             --config playwright.parity.config.ts
+      - name: Run lightweight candidate smoke checks
+        if: needs.scope.outputs.tier == 'smoke'
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:17550/healthz >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:17550/ >/dev/null
       - name: Record exact-commit evidence
         if: success()
         env:

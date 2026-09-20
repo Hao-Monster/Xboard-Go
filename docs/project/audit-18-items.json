@@ -47,7 +47,7 @@
       "verification": "partial",
       "migration": "not_assessed",
       "acceptance": "pending",
-      "finding": "PR #224 CI 35056520257 passed at a2b968321e22ce60aaaa95a75dc0e1ab9c129f87; PR #211 governance remains stale.",
+      "finding": "PR #247 was rebased onto main and merged as ce253a2a85f3487ecf376a7d92edde85d4805f17. Main CI 35428123406 and CodeQL 35428123421 passed; the legacy-parity workflow authorized the exact main commit and deployed it successfully. CI-001 is complete, while broader M3 acceptance remains separate.",
       "completion_criteria": "Target PR metadata and governance pass; record exact candidate and actual evidence. Do not rebind historical results without rerunning.",
       "entrypoint": ".github/workflows/ci.yml",
       "history": [
@@ -70,6 +70,10 @@
     {
       "date": "2026-09-17",
       "action": "Re-ran go run ./cmd/projectctl check at the current local candidate: FAIL (exit 1), reporting that evidence target f56e2bef7591ca6a0a1a429a546ba2137cb56914 is stale because .env.example changed afterwards. Historical evidence was left untouched; candidate rebinding and governance regeneration remain pending."
+    },
+    {
+      "date": "2026-09-19",
+      "action": "CI-001 evidence rebound to exact main commit ce253a2a85f3487ecf376a7d92edde85d4805f17: PR #247 merged; main CI run 35428123406 PASS; CodeQL run 35428123421 PASS; legacy-parity/deploy run 35428883439 PASS with full 48-test parity and public HTTPS smoke. Broader release-candidate acceptance remains pending."
     }
       ]
     },
@@ -230,7 +234,7 @@
       "verification": "passed_local",
       "migration": "not_applicable",
       "acceptance": "pending_candidate",
-      "finding": "Isolated local backup create, hash/integrity verification, restore, remote readback and invalid archive cases pass; release-candidate binding and operational recovery timing remain pending.",
+      "finding": "Exact candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 passes the isolated backup create/verify/restore, encrypted integrity, replica readback and invalid archive tests. A representative operational recovery drill and measured recovery target remain pending.",
       "completion_criteria": "Create isolated backup, verify hashes and integrity, restore database/files, measure recovery and validate business state.",
       "entrypoint": "cmd/xboard/backup_cli_test.go",
       "history": [
@@ -249,6 +253,14 @@
         {
           "date": "2026-09-17",
           "action": "At HEAD bab7010eefd94be313e2ca3afd167a70c9e04f7f re-ran the six isolated backup CLI tests: PASS (Go test 1.150s; command wall time 4.530s). Create/verify/restore completed in 0.56s and remote integrity/invalid archive/private default cases passed. This is local synthetic timing on Windows, not a representative operational recovery target; a clean governed release candidate and production-sized recovery drill remain pending."
+        },
+        {
+          "date": "2026-09-19",
+          "action": "At exact main candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 ran go test ./cmd/xboard ./internal/backup ./internal/store -run Test.*(Backup|Restore|Migration|Migrate|Commission|Ledger|SQLite) -count=1 -v: PASS. Backup CLI create/verify/restore and invalid-argument tests passed; internal backup round trips, encryption/tamper protection, attachment restore and destination safety passed; store migration and financial recovery tests passed. This is candidate-bound isolated evidence, not a representative operational recovery drill."
+        },
+        {
+          "date": "2026-09-19",
+          "action": "Development server drill against app revision bb9aeb88b7af04c28fbf49ba3a1f172a2c003271: /xboard backup create produced /var/lib/xboard-backups/ops-002-20260919T161620Z.xbbackup with schema 63 and database SHA-256 1b9f29c82b3ccacb7a12a387b92c125b42b0bc299b0069a19d357ee3be3398; backup verify PASS; backup restore PASS to a new database and attachment directory after supplying the required format-v2 attachment destination. Observed wall times were create 27.8s, verify 12.6s and restore 12.1s. Existing database and running container were not replaced. This is development-scale evidence; production-sized RTO/RPO remains unmeasured."
         }
       ]
     },
@@ -720,7 +732,7 @@
       "verification": "partial",
       "migration": "not_assessed",
       "acceptance": "pending",
-      "finding": "PR #224 normal CI passes; not proof for PR #211, full legacy parity or real disaster recovery.",
+      "finding": "Exact candidate ce253a2a85f3487ecf376a7d92edde85d4805f17 completed the full legacy parity workflow: 48 tests passed, public HTTPS smoke passed, and the same commit deployed to development. Go race, migration/recovery, and full 80/80 governance acceptance remain pending.",
       "completion_criteria": "Choose integrated candidate; run complete applicable parity/browser/race/migration/restore matrix; resolve release gates.",
       "entrypoint": ".github/workflows/legacy-parity.yml",
       "history": [
@@ -791,6 +803,10 @@
     {
       "date": "2026-09-17",
       "action": "At current HEAD 48ae1b45 ran go test ./...: PASS across all Go packages (command wall time 49.131s). This is current non-race backend evidence; go test -race remains unavailable because runtime/cgo cannot find gcc, and candidate governance, legacy parity, migration/recovery and deployment gates remain open."
+    },
+    {
+      "date": "2026-09-19",
+      "action": "Ran workflow_run legacy-parity 35428883439 for exact main commit ce253a2a85f3487ecf376a7d92edde85d4805f17: authorization PASS, full parity 48/48 PASS, deployment PASS, public HTTPS smoke PASS. This closes the CI/parity slice only; race, migration/recovery and release-candidate governance remain pending."
     }
       ]
     }

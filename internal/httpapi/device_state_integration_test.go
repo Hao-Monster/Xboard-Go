@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -111,6 +113,17 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	if err != nil || account.OnlineCount != 2 {
 		t.Fatalf("first database summary = %d, err=%v; want 2", account.OnlineCount, err)
 	}
+	redisOptions, err := redis.ParseURL(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redisClient := redis.NewClient(redisOptions)
+	defer redisClient.Close()
+	throttleKey := prefix + "device:db-throttle:" + strconv.FormatInt(user.ID, 10)
+	// Keep Redis TTL independent from the manually controlled test clock; real TTL expiry is covered separately in internal/devicestate/redis_integration_test.go.
+	if err := redisClient.Set(ctx, throttleKey, "1", 0).Err(); err != nil {
+		t.Fatalf("pin database throttle key: %v", err)
+	}
 	sqliteState, err := database.ListUserDevices(ctx, []int64{user.ID}, now())
 	if err != nil || len(sqliteState[user.ID]) != 0 {
 		t.Fatalf("external state leaked to node_device_ips: state=%#v err=%v", sqliteState, err)
@@ -132,34 +145,39 @@ func TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush(t *test
 	if err != nil || account.OnlineCount != 2 {
 		t.Fatalf("throttled database summary = %d, err=%v; want previous 2", account.OnlineCount, err)
 	}
+	pendingKey := prefix + "device:db-pending"
+	pendingMember := strconv.FormatInt(user.ID, 10)
+	pendingDue, err := redisClient.ZScore(ctx, pendingKey, pendingMember).Result()
+	if err != nil {
+		t.Fatalf("pending summary score = %v", err)
+	}
+	wantDue := started.Add(10*time.Millisecond + 80*time.Millisecond).UnixMilli()
+	if int64(pendingDue) != wantDue {
+		t.Fatalf("pending summary due=%d; want %d", int64(pendingDue), wantDue)
+	}
 	alivePath := fmt.Sprintf("/api/v2/server/alivelist?machine_id=%d&node_id=%d", machine.ID, node.ID)
 	alive := agentRequest(api, http.MethodGet, alivePath, credential.Token, "")
 	if alive.Code != http.StatusOK || !legacyBodyContainsAll(alive.Body.String(), fmt.Sprintf(`"%d"`, user.ID), "198.51.100.70") {
 		t.Fatalf("Redis alivelist status=%d body=%s", alive.Code, alive.Body)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		setNow(time.Now().UTC())
-		_, flushErr := deviceState.FlushPending(ctx, now(), devicestate.DefaultFlushLimit)
-		if flushErr != nil {
-			t.Fatal(flushErr)
-		}
-		account, err = database.GetAdminUser(ctx, user.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if account.OnlineCount == 1 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("HTTP report trailing database summary did not flush")
-		}
-		time.Sleep(10 * time.Millisecond)
+	setNow(started.Add(89 * time.Millisecond))
+	if flushed, flushErr := deviceState.FlushPending(ctx, now(), devicestate.DefaultFlushLimit); flushErr != nil || flushed != 0 {
+		t.Fatalf("early FlushPending() = (%d, %v), want (0, nil)", flushed, flushErr)
+	}
+	if err := redisClient.Del(ctx, throttleKey).Err(); err != nil {
+		t.Fatalf("release database throttle key: %v", err)
+	}
+	setNow(started.Add(90 * time.Millisecond))
+	if flushed, flushErr := deviceState.FlushPending(ctx, now(), devicestate.DefaultFlushLimit); flushErr != nil || flushed != 1 {
+		t.Fatalf("due FlushPending() = (%d, %v), want (1, nil)", flushed, flushErr)
 	}
 	account, err = database.GetAdminUser(ctx, user.ID)
 	if err != nil || account.OnlineCount != 1 {
 		t.Fatalf("trailing database summary = %d, err=%v; want 1", account.OnlineCount, err)
+	}
+	if _, err := redisClient.ZScore(ctx, pendingKey, pendingMember).Result(); !errors.Is(err, redis.Nil) {
+		t.Fatalf("pending summary acknowledgement error=%v; want redis.Nil", err)
 	}
 	traffic, err := database.GetRuntimeUserTraffic(ctx, user.ID)
 	if err != nil || traffic.Upload != 10 || traffic.Download != 20 {

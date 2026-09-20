@@ -1174,3 +1174,7 @@ Choose the actual test migration boundary for `--as-of`. Replaying the same
 snapshot reuses the recorded boundary when the flag is omitted, verifies the
 recorded rollback backup and target checksums, and does not shift the retention
 window. Another snapshot or a conflicting boundary is rejected.
+
+## Development deployment trigger
+
+The development server is deployed only by the `Legacy parity` workflow after a successful `main` CI completion. That workflow builds the exact main commit, runs the parity suite, deploys through the existing runner, verifies `https://freedom.openal.uk`, and restores the previous image and configuration if health checks fail.
