@@ -791,24 +791,57 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
         </form>
       )}
       {advanced && <Modal title="高级协议配置" className="node-definition-modal node-advanced-modal" onClose={cancelAdvanced}>
-        <div className="node-definition-header"><h2>高级协议配置</h2></div>
-        <div role="tablist" aria-label="高级协议设置" className="node-advanced-tabs">{["TLS", "多路复用", "自定义 Outbounds", "自定义 Routes"].map(tab => <button key={tab} type="button" role="tab" aria-selected={advancedTab === tab} onClick={() => setAdvancedTab(tab)}>{tab}</button>)}</div>
+        <div className="node-definition-header">
+          <div className="node-header-top-row">
+            <div className="node-title-group">
+              <h2 className="node-modal-title node-advanced-title">高级协议配置</h2>
+            </div>
+          </div>
+          <div role="tablist" aria-label="高级协议设置" className="node-advanced-tabs">
+            {["TLS", "多路复用", "自定义 Outbounds", "自定义 Routes"].map(tab => (
+              <button key={tab} type="button" role="tab" aria-selected={advancedTab === tab} onClick={() => setAdvancedTab(tab)}>{tab}</button>
+            ))}
+          </div>
+        </div>
         <form className="node-definition-form" onSubmit={event => { event.preventDefault(); event.stopPropagation(); try { parseJSONArray(customOutboundsText, "自定义出站"); parseJSONArray(customRoutesText, "自定义路由"); updateCertificate(parseJSONObject(certificateText, "证书配置")); setAdvanced(null); setError(""); } catch(cause) { setError(errorMessage(cause)); } }}>
-          <div className="node-definition-scroll node-form-compact" role="tabpanel" aria-label={advancedTab}>
+          <div className="node-definition-scroll node-form-compact node-advanced-scroll" role="tabpanel" aria-label={advancedTab}>
             {advancedTab === "TLS" && <>
               <CertificateFields value={asRecord(input.certificate_config)} onChange={updateCertificate}/>
-              <details><summary>其他设置</summary>
-                <label>监听地址<input required value={input.listen_address} onChange={e => setInput({...input, listen_address:e.target.value})}/></label>
-                <label>排序<input type="number" min="0" value={input.sort} onChange={e => setInput({...input,sort:Number(e.target.value)})}/></label>
-                <label><input type="checkbox" checked={input.show} onChange={e => setInput({...input,show:e.target.checked})}/>用户端显示</label>
-                <label>证书配置 (JSON 对象)<textarea value={certificateText} onChange={e => setCertificateText(e.target.value)}/></label>
+              <details className="cert-expert-details">
+                <summary>其他设置</summary>
+                <div className="cert-expert-inner">
+                  <label className="field-label"><span>监听地址</span><input required value={input.listen_address} onChange={e => setInput({...input, listen_address:e.target.value})}/></label>
+                  <label className="field-label"><span>排序</span><input type="number" min="0" value={input.sort} onChange={e => setInput({...input,sort:Number(e.target.value)})}/></label>
+                  <label className="field-label switch-label"><input type="checkbox" checked={input.show} onChange={e => setInput({...input,show:e.target.checked})}/><span>用户端显示</span></label>
+                  <label className="field-label"><span>证书配置 (JSON 对象)</span><textarea spellCheck={false} value={certificateText} onChange={e => setCertificateText(e.target.value)}/></label>
+                </div>
               </details>
             </>}
-            {advancedTab === "多路复用" && (["vmess","trojan","vless","mieru"].includes(input.type) ? <MultiplexFields settings={input.protocol_settings} set={(key,value) => setInput(current => ({...current,protocol_settings:{...current.protocol_settings,[key]:value}}))}/> : <p>当前协议不支持多路复用。</p>)}
-            {advancedTab === "自定义 Outbounds" && <label>自定义出站 (JSON 数组)<textarea rows={12} value={customOutboundsText} onChange={e=>setCustomOutboundsText(e.target.value)}/></label>}
-            {advancedTab === "自定义 Routes" && <label>自定义路由 (JSON 数组)<textarea rows={12} value={customRoutesText} onChange={e=>setCustomRoutesText(e.target.value)}/></label>}
+            {advancedTab === "多路复用" && (
+              ["vmess","trojan","vless","mieru"].includes(input.type)
+                ? <MultiplexFields settings={input.protocol_settings} set={(key,value) => setInput(current => ({...current,protocol_settings:{...current.protocol_settings,[key]:value}}))}/>
+                : <p className="node-advanced-unsupported">当前协议不支持多路复用。</p>
+            )}
+            {advancedTab === "自定义 Outbounds" && (
+              <label className="field-label">
+                <span>自定义出站 (JSON 数组)</span>
+                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} value={customOutboundsText} onChange={e=>setCustomOutboundsText(e.target.value)}/>
+              </label>
+            )}
+            {advancedTab === "自定义 Routes" && (
+              <label className="field-label">
+                <span>自定义路由 (JSON 数组)</span>
+                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} value={customRoutesText} onChange={e=>setCustomRoutesText(e.target.value)}/>
+              </label>
+            )}
           </div>
-          <div className="node-footer">{error && <div role="alert" className="alert error">{error}</div>}<div className="node-footer-actions"><button type="button" className="button ghost" onClick={cancelAdvanced}>取消</button><button type="submit" className="button primary">Save</button></div></div>
+          <div className="node-footer">
+            {error && <div role="alert" className="alert error">{error}</div>}
+            <div className="node-footer-actions">
+              <button type="button" className="button ghost" onClick={cancelAdvanced}>取消</button>
+              <button type="submit" className="button primary">Save</button>
+            </div>
+          </div>
         </form>
       </Modal>}
     </>

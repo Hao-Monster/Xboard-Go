@@ -597,10 +597,91 @@
   }
 }
 
-.node-advanced-modal .node-advanced-tabs {display:flex;gap:4px;padding:12px 16px;flex-wrap:wrap;}
-.node-advanced-tabs button {border:0;background:transparent;color:var(--theme-muted);padding:8px;}
-.node-advanced-tabs [aria-selected="true"] {color:var(--theme-text);background:var(--theme-border);border-radius:6px;}
-.node-advanced-modal {min-height:340px;}
+/* Advanced Protocol Modal - layout aligned with original Xboard */
+.node-advanced-modal .node-definition-header {
+  border-bottom: 1px solid var(--theme-border);
+  padding: 14px 18px 0;
+  gap: 10px;
+}
+
+.node-advanced-modal .node-modal-title.node-advanced-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-family: var(--theme-font-mono, ui-monospace, monospace);
+  color: var(--theme-text);
+}
+
+.node-advanced-modal .node-advanced-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--theme-border) 35%, transparent);
+  border-radius: 10px;
+  margin: 2px 0 10px;
+}
+
+.node-advanced-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--theme-muted);
+  padding: 7px 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-advanced-tabs button:hover:not([aria-selected="true"]) {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-border) 50%, transparent);
+}
+
+.node-advanced-tabs [aria-selected="true"] {
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  border-radius: 7px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+
+.node-advanced-modal {
+  min-height: 420px;
+}
+
+.node-advanced-modal .node-advanced-scroll {
+  max-height: 60vh;
+  min-height: 320px;
+}
+
+/* cert-expert-inner: vertical stack of fields inside the details */
+:is(.node-definition-modal, .node-definition-drawer) .cert-expert-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* JSON editor textarea: monospace, taller, no resize horizontal */
+:is(.node-definition-modal, .node-definition-drawer) .node-advanced-json-editor {
+  font-family: var(--theme-font-mono, ui-monospace, "Cascadia Code", "Fira Code", monospace);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* Unsupported protocol notice */
+.node-advanced-unsupported {
+  color: var(--theme-muted);
+  font-size: 0.84rem;
+  padding: 32px 0;
+  text-align: center;
+  margin: 0;
+}
 
 :is(.node-definition-modal, .node-definition-drawer) .node-field-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
 
