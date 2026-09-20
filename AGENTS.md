@@ -1,31 +1,98 @@
-# Xboard-Go 项目协作规则
+# Xboard-Go 项目协作规则 (AGENTS.md)
 
-本文件适用于整个仓库，并补充全局 Agent 规则。
+本规范适用于所有参与本项目开发的 AI Agent（如 Antigravity、Codex、Claude 等）与人类工程师，作为仓库根目录的权威行为准则。
 
-## 项目事实源
+---
 
-- `docs/project/*.json` 是范围、需求、决策、风险、工作项和发布门禁的唯一版本化事实源。
-- `docs/project/STATUS.md` 由 `go run ./cmd/projectctl generate` 生成，不得手工编辑。
-- `docs-dev/` 是本地历史取证区，保持 Git 忽略；其中内容不是当前权威需求，任何结论必须经过审查后进入 `docs/project/`。
-- 开始功能、修复、迁移或发布工作前，先定位对应需求 ID 或工作项 ID，并确认 GitHub Issue 和里程碑。
+## 一、项目事实源与治理体系
 
-## 变更流程
+- `docs/project/*.json` 是项目范围、需求（80 项功能清单）、决策、风险、工作项与发布门禁的**唯一版本化事实源**。
+- `docs/project/STATUS.md` 由 `go run ./cmd/projectctl generate` 自动渲染生成，**严禁手工编辑**。
+- `docs-dev/` 是本地历史取证与临时排查区，保持 Git 忽略；其中内容不代表当前权威需求，任何有效结论必须经过审查后沉淀至 `docs/project/`。
+- **任务前导**：开始任何功能开发、缺陷修复、数据迁移或发布前，必须先定位对应的 `Requirement ID` 或 `Work Item ID`，并确认关联的 GitHub Issue 与 Milestone。
+- 被决策（Decision）阻塞的需求，严禁实现未经确认的业务语义；允许进行只读调查、测试设计及不受阻塞的工程准备。
 
-1. PR 正文必须填写需求 ID 或工作项 ID、GitHub 里程碑和关联 Issue；确实不适用时填写 `N/A: 原因`。
-2. 状态不能只写“完成”。分别更新范围、实现、验证、迁移和验收状态，并附精确提交与可复现证据。
-3. 历史测试、旧分支测试或未绑定提交的结果只能标记为 `historical`，不得提升为 `current` 或 `accepted`。
-4. 被决策阻塞的需求不得实现未经确认的业务语义；可以继续只读调查、测试设计和不受影响的工程工作。
-5. 合并前运行 `go run ./cmd/projectctl check`；更改治理数据后运行 `go run ./cmd/projectctl generate`。
-6. 不直接在 `main` 开发，不绕过分支保护，不手工创建未经门禁验证的 Tag 或 Release。
+---
 
-## 安全与环境边界
+## 二、多 Agent 协作与工作区隔离
 
-- 当前只允许本地和隔离 CI/测试环境；生产部署和生产数据操作不在默认授权范围内。
-- Go 主进程禁止执行任意 PHP 或用户上传脚本；受信扩展边界见 `docs/project/compatibility-exceptions.json`。
-- 不将密钥、生产数据、原始请求正文、邮件正文或旧 PHP 队列载荷写入仓库、Issue、日志或测试快照。
+在单机或团队中存在多个 AI Agent 并行协作时，必须遵循物理隔离与范围约束：
 
-## 部署与交付规则（硬性铁律）
+1. **工作树物理隔离（Git Worktree）**：
+   - 严禁多个 Agent 在同一个本地工作目录（Working Tree）中并发修改不同任务代码。
+   - 并行任务优先使用 `git worktree add` 检出独立的工作区目录，避免脏工作区混淆与未暂存覆盖。
+2. **任务认领与排他性（Single Task Ownership）**：
+   - 同一时刻，同一个 Issue / 模块仅由单个 Agent 认领开发，避免重复劳动与分支冲突。
+3. **爆炸半径控制（Blast Radius Control）**：
+   - Agent 必须坚守单一职责，**仅修改与当前任务直接关联的文件**。
+   - 严禁借开发之名顺带执行跨模块重构、无授权的代码格式化或全工程依赖升级。
 
-- **只允许持续集成与流水线部署**：严禁从本地通过 SSH/SCP、FTP 或任何手工脚本直接向服务器传输代码、二进制构建产物或直接执行手动部署。
-- **所有环境部署必须由 CI/CD 流水线统一触发**：发布必须通过 Git 推送/PR，由自动化流水线（如 GitHub Actions）统一执行代码测试、编译构建、安全校验与自动部署。
-- 本地终端仅允许执行代码编写、本地单元测试、语法检查以及对服务器的只读巡检与故障排查。
+---
+
+## 三、分支管理与提交规范
+
+1. **分支保护铁律**：
+   - **严禁直接向 `main` 分支提交或推送代码**。所有变更必须通过特性分支发起 Pull Request，经门禁验证后合并。
+   - 不绕过分支保护，不手工创建未经门禁验证的 Tag 或 Release。
+2. **分支命名规范**：
+   - 格式：`<agent-or-role>/<type>/<issue-or-task-id>-<short-description>`
+   - 示例：
+     - `antigravity/feat/admin-tabs`
+     - `codex/fix/subscription-probe`
+     - `ci/chore/rebase-baseline`
+3. **提交规范（Conventional Commits & 原子提交）**：
+   - 采用标准规范提交（`feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`）。
+   - 保持小步原子提交（Atomic Commits）：一个独立功能/修复 + 对应单元测试 = 一个提交。
+   - 严禁包含无意义或混杂的批量提交（如 `fix bug`, `update files`）。
+4. **主干合并策略**：
+   - 推荐使用 **Squash and Merge** 将特性分支上的碎提交压缩为单一高质量提交合并入主干，保持 `main` 分支历史线性干净、易于溯源（Git Bisect）。
+
+---
+
+## 四、PR 规范与质量门禁
+
+1. **PR 强制元数据模版**：
+   PR 正文顶部必须包含机器可读的治理元数据块，确实不适用时明确填写 `N/A: 原因`：
+   ```markdown
+   ## Governance metadata
+   Requirement IDs: REQ-001, REQ-002
+   Work item IDs: CI-001
+   Milestone: M3
+   Closes: #123
+   ```
+2. **GitHub 字段联动**：
+   - 发起 PR 时，GitHub 网页端的 **Milestone 字段必须与正文中的 Milestone 一致绑定**（否则将被 `projectctl pr-check` 门禁拦截）。
+3. **状态与证据铁律**：
+   - 治理状态不得只写“完成”。必须分别更新范围、实现、验证、迁移和验收状态，并附带精确的提交 SHA 与可复现的验证日志。
+   - 历史测试、旧分支测试或未绑定精确提交的结果只能标记为 `historical`，严禁提升为 `current` 或 `accepted`。
+4. **本地预检（Pre-Flight Checklist）**：
+   在推送分支或发起 PR 前，Agent 必须在本地按顺序通过以下检查：
+   - 前端：`pnpm --dir web run typecheck && pnpm --dir web run lint && pnpm --dir web test`
+   - 后端：`go test -race ./...` 与静态代码检查
+   - 治理：`go run ./cmd/projectctl check`（如修改了治理数据需先执行 `go run ./cmd/projectctl generate`）
+
+---
+
+## 五、安全与环境边界
+
+1. **环境与代码执行权限**：
+   - 当前开发仅授权在本地开发机与隔离 CI/测试环境中运行；**生产环境部署与直接操作生产数据不在默认授权范围内**。
+   - Go 主进程严禁直接调用系统 Shell 执行任意 PHP 脚本或用户上传的动态脚本；受信扩展边界详见 `docs/project/compatibility-exceptions.json`。
+2. **机密防泄漏准则**：
+   - 严禁将数据库密码、私钥（SSH/RSA/JWT）、生产真实数据、用户邮件正文、原始请求报文或旧系统 PHP 队列载荷写入仓库、Issue 描述、日志或测试快照。
+   - 单元测试与 E2E 必须使用 Mock 或加密随机生成的虚拟 Fixture 凭证。
+3. **流水线依赖防投毒（Action Pinning）**：
+   - 所有 GitHub Actions 步骤的 `uses` 必须锁定为 **40 位不可变 Commit SHA** 或 SHA256 镜像摘要，严禁使用漂移分支（如 `@v4`、`@main`）。
+
+---
+
+## 六、部署与交付规则（硬性铁律）
+
+1. **只允许持续集成（CI）与流水线（CD）部署**：
+   - **严禁从本地机器通过 SSH、SCP、SFTP 或任何手工脚本直接向服务器传输代码、静态资源或二进制构建产物**。
+   - **严禁在本地手动执行服务端发布、重启或容器切换操作**。
+2. **所有环境部署必须由 CI/CD 流水线统一触发**：
+   - 代码必须通过 Git 提交并推送至远端，由自动化 CI/CD 流水线（如 GitHub Actions）统一进行代码检出、依赖安装、安全审计、不可变镜像构建与健康探针发布。
+   - 任何本地未推送、未通过云端 CI 流水线测试的代码严禁上线。
+3. **本地与 SSH 权限边界**：
+   - 本地终端仅允许执行代码编写、本地单元测试/构建验证、静态检查以及对服务器的**只读巡检、日志查看与故障排查**。
