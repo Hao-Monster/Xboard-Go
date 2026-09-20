@@ -1,33 +1,35 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
+import { lazyWithPreload } from "./lib/lazyWithPreload";
 
 import type { SystemConfigTab } from "./features/settings/SystemConfigShell";
-const SystemConfigShell = lazy(async () => import("./features/settings/SystemConfigShell").then(module => ({ default: module.SystemConfigShell })));
+type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
-const AccountSecurityPage = lazy(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
-const RoutingRulesPage = lazy(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
-const ServerGroupsPage = lazy(async () => import("./features/admin/ServerGroupsPage").then((module) => ({ default: module.ServerGroupsPage })));
-const ClientCatalogManagementPage = lazy(async () => import("./features/clients/ClientCatalogManagementPage").then((module) => ({ default: module.ClientCatalogManagementPage })));
-const CouponManagementPage = lazy(async () => import("./features/coupons/CouponManagementPage").then((module) => ({ default: module.CouponManagementPage })));
-const KnowledgeManagementPage = lazy(async () => import("./features/knowledge/KnowledgeManagementPage").then((module) => ({ default: module.KnowledgeManagementPage })));
-const NoticeManagementPage = lazy(async () => import("./features/notices/NoticeManagementPage").then((module) => ({ default: module.NoticeManagementPage })));
-const OrderManagementPage = lazy(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
-const PlanManagementPage = lazy(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
-const ServerManagementPage = lazy(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
-const SystemOperationsPage = lazy(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
-const TicketManagementPage = lazy(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
-const UsersPage = lazy(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
-const NodeManagementPage = lazy(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
-const ThemeManagementPage = lazy(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
-const PaymentManagementPage = lazy(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
-const PluginManagementPage = lazy(async () => import("./features/plugins/PluginManagementPage").then((module) => ({ default: module.PluginManagementPage })));
-const GiftCardManagementPage = lazy(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
+const SystemConfigShell = lazyWithPreload(async () => import("./features/settings/SystemConfigShell").then(module => ({ default: module.SystemConfigShell })));
+const AccountSecurityPage = lazyWithPreload(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
+const RoutingRulesPage = lazyWithPreload(async () => import("./features/admin/RoutingRulesPage").then((module) => ({ default: module.RoutingRulesPage })));
+const ServerGroupsPage = lazyWithPreload(async () => import("./features/admin/ServerGroupsPage").then((module) => ({ default: module.ServerGroupsPage })));
+const ClientCatalogManagementPage = lazyWithPreload(async () => import("./features/clients/ClientCatalogManagementPage").then((module) => ({ default: module.ClientCatalogManagementPage })));
+const CouponManagementPage = lazyWithPreload(async () => import("./features/coupons/CouponManagementPage").then((module) => ({ default: module.CouponManagementPage })));
+const KnowledgeManagementPage = lazyWithPreload(async () => import("./features/knowledge/KnowledgeManagementPage").then((module) => ({ default: module.KnowledgeManagementPage })));
+const NoticeManagementPage = lazyWithPreload(async () => import("./features/notices/NoticeManagementPage").then((module) => ({ default: module.NoticeManagementPage })));
+const OrderManagementPage = lazyWithPreload(async () => import("./features/orders/OrderManagementPage").then((module) => ({ default: module.OrderManagementPage })));
+const PlanManagementPage = lazyWithPreload(async () => import("./features/plans/PlanManagementPage").then((module) => ({ default: module.PlanManagementPage })));
+const ServerManagementPage = lazyWithPreload(async () => import("./features/servers/ServerManagementPage").then((module) => ({ default: module.ServerManagementPage })));
+const SystemOperationsPage = lazyWithPreload(async () => import("./features/system/SystemOperationsPage").then((module) => ({ default: module.SystemOperationsPage })));
+const TicketManagementPage = lazyWithPreload(async () => import("./features/tickets/TicketManagementPage").then((module) => ({ default: module.TicketManagementPage })));
+const UsersPage = lazyWithPreload(async () => import("./features/users/UsersPage").then((module) => ({ default: module.UsersPage })));
+const NodeManagementPage = lazyWithPreload(async () => import("./features/nodes/NodeManagementPage").then((module) => ({ default: module.NodeManagementPage })));
+const ThemeManagementPage = lazyWithPreload(async () => import("./features/settings/ThemeManagementPage").then((module) => ({ default: module.ThemeManagementPage })));
+const PaymentManagementPage = lazyWithPreload(async () => import("./features/payments/PaymentManagementPage").then((module) => ({ default: module.PaymentManagementPage })));
+const PluginManagementPage = lazyWithPreload(async () => import("./features/plugins/PluginManagementPage").then((module) => ({ default: module.PluginManagementPage })));
+const GiftCardManagementPage = lazyWithPreload(async () => import("./features/giftcards/GiftCardManagementPage").then((module) => ({ default: module.GiftCardManagementPage })));
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const DistributorPortal = lazy(async () => import("./features/distributor/DistributorPortal").then((module) => ({ default: module.DistributorPortal })));
-const AdminDistributorPage = lazy(async () => import("./features/distributor/AdminDistributorPage").then((module) => ({ default: module.AdminDistributorPage })));
+const AdminDistributorPage = lazyWithPreload(async () => import("./features/distributor/AdminDistributorPage").then((module) => ({ default: module.AdminDistributorPage })));
 const defaultThemeAppearance: ThemeAppearance = {
   name: "Xboard", revision: 1, package_sha256: "0".repeat(64),
   palette: { background: "#0b0d12", surface: "#151922", text: "#e8ebf2", muted: "#9ba3b5", primary: "#9ab2ff", primary_text: "#101218", border: "#303746" },
@@ -41,8 +43,6 @@ const defaultGuestConfig: GuestConfig = {
   recaptcha_v3_score_threshold: 0.5, turnstile_site_key: null, is_recaptcha: 0, theme: defaultThemeAppearance
 };
 type AuthMode = "login" | "register" | "recover";
-type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
-
 const adminRoutes: Record<AdminPage, string> = {
   system: "/dashboard", servers: "/server/machine", nodes: "/server/manage", groups: "/server/group", routes: "/server/route",
   settings: "/config/system", security: "/config/system/security", subscriptions: "/config/system/subscriptions",
@@ -53,6 +53,42 @@ const adminRoutes: Record<AdminPage, string> = {
   distributors: "/finance/distributor", coupons: "/finance/coupon", "gift-cards": "/finance/gift-card",
   users: "/user/manage", tickets: "/user/ticket", account: "/account"
 };
+
+const adminPagePreloaders: Record<AdminPage, () => Promise<unknown>> = {
+  system: SystemOperationsPage.preload,
+  settings: SystemConfigShell.preload,
+  security: SystemConfigShell.preload,
+  subscriptions: SystemConfigShell.preload,
+  commissions: SystemConfigShell.preload,
+  "node-settings": SystemConfigShell.preload,
+  mail: SystemConfigShell.preload,
+  telegram: SystemConfigShell.preload,
+  "client-app": SystemConfigShell.preload,
+  templates: SystemConfigShell.preload,
+  themes: ThemeManagementPage.preload,
+  plugins: PluginManagementPage.preload,
+  payments: PaymentManagementPage.preload,
+  notices: NoticeManagementPage.preload,
+  knowledge: KnowledgeManagementPage.preload,
+  clients: ClientCatalogManagementPage.preload,
+  servers: ServerManagementPage.preload,
+  nodes: NodeManagementPage.preload,
+  groups: ServerGroupsPage.preload,
+  routes: RoutingRulesPage.preload,
+  plans: PlanManagementPage.preload,
+  orders: OrderManagementPage.preload,
+  distributors: AdminDistributorPage.preload,
+  coupons: CouponManagementPage.preload,
+  "gift-cards": GiftCardManagementPage.preload,
+  users: UsersPage.preload,
+  tickets: TicketManagementPage.preload,
+  account: AccountSecurityPage.preload,
+};
+
+const uniqueAdminPagePreloaders = [...new Set(Object.values(adminPagePreloaders))];
+const loadAdminPage = (page: AdminPage) => adminPagePreloaders[page]().catch(() => undefined);
+const preloadAdminPage = (page: AdminPage) => { void loadAdminPage(page); };
+const preloadAllAdminPages = () => { void Promise.allSettled(uniqueAdminPagePreloaders.map((preload) => preload())); };
 export function adminPageFromHash(hash: string): AdminPage | undefined {
   const path = (hash.replace(/^#/, "").split("?")[0] ?? "").replace(/\/$/, "");
   if (path === "") return "servers";
@@ -138,20 +174,31 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
+  const adminNavigationSequence = useRef(0);
 
   useEffect(() => {
     if (surface.kind !== "admin") return;
     const followAdminRoute = () => {
       const next = adminPageFromHash(window.location.hash);
-      if (next === undefined || next === page) return;
+      if (next === undefined) return;
+      if (next === page) {
+        adminNavigationSequence.current += 1;
+        return;
+      }
+      const sequence = ++adminNavigationSequence.current;
       const message = page === "themes" && themeSettingsDirty ? "主题设置有未保存的修改，确认离开并放弃这些修改吗？"
         : page === "client-app" && clientAppSettingsDirty ? "客户端版本有未保存的修改，确认离开并放弃这些修改吗？" : "";
       if (message && !window.confirm(message)) {
         window.history.replaceState(null, "", `#${adminRoutes[page]}`);
         return;
       }
-      setMachineNodeTarget(null);
-      setPage(next);
+      void loadAdminPage(next).then(() => {
+        if (sequence !== adminNavigationSequence.current || adminPageFromHash(window.location.hash) !== next) return;
+        startTransition(() => {
+          setMachineNodeTarget(null);
+          setPage(next);
+        });
+      });
     };
     window.addEventListener("hashchange", followAdminRoute);
     window.addEventListener("popstate", followAdminRoute);
@@ -178,7 +225,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
     const authentication = loginLink === null
       ? api.session().then((nextSession) => ({ ...nextSession, redirect: "dashboard" as LoginLinkRedirect }))
       : api.exchangeLoginLink(loginLink.token);
-    void authentication.then((nextSession) => {
+    void authentication.then(async (nextSession) => {
+      if (!active || sequence !== authenticationSequence.current) return;
+      const initialAdminPage = loginLink === null ? adminPageFromHash(window.location.hash) ?? "servers" : "servers";
+      if (surface.kind === "admin" && nextSession.is_admin) await loadAdminPage(initialAdminPage);
       if (!active || sequence !== authenticationSequence.current) return;
       setSession(nextSession);
       if (loginLink !== null) {
@@ -198,7 +248,11 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       if (active && sequence === authenticationSequence.current) setLoading(false);
     });
     return () => { active = false; };
-  }, [api]);
+  }, [api, surface.kind]);
+
+  useEffect(() => {
+    if (surface.kind === "admin" && session?.is_admin === true) preloadAllAdminPages();
+  }, [surface.kind, session]);
 
   useEffect(() => {
     const authTitle = authMode === "register" ? "注册" : authMode === "recover" ? "重置密码" : "登录";
@@ -274,12 +328,21 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
 
   const authenticated = (nextSession: UserSession) => {
     setBootstrapAuthError("");
-    setSession(nextSession);
     const destination = surface.kind === "admin" ? adminPageFromHash(window.location.hash) ?? "servers" : "servers";
-    setPage(destination);
-    window.scrollTo(0, 0);
-    window.history.replaceState(null, "", surface.kind === "admin" ? `#${adminRoutes[destination]}` : "#/");
-    setAuthLocation(window.location.hash);
+    const finishAuthentication = () => {
+      setSession(nextSession);
+      setPage(destination);
+      window.scrollTo(0, 0);
+      window.history.replaceState(null, "", surface.kind === "admin" ? `#${adminRoutes[destination]}` : "#/");
+      setAuthLocation(window.location.hash);
+      setLoading(false);
+    };
+    if (surface.kind === "admin" && nextSession.is_admin) {
+      setLoading(true);
+      void loadAdminPage(destination).then(finishAuthentication);
+      return;
+    }
+    finishAuthentication();
   };
 
   const identityChanged = (settings: SiteSettings) => {
@@ -308,13 +371,20 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
-    if (nextPage !== page && canLeaveAdminPage()) {
-      setMachineNodeTarget(null);
+    if (nextPage === page) return;
+    const sequence = ++adminNavigationSequence.current;
+    if (!canLeaveAdminPage()) return;
+    void loadAdminPage(nextPage).then(() => {
+      if (sequence !== adminNavigationSequence.current) return;
       window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
-      setPage(nextPage);
-    }
+      startTransition(() => {
+        setMachineNodeTarget(null);
+        setPage(nextPage);
+      });
+    });
   };
   const signOut = () => {
+    adminNavigationSequence.current += 1;
     if (!canLeaveAdminPage()) return;
     void api.logout().catch(() => undefined).then(() => {
       setPage("servers");
@@ -353,14 +423,14 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       <header className="topbar">
         <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
         <div className="account">
-          <details className="admin-account-menu"><summary>{session.email}</summary><button type="button" className="button secondary compact" onClick={() => navigateAdminPage("account")}>账号安全</button></details>
+          <details className="admin-account-menu"><summary>{session.email}</summary><button type="button" className="button secondary compact" onPointerEnter={() => preloadAdminPage("account")} onFocus={() => preloadAdminPage("account")} onClick={() => navigateAdminPage("account")}>账号安全</button></details>
           <button className="button ghost compact" onClick={signOut}>退出</button>
         </div>
       </header>
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
           <div className="admin-nav">
-            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onClick={() => navigateAdminPage("system")}>仪表盘</button>
+            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onPointerEnter={() => preloadAdminPage("system")} onFocus={() => preloadAdminPage("system")} onClick={() => navigateAdminPage("system")}>仪表盘</button>
             {adminNavGroups.map((group) => {
               const isExpanded = expandedAdminGroups[group.id] ?? true;
               return (
@@ -389,6 +459,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
                             key={item.page}
                             className={`nav-link ${isActive ? "active" : ""}`}
                             aria-current={isActive ? "page" : undefined}
+                            onPointerEnter={() => preloadAdminPage(item.page)}
+                            onFocus={() => preloadAdminPage(item.page)}
                             onClick={() => navigateAdminPage(item.page)}
                           >
                             {item.label}
@@ -413,7 +485,17 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             />}
             {page === "system" && <SystemOperationsPage api={api} />}
             {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-            {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => { setMachineNodeTarget({ id, create }); window.history.pushState(null, "", `#${adminRoutes.nodes}`); setPage("nodes"); }} />}
+            {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => {
+              const sequence = ++adminNavigationSequence.current;
+              void loadAdminPage("nodes").then(() => {
+                if (sequence !== adminNavigationSequence.current) return;
+                window.history.pushState(null, "", `#${adminRoutes.nodes}`);
+                startTransition(() => {
+                  setMachineNodeTarget({ id, create });
+                  setPage("nodes");
+                });
+              });
+            }} />}
             {page === "nodes" && <NodeManagementPage api={api} initialMachineID={machineNodeTarget?.id} initiallyCreating={machineNodeTarget?.create} />}
             {page === "plans" && <PlanManagementPage api={api} />}
             {page === "orders" && <OrderManagementPage api={api} />}
@@ -429,7 +511,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             {page === "notices" && <NoticeManagementPage api={api} />}
             {page === "knowledge" && <KnowledgeManagementPage api={api} />}
             {page === "clients" && <ClientCatalogManagementPage api={api} />}
-            {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
+            {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { adminNavigationSequence.current += 1; setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
           </Suspense>
         </div>
       </div>
