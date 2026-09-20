@@ -2,7 +2,20 @@
    RoutingRulesPage — 路由管理 styles
    ============================================================ */
 
-.rr-page { max-width: 1200px; }
+/* Page Layout */
+.rr-page {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.rr-page.page-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px 32px 64px;
+  box-sizing: border-box;
+}
 
 /* Empty row inside table */
 .rr-empty-row .rr-empty-cell {
@@ -68,11 +81,15 @@
 .rr-search::placeholder { color: var(--theme-muted, #8f99ad); }
 
 /* Table layout */
-.rr-table-wrap { margin-top: 0; }
+.rr-table-wrap {
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
 .rr-th-id    { width: 80px; }
-.rr-th-remarks { width: 200px; }
+.rr-th-remarks { min-width: 160px; }
 .rr-th-match { width: auto; }
-.rr-th-action { width: 120px; }
+.rr-th-action { width: 140px; }
 .rr-th-ops   { width: 80px; text-align: right !important; }
 
 .rr-sort-btn {

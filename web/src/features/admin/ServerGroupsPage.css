@@ -3,7 +3,19 @@
    ============================================================ */
 
 /* Page Layout */
-.sg-page { max-width: 1200px; }
+.sg-page {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.sg-page.page-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px 32px 64px;
+  box-sizing: border-box;
+}
 
 /* Empty row inside table */
 .sg-empty-row .sg-empty-cell {
@@ -76,14 +88,18 @@
 .sg-search::placeholder { color: var(--theme-muted, #8f99ad); }
 
 /* Table */
-.sg-table-wrap { margin-top: 0; }
+.sg-table-wrap {
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
 
 .sg-table { table-layout: auto; }
 
 /* Sortable column headers */
 .sg-th-id    { width: 80px; }
 .sg-th-name  { width: auto; }
-.sg-th-count { width: 130px; }
+.sg-th-count { min-width: 130px; }
 .sg-th-actions { width: 80px; text-align: right !important; }
 
 .sg-sort-btn {
