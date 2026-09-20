@@ -39,6 +39,36 @@ const node: Node = {
 };
 
 describe("ServerManagementPage", () => {
+  it("matches creation defaults, validates the name and preserves fields after failure", async () => {
+    const api = createAPI();
+    vi.mocked(api.createMachine).mockRejectedValue(new Error("保存失败"));
+    const user = userEvent.setup();
+    render(<ServerManagementPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: "＋ 添加服务器" }));
+    const dialog = screen.getByRole("dialog", { name: "新建服务器" });
+    const name = within(dialog).getByPlaceholderText("例如 HK-01");
+    const notes = within(dialog).getByPlaceholderText("关于此服务器的可选备注");
+    const toggle = within(dialog).getByRole("switch", { name: "启用服务器" });
+    const submit = within(dialog).getByRole("button", { name: "提交" });
+    expect(toggle).toBeChecked();
+    expect(submit).toBeDisabled();
+    await user.click(name);
+    await user.tab();
+    expect(within(dialog).getByText("请输入服务器名称")).toBeVisible();
+    await user.type(name, "HK-01");
+    await user.type(notes, "可选备注");
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    await user.click(submit);
+    await waitFor(() => expect(api.createMachine).toHaveBeenCalledWith({ name: "HK-01", notes: "可选备注", is_active: false }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("保存失败");
+    expect(name).toHaveValue("HK-01");
+    expect(notes).toHaveValue("可选备注");
+    expect(submit).toBeEnabled();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "新建服务器" })).not.toBeInTheDocument();
+  });
+
   it("paginates the server table and resets the page when searching", async () => {
     const api = createAPI();
     vi.mocked(api.listMachines).mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({ ...machine, id: index + 1, name: `edge-${String(index + 1).padStart(2, "0")}` })));

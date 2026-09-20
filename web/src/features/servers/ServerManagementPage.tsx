@@ -180,11 +180,14 @@ function CreateMachineModal({ api, onClose, onCreated }: { api: AdminAPI; onClos
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [active, setActive] = useState(true);
+  const [nameTouched, setNameTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const invalidName = nameTouched && name.trim() === "";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (submitting || name.trim() === "") return;
     setSubmitting(true);
     setError("");
     try {
@@ -197,17 +200,33 @@ function CreateMachineModal({ api, onClose, onCreated }: { api: AdminAPI; onClos
   };
 
   return (
-    <Modal title="新建服务器" onClose={onClose}>
-      <ModalHeader title="新建服务器" onClose={onClose} /><p className="muted">当你希望一台服务器承载多个节点时，再创建服务器记录。</p>
-      <form className="form-stack" onSubmit={(event) => void submit(event)}>
-        <label>服务器名称<input value={name} maxLength={255} required onChange={(event) => setName(event.target.value)} /></label>
-        <label>备注<textarea value={notes} maxLength={4000} onChange={(event) => setNotes(event.target.value)} /></label>
-        <label><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />启用服务器</label><p className="muted">禁用后 xboard-node 将不再使用此服务器。</p>
-        {error !== "" && <div className="alert error" role="alert">{error}</div>}
-        <div className="form-actions">
+    <Modal title="新建服务器" className="machine-create-modal" onClose={onClose}>
+      <header className="machine-create-header">
+        <h2>新建服务器</h2>
+        <p>当你希望一台服务器承载多个节点时，再创建服务器记录。</p>
+        <button type="button" className="machine-create-close" aria-label="关闭新建服务器" onClick={onClose}>×</button>
+      </header>
+      <form onSubmit={(event) => void submit(event)}>
+        <div className="machine-create-fields">
+          <div className="machine-create-field">
+            <label htmlFor="machine-create-name">服务器名称</label>
+            <input autoFocus id="machine-create-name" value={name} placeholder="例如 HK-01" maxLength={255} required aria-invalid={invalidName} aria-describedby={invalidName ? "machine-create-name-error" : undefined} onBlur={() => setNameTouched(true)} onChange={(event) => setName(event.target.value)} />
+            {invalidName && <p id="machine-create-name-error" className="machine-create-error">请输入服务器名称</p>}
+          </div>
+          <div className="machine-create-field">
+            <label htmlFor="machine-create-notes">备注</label>
+            <textarea id="machine-create-notes" value={notes} placeholder="关于此服务器的可选备注" maxLength={4000} onChange={(event) => setNotes(event.target.value)} />
+          </div>
+          <div className="machine-create-enabled">
+            <div><label id="machine-create-enabled-label" htmlFor="machine-create-enabled">启用服务器</label><p id="machine-create-enabled-description">禁用后 xboard-node 将不再使用此服务器。</p></div>
+            <button id="machine-create-enabled" type="button" role="switch" aria-checked={active} aria-labelledby="machine-create-enabled-label" aria-describedby="machine-create-enabled-description" className="machine-create-switch" onClick={() => setActive(value => !value)}><span /></button>
+          </div>
+          {error !== "" && <div className="alert error" role="alert">{error}</div>}
+        </div>
+        <footer className="machine-create-footer">
           <button className="button ghost" type="button" onClick={onClose}>取消</button>
           <button className="button primary" type="submit" disabled={submitting || !name.trim()}>{submitting ? "正在提交…" : "提交"}</button>
-        </div>
+        </footer>
       </form>
     </Modal>
   );
