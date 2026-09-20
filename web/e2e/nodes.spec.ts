@@ -246,7 +246,14 @@ test("administrator node management preserves the observed Xboard workflow on ev
     await expect(page.getByText("node-a-updated.example.test:443", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: `节点操作：${editedName}` }).click();
-    await page.getByRole("menuitem", { name: `复制节点：${editedName}` }).click();
+    const rowMenu = page.getByRole("menu", { name: `节点操作：${editedName}` });
+    await expect(rowMenu).toBeVisible();
+    expect(await rowMenu.evaluate((menu) => ({
+      parentIsBody: menu.parentElement === document.body,
+      position: getComputedStyle(menu).position,
+      clippedByTable: menu.closest(".node-table-wrap") !== null,
+    }))).toEqual({ parentIsBody: true, position: "fixed", clippedByTable: false });
+    await rowMenu.getByRole("menuitem", { name: `复制节点：${editedName}` }).click();
     const copiedName = `${editedName} - 副本`;
     await expect(page.getByText(copiedName, { exact: true })).toBeVisible();
     const copyRow = page.locator("tr", { has: page.getByText(copiedName, { exact: true }) });

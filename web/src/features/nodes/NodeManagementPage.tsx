@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { Modal } from "../../components/Overlay";
 import type {
@@ -590,6 +591,42 @@ function ActionMenu({ open, label, ariaLabel, disabled, compact = false, onToggl
   children: ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (trigger === null) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuWidth = menuRef.current?.offsetWidth ?? 188;
+    const menuHeight = menuRef.current?.offsetHeight ?? 0;
+    const viewportGap = 8;
+    const menuGap = 6;
+    const left = Math.min(
+      Math.max(viewportGap, triggerRect.right - menuWidth),
+      Math.max(viewportGap, window.innerWidth - menuWidth - viewportGap),
+    );
+    const below = triggerRect.bottom + menuGap;
+    const top = menuHeight > 0 && below + menuHeight > window.innerHeight - viewportGap
+      ? Math.max(viewportGap, triggerRect.top - menuHeight - menuGap)
+      : below;
+    setPosition({ left, top });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    document.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      document.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, updatePosition]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -598,7 +635,9 @@ function ActionMenu({ open, label, ariaLabel, disabled, compact = false, onToggl
       onClose();
     };
     const onPointer = (event: PointerEvent) => {
-      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      onClose();
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onPointer);
@@ -609,6 +648,7 @@ function ActionMenu({ open, label, ariaLabel, disabled, compact = false, onToggl
   }, [open, onClose]);
   return <div className="node-menu-wrap" ref={rootRef}>
     <button
+      ref={triggerRef}
       className={`button ${compact ? "ghost" : "secondary"} compact`}
       type="button"
       aria-haspopup="menu"
@@ -617,7 +657,16 @@ function ActionMenu({ open, label, ariaLabel, disabled, compact = false, onToggl
       disabled={disabled}
       onClick={onToggle}
     >{label}</button>
-    {open && <div className="node-menu" role="menu" aria-label={ariaLabel}>{children}</div>}
+    {open && position !== null && createPortal(
+      <div
+        className="node-menu node-menu-floating"
+        ref={menuRef}
+        role="menu"
+        aria-label={ariaLabel}
+        style={{ left: position.left, top: position.top }}
+      >{children}</div>,
+      document.body,
+    )}
   </div>;
 }
 

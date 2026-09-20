@@ -96,6 +96,13 @@
   left: 0;
 }
 
+.node-menu.node-menu-floating {
+  position: fixed;
+  z-index: 80;
+  right: auto;
+  margin: 0;
+}
+
 .node-menu button {
   display: block;
   width: 100%;
@@ -502,6 +509,13 @@
     width: 100%;
     max-width: none;
     margin-top: 6px;
+  }
+
+  .node-menu.node-menu-floating {
+    position: fixed;
+    width: auto;
+    max-width: min(280px, calc(100vw - 16px));
+    margin: 0;
   }
 }
 
