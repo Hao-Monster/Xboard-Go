@@ -14,6 +14,8 @@ type NodeManagementAPI = Pick<AdminAPI,
 
 interface Props {
   api: NodeManagementAPI;
+  initialMachineID?: number;
+  initiallyCreating?: boolean;
 }
 
 const pageSize = 500;
@@ -23,7 +25,7 @@ const protocols = [
   ["mieru", "Mieru"], ["anytls", "AnyTLS"]
 ] as const;
 
-export function NodeManagementPage({ api }: Props) {
+export function NodeManagementPage({ api, initialMachineID, initiallyCreating = false }: Props) {
   const [nodes, setNodes] = useState<AdminNode[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
@@ -34,16 +36,16 @@ export function NodeManagementPage({ api }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
-  const [editing, setEditing] = useState<AdminNode | "create" | null>(null);
+  const [editing, setEditing] = useState<AdminNode | "create" | null>(initiallyCreating ? "create" : null);
   const [confirming, setConfirming] = useState<{ kind: "reset" | "delete"; targets: AdminNodeRevision[] } | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [queryInput, setQueryInput] = useState("");
   const [typeInput, setTypeInput] = useState("");
   const [showInput, setShowInput] = useState("");
   const [enabledInput, setEnabledInput] = useState("");
-  const [machineInput, setMachineInput] = useState("");
+  const [machineInput, setMachineInput] = useState(initialMachineID === undefined ? "" : String(initialMachineID));
   const [bulkMachine, setBulkMachine] = useState("");
-  const [filters, setFilters] = useState<Omit<AdminNodeQuery, "page" | "page_size">>({});
+  const [filters, setFilters] = useState<Omit<AdminNodeQuery, "page" | "page_size">>(initialMachineID === undefined ? {} : { machine_id: initialMachineID });
 
   useEffect(() => {
     let live = true;
@@ -186,7 +188,7 @@ export function NodeManagementPage({ api }: Props) {
       </table>
       <footer className="pagination-footer"><button className="button compact ghost" disabled={page <= 1 || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current - 1); }}>上一页</button><span>第 {page} / {pageCount} 页 · 共 {total} 个节点</span><button className="button compact ghost" disabled={page >= pageCount || loading} onClick={() => { setLoading(true); setError(""); setPage((current) => current + 1); }}>下一页</button></footer>
     </section>}
-    {editing !== null && <NodeDefinitionModal api={api} node={editing === "create" ? null : editing} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+    {editing !== null && <NodeDefinitionModal initialMachineID={initialMachineID} api={api} node={editing === "create" ? null : editing} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     {confirming !== null && <ConfirmNodeMutation api={api} kind={confirming.kind} targets={confirming.targets} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); refresh(); }} />}
   </main>;
 }

@@ -113,6 +113,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [userLanding, setUserLanding] = useState<LoginLinkRedirect>(() => loginLandingFromHash());
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
+  const [machineNodeTarget, setMachineNodeTarget] = useState<{ id: number; create: boolean } | null>(null);
   const [page, setPage] = useState<AdminPage>("servers");
   const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(adminNavGroups.map((g) => [g.id, true]))
@@ -267,7 +268,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
-    if (nextPage !== page && canLeaveAdminPage()) setPage(nextPage);
+    if (nextPage !== page && canLeaveAdminPage()) { setMachineNodeTarget(null); setPage(nextPage); }
   };
   const signOut = () => {
     if (!canLeaveAdminPage()) return;
@@ -368,8 +369,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             />}
             {page === "system" && <SystemOperationsPage api={api} />}
             {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-            {page === "servers" && <ServerManagementPage api={api} />}
-            {page === "nodes" && <NodeManagementPage api={api} />}
+            {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => { setMachineNodeTarget({ id, create }); setPage("nodes"); }} />}
+            {page === "nodes" && <NodeManagementPage api={api} initialMachineID={machineNodeTarget?.id} initiallyCreating={machineNodeTarget?.create} />}
             {page === "plans" && <PlanManagementPage api={api} />}
             {page === "orders" && <OrderManagementPage api={api} />}
             {page === "distributors" && <AdminDistributorPage api={api} />}

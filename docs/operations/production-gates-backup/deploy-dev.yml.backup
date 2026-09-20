@@ -1,0 +1,97 @@
+name: Deploy development server
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact commit SHA to deploy (defaults to HEAD)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xboard-go-freedom-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
+    environment: development
+    steps:
+      - name: Determine revision
+        id: rev
+        run: |
+          if [ -n "${{ inputs.revision }}" ]; then
+            echo "sha=${{ inputs.revision }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.rev.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Build exact image
+        env:
+          REVISION: ${{ steps.rev.outputs.sha }}
+        run: |
+          echo "Building image for commit: ${REVISION}"
+          docker build --build-arg APP_REVISION="${REVISION}" -t "xboard-go:${REVISION}" .
+
+      - name: Export image
+        env:
+          REVISION: ${{ steps.rev.outputs.sha }}
+        run: docker save "xboard-go:${REVISION}" | gzip -1 > "xboard-go-${REVISION}.tar.gz"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<'EOF'
+          Host bingo-dev-ts
+            HostName 127.0.0.1
+            User bingo
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+          EOF
+          ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Upload image and deploy with rollback
+        env:
+          REVISION: ${{ steps.rev.outputs.sha }}
+        run: |
+          scp -i ~/.ssh/deploy_key "xboard-go-${REVISION}.tar.gz" bingo-dev-ts:/tmp/xboard-go-${REVISION}.tar.gz
+          ssh -i ~/.ssh/deploy_key bingo-dev-ts "REVISION=${REVISION} bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/bingo/apps/xboard-go-freedom
+          previous="$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')"
+          docker load < "/tmp/xboard-go-${REVISION}.tar.gz"
+          printf '%s\n' "$previous" > .previous-image
+          printf 'XBOARD_GO_REVISION=%s\n' "$REVISION" > .deploy.env
+          if ! docker compose --env-file .deploy.env up -d --no-build --wait app; then
+            echo "Deployment failed! Rolling back to ${previous}..."
+            docker tag "$previous" "xboard-go:${REVISION}"
+            docker compose --env-file .deploy.env up -d --no-build --wait app
+            exit 1
+          fi
+          test "$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')" = "xboard-go:${REVISION}"
+          test "$(docker inspect xboard-go-freedom-app-1 --format '{{.State.Health.Status}}')" = healthy
+          rm -f "/tmp/xboard-go-${REVISION}.tar.gz" .previous-image .deploy.env
+          REMOTE
+          rm -f "xboard-go-${REVISION}.tar.gz"
+
+      - name: Verify public endpoint
+        run: |
+          echo "Verifying health and endpoints..."
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 http://127.0.0.1:18082/healthz >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/healthz >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
+          echo "Verification SUCCESS!"
