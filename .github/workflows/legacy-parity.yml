@@ -63,6 +63,9 @@ jobs:
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
     environment: development
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/candidate-${{ github.run_id }}-${{ github.run_attempt }}
     env:
       COREPACK_ENABLE_NETWORK: "0"
       GOTOOLCHAIN: local
@@ -86,12 +89,29 @@ jobs:
       XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
       XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.authorize.outputs.sha }}
-          fetch-depth: 1
-          clean: true
-          persist-credentials: false
+      - name: Download the authorized source archive
+        working-directory: ${{ github.workspace }}
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+          CANDIDATE_DIRECTORY: candidate-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANDIDATE_DIRECTORY" =~ ^candidate-[0-9]+-[0-9]+$ ]]
+          # A fresh directory prevents files from an earlier job entering the build.
+          # Codeload is GitHub's archive host; no Git credentials or proxy are needed.
+          mkdir -m 700 "$CANDIDATE_DIRECTORY"
+          archive="$(mktemp "$RUNNER_TEMP/xboard-source.XXXXXX.tar.gz")"
+          trap 'rm -f "$archive"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --noproxy codeload.github.com --connect-timeout 10 --max-time 120 \
+            --retry 2 --retry-delay 3 \
+            "https://codeload.github.com/Hao-Monster/Xboard-Go/tar.gz/$TARGET_SHA" \
+            --output "$archive"
+          tar --extract --gzip --file "$archive" --strip-components=1 \
+            --no-same-owner --directory "$CANDIDATE_DIRECTORY"
+          test -f "$CANDIDATE_DIRECTORY/go.mod"
+          test -f "$CANDIDATE_DIRECTORY/web/pnpm-lock.yaml"
       - name: Configure the pinned server toolchain
         run: |
           echo '/opt/xboard-go-ci-tools/node-v24.20.0-linux-x64/bin' >> "$GITHUB_PATH"
