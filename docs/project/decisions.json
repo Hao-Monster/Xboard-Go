@@ -16,7 +16,7 @@
     {"id":"D-012","title":"用户删除与数据保留策略","status":"resolved","milestone":"M1","resolution":"2026-09-08 用户确认三项均按上述规则开发：先停用，30 天内可恢复；满 30 天后仅由管理员显式执行不可逆匿名化，保留订单等业务事实，禁止自动清除。","blocks":["USER-001","USER-003","OPS-002"]},
     {"id":"D-013","title":"统计与日志迁移窗口","status":"resolved","milestone":"M2","resolution":"2026-09-08 用户确认三项均按上述规则开发：仅迁移最近 90 天脱敏日志元数据，从业务事实重建统计；不导入或执行旧 PHP 失败任务载荷。","blocks":["OPS-002"]},
     {"id":"D-014","title":"支付、邮件、Telegram 与存储沙箱","status":"pending","milestone":"M3","recommended":"所有外部服务使用隔离账号和端点，不调用生产。","blocks":[]},
-    {"id":"D-015","title":"目标 SLO、容量增长与硬件预算","status":"pending","milestone":"M4","recommended":"取得至少 30 天代表性基线后量化。","blocks":[]},
+    {"id":"D-015","title":"目标 SLO、容量增长与硬件预算","status":"resolved","milestone":"M4","resolution":"2026-09-20 用户明确选择按当前 D-006 单机 SQLite 边界进入生产，随后采集生产数据判断容量和数据库演进；30 天代表性基线作为上线后复评输入，不作为首发等待条件。当前不承诺未经实测的用户数、写入吞吐、SLO 或新增硬件预算。PERF-001 持续记录请求量、延迟、错误率、数据库/WAL 增长和资源使用，并在锁等待、持续延迟恶化、恢复窗口不足或多实例需求出现时开展容量与数据库演进评估。此决策确认执行顺序，不等于性能验证通过，也不自动关闭备份、迁移和切换验收。","blocks":[]},
     {"id":"D-016","title":"新旧系统并行与切换策略","status":"pending","milestone":"M4","recommended":"读影子验证与分领域切换，避免无协议双写。","blocks":[]},
     {"id":"D-017","title":"视觉兼容程度","status":"pending","milestone":"M3","recommended":"保持品牌与核心流程，允许新设计系统；关键页面逐图验收。","blocks":[]},
     {"id":"D-018","title":"管理员和员工 MFA 策略","status":"pending","milestone":"M4","recommended":"管理后台强制 MFA，并结合运维恢复流程。","blocks":[]}

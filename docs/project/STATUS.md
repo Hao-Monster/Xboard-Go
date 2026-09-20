@@ -29,7 +29,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 
 ## Control summary
 
-- Decisions: 11 resolved, 7 pending (18 total).
+- Decisions: 12 resolved, 6 pending (18 total).
 - Risks: 1 open Critical, 8 open High, 23 total.
 - Compatibility exceptions: 9 accepted, 0 proposed.
 - Current-head verification: 0/80; accepted: 0/80. Historical evidence is not current acceptance.
@@ -139,7 +139,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `CI-001` | M3 | done | [#127](https://github.com/Hao-Monster/Xboard-Go/issues/127) | 将差分验证纳入 CI 并缩短长链路反馈时间 |
 | `SEC-001` | M3 | done | [#128](https://github.com/Hao-Monster/Xboard-Go/issues/128) | 建立 Actions 固定、SBOM、许可证和供应链门禁 |
 | `DEP-001` | M0 | done | [#129](https://github.com/Hao-Monster/Xboard-Go/issues/129) | 分类并处理现有 Dependabot 更新积压 |
-| `PERF-001` | M4 | blocked | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
+| `PERF-001` | M4 | in_progress | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
 | `REL-001` | M4 | blocked | [#131](https://github.com/Hao-Monster/Xboard-Go/issues/131) | 完成生产切换、回滚和事故响应运行手册 |
 | `ARCH-001` | M4 | done | [#148](https://github.com/Hao-Monster/Xboard-Go/issues/148) | 按 Issue #148 已确认边界拆分网关、前端与后端独立部署单元 |
 
@@ -151,7 +151,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | M1 — Functional Parity | in_progress | 1 | 0 | 1 |
 | M2 — Migration & Operations | blocked | 0 | 1 | 1 |
 | M3 — Release Candidate | blocked | 0 | 2 | 1 |
-| M4 — Production Ready | blocked | 1 | 2 | 1 |
+| M4 — Production Ready | blocked | 2 | 1 | 1 |
 
 ## Interpretation
 
