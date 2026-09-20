@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 interface DrawerProps {
   title: string;
+  className?: string;
   suspended: boolean;
   onClose: () => void;
   children: ReactNode;
@@ -17,7 +18,7 @@ interface ModalProps {
   children: ReactNode;
 }
 
-export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
+export function Drawer({ title, className = "", suspended, onClose, children }: DrawerProps) {
   const contentRef = useRef<HTMLElement>(null);
   useDialogFocus(contentRef, !suspended, onClose);
   useDocumentScrollLock();
@@ -30,7 +31,7 @@ export function Drawer({ title, suspended, onClose, children }: DrawerProps) {
   return createPortal(
     <div className="overlay-layer drawer-layer" data-testid="drawer-layer">
       <button className="overlay-backdrop" aria-label="点击遮罩关闭服务器详情" tabIndex={-1} onClick={onClose} />
-      <section ref={contentRef} className="drawer-panel" role="dialog" aria-modal={!suspended} aria-label={title}>
+      <section ref={contentRef} className={`drawer-panel ${className}`.trim()} role="dialog" aria-modal={!suspended} aria-label={title}>
         {children}
       </section>
     </div>,

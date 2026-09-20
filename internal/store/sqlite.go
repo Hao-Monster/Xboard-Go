@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 63
+const currentSchemaVersion = 64
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -453,6 +453,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v63: %w", err)
 		}
 		version = 63
+	}
+	if version < 64 {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('server_machine_credentials') WHERE name = 'token_cipher')`).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect schema v64: %w", err)
+		}
+		if !exists {
+			if _, err := tx.ExecContext(ctx, `ALTER TABLE server_machine_credentials ADD COLUMN token_cipher BLOB`); err != nil {
+				return fmt.Errorf("apply schema v64: %w", err)
+			}
+		}
+		version = 64
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)

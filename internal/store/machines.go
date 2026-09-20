@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
+	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 )
 
 func (s *Store) CreateMachine(ctx context.Context, input CreateMachineInput, now time.Time) (Machine, EnrollmentSecret, error) {
@@ -109,6 +110,10 @@ func (s *Store) CreateEnrollment(ctx context.Context, machineID int64, revokeExi
 }
 
 func (s *Store) ExchangeEnrollment(ctx context.Context, expectedMachineID int64, code string, now time.Time) (MachineCredential, error) {
+	return s.ExchangeEnrollmentWithCipher(ctx, expectedMachineID, code, now, nil)
+}
+
+func (s *Store) ExchangeEnrollmentWithCipher(ctx context.Context, expectedMachineID int64, code string, now time.Time, box *appsettings.Cipher) (MachineCredential, error) {
 	defer s.lockWrite()()
 	if expectedMachineID < 1 || code == "" {
 		return MachineCredential{}, ErrInvalidEnrollment
@@ -161,10 +166,17 @@ func (s *Store) ExchangeEnrollment(ctx context.Context, expectedMachineID int64,
 			return MachineCredential{}, fmt.Errorf("revoke old credentials: %w", err)
 		}
 	}
+	var encrypted []byte
+	if box != nil {
+		encrypted, err = box.EncryptFor(appsettings.MachineTokenPurpose, []byte(credential.Plaintext))
+		if err != nil {
+			return MachineCredential{}, err
+		}
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO server_machine_credentials (machine_id, token_hash, token_prefix, created_at)
-		VALUES (?, ?, ?, ?)
-	`, machineID, credential.Digest, credential.Prefix, now.Unix())
+		INSERT INTO server_machine_credentials (machine_id, token_hash, token_prefix, created_at, token_cipher)
+		VALUES (?, ?, ?, ?, ?)
+	`, machineID, credential.Digest, credential.Prefix, now.Unix(), encrypted)
 	if err != nil {
 		return MachineCredential{}, fmt.Errorf("store machine credential: %w", err)
 	}

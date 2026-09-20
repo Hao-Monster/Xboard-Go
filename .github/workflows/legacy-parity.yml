@@ -137,11 +137,20 @@ jobs:
           backup_suffix="pre-${REVISION}-$(date -u +%Y%m%dT%H%M%SZ)"
           cp -p compose.yaml "compose.yaml.${backup_suffix}"
           cp -p .env ".env.${backup_suffix}"
+          # SQLite schema upgrades require a database rollback point, not only an image.
+          database_backup="/var/lib/xboard-backups/${backup_suffix}.xbbackup"
+          docker compose exec -T app /xboard backup create --attachment-root "" --output "$database_backup" >/dev/null
 
           rollback() {
+            trap - ERR
             echo "[-] Deployment failed! Rolling back to ${previous}..."
+            docker compose stop app
             cp -p "compose.yaml.${backup_suffix}" compose.yaml
             cp -p ".env.${backup_suffix}" .env
+            restored_database="/var/lib/xboard/rollback-${backup_suffix}.db"
+            docker compose run --rm --no-deps app backup restore --input "$database_backup" --output "$restored_database" >/dev/null
+            # Keep the failed candidate database intact for diagnosis.
+            sed -i "s#XBOARD_DATABASE_DSN: .*#XBOARD_DATABASE_DSN: file:${restored_database}#" compose.yaml
             docker compose up -d --no-build app
             exit 1
           }

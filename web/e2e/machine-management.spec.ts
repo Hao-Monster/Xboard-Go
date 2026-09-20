@@ -103,60 +103,46 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   const drawer = page.getByRole("dialog", { name: "服务器详情" });
   await expect(drawer.getByRole("heading", { name: "负载趋势" })).toBeVisible();
   await expect(drawer.getByText("86.0%", { exact: true })).toBeVisible();
-  await expect(drawer.getByText(/^93.0% ·/)).toBeVisible();
-  await expect(drawer.getByText("3.0 KiB/s / 5.0 KiB/s", { exact: true })).toBeVisible();
-  await expect(drawer.getByRole("img", { name: "CPU负载趋势" })).toBeVisible();
+  await expect(drawer.locator(".load-bar-fill").nth(1)).toHaveAttribute("style", "width: 93%;");
+  await expect(drawer.getByText("↓3.0 KB/s ↑5.0 KB/s", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("img", { name: "多指标负载趋势图" })).toBeVisible();
   await drawer.getByRole("button", { name: "↓ IN", exact: true }).click();
-  await expect(drawer.getByRole("img", { name: "↓ IN负载趋势" })).toBeVisible();
+  await expect(drawer.getByRole("img", { name: "多指标负载趋势图" })).toBeVisible();
   await expect(drawer.getByText("暂无关联节点。")).toBeVisible();
 
-  const rotateButton = drawer.getByRole("button", { name: "生成新的接入命令" });
-  const rotationResponsePromise = page.waitForResponse((response) =>
-    response.request().method() === "POST" &&
-    new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/enrollments`)
-  );
-  await rotateButton.click();
-  const rotationResponse = await rotationResponsePromise;
-  const rotationBody = await rotationResponse.text();
-  expect(rotationResponse.status()).toBe(201);
-  expect(rotationResponse.headers()["cache-control"]).toBe("no-store");
-  const rotationEnrollment = stringProperty(readData(rotationBody), "token");
-  await expect(enrollmentDialog).toBeVisible();
-  await expect(enrollmentDialog).toContainText("此接入码只展示一次");
-  expect(await drawer.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
-  await expect(drawer).toHaveAttribute("aria-modal", "false");
+  await expect(drawer.locator(".detail-install-command")).toBeVisible();
+  await page.screenshot({ path: `../.local/machine-detail-${test.info().project.name}.png`, mask: [drawer.locator(".detail-install-command")] });
 
-  const oldCredentialBeforeExchange = await postMachineStatus(page, machineID, machineCredential, 87);
-  expect(oldCredentialBeforeExchange.status()).toBe(200);
-  const rotatedEnrollmentResponse = await page.request.post("/api/v2/server/machine/enroll", {
-    data: { machine_id: machineID, enrollment_code: rotationEnrollment }
-  });
-  expect(rotatedEnrollmentResponse.status()).toBe(200);
-  expect(rotatedEnrollmentResponse.headers()["cache-control"]).toBe("no-store");
-  const newMachineCredential = stringProperty(readData(await rotatedEnrollmentResponse.text()), "token");
+  await drawer.getByRole("button", { name: "查看 Token", exact: true }).click();
+  await expect(drawer.locator(".machine-token-value code")).toHaveText(machineCredential);
+  await drawer.getByRole("button", { name: "隐藏 Token", exact: true }).click();
+  await drawer.getByRole("button", { name: "重置 Token", exact: true }).click();
+  const tokenDialog = page.getByRole("alertdialog", { name: "重置 Token" });
+  const resetResponsePromise = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/machines/${machineID}/token/reset`));
+  await tokenDialog.getByRole("button", { name: "确认重置" }).click();
+  const resetResponse = await resetResponsePromise;
+  expect(resetResponse.status()).toBe(200);
+  expect(resetResponse.headers()["cache-control"]).toBe("no-store");
+  const newMachineCredential = stringProperty(readData(await resetResponse.text()), "token");
+  await expect(tokenDialog).toBeHidden();
   expect((await postMachineStatus(page, machineID, machineCredential, 88)).status()).toBe(401);
   expect((await postMachineStatus(page, machineID, newMachineCredential, 89)).status()).toBe(200);
-  const replayedEnrollment = await page.request.post("/api/v2/server/machine/enroll", {
-    data: { machine_id: machineID, enrollment_code: rotationEnrollment }
-  });
-  expect(replayedEnrollment.status()).toBe(401);
-  expect(replayedEnrollment.headers()["cache-control"]).toBe("no-store");
-  await enrollmentDialog.getByRole("button", { name: "关闭服务器接入命令" }).click();
-  await expect(enrollmentDialog).toBeHidden();
-  expect(await drawer.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
-  await expect(rotateButton).toBeFocused();
+  await expect(drawer.locator(".detail-install-command")).toContainText("--enrollment-code");
 
-  await drawer.getByLabel("待关联节点").selectOption(String(node.id));
+  await drawer.getByRole("button", { name: "关联已有节点", exact: true }).click();
+  await page.getByRole("dialog", { name: "关联已有节点" }).getByRole("checkbox", { name: `${nodeName} (vless)` }).check();
   const assignResponse = page.waitForResponse((response) =>
     response.request().method() === "PUT" &&
     new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${node.id}`)
   );
-  await drawer.getByRole("button", { name: "关联", exact: true }).click();
+  await page.getByRole("dialog", { name: "关联已有节点" }).getByRole("button", { name: "关联 1 个节点", exact: true }).click();
   expect((await assignResponse).status()).toBe(204);
   await expect(drawer.getByRole("button", { name: `定时设置：${nodeName}` })).toBeVisible();
 
-  await drawer.getByRole("button", { name: "编辑信息" }).click();
+  await drawer.getByRole("button", { name: "关闭服务器详情" }).click();
+  await machineCard.getByRole("button", { name: `编辑服务器：${machineName}`, exact: true }).click();
   const editDialog = page.getByRole("dialog", { name: "编辑服务器" });
+  await page.screenshot({ path: `../.local/machine-edit-${test.info().project.name}.png` });
   await editDialog.getByLabel("服务器名称").fill(renamedMachine);
   await editDialog.getByLabel("备注").fill("失败后保留，再成功提交");
   await editDialog.getByLabel("启用服务器").uncheck();
@@ -186,9 +172,7 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   await editDialog.getByRole("button", { name: "更新" }).click();
   expect((await updateResponse).status()).toBe(200);
   await expect(editDialog).toBeHidden();
-  await expect(drawer.getByRole("heading", { name: renamedMachine })).toBeVisible();
-  await expect(drawer.getByText("已停用", { exact: true })).toBeVisible();
-  await drawer.getByRole("button", { name: "关闭服务器详情" }).click();
+  await expect(page.getByRole("dialog", { name: "编辑服务器" })).toBeHidden();
 
   await page.getByLabel("状态").selectOption("inactive");
   machineCard = page.locator("tr.machine-row", { hasText: renamedMachine });
@@ -210,16 +194,18 @@ test("[FE-MACH-001][API-MACH-002][FE-MACH-003][SYS-MACH-004] machine lifecycle s
   expect(nodeAfterUnassign.status, nodeAfterUnassign.body).toBe(200);
   expect(readData(nodeAfterUnassign.body)).toMatchObject({ id: node.id, machine_id: null });
 
-  await drawer.getByLabel("待关联节点").selectOption(String(node.id));
+  await drawer.getByRole("button", { name: "关联已有节点", exact: true }).click();
+  await page.getByRole("dialog", { name: "关联已有节点" }).getByRole("checkbox", { name: `${nodeName} (vless)` }).check();
   const reassignResponse = page.waitForResponse((response) =>
     response.request().method() === "PUT" &&
     new URL(response.url()).pathname === adminAPIPath(`/api/v1/admin/machines/${machineID}/nodes/${node.id}`)
   );
-  await drawer.getByRole("button", { name: "关联", exact: true }).click();
+  await page.getByRole("dialog", { name: "关联已有节点" }).getByRole("button", { name: "关联 1 个节点", exact: true }).click();
   expect((await reassignResponse).status()).toBe(204);
   await expect(drawer.getByRole("button", { name: `定时设置：${nodeName}` })).toBeVisible();
 
-  await drawer.getByRole("button", { name: "删除服务器" }).click();
+  await drawer.getByRole("button", { name: "关闭服务器详情" }).click();
+  await machineCard.getByRole("button", { name: `删除服务器：${renamedMachine}`, exact: true }).click();
   const deleteDialog = page.getByRole("dialog", { name: "删除服务器" });
   let rejectDelete = true;
   await page.route(`**${adminAPIPath(`/api/v1/admin/machines/${machineID}`)}`, async (route) => {

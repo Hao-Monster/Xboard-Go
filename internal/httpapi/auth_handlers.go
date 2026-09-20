@@ -519,7 +519,7 @@ func (s *server) exchangeEnrollment(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusTooManyRequests, "enrollment_rate_limited", "接入尝试过多，请稍后重试", nil)
 		return
 	}
-	credential, err := s.store.ExchangeEnrollment(r.Context(), input.MachineID, input.EnrollmentCode, s.now())
+	credential, err := s.store.ExchangeEnrollmentWithCipher(r.Context(), input.MachineID, input.EnrollmentCode, s.now(), s.settingsCipher)
 	if errors.Is(err, store.ErrInvalidEnrollment) {
 		s.enrollAttempts.failed(attemptKey, s.now())
 		writeAPIError(w, http.StatusUnauthorized, "invalid_enrollment", "接入码无效或已过期", nil)

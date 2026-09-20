@@ -625,6 +625,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("PATCH /api/v1/admin/machines/{machineID}", api.updateMachine)
 	admin.HandleFunc("DELETE /api/v1/admin/machines/{machineID}", api.deleteMachine)
 	admin.HandleFunc("POST /api/v1/admin/machines/{machineID}/enrollments", api.createEnrollment)
+	admin.HandleFunc("GET /api/v1/admin/machines/{machineID}/token", api.getMachineToken)
+	admin.HandleFunc("POST /api/v1/admin/machines/{machineID}/token/reset", api.resetMachineToken)
 	admin.HandleFunc("GET /api/v1/admin/machines/{machineID}/nodes", api.listMachineNodes)
 	admin.HandleFunc("PUT /api/v1/admin/machines/{machineID}/nodes/{nodeID}", api.assignNode)
 	admin.HandleFunc("DELETE /api/v1/admin/machines/{machineID}/nodes/{nodeID}", api.unassignNode)
