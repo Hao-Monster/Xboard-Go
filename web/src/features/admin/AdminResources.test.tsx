@@ -66,7 +66,7 @@ describe("ServerGroupsPage", () => {
     render(<ServerGroupsPage api={api} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("加载失败");
     await user.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("尚未创建权限组。")).toBeVisible();
+    expect(await screen.findByText("暂无数据")).toBeVisible();
   });
 });
 

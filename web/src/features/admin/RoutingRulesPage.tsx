@@ -131,8 +131,6 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
       {/* Table */}
       {loading ? (
         <div className="empty-card">正在加载路由规则…</div>
-      ) : sorted.length === 0 ? (
-        <div className="empty-card">{search ? "没有匹配的路由规则。" : "暂无数据"}</div>
       ) : (
         <section className="resource-table-wrap rr-table-wrap" aria-label="路由规则列表">
           <table className="resource-table rr-table">
@@ -158,7 +156,11 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
               </tr>
             </thead>
             <tbody>
-              {paged.map((rule) => (
+              {paged.length === 0 ? (
+                <tr className="rr-empty-row">
+                  <td colSpan={5} className="rr-empty-cell">暂无数据</td>
+                </tr>
+              ) : paged.map((rule) => (
                 <tr key={rule.id}>
                   <td data-label="组ID" className="rr-td-id">
                     <span className="rr-id-badge">{rule.id}</span>
@@ -219,44 +221,42 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
         </section>
       )}
 
-      {/* Footer / Pagination */}
+      {/* Footer / Pagination — always visible when loaded */}
       {!loading && (
         <div className="rr-footer">
-          <span className="rr-footer-status">共 {sorted.length} 项</span>
-          {sorted.length > 0 && (
-            <div className="rr-pagination">
-              <label className="rr-page-size-label">
-                每页显示
-                <select
-                  className="rr-page-size-select"
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                  aria-label="每页显示条数"
-                >
-                  {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-              <span className="rr-page-info">
-                第
-                <input
-                  className="rr-page-input"
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={currentPage}
-                  onChange={(e) => goPage(Number(e.target.value))}
-                  aria-label="页码"
-                />
-                页，共 {totalPages} 页
-              </span>
-              <div className="rr-page-btns">
-                <button className="rr-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1} aria-label="首页">«</button>
-                <button className="rr-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1} aria-label="上一页">‹</button>
-                <button className="rr-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages} aria-label="下一页">›</button>
-                <button className="rr-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages} aria-label="末页">»</button>
-              </div>
+          <span className="rr-footer-status">已选择 0 项，共 {sorted.length} 项</span>
+          <div className="rr-pagination">
+            <label className="rr-page-size-label">
+              每页显示
+              <select
+                className="rr-page-size-select"
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                aria-label="每页显示条数"
+              >
+                {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <span className="rr-page-info">
+              第
+              <input
+                className="rr-page-input"
+                type="number"
+                min={1}
+                max={Math.max(1, totalPages)}
+                value={currentPage}
+                onChange={(e) => goPage(Number(e.target.value))}
+                aria-label="页码"
+              />
+              页，共 {totalPages} 页
+            </span>
+            <div className="rr-page-btns">
+              <button className="rr-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="首页">«</button>
+              <button className="rr-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="上一页">‹</button>
+              <button className="rr-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="下一页">›</button>
+              <button className="rr-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="末页">»</button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
