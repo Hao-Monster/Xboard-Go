@@ -108,3 +108,27 @@ test("administrator sidebar leaves the management surface usable at tablet width
   await expect(page.getByRole("heading", { name: "用户管理" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+test("admin navigation survives reload and browser history", async ({ page }) => {
+  await page.goto(adminEntryPath);
+  await page.getByLabel("邮箱").fill(adminEmail);
+  await page.getByLabel("密码").fill(adminPassword);
+  await page.getByRole("button", {name:"登录",exact:true}).click();
+  const nav = page.getByRole("navigation", {name:"管理端导航"});
+  await expect(nav).toBeVisible();
+  await nav.getByRole("button", {name:"节点管理",exact:true}).click();
+  await expect(page).toHaveURL(/#\/server\/manage$/);
+  await page.reload();
+  await expect(page.getByRole("heading", {name:"节点管理",exact:true})).toBeVisible();
+  await nav.getByRole("button", {name:"系统配置",exact:true}).click();
+  await expect(page).toHaveURL(/#\/config\/system$/);
+  await page.reload();
+  await expect(nav.getByRole("button", {name:"系统配置",exact:true})).toHaveAttribute("aria-current","page");
+  await expect(page.getByRole("heading", {name:"服务器管理",exact:true})).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByRole("heading", {name:"节点管理",exact:true})).toBeVisible();
+  await page.goForward();
+  await expect(nav.getByRole("button", {name:"系统配置",exact:true})).toHaveAttribute("aria-current","page");
+  await page.goto(adminEntryPath.split("#")[0] + "#/server/manage");
+  await expect(page.getByRole("heading", {name:"节点管理",exact:true})).toBeVisible();
+});

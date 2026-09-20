@@ -43,6 +43,23 @@ const defaultGuestConfig: GuestConfig = {
 type AuthMode = "login" | "register" | "recover";
 type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
 
+const adminRoutes: Record<AdminPage, string> = {
+  system: "/dashboard", servers: "/server/machine", nodes: "/server/manage", groups: "/server/group", routes: "/server/route",
+  settings: "/config/system", security: "/config/system/security", subscriptions: "/config/system/subscriptions",
+  commissions: "/config/system/commissions", "node-settings": "/config/system/nodes", mail: "/config/system/mail",
+  telegram: "/config/system/telegram", "client-app": "/config/system/client-app", templates: "/config/system/templates",
+  themes: "/config/theme", plugins: "/config/plugin", payments: "/config/payment", notices: "/config/notice",
+  knowledge: "/config/knowledge", clients: "/config/clients", plans: "/finance/plan", orders: "/finance/order",
+  distributors: "/finance/distributor", coupons: "/finance/coupon", "gift-cards": "/finance/gift-card",
+  users: "/user/manage", tickets: "/user/ticket", account: "/account"
+};
+export function adminPageFromHash(hash: string): AdminPage | undefined {
+  const path = (hash.replace(/^#/, "").split("?")[0] ?? "").replace(/\/$/, "");
+  if (path === "") return "servers";
+  return (Object.keys(adminRoutes) as AdminPage[]).find((key) => adminRoutes[key] === path);
+}
+
+
 type NavGroup = {
   id: string;
   title: string;
@@ -114,13 +131,35 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const [authLocation, setAuthLocation] = useState(() => window.location.hash);
   const authMode = authModeFromHash(authLocation);
   const [machineNodeTarget, setMachineNodeTarget] = useState<{ id: number; create: boolean } | null>(null);
-  const [page, setPage] = useState<AdminPage>("servers");
+  const [page, setPage] = useState<AdminPage>(() => adminPageFromHash(window.location.hash) ?? "servers");
   const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(adminNavGroups.map((g) => [g.id, true]))
   );
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
   const authenticationSequence = useRef(0);
+
+  useEffect(() => {
+    if (surface.kind !== "admin") return;
+    const followAdminRoute = () => {
+      const next = adminPageFromHash(window.location.hash);
+      if (next === undefined || next === page) return;
+      const message = page === "themes" && themeSettingsDirty ? "主题设置有未保存的修改，确认离开并放弃这些修改吗？"
+        : page === "client-app" && clientAppSettingsDirty ? "客户端版本有未保存的修改，确认离开并放弃这些修改吗？" : "";
+      if (message && !window.confirm(message)) {
+        window.history.replaceState(null, "", `#${adminRoutes[page]}`);
+        return;
+      }
+      setMachineNodeTarget(null);
+      setPage(next);
+    };
+    window.addEventListener("hashchange", followAdminRoute);
+    window.addEventListener("popstate", followAdminRoute);
+    return () => {
+      window.removeEventListener("hashchange", followAdminRoute);
+      window.removeEventListener("popstate", followAdminRoute);
+    };
+  }, [surface.kind, page, themeSettingsDirty, clientAppSettingsDirty]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedAdminGroups((prev) => ({
@@ -236,9 +275,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const authenticated = (nextSession: UserSession) => {
     setBootstrapAuthError("");
     setSession(nextSession);
-    setPage("servers");
+    const destination = surface.kind === "admin" ? adminPageFromHash(window.location.hash) ?? "servers" : "servers";
+    setPage(destination);
     window.scrollTo(0, 0);
-    window.history.replaceState(null, "", "#/");
+    window.history.replaceState(null, "", surface.kind === "admin" ? `#${adminRoutes[destination]}` : "#/");
     setAuthLocation(window.location.hash);
   };
 
@@ -268,7 +308,11 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
-    if (nextPage !== page && canLeaveAdminPage()) { setMachineNodeTarget(null); setPage(nextPage); }
+    if (nextPage !== page && canLeaveAdminPage()) {
+      setMachineNodeTarget(null);
+      window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
+      setPage(nextPage);
+    }
   };
   const signOut = () => {
     if (!canLeaveAdminPage()) return;
@@ -369,7 +413,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             />}
             {page === "system" && <SystemOperationsPage api={api} />}
             {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
-            {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => { setMachineNodeTarget({ id, create }); setPage("nodes"); }} />}
+            {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => { setMachineNodeTarget({ id, create }); window.history.pushState(null, "", `#${adminRoutes.nodes}`); setPage("nodes"); }} />}
             {page === "nodes" && <NodeManagementPage api={api} initialMachineID={machineNodeTarget?.id} initiallyCreating={machineNodeTarget?.create} />}
             {page === "plans" && <PlanManagementPage api={api} />}
             {page === "orders" && <OrderManagementPage api={api} />}
