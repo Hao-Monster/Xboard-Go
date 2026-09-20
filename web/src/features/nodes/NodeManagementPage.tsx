@@ -324,7 +324,6 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
       <NodeFilter label="类型" options={protocols.map(([value,label])=>({value,label}))} value={filters.types ?? []} disabled={sorting || busy} onChange={types=>patchFilters(current=>({...current,types:types.length ? types : undefined}))}/>
       <NodeFilter label="服务器" options={[{value:"unassigned",label:"独立部署"},...machines.map(machine=>({value:String(machine.id),label:machine.name}))]} value={[...(filters.machine_ids ?? (filters.machine_id ? [filters.machine_id] : [])).map(String),...(filters.unassigned ? ["unassigned"]:[])]} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,machine_id:undefined,machine_ids:values.filter(value=>value!=="unassigned").map(Number),unassigned:values.includes("unassigned") || undefined}))}/>
       <NodeFilter label="权限组" options={groups.map(group=>({value:String(group.id),label:group.name}))} value={(filters.group_ids ?? []).map(String)} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,group_ids:values.length ? values.map(Number):undefined}))}/>
-      <div className="node-toolbar-spacer" />
       <ActionMenu
         open={menu?.kind === "bulk" || menu?.kind === "bulk-bind"}
         label="操作"
@@ -350,6 +349,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
           <button type="button" role="menuitem" disabled={busy || pending} onClick={() => setMenu({ kind: "bulk-bind" })}>服务器绑定</button>
         </>}
       </ActionMenu>
+      <div className="node-toolbar-spacer" />
       {sorting ? <>
         <button className="button primary compact" type="button" disabled={busy || pending} onClick={() => void saveSort()}>{busy ? "正在保存排序…" : "保存排序"}</button>
         <button className="button ghost compact" type="button" disabled={busy || pending} onClick={cancelSort}>取消</button>
@@ -366,8 +366,8 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
     {error !== "" && <div className="alert error resource-alert" role="alert">{error}<button className="button ghost compact" type="button" onClick={() => { setError(""); refresh(); }}>重试</button></div>}
     {catalogError !== "" && <div className="alert warning resource-alert" role="alert">{catalogError}<button className="button ghost compact" type="button" onClick={() => { setCatalogError(""); refresh(); }}>重试</button></div>}
 
-    {loading && nodes.length === 0 ? <div className="empty-card" aria-live="polite">正在加载节点…</div> : <section className="resource-table-wrap node-table-wrap">
-      <table className="resource-table node-table" aria-label="节点列表" aria-busy={loading}>
+    {loading && nodes.length === 0 ? <div className="empty-card" aria-live="polite">正在加载节点…</div> : <section className="node-table-wrap">
+      <table className="node-table" aria-label="节点列表" aria-busy={loading}>
         <thead>
           <tr>
             <th scope="col">
@@ -403,7 +403,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
             const used = node.traffic_upload + node.traffic_download;
             return <tr
               key={node.id}
-              className={`node-row${node.enabled ? "" : " is-disabled"}${dragIndex === index ? " is-dragging" : ""}${dropIndex === index ? " is-drop-target" : ""}`}
+              className={`admin-node-table-row${node.enabled ? "" : " is-disabled"}${dragIndex === index ? " is-dragging" : ""}${dropIndex === index ? " is-drop-target" : ""}`}
               draggable={sorting && !busy}
               onDragStart={(event) => {
                 if (!sorting) return;
