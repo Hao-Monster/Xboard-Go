@@ -2233,9 +2233,14 @@ type CreateNodeInput struct {
 
 type AdminNode struct {
 	Node
-	MachineName *string `json:"machine_name"`
-	GroupIDs    []int64 `json:"group_ids"`
-	OnlineCount int64   `json:"online_count"`
+	ParentID       *int64   `json:"parent_id"`
+	ServerPort     int      `json:"server_port"`
+	TransferEnable int64    `json:"transfer_enable"`
+	ExternalCode   string   `json:"external_code"`
+	Tags           []string `json:"tags"`
+	MachineName    *string  `json:"machine_name"`
+	GroupIDs       []int64  `json:"group_ids"`
+	OnlineCount    int64    `json:"online_count"`
 }
 
 type AdminNodeDefinition struct {
@@ -2309,6 +2314,12 @@ type AdminNodeParentFilter struct {
 }
 
 type AdminNodeFilter struct {
+	Types      []string
+	MachineIDs []int64
+	GroupIDs   []int64
+	GroupID    *int64
+	SortBy     string
+	SortOrder  string
 	Page       int
 	PageSize   int
 	Query      string

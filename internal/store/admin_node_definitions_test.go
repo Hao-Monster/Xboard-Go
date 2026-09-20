@@ -652,10 +652,7 @@ func TestAdminNodeDefinitionRejectsUnsupportedProtocolEnumerations(t *testing.T)
 			protocol: "vmess",
 			settings: json.RawMessage(`{"tls":0,"network":"tcp","network_settings":{},"tls_settings":{},"multiplex":{"enabled":false,"protocol":"smux"},"utls":{"enabled":true,"fingerprint":"chrome"}}`),
 		},
-		"ECH requires client and server key material": {
-			protocol: "vmess",
-			settings: json.RawMessage(`{"tls":1,"network":"tcp","network_settings":{},"tls_settings":{"ech":{"enabled":true,"config":"","key":""}},"multiplex":{"enabled":false,"protocol":"smux"},"utls":{"enabled":false,"fingerprint":"chrome"}}`),
-		},
+
 		"unknown Hysteria ALPN": {
 			protocol: "hysteria",
 			settings: json.RawMessage(`{"version":1,"alpn":"ftp","bandwidth":{},"obfs":{"open":false,"type":"salamander","password":""},"tls":{}}`),
@@ -707,5 +704,16 @@ func TestAdminNodeDefinitionRejectsNodeIncompatibleCustomOutbounds(t *testing.T)
 				t.Fatalf("normalizeAdminNodeDefinition() error = %v, want ErrInvalidInput", err)
 			}
 		})
+	}
+}
+
+func TestAdminNodeTLSAllowsLegacyECHDNSDiscovery(t *testing.T) {
+	for _, value := range []map[string]any{
+		{"ech": map[string]any{"enabled": true, "config": "", "key": "", "query_server_name": "ech.example.test"}},
+		{"ech": map[string]any{"enabled": true, "config": "client-managed", "key": ""}},
+	} {
+		if err := validateAdminNodeTLSObject(value, "tls_settings"); err != nil {
+			t.Fatalf("DNS/external ECH rejected: %v", err)
+		}
 	}
 }

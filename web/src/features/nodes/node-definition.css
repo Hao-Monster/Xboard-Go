@@ -1,0 +1,614 @@
+/* Node Definition Modal & Drawer Styles */
+
+/* Modal (New Node: 576px centered responsive) */
+.modal-panel.node-definition-modal {
+  width: 576px;
+  max-width: calc(100vw - 32px);
+  max-height: 88vh;
+  padding: 0;
+  border-radius: var(--theme-card-radius, 14px);
+  background: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 55%);
+}
+
+/* Drawer (Edit Node: 576px right full-height responsive) */
+.drawer-panel.node-definition-drawer {
+  width: min(576px, 100vw);
+  max-width: 100vw;
+  height: 100%;
+  padding: 0;
+  border-left: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -10px 0 40px rgb(0 0 0 / 45%);
+}
+
+/* Header */
+:is(.node-definition-modal, .node-definition-drawer) .node-definition-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-surface) 96%, transparent);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--theme-text);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-modal-subtitle {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--theme-muted);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  background: transparent;
+  color: var(--theme-muted);
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-modal-close:hover:not(:disabled) {
+  color: var(--theme-text);
+  border-color: var(--theme-primary);
+  background: color-mix(in srgb, var(--theme-primary) 10%, transparent);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-modal-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-protocol-top-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-protocol-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--theme-muted);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-protocol-label select {
+  font-weight: 600;
+}
+
+/* Scrollable Form Content */
+:is(.node-definition-modal, .node-definition-drawer) .node-definition-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-definition-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 22px 24px;
+  scrollbar-width: thin;
+}
+
+/* Single Column Compact Form */
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  width: 100%;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact .field-label,
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact > label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--theme-text);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact input,
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact select,
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact textarea {
+  width: 100%;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  background: var(--theme-background);
+  color: var(--theme-text);
+  font-size: 0.84rem;
+  padding: 8px 11px;
+  transition: border-color 0.15s;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact input:focus-visible,
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact select:focus-visible,
+:is(.node-definition-modal, .node-definition-drawer) .node-form-compact textarea:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 1px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .field-hint {
+  font-size: 0.74rem;
+  color: var(--theme-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .parent-rate-notice {
+  color: var(--theme-primary);
+}
+
+/* Multiplier Rate Input */
+:is(.node-definition-modal, .node-definition-drawer) .rate-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .rate-input-wrap input {
+  padding-right: 30px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .rate-suffix {
+  position: absolute;
+  right: 12px;
+  color: var(--theme-muted);
+  font-weight: 700;
+  font-size: 0.86rem;
+  pointer-events: none;
+}
+
+/* Switch items */
+:is(.node-definition-modal, .node-definition-drawer) .switch-row-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--theme-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .switch-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--theme-primary);
+  cursor: pointer;
+}
+
+/* Rate Ranges */
+:is(.node-definition-modal, .node-definition-drawer) .rate-range-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  background: color-mix(in srgb, var(--theme-background) 60%, transparent);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .rate-range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .range-sublabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.74rem;
+  color: var(--theme-muted);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .add-range-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* Chips & Chip Input */
+:is(.node-definition-modal, .node-definition-drawer) .chip-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  background: var(--theme-background);
+  min-height: 40px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--theme-primary) 14%, transparent);
+  color: var(--theme-text);
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 32%, transparent);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chip-remove {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  color: var(--theme-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chip-remove:hover {
+  color: var(--theme-danger, #ff8c8c);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chip-input {
+  flex: 1 1 90px;
+  min-width: 70px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 2px 4px !important;
+  outline: none !important;
+  font-size: 0.82rem;
+  color: var(--theme-text) !important;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chips-picker-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 28px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chips-empty-hint {
+  font-size: 0.76rem;
+  color: var(--theme-muted);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .chip-add-select {
+  width: auto;
+  align-self: flex-start;
+  min-width: 140px;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+  border: 1px dashed var(--theme-border) !important;
+}
+
+/* Input with action button */
+:is(.node-definition-modal, .node-definition-drawer) .input-with-button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .input-with-button input {
+  flex: 1 1 auto;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .copy-port-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Parent Node search & select */
+:is(.node-definition-modal, .node-definition-drawer) .parent-search-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Network Settings Popover */
+:is(.node-definition-modal, .node-definition-drawer) .network-protocol-header-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .network-select-label {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .network-settings-toggle-btn {
+  flex-shrink: 0;
+  height: 38px;
+  white-space: nowrap;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .network-settings-popover {
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  background: color-mix(in srgb, var(--theme-background) 85%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .network-settings-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--theme-text);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .network-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* Protocol-specific sub-sections */
+:is(.node-definition-modal, .node-definition-drawer) .protocol-fields-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 2px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .tls-fields-group,
+:is(.node-definition-modal, .node-definition-drawer) .reality-fields-stack,
+:is(.node-definition-modal, .node-definition-drawer) .multiplex-fields-stack,
+:is(.node-definition-modal, .node-definition-drawer) .certificate-fields-stack,
+:is(.node-definition-modal, .node-definition-drawer) .vless-encryption-section,
+:is(.node-definition-modal, .node-definition-drawer) .utls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: var(--theme-control-radius, 8px);
+  background: color-mix(in srgb, var(--theme-background) 35%, transparent);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .multiplex-inner-fields,
+:is(.node-definition-modal, .node-definition-drawer) .encryption-keys-stack,
+:is(.node-definition-modal, .node-definition-drawer) .ech-fields-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .brutal-speed-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Machine Binding & Enabled */
+:is(.node-definition-modal, .node-definition-drawer) .machine-binding-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .machine-enabled-switch {
+  padding-top: 2px;
+}
+
+/* Advanced Settings Dropdown */
+:is(.node-definition-modal, .node-definition-drawer) .node-advanced-settings {
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--theme-background) 45%, transparent);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-advanced-settings summary {
+  font-weight: 700;
+  font-size: 0.84rem;
+  color: var(--theme-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-advanced-settings[open] summary {
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .advanced-fields-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .advanced-fieldset {
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  padding: 12px;
+  margin: 0;
+  min-width: 0;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .advanced-fieldset legend {
+  padding: 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--theme-muted);
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .cert-expert-details {
+  border: 1px dashed var(--theme-border);
+  border-radius: var(--theme-control-radius, 8px);
+  padding: 8px 12px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .cert-expert-details summary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--theme-muted);
+  cursor: pointer;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .cert-expert-details[open] summary {
+  margin-bottom: 10px;
+}
+
+/* Pinned Footer */
+:is(.node-definition-modal, .node-definition-drawer) .node-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  padding: 12px 22px;
+  border-top: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-surface) 96%, transparent);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-submit-error {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+/* State views */
+:is(.node-definition-modal, .node-definition-drawer) .node-loading-state,
+:is(.node-definition-modal, .node-definition-drawer) .node-protocol-empty-prompt {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--theme-muted);
+  font-size: 0.86rem;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-error-state {
+  padding: 36px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-error-message {
+  margin: 0;
+  color: var(--theme-danger, #ff8c8c);
+  font-size: 0.86rem;
+}
+
+/* Responsive */
+@media (max-width: 580px)  {
+  .parent-search-row {
+    grid-template-columns: 1fr;
+  }
+  :is(.node-definition-modal, .node-definition-drawer) .input-with-button {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  :is(.node-definition-modal, .node-definition-drawer) .network-protocol-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  :is(.node-definition-modal, .node-definition-drawer) .rate-range-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  :is(.node-definition-modal, .node-definition-drawer) .brutal-speed-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.node-advanced-modal .node-advanced-tabs {display:flex;gap:4px;padding:12px 16px;flex-wrap:wrap;}
+.node-advanced-tabs button {border:0;background:transparent;color:var(--theme-muted);padding:8px;}
+.node-advanced-tabs [aria-selected="true"] {color:var(--theme-text);background:var(--theme-border);border-radius:6px;}
+.node-advanced-modal {min-height:340px;}
+
+:is(.node-definition-modal, .node-definition-drawer) .node-field-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+
+:is(.node-definition-modal,.node-definition-drawer) .node-name-rate-pair { grid-template-columns: minmax(0,2fr) minmax(0,1fr); }
+:is(.node-definition-modal,.node-definition-drawer) .node-protocol-top-bar { width: 155px; flex: 0 0 155px; margin-left: auto; }
+:is(.node-definition-modal,.node-definition-drawer) .node-title-group { min-width: 0; }
+:is(.node-definition-modal,.node-definition-drawer) .node-modal-subtitle { margin-top: 10px; }
+:is(.node-definition-modal,.node-definition-drawer) .node-header-top-row { position: relative; padding-right: 16px; }
+:is(.node-definition-modal,.node-definition-drawer) .node-modal-close { position: absolute; right: -12px; top: -12px; width: 24px; height:24px; border:0; }
+:is(.node-definition-modal,.node-definition-drawer) .node-footer-actions > .secondary { margin-right:auto; }
+@media(max-width:480px) { :is(.node-definition-modal,.node-definition-drawer) .node-protocol-top-bar { width:132px; flex-basis:132px; } }

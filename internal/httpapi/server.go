@@ -634,6 +634,7 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/machines/{machineID}/history", api.listHistory)
 	admin.HandleFunc("GET /api/v1/admin/nodes/unassigned", api.listUnassignedNodes)
 	admin.HandleFunc("GET /api/v1/admin/nodes/parent-options", api.listAdminNodeParentOptions)
+	admin.HandleFunc("POST /api/v1/admin/nodes/ech-key", api.generateAdminNodeECH)
 	admin.HandleFunc("GET /api/v1/admin/nodes", api.listAdminNodes)
 	admin.HandleFunc("POST /api/v1/admin/nodes", api.createNode)
 	admin.HandleFunc("GET /api/v1/admin/nodes/{nodeID}", api.getAdminNodeDefinition)

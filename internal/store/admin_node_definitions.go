@@ -596,15 +596,8 @@ func validateAdminNodeTLSObject(value any, label string) error {
 			!adminNodeOptionalSingleLine(entry, "key_path", 4_096) || !adminNodeOptionalSingleLine(entry, "config_path", 4_096) {
 			return errors.New("invalid " + label + ".ech")
 		}
-		if enabled, _ := entry["enabled"].(bool); enabled {
-			config := strings.TrimSpace(adminNodeStringValue(entry["config"]))
-			configPath := strings.TrimSpace(adminNodeStringValue(entry["config_path"]))
-			key := strings.TrimSpace(adminNodeStringValue(entry["key"]))
-			keyPath := strings.TrimSpace(adminNodeStringValue(entry["key_path"]))
-			if (config == "" && configPath == "") || (key == "" && keyPath == "") {
-				return errors.New(label + ".ech requires config and key material when enabled")
-			}
-		}
+		// Blank ECH config/key are valid for DNS-discovered client ECH or externally managed TLS.
+		// Node-local ECH terminators still require their own key material.
 	}
 	return nil
 }

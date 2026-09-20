@@ -100,6 +100,11 @@ export interface Node {
 }
 
 export interface AdminNode extends Node {
+	parent_id?: number | null;
+	server_port?: number;
+	transfer_enable?: number;
+	external_code?: string;
+	tags?: string[];
   machine_name: string | null;
   group_ids: number[];
   online_count: number;
@@ -180,6 +185,12 @@ export interface AdminNodeParentQuery {
 }
 
 export interface AdminNodeQuery {
+  types?: string[];
+  machine_ids?: number[];
+  group_ids?: number[];
+	group_id?: number;
+	sort_by?: "id" | "online_count";
+	sort_order?: "asc" | "desc";
   page?: number;
   page_size?: number;
   q?: string;
@@ -1746,6 +1757,7 @@ export interface AdminAPI {
   unassignNode: (machineID: number, nodeID: number, revision: number) => Promise<void>;
   setNodeEnabled: (machineID: number, nodeID: number, revision: number, enabled: boolean) => Promise<void>;
   listAdminNodes: (query?: AdminNodeQuery) => Promise<AdminNodePage>;
+  generateNodeECH: (publicName: string) => Promise<{ key: string; config: string }>;
   listAdminNodeParentOptions: (query: AdminNodeParentQuery) => Promise<AdminNodeParentOptions>;
   getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
@@ -2108,6 +2120,12 @@ export class APIClient implements AdminAPI {
 
   async listAdminNodes(query: AdminNodeQuery = {}): Promise<AdminNodePage> {
     const parameters = new URLSearchParams();
+    if (query.types?.length) parameters.set("types", query.types.join(","));
+    if (query.machine_ids?.length) parameters.set("machine_ids", query.machine_ids.join(","));
+    if (query.group_ids?.length) parameters.set("group_ids", query.group_ids.join(","));
+	if (query.group_id !== undefined) parameters.set("group_id", String(query.group_id));
+	if (query.sort_by !== undefined) parameters.set("sort_by", query.sort_by);
+	if (query.sort_order !== undefined) parameters.set("sort_order", query.sort_order);
     if (query.page !== undefined) parameters.set("page", String(query.page));
     if (query.page_size !== undefined) parameters.set("page_size", String(query.page_size));
     if (query.q !== undefined && query.q.trim() !== "") parameters.set("q", query.q.trim());
@@ -2117,6 +2135,10 @@ export class APIClient implements AdminAPI {
     if (query.machine_id !== undefined) parameters.set("machine_id", String(query.machine_id));
     if (query.unassigned !== undefined) parameters.set("unassigned", String(query.unassigned));
     return this.request<AdminNodePage>(`/api/v1/admin/nodes${parameters.size === 0 ? "" : `?${parameters.toString()}`}`);
+  }
+
+  async generateNodeECH(publicName: string): Promise<{ key: string; config: string }> {
+    return this.request("/api/v1/admin/nodes/ech-key", { method: "POST", body: { public_name: publicName } });
   }
 
   async listAdminNodeParentOptions(query: AdminNodeParentQuery): Promise<AdminNodeParentOptions> {
