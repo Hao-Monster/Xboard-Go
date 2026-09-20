@@ -81,6 +81,12 @@ describe("NodeManagementPage", () => {
     expect(within(table).getByText("4")).toBeVisible();
     expect(api.listAdminNodes).toHaveBeenCalledWith({ page: 1, page_size: 500 });
 
+    await user.click(screen.getByRole("button", { name: "节点操作：SG VLESS" }));
+    const rowMenu = await screen.findByRole("menu", { name: "节点操作：SG VLESS" });
+    expect(table).not.toContainElement(rowMenu);
+    expect(rowMenu.parentElement).toBe(document.body);
+    await user.keyboard("{Escape}");
+
     await user.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText("Next node")).toBeVisible();
     expect(api.listAdminNodes).toHaveBeenCalledWith({ page: 2, page_size: 500 });
