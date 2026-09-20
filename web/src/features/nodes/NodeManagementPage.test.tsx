@@ -71,9 +71,11 @@ describe("NodeManagementPage", () => {
     for (const heading of ["节点ID", "显隐", "节点", "部署方式", "地址", "在线人数", "倍率", "权限组", "流量使用", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: heading })).toBeVisible();
     }
+    await user.click(screen.getByRole("button", {name:"类型"}));
     for (const protocol of ["Shadowsocks", "VMess", "Trojan", "Hysteria", "VLess", "TUIC", "SOCKS", "Naive", "HTTP", "Mieru", "AnyTLS"]) {
-      expect(screen.getByRole("option", { name: protocol })).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: protocol })).toBeInTheDocument();
     }
+    await user.keyboard("{Escape}");
     expect(within(table).getByText("edge-sg")).toBeVisible();
     expect(within(table).getByText("Premium")).toBeVisible();
     expect(within(table).getByText("4")).toBeVisible();
@@ -105,9 +107,13 @@ describe("NodeManagementPage", () => {
       server_port: 443, listen_address: "0.0.0.0", machine_id: null, group_ids: [7], route_ids: [9]
     })));
 
-    await user.click(screen.getByRole("button", { name: "复制节点：SG VLESS" }));
+    await user.click(screen.getByRole("button", { name: "节点操作：SG VLESS" }));
+    await user.click(screen.getByRole("menuitem", { name: "复制节点：SG VLESS" }));
     await waitFor(() => expect(api.copyAdminNode).toHaveBeenCalledWith(41, 3));
+    await user.click(screen.getByRole("button", { name: "编辑排序" }));
     await user.click(screen.getByRole("button", { name: "上移节点：US Trojan" }));
+    expect(api.reorderAdminNodes).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "保存排序" }));
     await waitFor(() => expect(api.reorderAdminNodes).toHaveBeenCalledWith([{ id: 42, revision: 1 }, { id: 41, revision: 3 }]));
   });
 
@@ -122,7 +128,7 @@ describe("NodeManagementPage", () => {
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
     const protocol = within(dialog).getByLabelText("协议类型");
     expect(within(protocol).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Shadowsocks", "VMess", "Trojan", "Hysteria", "VLess", "TUIC", "SOCKS", "Naive", "HTTP", "Mieru", "AnyTLS"
+      "选择协议类型", "Shadowsocks", "VMess", "Trojan", "Hysteria", "VLess", "TUIC", "SOCKS", "Naive", "HTTP", "Mieru", "AnyTLS"
     ]);
     await user.selectOptions(protocol, "tuic");
     expect(within(dialog).getByLabelText("拥塞控制")).toHaveValue("bbr");
@@ -148,19 +154,25 @@ describe("NodeManagementPage", () => {
       "3=9-9,500-1000", "4=500-1000", "5=500-1000", "6=500-1000", "7=500-1000"
     ].join("\n"));
     await user.selectOptions(protocol, "mieru");
-    expect(within(dialog).getByLabelText("多路复用")).not.toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "高级设置" }));
+    const multiplexDialog = screen.getByRole("dialog", { name: "高级协议配置" });
+    await user.click(within(multiplexDialog).getByRole("tab", { name: "多路复用" }));
+    expect(within(multiplexDialog).getByRole("checkbox", { name: "多路复用" })).not.toBeChecked();
+    await user.click(within(multiplexDialog).getByRole("button", { name: "取消" }));
     await user.selectOptions(protocol, "shadowsocks");
     expect(within(dialog).getByLabelText("加密算法")).toHaveValue("aes-128-gcm");
     expect(within(within(dialog).getByLabelText("插件")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
       "", "obfs", "v2ray-plugin", "gost-plugin", "shadow-tls", "restls", "kcptun"
     ]);
     await user.click(within(dialog).getByText("高级设置"));
-    const certificateMode = within(dialog).getByLabelText("证书模式");
+    const advanced = screen.getByRole("dialog", { name: "高级协议配置" });
+    const certificateMode = within(advanced).getByLabelText("证书模式");
     expect(within(certificateMode).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
       "none", "http", "dns", "self", "content"
     ]);
     await user.selectOptions(certificateMode, "self");
-    await user.type(within(dialog).getByLabelText("证书域名"), "ss.example.test");
+    await user.type(within(advanced).getByLabelText("证书域名"), "ss.example.test");
+    await user.click(within(advanced).getByRole("button", { name: "Save" }));
     await user.type(within(dialog).getByLabelText("节点名称"), "New Shadowsocks");
     await user.type(within(dialog).getByLabelText("节点地址"), "ss.example.test");
     await user.click(within(dialog).getByRole("button", { name: "提交" }));
@@ -181,14 +193,13 @@ describe("NodeManagementPage", () => {
     render(<NodeManagementPage api={api} />);
     await screen.findByText("SG VLESS", { exact: true });
     await user.type(screen.getByLabelText("搜索节点"), "no-match");
-    await user.click(screen.getByRole("button", { name: "查询节点" }));
     await screen.findByText("没有符合条件的节点。", { exact: true });
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
     await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
     await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({ type: "vless" }));
-    expect(within(within(dialog).getByLabelText("父节点")).getByRole("option", { name: "SG VLESS (#41)" })).toHaveValue("41");
+    expect(within(within(dialog).getByLabelText("父级节点")).getByRole("option", { name: "SG VLESS (#41)" })).toHaveValue("41");
   });
 
   it("searches bounded parent options beyond the first five hundred nodes", async () => {
@@ -208,7 +219,7 @@ describe("NodeManagementPage", () => {
     const parentSearch = within(dialog).getByLabelText("搜索父节点");
     await user.type(parentSearch, "beyond");
     await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({ type: "vless", q: "beyond" }));
-    const parent = within(dialog).getByLabelText("父节点");
+    const parent = within(dialog).getByLabelText("父级节点");
     expect(await within(parent).findByRole("option", { name: "VLESS beyond five hundred (#501)" })).toHaveValue("501");
     await user.click(parentSearch);
     await user.tab();
@@ -231,7 +242,7 @@ describe("NodeManagementPage", () => {
     await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({
       type: "vless", include_id: 501, exclude_id: 41
     }));
-    const parent = within(dialog).getByLabelText("父节点");
+    const parent = within(dialog).getByLabelText("父级节点");
     expect(parent).toHaveValue("501");
     expect(within(parent).getByRole("option", { name: "Existing remote parent (#501)" })).toBeVisible();
   });
@@ -247,7 +258,8 @@ describe("NodeManagementPage", () => {
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
-    const parent = within(dialog).getByLabelText("父节点");
+    await user.selectOptions(within(dialog).getByLabelText("协议类型"), "shadowsocks");
+    const parent = within(dialog).getByLabelText("父级节点");
     expect(await within(parent).findByRole("option", { name: "Shadowsocks parent (#42)" })).toBeVisible();
     await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
     expect(within(parent).queryByRole("option", { name: "Shadowsocks parent (#42)" })).not.toBeInTheDocument();
@@ -267,19 +279,26 @@ describe("NodeManagementPage", () => {
     await user.selectOptions(protocol, "vmess");
     await user.selectOptions(within(dialog).getByLabelText("安全性"), "1");
     await user.click(within(dialog).getByLabelText("uTLS"));
-    expect(within(within(dialog).getByLabelText("uTLS 指纹")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
+    expect(within(within(dialog).getByLabelText("客户端指纹 (uTLS)")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
       "chrome", "firefox", "safari", "ios", "edge", "random"
     ]);
     await user.click(within(dialog).getByLabelText("ECH"));
-    expect(within(dialog).getByLabelText("ECH Config")).toBeVisible();
-    await user.click(within(dialog).getByLabelText("多路复用"));
-    expect(within(dialog).getByLabelText("Brutal 加速")).toBeVisible();
-    await user.click(within(dialog).getByLabelText("Brutal 加速"));
-    expect(within(dialog).getByLabelText("Brutal 上行 (Mbps)")).toHaveValue(100);
+    expect(within(dialog).getByLabelText("ECH 配置 (PEM)")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "高级设置" }));
+    const advanced = screen.getByRole("dialog", { name: "高级协议配置" });
+    await user.click(within(advanced).getByRole("tab", { name: "多路复用" }));
+    await user.click(within(advanced).getByRole("checkbox", { name: "多路复用" }));
+    expect(within(advanced).getByLabelText("Brutal 加速")).toBeVisible();
+    await user.click(within(advanced).getByLabelText("Brutal 加速"));
+    expect(within(advanced).getByLabelText("Brutal 上行 (Mbps)")).toHaveValue(100);
+    await user.click(within(advanced).getByRole("button", { name: "Save" }));
     await user.selectOptions(within(dialog).getByLabelText("传输协议"), "ws");
-    await user.click(within(dialog).getByRole("button", { name: "套用 WebSocket 模板" }));
-    expect(within(dialog).getByLabelText("传输协议设置 (JSON)")).toHaveValue(JSON.stringify({ path: "/", headers: { Host: "v2ray.com" } }, null, 2));
+    await user.click(within(dialog).getByRole("button", { name: "编辑协议" }));
+    const transport = screen.getByRole("dialog", {name:"编辑传输协议"});
+    await user.click(within(transport).getByRole("button", { name: "套用 WebSocket 模板" }));
+    expect(within(transport).getByLabelText("传输协议设置 (JSON)")).toHaveValue(JSON.stringify({ path: "/", headers: { Host: "v2ray.com" } }, null, 2));
 
+    await user.click(within(transport).getByRole("button", {name:"保存"}));
     await user.selectOptions(protocol, "trojan");
     await user.selectOptions(within(dialog).getByLabelText("安全性"), "2");
     expect(within(dialog).getByLabelText("Reality 允许不安全连接")).not.toBeChecked();
@@ -294,6 +313,7 @@ describe("NodeManagementPage", () => {
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
 
+    await user.selectOptions(within(dialog).getByLabelText("协议类型"), "shadowsocks");
     await user.type(within(dialog).getByLabelText("节点名称"), "Timed Shadowsocks");
     await user.type(within(dialog).getByLabelText("节点地址"), "timed.example.test");
     await user.click(within(dialog).getByLabelText("启用动态倍率"));
@@ -303,17 +323,20 @@ describe("NodeManagementPage", () => {
     fireEvent.change(within(dialog).getByLabelText("动态倍率 1 倍率"), { target: { value: "0.5" } });
 
     await user.click(within(dialog).getByText("高级设置"));
-    await user.selectOptions(within(dialog).getByLabelText("证书模式"), "dns");
-    await user.type(within(dialog).getByLabelText("证书域名"), "timed.example.test");
-    await user.type(within(dialog).getByLabelText("DNS Provider"), "cloudflare");
-    await user.type(within(dialog).getByLabelText("DNS 环境变量"), "CF_API_TOKEN=local-test-token");
-    const outbounds = within(dialog).getByLabelText("自定义出站 (JSON 数组)");
+    const advanced = screen.getByRole("dialog", { name: "高级协议配置" });
+    await user.selectOptions(within(advanced).getByLabelText("证书模式"), "dns");
+    await user.type(within(advanced).getByLabelText("证书域名"), "timed.example.test");
+    await user.type(within(advanced).getByLabelText("DNS Provider"), "cloudflare");
+    await user.type(within(advanced).getByLabelText("DNS 环境变量"), "CF_API_TOKEN=local-test-token");
+    await user.click(within(advanced).getByRole("tab", { name: "自定义 Outbounds" }));
+    const outbounds = within(advanced).getByLabelText("自定义出站 (JSON 数组)");
     fireEvent.change(outbounds, { target: { value: "invalid" } });
-    await user.click(within(dialog).getByRole("button", { name: "提交" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Unexpected token");
+    await user.click(within(advanced).getByRole("button", { name: "Save" }));
+    expect(await within(advanced).findByRole("alert")).toHaveTextContent("Unexpected token");
     expect(api.createAdminNodeDefinition).not.toHaveBeenCalled();
 
     fireEvent.change(outbounds, { target: { value: "[]" } });
+    await user.click(within(advanced).getByRole("button", { name: "Save" }));
     await user.click(within(dialog).getByRole("button", { name: "提交" }));
     await waitFor(() => expect(api.createAdminNodeDefinition).toHaveBeenCalledWith(expect.objectContaining({
       rate_time_enabled: true,
@@ -325,6 +348,42 @@ describe("NodeManagementPage", () => {
     })));
   });
 
+  it("submits only writable fields when changing protocol and honors advanced cancellation", async () => {
+    const api = nodeAPI();
+    api.replaceAdminNodeDefinition.mockResolvedValue(definition);
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await user.click(await screen.findByRole("button", {name:"编辑节点：SG VLESS"}));
+    const dialog = screen.getByRole("dialog", {name:"编辑节点"});
+    await within(dialog).findByLabelText("节点名称");
+    await user.selectOptions(within(dialog).getByLabelText("协议类型"), "shadowsocks");
+    await user.click(within(dialog).getByRole("button", {name:"高级设置"}));
+    const advanced = screen.getByRole("dialog", {name:"高级协议配置"});
+    await user.selectOptions(within(advanced).getByLabelText("证书模式"), "self");
+    await user.click(within(advanced).getByRole("button", {name:"取消"}));
+    await user.click(within(dialog).getByRole("button", {name:"提交"}));
+    await waitFor(() => expect(api.replaceAdminNodeDefinition).toHaveBeenCalled());
+    const payload = api.replaceAdminNodeDefinition.mock.calls[0]?.[1];
+    expect(payload).toMatchObject({type:"shadowsocks",revision:3,certificate_config:{cert_mode:"none"},protocol_settings:{cipher:"aes-128-gcm"}});
+    for (const key of ["id","created_at","updated_at","runtime_configured","online_count","traffic_upload"]) expect(payload).not.toHaveProperty(key);
+    expect(payload.protocol_settings).not.toHaveProperty("tls_settings");
+  });
+
+  it("sends filters and column sort to the server before pagination", async () => {
+    const api = nodeAPI();
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByText("SG VLESS");
+    await user.click(screen.getByRole("button", {name:"权限组"}));
+    await user.click(screen.getByRole("checkbox", {name:"Premium"}));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(api.listAdminNodes).toHaveBeenLastCalledWith({page:1,page_size:500,group_ids:[7]}));
+    await user.click(screen.getByRole("button", {name:"在线人数"}));
+    await waitFor(() => expect(api.listAdminNodes).toHaveBeenLastCalledWith({page:1,page_size:500,group_ids:[7],sort_by:"online_count",sort_order:"asc"}));
+    await user.selectOptions(screen.getByRole("combobox", {name:"每页显示"}), "10");
+    await waitFor(() => expect(api.listAdminNodes).toHaveBeenLastCalledWith({page:1,page_size:10,group_ids:[7],sort_by:"online_count",sort_order:"asc"}));
+  });
+
   it("requires confirmation for destructive bulk actions and keeps failures visible", async () => {
     const api = nodeAPI();
     api.deleteAdminNodes.mockRejectedValue(new Error("节点仍被子节点引用"));
@@ -333,10 +392,12 @@ describe("NodeManagementPage", () => {
     expect(await screen.findByText("SG VLESS")).toBeVisible();
 
     await user.click(screen.getByRole("checkbox", { name: "选择节点：SG VLESS" }));
-    await user.click(screen.getByRole("button", { name: "批量停用" }));
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "禁用节点" }));
     await waitFor(() => expect(api.updateAdminNodeStates).toHaveBeenCalledWith({ targets: [{ id: 41, revision: 3 }], enabled: false }));
-    await user.click(screen.getByRole("checkbox", { name: "选择节点：SG VLESS" }));
-    await user.click(screen.getByRole("button", { name: "批量删除" }));
+    expect(screen.getByRole("checkbox", { name: "选择节点：SG VLESS" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "批量操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
     const dialog = screen.getByRole("alertdialog", { name: "删除节点" });
     await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("节点仍被子节点引用");
@@ -348,6 +409,7 @@ function nodeAPI(items = [node]) {
   return {
     listAdminNodes: vi.fn().mockResolvedValue({ items, total: items.length, page: 1, page_size: 500 }),
     listAdminNodeParentOptions: vi.fn().mockResolvedValue({ items: items.map(({ id, name }) => ({ id, name })), has_more: false }),
+    createServerGroup: vi.fn(), generateNodeECH: vi.fn(),
     listMachines: vi.fn().mockResolvedValue([machine]),
     listServerGroups: vi.fn().mockResolvedValue([group]),
     listRoutingRules: vi.fn().mockResolvedValue([route]),

@@ -37,10 +37,13 @@ const protocolScenarios: ProtocolScenario[] = [
     configure: async (dialog) => {
       await dialog.getByLabel("安全性").selectOption("1");
       await dialog.getByRole("combobox", { name: "传输协议", exact: true }).selectOption("ws");
-      await dialog.getByRole("button", { name: "套用 WebSocket 模板" }).click();
-      await dialog.getByLabel("SNI").fill("vmess.example.test");
+      await dialog.getByRole("button", { name: "编辑协议" }).click();
+      const transport = dialog.page().getByRole("dialog", {name:"编辑传输协议"});
+      await transport.getByRole("button", { name: "套用 WebSocket 模板" }).click();
+      await transport.getByRole("button", {name:"保存"}).click();
+      await dialog.getByLabel("服务器名称指示(SNI)").fill("vmess.example.test");
       await dialog.getByRole("checkbox", { name: "uTLS", exact: true }).check();
-      await dialog.getByLabel("uTLS 指纹").selectOption("firefox");
+      await dialog.getByLabel("客户端指纹 (uTLS)").selectOption("firefox");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({
       tls: 1, network: "ws", network_settings: { path: "/", headers: { Host: "v2ray.com" } },
@@ -49,7 +52,7 @@ const protocolScenarios: ProtocolScenario[] = [
     assertReopened: async (dialog) => {
       await expect(dialog.getByLabel("安全性")).toHaveValue("1");
       await expect(dialog.getByRole("combobox", { name: "传输协议", exact: true })).toHaveValue("ws");
-      await expect(dialog.getByLabel("uTLS 指纹")).toHaveValue("firefox");
+      await expect(dialog.getByLabel("客户端指纹 (uTLS)")).toHaveValue("firefox");
     }
   },
   {
@@ -57,8 +60,11 @@ const protocolScenarios: ProtocolScenario[] = [
     label: "Trojan",
     configure: async (dialog) => {
       await dialog.getByRole("combobox", { name: "传输协议", exact: true }).selectOption("grpc");
-      await dialog.getByRole("button", { name: "套用 gRPC 模板" }).click();
-      await dialog.getByLabel("SNI").fill("trojan.example.test");
+      await dialog.getByRole("button", { name: "编辑协议" }).click();
+      const transport = dialog.page().getByRole("dialog", {name:"编辑传输协议"});
+      await transport.getByRole("button", { name: "套用 gRPC 模板" }).click();
+      await transport.getByRole("button", {name:"保存"}).click();
+      await dialog.getByLabel("服务器名称指示(SNI)").fill("trojan.example.test");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({
       tls: 1, network: "grpc", network_settings: { serviceName: "GunService" }, tls_settings: { server_name: "trojan.example.test" }
@@ -66,7 +72,7 @@ const protocolScenarios: ProtocolScenario[] = [
     assertReopened: async (dialog) => {
       await expect(dialog.getByLabel("安全性")).toHaveValue("1");
       await expect(dialog.getByRole("combobox", { name: "传输协议", exact: true })).toHaveValue("grpc");
-      await expect(dialog.getByLabel("SNI")).toHaveValue("trojan.example.test");
+      await expect(dialog.getByLabel("服务器名称指示(SNI)")).toHaveValue("trojan.example.test");
     }
   },
   {
@@ -76,7 +82,7 @@ const protocolScenarios: ProtocolScenario[] = [
       await dialog.getByLabel("上行带宽 (Mbps)").fill("120");
       await dialog.getByLabel("下行带宽 (Mbps)").fill("240");
       await dialog.getByLabel("端口跳跃间隔 (秒)").fill("30");
-      await dialog.getByLabel("SNI").fill("hysteria.example.test");
+      await dialog.getByLabel("服务器名称指示(SNI)").fill("hysteria.example.test");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({
       version: 2, hop_interval: 30, bandwidth: { up: 120, down: 240 }, tls: { server_name: "hysteria.example.test" }
@@ -91,12 +97,12 @@ const protocolScenarios: ProtocolScenario[] = [
     label: "VLess",
     configure: async (dialog) => {
       await dialog.getByRole("combobox", { name: "传输协议", exact: true }).selectOption("kcp");
-      await dialog.getByLabel("Flow").selectOption("xtls-rprx-direct");
+      await dialog.getByLabel("流控").selectOption("xtls-rprx-direct");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({ tls: 0, network: "kcp", flow: "xtls-rprx-direct", network_settings: {} }),
     assertReopened: async (dialog) => {
       await expect(dialog.getByRole("combobox", { name: "传输协议", exact: true })).toHaveValue("kcp");
-      await expect(dialog.getByLabel("Flow")).toHaveValue("xtls-rprx-direct");
+      await expect(dialog.getByLabel("流控")).toHaveValue("xtls-rprx-direct");
     }
   },
   {
@@ -106,7 +112,7 @@ const protocolScenarios: ProtocolScenario[] = [
       await dialog.getByLabel("拥塞控制").selectOption("cubic");
       await dialog.getByLabel("ALPN").selectOption(["h3", "h2"]);
       await dialog.getByLabel("UDP Relay").selectOption("quic");
-      await dialog.getByLabel("SNI").fill("tuic.example.test");
+      await dialog.getByLabel("服务器名称指示(SNI)").fill("tuic.example.test");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({
       version: 5, congestion_control: "cubic", alpn: ["h3", "h2"], udp_relay_mode: "quic", tls: { server_name: "tuic.example.test" }
@@ -121,12 +127,12 @@ const protocolScenarios: ProtocolScenario[] = [
     label: type === "socks" ? "SOCKS" : type === "naive" ? "Naive" : "HTTP",
     configure: async (dialog) => {
       await dialog.getByRole("combobox", { name: "TLS", exact: true }).selectOption("1");
-      await dialog.getByLabel("SNI").fill(`${type}.example.test`);
+      await dialog.getByLabel("服务器名称指示(SNI)").fill(`${type}.example.test`);
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({ tls: 1, tls_settings: { server_name: `${type}.example.test` } }),
     assertReopened: async (dialog) => {
       await expect(dialog.getByRole("combobox", { name: "TLS", exact: true })).toHaveValue("1");
-      await expect(dialog.getByLabel("SNI")).toHaveValue(`${type}.example.test`);
+      await expect(dialog.getByLabel("服务器名称指示(SNI)")).toHaveValue(`${type}.example.test`);
     }
   })),
   {
@@ -135,14 +141,22 @@ const protocolScenarios: ProtocolScenario[] = [
     configure: async (dialog) => {
       await dialog.getByRole("combobox", { name: "传输协议", exact: true }).selectOption("UDP");
       await dialog.getByLabel("Traffic Pattern").fill("default");
-      await dialog.getByRole("checkbox", { name: "多路复用", exact: true }).check();
-      await dialog.getByLabel("复用协议").selectOption("yamux");
+      await dialog.getByRole("button", { name: "高级设置" }).click();
+      const advanced = dialog.page().getByRole("dialog", { name: "高级协议配置" });
+      await advanced.getByRole("tab", {name:"多路复用"}).click();
+      await advanced.getByRole("checkbox", { name: "多路复用", exact: true }).check();
+      await advanced.getByLabel("复用协议").selectOption("yamux");
+      await advanced.getByRole("button", {name:"Save"}).click();
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({ transport: "UDP", traffic_pattern: "default", multiplex: { enabled: true, protocol: "yamux" } }),
     assertReopened: async (dialog) => {
       await expect(dialog.getByRole("combobox", { name: "传输协议", exact: true })).toHaveValue("UDP");
       await expect(dialog.getByLabel("Traffic Pattern")).toHaveValue("default");
-      await expect(dialog.getByLabel("复用协议")).toHaveValue("yamux");
+      await dialog.getByRole("button", { name: "高级设置" }).click();
+      const advanced = dialog.page().getByRole("dialog", { name: "高级协议配置" });
+      await advanced.getByRole("tab", {name:"多路复用"}).click();
+      await expect(advanced.getByLabel("复用协议")).toHaveValue("yamux");
+      await advanced.getByRole("button", {name:"取消"}).click();
     }
   },
   {
@@ -151,7 +165,7 @@ const protocolScenarios: ProtocolScenario[] = [
     configure: async (dialog) => {
       await dialog.getByLabel("ALPN").fill("h2");
       await dialog.getByRole("button", { name: "使用默认方案" }).click();
-      await dialog.getByLabel("SNI").fill("anytls.example.test");
+      await dialog.getByLabel("服务器名称指示(SNI)").fill("anytls.example.test");
     },
     assertPersisted: (settings) => expect(settings).toMatchObject({
       alpn: "h2",
@@ -192,16 +206,18 @@ test("administrator node management preserves the observed Xboard workflow on ev
     await page.getByRole("button", { name: "节点管理", exact: true }).click();
     await expect(page.getByRole("heading", { name: "节点管理" })).toBeVisible();
     await page.getByLabel("搜索节点").fill(prefix);
-    await page.getByRole("button", { name: "查询节点" }).click();
     await expect(page.getByText(firstName, { exact: true })).toBeVisible();
     await expect(page.getByText(secondName, { exact: true })).toBeVisible();
 
     const expectedColumns = ["节点ID", "显隐", "节点", "部署方式", "地址", "在线人数", "倍率", "权限组", "流量使用", "操作"];
-    expect(await page.getByRole("table", { name: "节点列表" }).locator("th").allTextContents()).toEqual(expectedColumns);
-    await expect(page.getByLabel("协议筛选").locator("option")).toHaveText([
-      "全部", "Shadowsocks", "VMess", "Trojan", "Hysteria", "VLess", "TUIC", "SOCKS", "Naive", "HTTP", "Mieru", "AnyTLS"
-    ]);
-    await expect(page.getByText("第 1 / 1 页 · 共 2 个节点", { exact: true })).toBeVisible();
+    expect((await page.getByRole("table", { name: "节点列表" }).locator("th").allTextContents()).slice(1)).toEqual(expectedColumns);
+    await page.getByRole("button", {name:"类型",exact:true}).click();
+    const typeFilter=page.getByRole("dialog",{name:"类型筛选"});
+    await expect(typeFilter.getByRole("checkbox")).toHaveCount(11);
+    await typeFilter.getByLabel("搜索类型").fill("vless");
+    await expect(typeFilter.getByRole("checkbox")).toHaveCount(1);
+    await typeFilter.getByLabel("搜索类型").press("Escape");
+    await expect(page.getByText("已选择 0 项，共 2 项", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: `编辑节点：${firstName}` }).click();
     const editDialog = page.getByRole("dialog", { name: "编辑节点" });
@@ -212,12 +228,16 @@ test("administrator node management preserves the observed Xboard workflow on ev
     await expect(page.getByText(editedName, { exact: true })).toBeVisible();
     await expect(page.getByText("node-a-updated.example.test:443", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: `复制节点：${editedName}` }).click();
+    await page.getByRole("button", { name: `节点操作：${editedName}` }).click();
+    await page.getByRole("menuitem", { name: `复制节点：${editedName}` }).click();
     const copiedName = `${editedName} - 副本`;
     await expect(page.getByText(copiedName, { exact: true })).toBeVisible();
     const copyRow = page.locator("tr", { has: page.getByText(copiedName, { exact: true }) });
-    await expect(copyRow.getByText("隐藏", { exact: true })).toBeVisible();
+    await expect(copyRow.getByRole("switch")).not.toBeChecked();
 
+    await page.getByLabel("搜索节点").clear();
+    await expect(page.getByRole("button", { name: "编辑排序" })).toBeEnabled();
+    await page.getByRole("button", { name: "编辑排序" }).click();
     await page.getByRole("button", { name: `上移节点：${secondName}` }).click();
     await expect.poll(async () => {
       const names = await nodeNames(page);
@@ -229,13 +249,19 @@ test("administrator node management preserves the observed Xboard workflow on ev
       return names.indexOf(secondName) < names.indexOf(editedName);
     }).toBe(true);
 
+    await page.getByRole("button", { name: "保存排序" }).click();
+    await expect(page.getByRole("button", { name: "编辑排序" })).toBeEnabled();
+    await page.getByLabel("搜索节点").fill(prefix);
+    await expect(page.getByText("已选择 0 项，共 3 项", { exact: true })).toBeVisible();
     await page.getByRole("checkbox", { name: `选择节点：${editedName}`, exact: true }).check();
-    await page.getByRole("button", { name: "批量隐藏" }).click();
+    await page.getByRole("button", { name: "批量操作" }).click();
+    await page.getByRole("menuitem", { name: "隐藏节点", exact: true }).click();
     const editedRow = page.locator("tr", { has: page.getByText(editedName, { exact: true }) });
-    await expect(editedRow.getByText("隐藏", { exact: true })).toBeVisible();
+    await expect(editedRow.getByRole("switch")).not.toBeChecked();
 
     await page.getByRole("checkbox", { name: `选择节点：${secondName}`, exact: true }).check();
-    await page.getByRole("button", { name: "批量重置流量" }).click();
+    await page.getByRole("button", { name: "批量操作" }).click();
+    await page.getByRole("menuitem", { name: "重置流量", exact: true }).click();
     const resetDialog = page.getByRole("alertdialog", { name: "重置节点流量" });
     await expect(resetDialog).toContainText("当前累计流量归零");
     await resetDialog.getByRole("button", { name: "确认重置" }).click();
@@ -244,7 +270,8 @@ test("administrator node management preserves the observed Xboard workflow on ev
     await page.getByRole("checkbox", { name: `选择节点：${editedName}`, exact: true }).check();
     await page.getByRole("checkbox", { name: `选择节点：${secondName}`, exact: true }).check();
     await page.getByRole("checkbox", { name: `选择节点：${copiedName}`, exact: true }).check();
-    await page.getByRole("button", { name: "批量删除" }).click();
+    await page.getByRole("button", { name: "批量操作" }).click();
+    await page.getByRole("menuitem", { name: "删除", exact: true }).click();
     const deleteDialog = page.getByRole("alertdialog", { name: "删除节点" });
     await expect(deleteDialog).toContainText("选中的 3 个节点");
     await deleteDialog.getByRole("button", { name: "确认删除" }).click();
@@ -289,7 +316,7 @@ test("administrator can search, select, and reopen a remote parent node", async 
     const createDialog = page.getByRole("dialog", { name: "新建节点" });
     await createDialog.getByLabel("协议类型").selectOption("vless");
     const parentSearch = createDialog.getByLabel("搜索父节点");
-    const parentSelect = createDialog.getByLabel("父节点", { exact: true });
+    const parentSelect = createDialog.getByLabel("父级节点", { exact: true });
     await parentSearch.fill(parentName);
     await expect(parentSelect.getByRole("option", { name: `${parentName} (#${String(parentID)})` })).toHaveCount(1);
     await parentSearch.press("Tab");
@@ -304,8 +331,8 @@ test("administrator can search, select, and reopen a remote parent node", async 
     expect(childDetail.parent_id).toBe(parentID);
     await page.getByRole("button", { name: `编辑节点：${childName}` }).click();
     const editDialog = page.getByRole("dialog", { name: "编辑节点" });
-    await expect(editDialog.getByLabel("父节点", { exact: true })).toHaveValue(String(parentID));
-    await expect(editDialog.getByLabel("父节点", { exact: true }).getByRole("option", { name: `${parentName} (#${String(parentID)})` })).toHaveCount(1);
+    await expect(editDialog.getByLabel("父级节点", { exact: true })).toHaveValue(String(parentID));
+    await expect(editDialog.getByLabel("父级节点", { exact: true }).getByRole("option", { name: `${parentName} (#${String(parentID)})` })).toHaveCount(1);
     await editDialog.getByRole("button", { name: "取消" }).click();
 
     expect(pageErrors).toEqual([]);
@@ -332,7 +359,6 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
   await deleteFixtureNodes(page, fixtureRoot);
   const prefix = `${fixtureRoot}${Date.now()}`;
   await page.getByLabel("搜索节点").fill(prefix);
-  await page.getByRole("button", { name: "查询节点" }).click();
 
   try {
     for (const [index, scenario] of protocolScenarios.entries()) {
@@ -348,10 +374,17 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
       await createDialog.getByLabel("节点名称").fill(name);
       await createDialog.getByLabel("节点地址").fill(host);
       await createDialog.getByLabel("连接端口").fill(String(20_000 + index));
-      await createDialog.getByLabel("服务端口").fill(String(30_000 + index));
-      await createDialog.getByLabel("监听地址").fill("::");
-      await createDialog.getByLabel("标签").fill(`parity, ${scenario.type}`);
+      await createDialog.getByLabel("服务端口", {exact:true}).fill(String(30_000 + index));
+      const advanced = await advancedDialog(page, createDialog);
+      await advanced.getByText("其他设置", { exact: true }).click();
+      await advanced.getByLabel("监听地址").fill("::");
+      await advanced.getByRole("button", { name: "Save" }).click();
+      await createDialog.getByLabel("节点标签", {exact:true}).fill("parity");
+      await createDialog.getByLabel("节点标签", {exact:true}).press("Enter");
+      await createDialog.getByLabel("节点标签", {exact:true}).fill(scenario.type);
+      await createDialog.getByLabel("节点标签", {exact:true}).press("Enter");
       await scenario.configure(createDialog);
+      if (index === 0) await page.screenshot({path:testInfo.outputPath("node-create.png")});
       await assertDialogFitsViewport(createDialog);
       await createDialog.getByRole("button", { name: "提交" }).click();
       await expect(createDialog).toBeHidden();
@@ -366,10 +399,14 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
       await page.getByRole("button", { name: `编辑节点：${name}` }).click();
       const editDialog = page.getByRole("dialog", { name: "编辑节点" });
       await expect(editDialog.getByLabel("节点名称")).toHaveValue(name);
-      await expect(editDialog.getByLabel("协议类型")).toBeDisabled();
+      await expect(editDialog.getByLabel("协议类型")).toBeEnabled();
       await expect(editDialog.getByLabel("协议类型")).toHaveValue(scenario.type);
-      await expect(editDialog.getByLabel("监听地址")).toHaveValue("::");
+      const reopenedAdvanced = await advancedDialog(page, editDialog);
+      await reopenedAdvanced.getByText("其他设置", { exact: true }).click();
+      await expect(reopenedAdvanced.getByLabel("监听地址")).toHaveValue("::");
+      await reopenedAdvanced.getByRole("button", { name: "取消" }).click();
       await scenario.assertReopened(editDialog);
+      if (index === 0) await page.screenshot({path:testInfo.outputPath("node-edit.png")});
       await editDialog.getByLabel("节点名称").fill(editedName);
       await editDialog.getByLabel("节点地址").fill(editedHost);
       await assertDialogFitsViewport(editDialog);
@@ -388,8 +425,7 @@ test("all Xboard node protocols can be created, persisted, and reopened through 
     await page.getByRole("button", { name: "节点管理", exact: true }).click();
     await expect(page.getByRole("heading", { name: "节点管理" })).toBeVisible();
     await page.getByLabel("搜索节点").fill(prefix);
-    await page.getByRole("button", { name: "查询节点" }).click();
-    await expect(page.getByText(`第 1 / 1 页 · 共 ${protocolScenarios.length} 个节点`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`已选择 0 项，共 ${protocolScenarios.length} 项`, { exact: true })).toBeVisible();
     expect(await nodeNames(page)).toHaveLength(protocolScenarios.length);
     expect(pageErrors).toEqual([]);
     expect(serverErrors).toEqual([]);
@@ -431,10 +467,10 @@ async function deleteFixtureNodes(page: Page, prefix: string) {
       ? [{ id: id as number, revision: revision as number, name }]
       : [];
   });
-  if (targets.length > 0) {
-    await adminFetch(page, "/api/v1/admin/nodes/bulk-delete", "POST", {
-      targets: targets.map(({ id, revision }) => ({ id, revision }))
-    });
+  // Delete children before parents; the API correctly rejects referenced parents.
+  for (const {id,revision} of targets.sort((a,b)=>b.id-a.id)) {
+    const deleted=await adminFetch(page,"/api/v1/admin/nodes/bulk-delete","POST",{targets:[{id,revision}]});
+    expect(deleted.status,deleted.body).toBe(204);
   }
 }
 
@@ -497,5 +533,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 async function nodeNames(page: Page): Promise<string[]> {
-  return page.locator("tbody tr td[data-label='节点'] strong").allTextContents();
+  return page.locator("tbody tr td[data-label='节点'] .node-name-button").allTextContents();
+}
+
+async function advancedDialog(page: Page, dialog: ReturnType<Page["getByRole"]>) {
+  await dialog.getByRole("button", {name:"高级设置"}).click();
+  return page.getByRole("dialog", {name:"高级协议配置"});
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -25,8 +26,26 @@ func (s *Store) ListAdminNodes(ctx context.Context, filter AdminNodeFilter, now 
 	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > maxAdminNodePageSize ||
 		len(filter.Query) > 255 || !utf8.ValidString(filter.Query) || strings.IndexFunc(filter.Query, unicode.IsControl) >= 0 ||
 		(filter.Type != "" && !isSupportedNodeType(filter.Type)) ||
+		(filter.GroupID != nil && *filter.GroupID < 1) ||
+		(filter.SortBy != "" && filter.SortBy != "id" && filter.SortBy != "online_count") ||
+		(filter.SortOrder != "" && filter.SortOrder != "asc" && filter.SortOrder != "desc") ||
 		(filter.MachineID != nil && *filter.MachineID < 1) || (filter.MachineID != nil && filter.Unassigned) {
 		return AdminNodePage{}, fmt.Errorf("%w: invalid administrator node filter", ErrInvalidInput)
+	}
+	if len(filter.Types) > 11 || len(filter.MachineIDs) > 500 || len(filter.GroupIDs) > 500 {
+		return AdminNodePage{}, fmt.Errorf("%w: too many filter values", ErrInvalidInput)
+	}
+	for _, kind := range filter.Types {
+		if !isSupportedNodeType(kind) {
+			return AdminNodePage{}, fmt.Errorf("%w: invalid node type", ErrInvalidInput)
+		}
+	}
+	for _, ids := range [][]int64{filter.MachineIDs, filter.GroupIDs} {
+		for _, id := range ids {
+			if id < 1 {
+				return AdminNodePage{}, fmt.Errorf("%w: invalid filter ID", ErrInvalidInput)
+			}
+		}
 	}
 	if filter.Page-1 > int(^uint(0)>>1)/filter.PageSize {
 		return AdminNodePage{}, fmt.Errorf("%w: administrator node page offset is too large", ErrInvalidInput)
@@ -42,11 +61,25 @@ func (s *Store) ListAdminNodes(ctx context.Context, filter AdminNodeFilter, now 
 	pageArguments = append(pageArguments, now.Unix())
 	pageArguments = append(pageArguments, arguments...)
 	pageArguments = append(pageArguments, filter.PageSize, (filter.Page-1)*filter.PageSize)
+	// Only fixed SQL identifiers/directions reach ORDER BY; user values are never interpolated.
+	order := "n.sort, n.id"
+	if filter.SortBy != "" {
+		column := "n.id"
+		if filter.SortBy == "online_count" {
+			column = "COALESCE(online.online_count, 0)"
+		}
+		direction := " ASC"
+		if filter.SortOrder == "desc" {
+			direction = " DESC"
+		}
+		order = column + direction + ", n.id"
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT n.id, n.admin_revision, n.name, n.type, n.host, n.port, n.show, n.enabled, n.sort,
 		       COALESCE(d.configured_rate_micros, n.rate_micros), n.traffic_u, n.traffic_d,
 		       n.runtime_config IS NOT NULL, n.last_check_at, n.last_push_at, n.machine_id, n.created_at, n.updated_at,
-		       m.name, COALESCE(online.online_count, 0)
+		       m.name, COALESCE(online.online_count, 0), d.parent_id, COALESCE(d.server_port, 0),
+		       COALESCE(d.transfer_enable, 0), COALESCE(d.external_code, ''), COALESCE(d.tags_json, '[]')
 		FROM nodes n
 		LEFT JOIN node_protocol_definitions d ON d.node_id = n.id
 		LEFT JOIN server_machines m ON m.id = n.machine_id
@@ -55,7 +88,7 @@ func (s *Store) ListAdminNodes(ctx context.Context, filter AdminNodeFilter, now 
 			FROM node_user_online WHERE expires_at > ? GROUP BY node_id
 		) online ON online.node_id = n.id
 		`+where+`
-		ORDER BY n.sort, n.id
+		ORDER BY `+order+`
 		LIMIT ? OFFSET ?
 	`, pageArguments...)
 	if err != nil {
@@ -163,6 +196,32 @@ func (s *Store) ListAdminNodeParentOptions(ctx context.Context, filter AdminNode
 func adminNodeWhere(filter AdminNodeFilter) (string, []any) {
 	conditions := make([]string, 0, 6)
 	arguments := make([]any, 0, 8)
+	if len(filter.Types) > 0 {
+		conditions = append(conditions, "n.type IN ("+sqlPlaceholders(len(filter.Types))+")")
+		for _, kind := range filter.Types {
+			arguments = append(arguments, kind)
+		}
+	}
+	if len(filter.GroupIDs) > 0 {
+		conditions = append(conditions, "EXISTS (SELECT 1 FROM node_group_memberships ng WHERE ng.node_id = n.id AND ng.group_id IN ("+sqlPlaceholders(len(filter.GroupIDs))+"))")
+		for _, id := range filter.GroupIDs {
+			arguments = append(arguments, id)
+		}
+	}
+	if len(filter.MachineIDs) > 0 {
+		condition := "n.machine_id IN (" + sqlPlaceholders(len(filter.MachineIDs)) + ")"
+		if filter.Unassigned {
+			condition = "(" + condition + " OR n.machine_id IS NULL)"
+		}
+		conditions = append(conditions, condition)
+		for _, id := range filter.MachineIDs {
+			arguments = append(arguments, id)
+		}
+	}
+	if filter.GroupID != nil {
+		conditions = append(conditions, "EXISTS (SELECT 1 FROM node_group_memberships ng WHERE ng.node_id = n.id AND ng.group_id = ?)")
+		arguments = append(arguments, *filter.GroupID)
+	}
 	if filter.Query != "" {
 		pattern := "%" + escapeSQLiteLike(strings.ToLower(filter.Query)) + "%"
 		conditions = append(conditions, `(LOWER(n.name) LIKE ? ESCAPE '\' OR LOWER(n.host) LIKE ? ESCAPE '\' OR CAST(n.id AS TEXT) = ?)`)
@@ -183,7 +242,7 @@ func adminNodeWhere(filter AdminNodeFilter) (string, []any) {
 	if filter.MachineID != nil {
 		conditions = append(conditions, "n.machine_id = ?")
 		arguments = append(arguments, *filter.MachineID)
-	} else if filter.Unassigned {
+	} else if filter.Unassigned && len(filter.MachineIDs) == 0 {
 		conditions = append(conditions, "n.machine_id IS NULL")
 	}
 	if len(conditions) == 0 {
@@ -209,14 +268,23 @@ func scanAdminNode(row rowScanner) (AdminNode, error) {
 	var machineName sql.NullString
 	var lastCheckAt, lastPushAt sql.NullInt64
 	var rateMicros, createdAt, updatedAt int64
+	var parentID sql.NullInt64
+	var tags string
 	if err := row.Scan(
 		&item.ID, &item.Revision, &item.Name, &item.Type, &item.Host, &item.Port, &item.Show, &item.Enabled, &item.Sort,
 		&rateMicros, &item.TrafficUpload, &item.TrafficDownload, &item.RuntimeConfigured,
 		&lastCheckAt, &lastPushAt, &machineID, &createdAt, &updatedAt, &machineName, &item.OnlineCount,
+		&parentID, &item.ServerPort, &item.TransferEnable, &item.ExternalCode, &tags,
 	); err != nil {
 		return AdminNode{}, fmt.Errorf("scan administrator node: %w", err)
 	}
 	item.Rate = float64(rateMicros) / 1_000_000
+	if parentID.Valid {
+		item.ParentID = &parentID.Int64
+	}
+	if err := json.Unmarshal([]byte(tags), &item.Tags); err != nil {
+		return AdminNode{}, fmt.Errorf("decode administrator node tags: %w", err)
+	}
 	if machineID.Valid {
 		item.MachineID = &machineID.Int64
 	}
@@ -454,7 +522,7 @@ func (s *Store) ReorderAdminNodes(ctx context.Context, targets []AdminNodeRevisi
 	seenSortSlots := make(map[int]struct{}, len(targets))
 	for _, target := range current {
 		if _, exists := seenSortSlots[target.Sort]; exists {
-			return AdminNodeMutation{}, fmt.Errorf("%w: reordered nodes must have distinct sort positions", ErrConflict)
+			return reorderDuplicateNodeSlots(ctx, tx, targets, current, now)
 		}
 		seenSortSlots[target.Sort] = struct{}{}
 		sortSlots = append(sortSlots, target.Sort)
@@ -477,6 +545,60 @@ func (s *Store) ReorderAdminNodes(ctx context.Context, targets []AdminNodeRevisi
 		return AdminNodeMutation{}, fmt.Errorf("commit administrator node reorder: %w", err)
 	}
 	return mutationForTargets(current), nil
+}
+
+// Equal legacy/default sort values need stable global slots before a subset can move.
+// Preserve every unselected node's relative position and normalize atomically.
+func reorderDuplicateNodeSlots(ctx context.Context, tx *sql.Tx, requested []AdminNodeRevision, selected map[int64]adminNodeTarget, now time.Time) (AdminNodeMutation, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id, admin_revision, sort, machine_id FROM nodes ORDER BY sort, id`)
+	if err != nil {
+		return AdminNodeMutation{}, fmt.Errorf("load stable node order: %w", err)
+	}
+	var ordered []adminNodeTarget
+	for rows.Next() {
+		var node adminNodeTarget
+		var machineID sql.NullInt64
+		if err := rows.Scan(&node.ID, &node.Revision, &node.Sort, &machineID); err != nil {
+			rows.Close()
+			return AdminNodeMutation{}, err
+		}
+		if machineID.Valid {
+			id := machineID.Int64
+			node.MachineID = &id
+		}
+		ordered = append(ordered, node)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return AdminNodeMutation{}, err
+	}
+	next := 0
+	for i, node := range ordered {
+		if _, ok := selected[node.ID]; ok {
+			ordered[i] = selected[requested[next].ID]
+			next++
+		}
+	}
+	changed := make(map[int64]adminNodeTarget)
+	for i, node := range ordered {
+		_, isSelected := selected[node.ID]
+		if node.Sort == i && !isSelected {
+			continue
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE nodes SET sort = ?, admin_revision = admin_revision + 1, updated_at = ? WHERE id = ? AND admin_revision = ?`, i, now.Unix(), node.ID, node.Revision)
+		if err != nil {
+			return AdminNodeMutation{}, fmt.Errorf("normalize node order: %w", err)
+		}
+		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+			return AdminNodeMutation{}, ErrConflict
+		}
+		changed[node.ID] = node
+	}
+	if err := tx.Commit(); err != nil {
+		return AdminNodeMutation{}, fmt.Errorf("commit normalized node order: %w", err)
+	}
+	return mutationForTargets(changed), nil
 }
 
 func (s *Store) UpdateAdminNodeStates(ctx context.Context, input AdminNodeStateInput, now time.Time) (AdminNodeMutation, error) {

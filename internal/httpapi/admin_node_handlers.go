@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -318,6 +319,38 @@ func (s *server) listAdminNodeParentOptions(w http.ResponseWriter, r *http.Reque
 func decodeAdminNodeFilter(w http.ResponseWriter, r *http.Request) (store.AdminNodeFilter, bool) {
 	query := r.URL.Query()
 	filter := store.AdminNodeFilter{Page: 1, PageSize: 500, Query: query.Get("q"), Type: query.Get("type")}
+	filter.SortBy, filter.SortOrder = query.Get("sort_by"), query.Get("sort_order")
+	if value := query.Get("group_id"); value != "" {
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || id < 1 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "group_id 必须是正整数", nil)
+			return store.AdminNodeFilter{}, false
+		}
+		filter.GroupID = &id
+	}
+	if value := query.Get("types"); value != "" {
+		filter.Types = strings.Split(value, ",")
+	}
+	for _, field := range []struct {
+		name   string
+		target *[]int64
+	}{{"machine_ids", &filter.MachineIDs}, {"group_ids", &filter.GroupIDs}} {
+		if value := query.Get(field.name); value != "" {
+			values := strings.Split(value, ",")
+			if len(values) > 500 {
+				writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选项过多", nil)
+				return store.AdminNodeFilter{}, false
+			}
+			for _, raw := range values {
+				id, err := strconv.ParseInt(raw, 10, 64)
+				if err != nil || id < 1 {
+					writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "筛选 ID 必须是正整数", nil)
+					return store.AdminNodeFilter{}, false
+				}
+				*field.target = append(*field.target, id)
+			}
+		}
+	}
 	var err error
 	if value := query.Get("page"); value != "" {
 		filter.Page, err = strconv.Atoi(value)

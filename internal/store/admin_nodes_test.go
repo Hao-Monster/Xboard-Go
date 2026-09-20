@@ -77,6 +77,9 @@ func TestListAdminNodesFiltersAndAggregatesWithoutChangingStableOrder(t *testing
 	if _, err := database.db.ExecContext(ctx, `INSERT INTO node_group_memberships (node_id, group_id) VALUES (?, ?)`, alpha.ID, group.ID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.db.ExecContext(ctx, `UPDATE node_protocol_definitions SET server_port=9443, transfer_enable=10240, external_code='edge-a', tags_json='["edge"]' WHERE node_id=?`, alpha.ID); err != nil {
+		t.Fatal(err)
+	}
 	user, err := database.CreateRuntimeUser(ctx, CreateRuntimeUserInput{
 		Email: "node-list-user@example.test", PasswordHash: "hash",
 		UUID: "149a434f-4b20-4fe2-97d0-3bb82b70fb44", GroupID: group.ID, TransferEnable: 1,
@@ -100,9 +103,47 @@ func TestListAdminNodesFiltersAndAggregatesWithoutChangingStableOrder(t *testing
 		t.Fatalf("page = %#v", page)
 	}
 	item := page.Items[0]
+	if item.ServerPort != 9443 || item.TransferEnable != 10240 || item.ExternalCode != "edge-a" || !reflect.DeepEqual(item.Tags, []string{"edge"}) {
+		t.Fatalf("node display fields missing: %#v", item)
+	}
 	if item.ID != alpha.ID || item.Revision != 1 || item.MachineName == nil || *item.MachineName != machine.Name ||
 		item.OnlineCount != 3 || !reflect.DeepEqual(item.GroupIDs, []int64{group.ID}) {
 		t.Fatalf("admin node = %#v", item)
+	}
+	multi, err := database.ListAdminNodes(ctx, AdminNodeFilter{Page: 1, PageSize: 1, Types: []string{"vless", "trojan"}, MachineIDs: []int64{machine.ID}, Unassigned: true}, now)
+	if err != nil || multi.Total != 2 || len(multi.Items) != 1 {
+		t.Fatalf("multi filter = %#v, %v", multi, err)
+	}
+	grouped, err := database.ListAdminNodes(ctx, AdminNodeFilter{Page: 1, PageSize: 10, GroupIDs: []int64{group.ID, 9999}, Types: []string{"vless", "trojan"}}, now)
+	if err != nil || grouped.Total != 1 || grouped.Items[0].ID != alpha.ID {
+		t.Fatalf("multi group = %#v, %v", grouped, err)
+	}
+	for _, invalid := range []AdminNodeFilter{{Page: 1, PageSize: 10, Types: []string{"bogus"}}, {Page: 1, PageSize: 10, GroupIDs: []int64{-1}}, {Page: 1, PageSize: 10, MachineIDs: []int64{0}}} {
+		if _, err := database.ListAdminNodes(ctx, invalid, now); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid filter accepted: %v", err)
+		}
+	}
+	// Filtering and sorting apply before pagination, not just to the visible browser rows.
+	for _, filter := range []AdminNodeFilter{
+		{Page: 1, PageSize: 1, GroupID: &group.ID},
+		{Page: 1, PageSize: 1, SortBy: "online_count", SortOrder: "desc"},
+		{Page: 1, PageSize: 1, SortBy: "id", SortOrder: "asc"},
+	} {
+		result, err := database.ListAdminNodes(ctx, filter, now)
+		if err != nil || len(result.Items) != 1 || result.Items[0].ID != alpha.ID {
+			t.Fatalf("filtered/sorted page = %#v, err=%v", result, err)
+		}
+		if filter.GroupID != nil && result.Total != 1 {
+			t.Fatalf("group count = %d", result.Total)
+		}
+	}
+	for _, filter := range []AdminNodeFilter{
+		{Page: 1, PageSize: 1, SortBy: "id; DELETE FROM nodes"},
+		{Page: 1, PageSize: 1, SortOrder: "desc;--"},
+	} {
+		if _, err := database.ListAdminNodes(ctx, filter, now); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid sort accepted: %v", err)
+		}
 	}
 
 	if _, err := database.ListAdminNodes(ctx, AdminNodeFilter{Page: 1, PageSize: 501}, now); !errors.Is(err, ErrInvalidInput) {
@@ -288,7 +329,7 @@ func TestReorderAdminNodesPreservesUnselectedSortSlots(t *testing.T) {
 	}
 }
 
-func TestReorderAdminNodesRejectsAmbiguousDuplicateSortSlots(t *testing.T) {
+func TestReorderAdminNodesNormalizesDuplicateSortSlots(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 28, 11, 45, 0, 0, time.UTC)
@@ -301,17 +342,26 @@ func TestReorderAdminNodesRejectsAmbiguousDuplicateSortSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	middle, err := database.CreateNode(ctx, CreateNodeInput{Name: "Unselected", Type: "vmess", Host: "middle.test", Port: "443", Show: true, Enabled: true, Sort: 10}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.ReorderAdminNodes(ctx, []AdminNodeRevision{
 		{ID: second.ID, Revision: second.Revision},
 		{ID: first.ID, Revision: first.Revision},
-	}, now.Add(time.Minute)); !errors.Is(err, ErrConflict) {
-		t.Fatalf("duplicate sort slots error=%v, want ErrConflict", err)
+	}, now.Add(time.Minute)); err != nil {
+		t.Fatalf("duplicate sort reorder: %v", err)
 	}
 	firstAfter, _ := database.GetNode(ctx, first.ID)
 	secondAfter, _ := database.GetNode(ctx, second.ID)
-	if firstAfter.Sort != 10 || secondAfter.Sort != 10 || firstAfter.Revision != first.Revision || secondAfter.Revision != second.Revision {
-		t.Fatalf("ambiguous reorder was not atomic: first=%#v second=%#v", firstAfter, secondAfter)
+	middleAfter, _ := database.GetNode(ctx, middle.ID)
+	if secondAfter.Sort != 0 || firstAfter.Sort != 1 || middleAfter.Sort != 2 {
+		t.Fatalf("unexpected normalized order: first=%d second=%d unselected=%d", firstAfter.Sort, secondAfter.Sort, middleAfter.Sort)
 	}
+	if _, err := database.ReorderAdminNodes(ctx, []AdminNodeRevision{{ID: first.ID, Revision: first.Revision}, {ID: second.ID, Revision: second.Revision}}, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale reorder = %v", err)
+	}
+
 }
 
 func TestCopyAdminNodePreservesConfigurationButNotIdentityOrEphemeralState(t *testing.T) {

@@ -25,6 +25,16 @@ func TestAdminNodeManagementAPIListsAndMutatesWithRevisionProtection(t *testing.
 		t.Fatal(err)
 	}
 	admin := loginAdmin(t, api)
+	for _, query := range []string{"group_id=0", "group_ids=1,-1", "machine_ids=nope", "types=vless,bogus", "group_id=invalid", "sort_by=password", "sort_order=invalid"} {
+		response := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes?"+query, "")
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid query %s status=%d", query, response.Code)
+		}
+	}
+	sorted := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes?sort_by=online_count&sort_order=desc", "")
+	if sorted.Code != http.StatusOK {
+		t.Fatalf("sort status=%d body=%s", sorted.Code, sorted.Body)
+	}
 
 	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/nodes?page=1&page_size=500&q=API&type=vless&show=true", "")
 	if listed.Code != http.StatusOK {
