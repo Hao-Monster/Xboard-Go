@@ -233,39 +233,219 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 
   return <main className="page-shell">
     <header className="page-header">
-      <div><p className="eyebrow">Identity and access</p><h1>用户管理</h1><p className="muted">按 Xboard 业务字段查询和管理用户；敏感订阅凭据不会进入列表响应。</p></div>
-      <button className="button primary" onClick={() => setCreating(true)}>新增用户</button>
+      <div>
+        <p className="eyebrow">Identity and access</p>
+        <h1>用户管理</h1>
+        <p className="muted">在这里可以管理用户，包括增加、删除、编辑、查询等操作。</p>
+      </div>
     </header>
 
-    <form className="user-filter-bar" onSubmit={submitFilters}>
-      <label className="search-field">邮箱前缀<input type="search" role="searchbox" aria-label="邮箱前缀" value={emailPrefix} onChange={(event) => setEmailPrefix(event.target.value)} placeholder="例如 user@" /></label>
-      <label>用户状态<select aria-label="用户状态" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">全部</option><option value="active">正常</option><option value="banned">已封禁</option></select></label>
-      <label>权限组筛选<select aria-label="权限组筛选" value={groupID} onChange={(event) => setGroupID(event.target.value)}><option value="">全部权限组</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-      <button className="button ghost" type="button" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((value) => !value)}>高级筛选</button>
-      <button className="button secondary" type="submit" disabled={loading}>查询用户</button>
-      {advancedOpen && <fieldset className="user-advanced-filters"><legend>高级筛选（全部条件同时满足）</legend>
-        {advancedFilters.map((filter, index) => <div className="user-filter-rule" key={filter.id}>
-          <label>筛选字段 {index + 1}<select aria-label={`筛选字段 ${index + 1}`} value={filter.field} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, field: event.target.value, operator: defaultFilterOperator(event.target.value), value: "" } : item))}>{advancedFilterFields.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-          <label>筛选操作符 {index + 1}<select aria-label={`筛选操作符 ${index + 1}`} value={filter.operator} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, operator: event.target.value as AdminUserFilterOperator } : item))}>{advancedFilterOperators.filter(([value]) => allowedFilterOperators(filter.field).includes(value)).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-          <label>筛选值 {index + 1}{filter.field === "plan_id" && filter.operator !== "is_null" && filter.operator !== "not_null" && filter.operator !== "in" ? <select aria-label={`筛选值 ${index + 1}`} value={filter.value} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, value: event.target.value } : item))}><option value="">选择套餐</option>{plans.map((plan) => <option value={plan.id} key={plan.id}>{plan.name}</option>)}</select> : <input aria-label={`筛选值 ${index + 1}`} value={filter.value} disabled={filter.operator === "is_null" || filter.operator === "not_null"} placeholder={filter.operator === "in" ? "多个值用英文逗号分隔" : "输入筛选值"} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, value: event.target.value } : item))} />}</label>
-          <button className="button ghost compact" type="button" aria-label={`移除筛选条件 ${index + 1}`} onClick={() => setAdvancedFilters((current) => current.filter((item) => item.id !== filter.id))}>移除</button>
-        </div>)}
-        <button className="button ghost compact" type="button" disabled={advancedFilters.length >= 10} onClick={() => setAdvancedFilters((current) => [...current, { id: nextFilterID.current++, field: "email", operator: "contains", value: "" }])}>添加筛选条件</button>
-      </fieldset>}
-    </form>
+    <div className="user-table-toolbar" aria-label="用户管理操作栏">
+      <div className="user-toolbar-left">
+        <button
+          className="button primary user-create-btn"
+          type="button"
+          aria-label="新增用户"
+          onClick={() => setCreating(true)}
+        >
+          <span className="user-btn-plus" aria-hidden="true">+</span>
+          新增用户
+        </button>
+        <form className="user-quick-filter-form" onSubmit={submitFilters}>
+          <div className="user-search-box-wrap">
+            <svg className="user-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              role="searchbox"
+              aria-label="邮箱前缀"
+              className="user-search-input"
+              value={emailPrefix}
+              onChange={(event) => setEmailPrefix(event.target.value)}
+              placeholder="搜索用户邮箱..."
+            />
+          </div>
+          <select
+            aria-label="用户状态"
+            className="user-toolbar-select"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="all">全部用户状态</option>
+            <option value="active">正常</option>
+            <option value="banned">已封禁</option>
+          </select>
+          <select
+            aria-label="权限组筛选"
+            className="user-toolbar-select"
+            value={groupID}
+            onChange={(event) => setGroupID(event.target.value)}
+          >
+            <option value="">全部权限组</option>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+          {!advancedOpen && (
+            <button className="button secondary user-query-btn" type="submit" disabled={loading}>
+              查询用户
+            </button>
+          )}
+        </form>
+      </div>
 
-    <div className="user-bulk-toolbar" aria-label="用户批量操作">
-      <span>已选择 {selectedUserIDs.size} 项，共 {total} 项</span>
-      <div className="user-bulk-menu-wrap">
-        <button className="button secondary" type="button" aria-haspopup="menu" aria-expanded={bulkMenuOpen} disabled={bulkBusy || loading || total === 0} onClick={() => setBulkMenuOpen((value) => !value)}>{bulkBusy ? "正在创建任务…" : "批量操作"}</button>
-        {bulkMenuOpen && <div className="user-bulk-menu" role="menu" aria-label="批量操作菜单">
-          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setMailing(true); }}>发送邮件({activeBulkSuffix})</button>
-          <button type="button" role="menuitem" onClick={() => void startCSVExport()}>导出 CSV({activeBulkSuffix})</button>
-          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBanning(true); }}>批量封禁({activeBulkSuffix})</button>
-          <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBulkJobsOpen(true); }}>查看批量任务</button>
-        </div>}
+      <div className="user-toolbar-right">
+        <span className="user-selection-pill">已选择 {selectedUserIDs.size} 项，共 {total} 项</span>
+        <button
+          className={`button ghost user-filter-btn ${advancedOpen ? "active" : ""}`}
+          type="button"
+          aria-expanded={advancedOpen}
+          aria-label="高级筛选"
+          onClick={() => setAdvancedOpen((value) => !value)}
+        >
+          <svg className="user-filter-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="4" y1="21" x2="4" y2="14" />
+            <line x1="4" y1="10" x2="4" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12" y2="3" />
+            <line x1="20" y1="21" x2="20" y2="16" />
+            <line x1="20" y1="12" x2="20" y2="3" />
+            <line x1="1" y1="14" x2="7" y2="14" />
+            <line x1="9" y1="8" x2="15" y2="8" />
+            <line x1="17" y1="16" x2="23" y2="16" />
+          </svg>
+          高级筛选
+          {advancedFilters.length > 0 && <span className="user-filter-badge">{advancedFilters.length}</span>}
+        </button>
+
+        <div className="user-bulk-menu-wrap">
+          <button
+            className="button secondary user-bulk-btn"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={bulkMenuOpen}
+            aria-label={bulkBusy ? "正在创建任务…" : "批量操作"}
+            disabled={bulkBusy || loading || total === 0}
+            onClick={() => setBulkMenuOpen((value) => !value)}
+          >
+            {bulkBusy ? "正在创建任务…" : "批量操作"}
+            <span className="user-bulk-caret" aria-hidden="true">▾</span>
+          </button>
+          {bulkMenuOpen && (
+            <div className="user-bulk-menu" role="menu" aria-label="批量操作菜单">
+              <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setMailing(true); }}>发送邮件({activeBulkSuffix})</button>
+              <button type="button" role="menuitem" onClick={() => void startCSVExport()}>导出 CSV({activeBulkSuffix})</button>
+              <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBanning(true); }}>批量封禁({activeBulkSuffix})</button>
+              <button type="button" role="menuitem" onClick={() => { setBulkMenuOpen(false); setBulkJobsOpen(true); }}>查看批量任务</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
+
+    {advancedOpen && (
+      <div className="user-advanced-drawer-backdrop" onClick={() => setAdvancedOpen(false)}>
+        <aside className="user-advanced-drawer-panel" onClick={(event) => event.stopPropagation()} aria-label="高级筛选面板">
+          <div className="user-advanced-drawer-header">
+            <div>
+              <h3>高级筛选</h3>
+              <p className="small muted">添加一个或多个筛选条件来精确查找用户（全部条件同时满足）</p>
+            </div>
+            <button
+              type="button"
+              className="button ghost compact user-drawer-close-btn"
+              aria-label="关闭高级筛选"
+              onClick={() => setAdvancedOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="user-advanced-drawer-body">
+            <div className="user-advanced-drawer-toolbar">
+              <span className="small text-semibold">筛选条件</span>
+              <button
+                className="button secondary compact"
+                type="button"
+                aria-label="添加筛选条件"
+                disabled={advancedFilters.length >= 10}
+                onClick={() => setAdvancedFilters((current) => [...current, { id: nextFilterID.current++, field: "email", operator: "contains", value: "" }])}
+              >
+                <span aria-hidden="true">+ </span>添加筛选条件
+              </button>
+            </div>
+
+            {advancedFilters.length === 0 ? (
+              <div className="user-advanced-empty-hint small muted">
+                暂未添加筛选条件，点击上方“添加筛选条件”开始配置。
+              </div>
+            ) : (
+              <div className="user-advanced-rules-stack">
+                {advancedFilters.map((filter, index) => (
+                  <div className="user-advanced-rule-card" key={filter.id}>
+                    <div className="user-advanced-rule-top">
+                      <span className="user-rule-tag">条件 {index + 1}</span>
+                      <button
+                        className="user-rule-delete-btn"
+                        type="button"
+                        aria-label={`移除筛选条件 ${index + 1}`}
+                        onClick={() => setAdvancedFilters((current) => current.filter((item) => item.id !== filter.id))}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="user-advanced-rule-controls">
+                      <label>筛选字段 {index + 1}
+                        <select aria-label={`筛选字段 ${index + 1}`} value={filter.field} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, field: event.target.value, operator: defaultFilterOperator(event.target.value), value: "" } : item))}>
+                          {advancedFilterFields.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                        </select>
+                      </label>
+                      <label>筛选操作符 {index + 1}
+                        <select aria-label={`筛选操作符 ${index + 1}`} value={filter.operator} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, operator: event.target.value as AdminUserFilterOperator } : item))}>
+                          {advancedFilterOperators.filter(([value]) => allowedFilterOperators(filter.field).includes(value)).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                        </select>
+                      </label>
+                      <label>筛选值 {index + 1}
+                        {filter.field === "plan_id" && filter.operator !== "is_null" && filter.operator !== "not_null" && filter.operator !== "in" ? (
+                          <select aria-label={`筛选值 ${index + 1}`} value={filter.value} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, value: event.target.value } : item))}>
+                            <option value="">选择套餐</option>
+                            {plans.map((plan) => <option value={plan.id} key={plan.id}>{plan.name}</option>)}
+                          </select>
+                        ) : (
+                          <input aria-label={`筛选值 ${index + 1}`} value={filter.value} disabled={filter.operator === "is_null" || filter.operator === "not_null"} placeholder={filter.operator === "in" ? "多个值用英文逗号分隔" : "输入筛选值"} onChange={(event) => setAdvancedFilters((current) => current.map((item) => item.id === filter.id ? { ...item, value: event.target.value } : item))} />
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="user-advanced-drawer-footer">
+            <button
+              className="button ghost"
+              type="button"
+              onClick={() => {
+                setAdvancedFilters([]);
+              }}
+            >
+              重置
+            </button>
+            <button
+              className="button primary"
+              type="button"
+              onClick={(event) => {
+                submitFilters(event);
+                setAdvancedOpen(false);
+              }}
+            >
+              查询用户
+            </button>
+          </div>
+        </aside>
+      </div>
+    )}
 
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void runQuery(appliedQuery)}>重试</button></div>}
 		{groupError !== "" && <div className="alert warning resource-alert" role="alert"><span>{groupError}</span><button className="button ghost compact" onClick={() => void retryGroups()}>重试权限组</button></div>}
