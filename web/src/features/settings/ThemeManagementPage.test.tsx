@@ -51,6 +51,7 @@ describe("ThemeManagementPage", () => {
     await user.click(xboardSettingsButton);
     expect(await screen.findByRole("dialog", { name: "Xboard 主题设置" })).toBeVisible();
     expect(screen.getByLabelText("主题色").querySelectorAll("option")).toHaveLength(4);
+    expect(screen.getByLabelText("圆角").querySelectorAll("option")).toHaveLength(4);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(xboardSettingsButton).toHaveFocus());
 
@@ -58,10 +59,11 @@ describe("ThemeManagementPage", () => {
     expect(await screen.findByRole("dialog", { name: "Aurora 主题设置" })).toBeVisible();
     await user.selectOptions(screen.getByLabelText("主题色"), "blue");
     await user.selectOptions(screen.getByLabelText("字号"), "large");
+    await user.selectOptions(screen.getByLabelText("圆角"), "square");
     await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(true));
     await user.click(screen.getByRole("button", { name: "保存主题设置" }));
     await waitFor(() => expect(api.updateThemeConfig).toHaveBeenCalledWith("Aurora", {
-      revision: 1, theme_color: "blue", background_url: "", font_scale: "large", radius: "rounded"
+      revision: 1, theme_color: "blue", background_url: "", font_scale: "large", radius: "square"
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("主题设置已保存");
     expect(changed).toHaveBeenCalledTimes(1);

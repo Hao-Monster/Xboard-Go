@@ -232,7 +232,7 @@ func ValidateConfig(manifest Manifest, config Config) error {
 	if config.FontScale != "small" && config.FontScale != "normal" && config.FontScale != "large" {
 		return errors.New("theme font scale is invalid")
 	}
-	if config.Radius != "compact" && config.Radius != "rounded" && config.Radius != "pill" {
+	if config.Radius != "compact" && config.Radius != "rounded" && config.Radius != "pill" && config.Radius != "square" {
 		return errors.New("theme radius is invalid")
 	}
 	return nil

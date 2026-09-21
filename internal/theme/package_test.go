@@ -257,3 +257,23 @@ func validManifest(name, version string) string {
 		"default_config":{"theme_color":"default","background_url":"","font_scale":"normal","radius":"rounded"}
 	}`
 }
+
+func TestValidateConfigAcceptsSquareRadius(t *testing.T) {
+	manifest := Manifest{
+		Palettes: map[string]Palette{
+			"default": {Background: "#111111", Surface: "#18181b", Text: "#f4f4f5", Muted: "#a1a1aa", Primary: "#a5b4fc", PrimaryText: "#111111", Border: "#3f3f46"},
+		},
+	}
+	validRadii := []string{"compact", "rounded", "pill", "square"}
+	for _, radius := range validRadii {
+		config := Config{ThemeColor: "default", FontScale: "normal", Radius: radius}
+		if err := ValidateConfig(manifest, config); err != nil {
+			t.Errorf("ValidateConfig() rejected valid radius %q: %v", radius, err)
+		}
+	}
+	invalidConfig := Config{ThemeColor: "default", FontScale: "normal", Radius: "invalid-radius"}
+	if err := ValidateConfig(manifest, invalidConfig); err == nil {
+		t.Error("ValidateConfig() accepted invalid radius")
+	}
+}
+
