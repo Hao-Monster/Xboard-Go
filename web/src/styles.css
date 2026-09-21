@@ -900,16 +900,280 @@ html[data-theme-sidebar-style="light"] .app-frame > .admin-layout > .admin-sideb
 .admin-account-menu { position: relative; }
 .admin-account-menu summary { cursor: pointer; }
 .admin-account-menu > button { position: absolute; right: 0; top: 28px; z-index: 30; white-space: nowrap; }
-.system-config-page { padding: 36px 24px 72px; min-width: 0; }
-.system-page-title { font-size: 2rem; }
-.system-page-desc { color: var(--theme-muted); }
-.system-tabs-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 0; margin-bottom: 16px; border-bottom: 1px solid var(--theme-border); }
-.system-tab-button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--theme-border); border-radius: 7px; background: var(--theme-surface); color: var(--theme-text); }
-.system-tab-button.active { border-color: var(--theme-primary); color: var(--theme-primary); }
-.system-tab-icon { display: inline-flex; }
-.system-content-area { min-width: 0; }
-.system-content-area > .page-shell { width: 100%; padding-top: 12px; }
-@media (max-width: 700px) { .system-config-page { padding: 24px 12px 72px; } .system-tab-button { padding: 8px; } }
+/* ==========================================================================
+   System Configuration Page Layout (Aligned with original Xboard panel)
+   Two-column architecture: vertical left subnav + seamless right form area
+   ========================================================================== */
+.system-config-page {
+  padding: 24px 32px 72px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.system-page-header {
+  margin-bottom: 24px;
+}
+
+.system-page-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--theme-text);
+}
+
+.system-page-desc {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  color: var(--theme-muted);
+}
+
+.system-config-container {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+  width: 100%;
+  margin-top: 16px;
+}
+
+/* Left-hand vertical tab subnav */
+.system-tabs-nav {
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.system-tab-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--theme-control-radius, 8px);
+  background: transparent;
+  color: var(--theme-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.system-tab-button:hover:not(.active) {
+  background: color-mix(in srgb, var(--theme-text) 6%, transparent);
+  color: var(--theme-text);
+}
+
+.system-tab-button.active {
+  background: color-mix(in srgb, var(--theme-surface) 88%, var(--theme-primary));
+  color: var(--theme-primary);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+.system-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.system-tab-button.active .system-tab-icon {
+  opacity: 1;
+}
+
+.system-tab-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right-hand content area */
+.system-content-area {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.system-content-area > .page-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Seamless form layout matching original panel */
+.system-content-area .site-settings-card {
+  margin-top: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.system-content-area .section-heading {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.system-content-area .section-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.system-content-area .section-heading .muted {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--theme-muted);
+}
+
+/* Clean fieldsets without ugly default borders */
+.system-content-area .settings-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.system-content-area .settings-fieldset legend {
+  padding: 0;
+  margin: 12px 0 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--theme-text);
+  border: none;
+}
+
+/* Enhanced Form Item Rhythm */
+.system-content-area .form-stack,
+.system-content-area .site-settings-fields,
+.system-content-area .security-settings-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.system-content-area .site-settings-url-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.system-content-area label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--theme-text);
+}
+
+.system-content-area input:not([type="checkbox"]):not([type="radio"]),
+.system-content-area textarea,
+.system-content-area select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.system-content-area p.small,
+.system-content-area p.muted {
+  margin: -2px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--theme-muted);
+}
+
+/* Toggle switch styling for .switch-label matching original panel */
+.system-content-area .switch-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.system-content-area .switch-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-background) 70%, #000);
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  margin: 0;
+}
+
+.system-content-area .switch-label input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--theme-muted);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
+}
+
+.system-content-area .switch-label input[type="checkbox"]:checked {
+  background: var(--theme-primary);
+  border-color: var(--theme-primary);
+}
+
+.system-content-area .switch-label input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+  background: var(--theme-primary-text);
+}
+
+/* Responsive adjustment for tablet/mobile */
+@media (max-width: 860px) {
+  .system-config-page {
+    padding: 20px 16px 64px;
+  }
+  .system-config-container {
+    flex-direction: column;
+    gap: 20px;
+  }
+  .system-tabs-nav {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--theme-border);
+  }
+  .system-tab-button {
+    width: auto;
+    flex-shrink: 0;
+  }
+}
 
 /* ==========================================================================
    Compact Right-Angle Theme Style (紧凑直角风格)
