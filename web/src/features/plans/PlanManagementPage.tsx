@@ -3,6 +3,8 @@ import Markdown from "react-markdown";
 
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, Plan, PlanInput, PlanPeriod, PlanPrices, ServerGroup } from "../../lib/api";
+import { invalidateAdminData } from "../../lib/useAdminData";
+import { adminDataCache } from "../../lib/dataPrefetchCache";
 import "./PlanManagementPage.css";
 
 type PlansAPI = Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups">;
@@ -32,6 +34,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
   const [pageSize, setPageSize] = useState(10);
 
   const refresh = useCallback(async () => {
+    invalidateAdminData("plans");
     setLoading(true);
     setError("");
     try {
@@ -47,7 +50,10 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.listPlans(), api.listServerGroups()]).then(([nextPlans, nextGroups]) => {
+    // Use prefetched data if available (from hover), otherwise fetch normally
+    const source = adminDataCache.consume<[Plan[], ServerGroup[]]>("plans")
+      ?? Promise.all([api.listPlans(), api.listServerGroups()]);
+    void source.then(([nextPlans, nextGroups]) => {
       if (!active) return;
       setPlans(nextPlans);
       setGroups(nextGroups);

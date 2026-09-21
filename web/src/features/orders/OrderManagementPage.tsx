@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Modal } from "../../components/Overlay";
 import type { AdminOrderDetail, AdminOrderPage, AdminOrderQuery, AssignOrderInput, Order, OrderStatus, OrderType, Plan, PlanPeriod } from "../../lib/api";
 import { formatCents, formatDate, orderStatusLabel, orderTypeLabel, periodLabel } from "./UserOrdersPage";
+import { adminDataCache } from "../../lib/dataPrefetchCache";
 
 export interface OrderManagementAPI {
   listAdminOrders: (query?: AdminOrderQuery) => Promise<AdminOrderPage>;
@@ -50,12 +51,15 @@ export function OrderManagementPage({ api }: { api: OrderManagementAPI }) {
 
   useEffect(() => {
     let active = true;
-    const query = { page: 1, page_size: 20 } satisfies AdminOrderQuery;
-    void Promise.all([api.listAdminOrders(query), api.listPlans()]).then(([orders, nextPlans]) => {
+    const defaultQuery = { page: 1, page_size: 20 } satisfies AdminOrderQuery;
+    // Consume prefetched data from hover, or fetch fresh
+    const cached = adminDataCache.consume<[AdminOrderPage, Plan[]]>("orders");
+    const source = cached ?? Promise.all([api.listAdminOrders(defaultQuery), api.listPlans()]);
+    void source.then(([orders, nextPlans]) => {
       if (!active) return;
       setPage(orders);
       setPlans(nextPlans);
-      setApplied(query);
+      setApplied(defaultQuery);
     }).catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
