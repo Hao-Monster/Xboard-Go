@@ -39,7 +39,7 @@ func (s *Store) GetSiteSettings(ctx context.Context) (SiteSettings, error) {
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, ticket_must_wait_reply,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at
@@ -87,7 +87,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		return SiteSettings{}, fmt.Errorf("begin site settings update: %w", err)
 	}
 	defer tx.Rollback()
-	var currentEmailVerificationEnabled, currentMailLoginEnabled, currentSafeModeEnabled, currentForceHTTPS, smtpEnabled bool
+	var currentEmailVerificationEnabled, currentMailLoginEnabled, currentSafeModeEnabled, currentForceHTTPS, smtpEnabled, currentTicketMustWaitReply bool
 	var currentTrialPlanID int64
 	var currentTrialHours, currentTrafficResetMethod int
 	var currentCouponEnabled bool
@@ -95,11 +95,11 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	var captchaSecrets CaptchaSecretCiphers
 	if err := tx.QueryRowContext(ctx, `
 		SELECT email_verify, login_with_mail_link_enable, safe_mode_enable, secure_path, force_https, subscribe_url, smtp_enabled, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, currency, currency_symbol,
-		       recaptcha_secret_cipher, recaptcha_v3_secret_cipher, turnstile_secret_cipher
+		       recaptcha_secret_cipher, recaptcha_v3_secret_cipher, turnstile_secret_cipher, ticket_must_wait_reply
 		FROM app_settings WHERE id = 1
 	`).Scan(
 		&currentEmailVerificationEnabled, &currentMailLoginEnabled, &currentSafeModeEnabled, &currentSecurePath, &currentForceHTTPS, &currentSubscribeURL, &smtpEnabled, &currentTrialPlanID, &currentTrialHours, &currentTrafficResetMethod, &currentCouponEnabled, &currentCurrency, &currentCurrencySymbol,
-		&captchaSecrets.Recaptcha, &captchaSecrets.RecaptchaV3, &captchaSecrets.Turnstile,
+		&captchaSecrets.Recaptcha, &captchaSecrets.RecaptchaV3, &captchaSecrets.Turnstile, &currentTicketMustWaitReply,
 	); err != nil {
 		return SiteSettings{}, fmt.Errorf("read registration email settings: %w", err)
 	}
@@ -167,6 +167,10 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 	if normalized.MailLoginEnabled && !smtpEnabled {
 		return SiteSettings{}, ErrMailLoginNeedsMail
 	}
+	ticketMustWaitReply := currentTicketMustWaitReply
+	if input.TicketMustWaitReply != nil {
+		ticketMustWaitReply = *input.TicketMustWaitReply
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE app_settings
 		SET app_name = ?, app_description = ?, app_url = ?, safe_mode_enable = ?, secure_path = ?, force_https = ?, subscribe_url = ?, tos_url = ?, logo = ?, currency = ?, currency_symbol = ?, stop_register = ?,
@@ -174,7 +178,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		    register_limit_by_ip_enable = ?, register_limit_count = ?, register_limit_expire = ?,
 		    password_limit_enable = ?, password_limit_count = ?, password_limit_expire = ?,
 		    invite_force = ?, invite_gen_limit = ?, invite_never_expire = ?, login_with_mail_link_enable = ?,
-		    try_out_plan_id = ?, try_out_hour = ?, traffic_reset_method = ?, coupon_enabled = ?,
+		    try_out_plan_id = ?, try_out_hour = ?, traffic_reset_method = ?, coupon_enabled = ?, ticket_must_wait_reply = ?,
 		    captcha_enable = ?, captcha_type = ?, recaptcha_site_key = ?, recaptcha_secret_cipher = ?,
 		    recaptcha_v3_site_key = ?, recaptcha_v3_score_threshold = ?, recaptcha_v3_secret_cipher = ?,
 		    turnstile_site_key = ?, turnstile_secret_cipher = ?,
@@ -186,7 +190,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		normalized.RegistrationIPLimitEnabled, normalized.RegistrationIPLimitCount, normalized.RegistrationIPLimitMinutes,
 		normalized.PasswordLimitEnabled, normalized.PasswordLimitCount, normalized.PasswordLimitMinutes,
 		normalized.InvitationForceEnabled, normalized.InvitationCodeLimit, normalized.InvitationNeverExpire, normalized.MailLoginEnabled,
-		*normalized.TrialPlanID, *normalized.TrialHours, *normalized.TrafficResetMethod, *normalized.CouponEnabled,
+		*normalized.TrialPlanID, *normalized.TrialHours, *normalized.TrafficResetMethod, *normalized.CouponEnabled, ticketMustWaitReply,
 		normalized.CaptchaEnabled, normalized.CaptchaType, normalized.RecaptchaSiteKey, nullableBytes(captchaSecrets.Recaptcha),
 		normalized.RecaptchaV3SiteKey, normalized.RecaptchaV3ScoreThreshold, nullableBytes(captchaSecrets.RecaptchaV3),
 		normalized.TurnstileSiteKey, nullableBytes(captchaSecrets.Turnstile),
@@ -246,7 +250,7 @@ func (s *Store) UpdateSiteSettings(ctx context.Context, administratorID, revisio
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, ticket_must_wait_reply,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at
@@ -333,7 +337,7 @@ func (s *Store) UpdateLegacySiteSettings(ctx context.Context, administratorID in
 		       email_verify, email_whitelist_enable, email_whitelist_suffix, email_gmail_limit_enable,
 		       register_limit_by_ip_enable, register_limit_count, register_limit_expire,
 		       password_limit_enable, password_limit_count, password_limit_expire,
-		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled,
+		       invite_force, invite_gen_limit, invite_never_expire, login_with_mail_link_enable, try_out_plan_id, try_out_hour, traffic_reset_method, coupon_enabled, ticket_must_wait_reply,
 		       captcha_enable, captcha_type, recaptcha_site_key, recaptcha_secret_cipher,
 		       recaptcha_v3_site_key, recaptcha_v3_score_threshold, recaptcha_v3_secret_cipher,
 		       turnstile_site_key, turnstile_secret_cipher, updated_at
@@ -631,7 +635,7 @@ func scanSiteSettings(row rowScanner) (SiteSettings, error) {
 		&settings.RegistrationIPLimitEnabled, &settings.RegistrationIPLimitCount, &settings.RegistrationIPLimitMinutes,
 		&settings.PasswordLimitEnabled, &settings.PasswordLimitCount, &settings.PasswordLimitMinutes,
 		&settings.InvitationForceEnabled, &settings.InvitationCodeLimit, &settings.InvitationNeverExpire,
-		&settings.MailLoginEnabled, &settings.TrialPlanID, &settings.TrialHours, &settings.TrafficResetMethod, &settings.CouponEnabled,
+		&settings.MailLoginEnabled, &settings.TrialPlanID, &settings.TrialHours, &settings.TrafficResetMethod, &settings.CouponEnabled, &settings.TicketMustWaitReply,
 		&settings.CaptchaEnabled, &settings.CaptchaType, &settings.RecaptchaSiteKey, &recaptchaSecretCipher,
 		&settings.RecaptchaV3SiteKey, &settings.RecaptchaV3ScoreThreshold, &recaptchaV3SecretCipher,
 		&settings.TurnstileSiteKey, &turnstileSecretCipher,

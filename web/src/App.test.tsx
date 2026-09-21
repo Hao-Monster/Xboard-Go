@@ -87,7 +87,7 @@ describe("App public identity bootstrap", () => {
       } }));
       if (path.endsWith("/api/v1/admin/admin/site-settings")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
         revision: 1, app_name: "Client Board", app_description: "", app_url: "", tos_url: "", logo: "",
-        force_https: false, stop_register: false, coupon_enabled: true, currency: "CNY", currency_symbol: "¥",
+        force_https: false, stop_register: false, ticket_must_wait_reply: false, coupon_enabled: true, currency: "CNY", currency_symbol: "¥",
         traffic_reset_method: 0, safe_mode_enable: false, secure_path: "admin", email_verify: false,
         email_whitelist_enable: false, email_whitelist_suffix: [], captcha_enable: false, captcha_type: "recaptcha",
         recaptcha_site_key: "", recaptcha_v3_site_key: "", recaptcha_v3_score_threshold: 0.5, turnstile_site_key: "",

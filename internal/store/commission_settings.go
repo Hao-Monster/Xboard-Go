@@ -45,13 +45,19 @@ func (s *Store) UpdateCommissionSettings(ctx context.Context, administratorID, r
 		    commission_withdraw_limit = COALESCE(?, commission_withdraw_limit),
 		    commission_withdraw_method = COALESCE(?, commission_withdraw_method),
 		    withdraw_close_enable = ?, commission_distribution_enable = ?, commission_distribution_l1 = ?,
-		    commission_distribution_l2 = ?, commission_distribution_l3 = ?, updated_by = ?, updated_at = ?,
+		    commission_distribution_l2 = ?, commission_distribution_l3 = ?,
+		    invite_force = COALESCE(?, invite_force),
+		    invite_gen_limit = COALESCE(?, invite_gen_limit),
+		    invite_never_expire = COALESCE(?, invite_never_expire),
+		    updated_by = ?, updated_at = ?,
 		    revision = revision + 1
 		WHERE id = 1 AND revision = ?
 	`, input.InviteCommission, input.FirstTimeEnabled, input.AutoCheckEnabled,
 		input.WithdrawLimit, withdrawMethodsJSON,
 		input.WithdrawClosed, input.DistributionEnabled, input.DistributionL1,
-		input.DistributionL2, input.DistributionL3, administratorID, now.Unix(), revision)
+		input.DistributionL2, input.DistributionL3,
+		input.InviteForce, input.InviteCodeLimit, input.InviteNeverExpire,
+		administratorID, now.Unix(), revision)
 	if err != nil {
 		return CommissionSettings{}, fmt.Errorf("update commission settings: %w", err)
 	}
@@ -77,6 +83,9 @@ func validCommissionSettings(input SaveCommissionSettingsInput) bool {
 		return false
 	}
 	if input.WithdrawMethods != nil && !validCommissionWithdrawMethods(*input.WithdrawMethods) {
+		return false
+	}
+	if input.InviteCodeLimit != nil && (*input.InviteCodeLimit < 0 || *input.InviteCodeLimit > maxInvitationCodeLimit) {
 		return false
 	}
 	percentages := [...]int{
@@ -113,13 +122,16 @@ func readCommissionSettings(ctx context.Context, query commissionSettingsQuery) 
 		SELECT revision, invite_commission, commission_first_time_enable, commission_auto_check_enable,
 		       commission_withdraw_limit, commission_withdraw_method,
 		       withdraw_close_enable, commission_distribution_enable, commission_distribution_l1,
-		       commission_distribution_l2, commission_distribution_l3, updated_at
+		       commission_distribution_l2, commission_distribution_l3,
+		       invite_force, invite_gen_limit, invite_never_expire, updated_at
 		FROM app_settings WHERE id = 1
 	`).Scan(
 		&settings.Revision, &settings.InviteCommission, &settings.FirstTimeEnabled, &settings.AutoCheckEnabled,
 		&settings.WithdrawLimit, &withdrawMethodsJSON,
 		&settings.WithdrawClosed, &settings.DistributionEnabled, &settings.DistributionL1,
-		&settings.DistributionL2, &settings.DistributionL3, &updatedAt,
+		&settings.DistributionL2, &settings.DistributionL3,
+		&settings.InviteForce, &settings.InviteCodeLimit, &settings.InviteNeverExpire,
+		&updatedAt,
 	)
 	if err != nil {
 		return CommissionSettings{}, err

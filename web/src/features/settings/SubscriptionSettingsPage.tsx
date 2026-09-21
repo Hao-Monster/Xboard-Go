@@ -181,6 +181,10 @@ export function SubscriptionSettingsPage({
           <label>当订阅新购时触发事件<select aria-label="当订阅新购时触发事件" value={policyDraft.new_order_event_id} onChange={(event) => updatePolicy("new_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>当订阅续费时触发事件<select aria-label="当订阅续费时触发事件" value={policyDraft.renew_order_event_id} onChange={(event) => updatePolicy("renew_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>当订阅变更时触发事件<select aria-label="当订阅变更时触发事件" value={policyDraft.change_order_event_id} onChange={(event) => updatePolicy("change_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="switch-label"><input type="checkbox" checked={policyDraft.default_remind_expire} onChange={(event) => updatePolicy("default_remind_expire", event.target.checked)} />到期邮件提醒</label>
+          <p className="small muted">为新用户默认开启到期前邮件提醒。</p>
+          <label className="switch-label"><input type="checkbox" checked={policyDraft.default_remind_traffic} onChange={(event) => updatePolicy("default_remind_traffic", event.target.checked)} />流量邮件提醒</label>
+          <p className="small muted">为新用户默认开启流量用尽邮件提醒。</p>
         </div>
       </section>
       {policySaved && <div className="alert success" role="status">订阅策略已保存</div>}
@@ -201,10 +205,16 @@ export function SubscriptionSettingsPage({
         <nav className="subscription-template-tabs" aria-label="订阅模板类型">
           {templateNames.map((name) => <button type="button" className={activeTemplate === name ? "active" : ""} aria-pressed={activeTemplate === name} key={name} onClick={() => setActiveTemplate(name)}>{templateLabels[name]}</button>)}
         </nav>
+        <div className="subscription-template-actions" style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+          <button type="button" className="button secondary small" onClick={() => updateTemplate("")}>清空恢复系统默认模板</button>
+        </div>
         <label className="subscription-template-field">{templateLabels[activeTemplate]} 订阅模板
           <textarea className="monospace" aria-label={`${templateLabels[activeTemplate]} 订阅模板`} spellCheck={false} value={draft.templates[activeTemplate]} onChange={(event) => updateTemplate(event.target.value)} />
         </label>
-        <p className="small muted">{new TextEncoder().encode(draft.templates[activeTemplate]).length.toLocaleString()} / 1,048,576 bytes；JSON/YAML 模板保存时由服务端校验结构。</p>
+        <div className="small muted" style={{ marginTop: "0.5rem", lineHeight: "1.5" }}>
+          <p>{new TextEncoder().encode(draft.templates[activeTemplate]).length.toLocaleString()} / 1,048,576 bytes；JSON/YAML 模板保存时由服务端校验结构。</p>
+          <p><strong>支持变量宏：</strong><code>$subs_domain</code>（订阅域名）、<code>$subs_url</code>（订阅链接完整地址）、<code>$app_name</code>（站点名称）。内容留空将回退至内置默认模板。</p>
+        </div>
       </section>}
       {saved && <div className="alert success" role="status">{displayMode === "templates" ? "订阅模板已保存" : "订阅设置已保存"}</div>}
       <div className="form-actions"><button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : displayMode === "templates" ? "保存订阅模板" : "保存订阅设置"}</button></div>

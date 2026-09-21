@@ -105,6 +105,17 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
       <div className="section-heading"><div><h2 id="commission-settings-heading">邀请佣金设置</h2><p className="muted">所有比例使用整数百分比；保存后仅影响后续订单和待处理佣金。</p></div><span className="count-pill">Revision {current.revision}</span></div>
       <form className="form-stack commission-settings-form" onSubmit={(event) => void save(event)}>
         <fieldset className="settings-fieldset">
+          <legend>邀请码设置</legend>
+          <label className="switch-label"><input type="checkbox" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
+          <p className="small muted">开启后用户注册必须填写邀请码。</p>
+          <div className="commission-settings-grid">
+            <label>邀请码生成上限<input type="number" required min={0} max={100} step={1} value={draft.invite_gen_limit} onChange={(event) => updateDraft("invite_gen_limit", numberValue(event.currentTarget))} /></label>
+          </div>
+          <p className="small muted">用户可生成的邀请码数量上限；0 为不限制或禁止生成。</p>
+          <label className="switch-label"><input type="checkbox" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
+          <p className="small muted">开启后生成的邀请码没有有效期限制。</p>
+        </fieldset>
+        <fieldset className="settings-fieldset">
           <legend>基础返佣</legend>
           <div className="commission-settings-grid">
             <label>全局邀请佣金比例（%）<input type="number" required min={0} max={100} step={1} value={draft.invite_commission} onChange={(event) => updateDraft("invite_commission", numberValue(event.currentTarget))} /></label>
@@ -119,8 +130,8 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
         <fieldset className="settings-fieldset">
           <legend>提现兼容设置</legend>
           <div className="commission-settings-grid">
-            <label>最低提现金额<input type="number" required min={0} max={90_000_000_000_000} step={0.01} value={draft.commission_withdraw_limit} onChange={(event) => updateDraft("commission_withdraw_limit", numberValue(event.currentTarget))} /></label>
-            <label>允许的提现方式（每行一个）<textarea rows={4} value={draft.commission_withdraw_method.join("\n")} onChange={(event) => updateDraft("commission_withdraw_method", event.target.value.split("\n"))} /></label>
+            <label>最低提现金额<input type="number" placeholder="请输入提现单申请门槛" required min={0} max={90_000_000_000_000} step={0.01} value={draft.commission_withdraw_limit} onChange={(event) => updateDraft("commission_withdraw_limit", numberValue(event.currentTarget))} /></label>
+            <label>允许的提现方式（每行一个）<textarea rows={4} placeholder={"USDT\n支付宝"} value={draft.commission_withdraw_method.join("\n")} onChange={(event) => updateDraft("commission_withdraw_method", event.target.value.split("\n"))} /></label>
           </div>
           <p className="small muted">该设置保持旧版配置与接口兼容；用户提现工单流程仍由独立功能门禁控制。</p>
         </fieldset>
@@ -145,6 +156,9 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
 
 function toDraft(settings: CommissionSettings): Draft {
   return {
+    invite_force: settings.invite_force,
+    invite_gen_limit: settings.invite_gen_limit,
+    invite_never_expire: settings.invite_never_expire,
     invite_commission: settings.invite_commission,
     commission_first_time_enable: settings.commission_first_time_enable,
     commission_auto_check_enable: settings.commission_auto_check_enable,
