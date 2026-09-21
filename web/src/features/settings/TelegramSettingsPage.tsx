@@ -122,7 +122,7 @@ export function TelegramSettingsPage({ api }: { api: TelegramSettingsAPI }) {
         <div className="form-stack">
           <label className="switch-label"><input type="checkbox" checked={draft.telegram_bot_enable} disabled={draft.clear_telegram_bot_token} onChange={(event) => update("telegram_bot_enable", event.target.checked)} />启用 Telegram 绑定引导</label>
           <div className="mail-settings-grid">
-            <label>机器人令牌<input type="password" maxLength={160} autoComplete="new-password" value={draft.telegram_bot_token} disabled={draft.clear_telegram_bot_token} placeholder={current.telegram_bot_token_set ? "已安全保存" : "123456789:BotToken"} onChange={(event) => update("telegram_bot_token", event.target.value)} /></label>
+            <label>机器人令牌<input type="password" maxLength={160} autoComplete="new-password" value={draft.telegram_bot_token} disabled={draft.clear_telegram_bot_token} placeholder={current.telegram_bot_token_set ? "已安全保存" : "请输入 Telegram Bot Token（如 123456789:BotToken）"} onChange={(event) => update("telegram_bot_token", event.target.value)} /></label>
             <label>Webhook Base URL<input type="url" maxLength={2048} placeholder="https://panel.example.com" value={draft.telegram_webhook_url} onChange={(event) => update("telegram_webhook_url", event.target.value)} /></label>
             <label>群组链接<input type="url" maxLength={2048} placeholder="https://t.me/example_group" value={draft.telegram_discuss_link} onChange={(event) => update("telegram_discuss_link", event.target.value)} /></label>
           </div>
@@ -132,7 +132,7 @@ export function TelegramSettingsPage({ api }: { api: TelegramSettingsAPI }) {
             setDraft({ ...draft, clear_telegram_bot_token: true, telegram_bot_enable: false, telegram_bot_token: "" });
             setError(""); setSuccess("");
           }}>清除机器人令牌</button>}
-          <p className="small muted">Webhook Base URL 留空时使用系统设置中的站点网址；两者都必须为 HTTPS。群组链接仅接受 t.me 或 telegram.me。</p>
+          <p className="small muted">Webhook Base URL 留空时使用系统设置中的站点网址；两者都必须为 HTTPS。群组链接仅接受 t.me 或 telegram.me。设置 Webhook 前请确保已保存有效的 Bot 令牌。</p>
         </div>
       </section>
       <section className="site-settings-card" aria-labelledby="telegram-webhook-heading">

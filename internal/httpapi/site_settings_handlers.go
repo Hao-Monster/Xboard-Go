@@ -116,6 +116,7 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 		TrialHours                 *int      `json:"try_out_hour"`
 		TrafficResetMethod         *int      `json:"traffic_reset_method"`
 		CouponEnabled              *bool     `json:"coupon_enabled"`
+		TicketMustWaitReply        *bool     `json:"ticket_must_wait_reply"`
 		CaptchaEnabled             *bool     `json:"captcha_enable"`
 		CaptchaType                *string   `json:"captcha_type"`
 		RecaptchaSiteKey           *string   `json:"recaptcha_site_key"`
@@ -240,6 +241,9 @@ func (s *server) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.CouponEnabled != nil {
 		next.CouponEnabled = input.CouponEnabled
+	}
+	if input.TicketMustWaitReply != nil {
+		next.TicketMustWaitReply = input.TicketMustWaitReply
 	}
 	if input.CaptchaEnabled != nil {
 		next.CaptchaEnabled = *input.CaptchaEnabled

@@ -104,11 +104,11 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
       </div>
       <form className="form-stack site-settings-form" onSubmit={(event) => void save(event)}>
         {showSite && <div className="site-settings-fields">
-          <label>站点名称<input required value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
-          <label>站点描述<textarea value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
+          <label>站点名称<input required placeholder="请输入站点名称" value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
+          <label>站点描述<textarea placeholder="请输入站点描述" value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
           <div className="site-settings-url-grid">
-            <label>站点网址<input type="url" placeholder="https://panel.example.com" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
-            <label>用户条款(TOS)URL<input type="url" placeholder="https://panel.example.com/terms" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
+            <label>站点网址<input type="url" placeholder="请输入站点URL，末尾不要/" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
+            <label>用户条款(TOS)URL<input type="url" placeholder="请输入用户条款(TOS)URL" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
             <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
           </div>
           <fieldset className="settings-fieldset">
@@ -125,10 +125,12 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
             <p className="small muted" id="subscribe-url-help">每行一个地址，最多 32 个。外网地址必须使用 HTTPS，不能包含账号、查询参数或片段；留空时使用站点网址。</p>
           </fieldset>
           <div className="site-settings-url-grid">
-            <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
-            <label>货币符号<input maxLength={16} value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
+            <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" placeholder="请输入货币代码（如 CNY、USD）" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
+            <label>货币符号<input maxLength={16} placeholder="请输入货币符号（如 ¥、$）" value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
           </div>
           <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
+          <label className="switch-label"><input type="checkbox" checked={draft.ticket_must_wait_reply} onChange={(event) => updateDraft("ticket_must_wait_reply", event.target.checked)} />工单等待回复限制</label>
+          <p className="small muted">开启后，有未回复的工单时用户不能提交新工单。</p>
           <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
           <fieldset className="settings-fieldset">
             <legend>流量重置策略</legend>
@@ -259,6 +261,7 @@ function toDraft(settings: SiteSettings): SiteDraft {
     try_out_hour: settings.try_out_hour,
     traffic_reset_method: settings.traffic_reset_method,
     coupon_enabled: settings.coupon_enabled,
+    ticket_must_wait_reply: settings.ticket_must_wait_reply ?? false,
     captcha_enable: settings.captcha_enable,
     captcha_type: settings.captcha_type,
     recaptcha_site_key: settings.recaptcha_site_key,

@@ -394,6 +394,7 @@ type SiteSettings struct {
 	TrialHours                  int       `json:"try_out_hour"`
 	TrafficResetMethod          int       `json:"traffic_reset_method"`
 	CouponEnabled               bool      `json:"coupon_enabled"`
+	TicketMustWaitReply         bool      `json:"ticket_must_wait_reply"`
 	CaptchaEnabled              bool      `json:"captcha_enable"`
 	CaptchaType                 string    `json:"captcha_type"`
 	RecaptchaSiteKey            string    `json:"recaptcha_site_key"`
@@ -437,6 +438,7 @@ type SaveSiteSettingsInput struct {
 	TrialHours                 *int
 	TrafficResetMethod         *int
 	CouponEnabled              *bool
+	TicketMustWaitReply        *bool
 	CaptchaEnabled             bool
 	CaptchaType                string
 	RecaptchaSiteKey           string
@@ -572,6 +574,9 @@ type CommissionSettings struct {
 	DistributionL1      int            `json:"commission_distribution_l1"`
 	DistributionL2      int            `json:"commission_distribution_l2"`
 	DistributionL3      int            `json:"commission_distribution_l3"`
+	InviteForce         bool           `json:"invite_force"`
+	InviteCodeLimit     int            `json:"invite_gen_limit"`
+	InviteNeverExpire   bool           `json:"invite_never_expire"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 }
 
@@ -586,6 +591,9 @@ type SaveCommissionSettingsInput struct {
 	DistributionL1      int
 	DistributionL2      int
 	DistributionL3      int
+	InviteForce         *bool
+	InviteCodeLimit     *int
+	InviteNeverExpire   *bool
 }
 
 type CommissionLog struct {

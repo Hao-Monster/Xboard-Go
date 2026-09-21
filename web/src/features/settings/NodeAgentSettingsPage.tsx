@@ -111,6 +111,7 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
           <label>拉取间隔（秒）<input type="number" required min={1} max={3600} value={draft.server_pull_interval} onChange={(event) => updateDraft("server_pull_interval", Number(event.target.value))} /></label>
           <label>推送间隔（秒）<input type="number" required min={1} max={3600} value={draft.server_push_interval} onChange={(event) => updateDraft("server_push_interval", Number(event.target.value))} /></label>
         </div>
+        <p className="small muted">对应原版“节点拉取动作轮询间隔”与“节点推送动作轮询间隔”，默认建议 60 秒。</p>
         <fieldset className="settings-fieldset">
           <legend>WebSocket</legend>
           <label className="switch-label"><input type="checkbox" checked={draft.server_ws_enable} disabled={!current.websocket_available && !draft.server_ws_enable} onChange={(event) => updateDraft("server_ws_enable", event.target.checked)} />启用节点 WebSocket</label>

@@ -7,6 +7,9 @@ import { CommissionSettingsPage } from "./CommissionSettingsPage";
 
 const initial: CommissionSettings = {
   revision: 4,
+  invite_force: false,
+  invite_gen_limit: 5,
+  invite_never_expire: false,
   invite_commission: 20,
   commission_first_time_enable: true,
   commission_auto_check_enable: true,
@@ -67,6 +70,9 @@ describe("CommissionSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "保存佣金设置" }));
     await waitFor(() => expect(api.updateCommissionSettings).toHaveBeenCalledWith({
       revision: 4,
+      invite_force: false,
+      invite_gen_limit: 5,
+      invite_never_expire: false,
       invite_commission: 25,
       commission_first_time_enable: false,
       commission_auto_check_enable: false,

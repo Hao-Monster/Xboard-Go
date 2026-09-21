@@ -80,6 +80,9 @@ type commissionSettingsRequest struct {
 	DistributionL1      *int                  `json:"commission_distribution_l1"`
 	DistributionL2      *int                  `json:"commission_distribution_l2"`
 	DistributionL3      *int                  `json:"commission_distribution_l3"`
+	InviteForce         *bool                 `json:"invite_force"`
+	InviteCodeLimit     *int                  `json:"invite_gen_limit"`
+	InviteNeverExpire   *bool                 `json:"invite_never_expire"`
 }
 
 type legacyConfigSaveRequest struct {
@@ -262,6 +265,7 @@ func (input commissionSettingsRequest) storeInput() store.SaveCommissionSettings
 		WithdrawLimit: input.WithdrawLimit, WithdrawMethods: input.WithdrawMethods,
 		DistributionEnabled: *input.DistributionEnabled, DistributionL1: *input.DistributionL1,
 		DistributionL2: *input.DistributionL2, DistributionL3: *input.DistributionL3,
+		InviteForce: input.InviteForce, InviteCodeLimit: input.InviteCodeLimit, InviteNeverExpire: input.InviteNeverExpire,
 	}
 }
 

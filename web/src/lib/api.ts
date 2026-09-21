@@ -1325,6 +1325,7 @@ export interface SiteSettings {
   try_out_hour: number;
   traffic_reset_method: number;
   coupon_enabled: boolean;
+  ticket_must_wait_reply: boolean;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -1377,6 +1378,7 @@ export interface SiteSettingsInput {
   try_out_hour: number;
   traffic_reset_method: number;
   coupon_enabled: boolean;
+  ticket_must_wait_reply: boolean;
   captcha_enable: boolean;
   captcha_type: CaptchaProvider;
   recaptcha_site_key: string;
@@ -1403,6 +1405,9 @@ export interface CommissionSettings {
   commission_distribution_l1: number;
   commission_distribution_l2: number;
   commission_distribution_l3: number;
+  invite_force: boolean;
+  invite_gen_limit: number;
+  invite_never_expire: boolean;
   updated_at: string;
 }
 
