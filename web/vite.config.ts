@@ -24,6 +24,26 @@ export default defineConfig({
     port: 4173,
     proxy: apiProxy
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Keep heavy vendor libs as their own chunks for long-term caching
+          if (id.includes("node_modules/react-dom")) return "react-dom";
+          if (id.includes("node_modules/react-markdown") || id.includes("node_modules/remark") || id.includes("node_modules/rehype")) return "markdown";
+          // Group small config/misc pages into a single chunk to cut round-trips
+          if (id.includes("features/notices") || id.includes("features/knowledge") ||
+              id.includes("features/clients") || id.includes("features/plugins")) {
+            return "admin-content-pages";
+          }
+          if (id.includes("features/coupons") || id.includes("features/giftcards") ||
+              id.includes("features/payments")) {
+            return "admin-finance-tools";
+          }
+        }
+      }
+    }
+  },
   test: {
     include: ["src/**/*.test.{ts,tsx}", "parity/**/*.test.ts"],
     environment: "jsdom",
@@ -44,3 +64,4 @@ export default defineConfig({
     }
   }
 });
+

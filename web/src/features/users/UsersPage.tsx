@@ -25,6 +25,7 @@ import {
 } from "../../lib/api";
 import { secureRandomUUID } from "../../lib/random";
 import { AssignOrderDialog } from "../orders/OrderManagementPage";
+import { adminDataCache } from "../../lib/dataPrefetchCache";
 
 type UsersAPI = Pick<AdminAPI,
   "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" |
@@ -88,7 +89,10 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   useEffect(() => {
     let active = true;
     const version = ++requestVersion.current;
-    void Promise.allSettled([api.listAdminUsers(defaultUserQuery), api.listServerGroups(), api.listPlans()]).then(([pageResult, groupsResult, plansResult]) => {
+    // Consume prefetched user list if hover fired it first; groups/plans always fetch fresh
+    const prefetchedUsers = adminDataCache.consume<{ items: AdminUser[]; total: number; page: number; page_size: number }>("users");
+    const usersSource = prefetchedUsers ?? api.listAdminUsers(defaultUserQuery);
+    void Promise.allSettled([usersSource, api.listServerGroups(), api.listPlans()]).then(([pageResult, groupsResult, plansResult]) => {
       if (!active || version !== requestVersion.current) return;
       if (pageResult.status === "fulfilled") {
         setUsers(pageResult.value.items);

@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type {
   AdminAuditPage, AuditMethod, SystemOperationsAPI, SystemStatus, TicketMailFailure, TicketMailFailurePage, WorkerStatus
 } from "../../lib/api";
+import { adminDataCache } from "../../lib/dataPrefetchCache";
 
 const pageSize = 20;
 const emptySubscriptionLoad = { in_flight: 0, peak_in_flight: 0, rate_limited: 0, busy: 0 } as const;
@@ -48,8 +49,11 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
 
   useEffect(() => {
     let active = true;
+    // Consume prefetched system status from hover if available
+    const prefetchedStatus = adminDataCache.consume<SystemStatus>("system");
+    const statusSource = prefetchedStatus ?? api.getSystemStatus();
     void Promise.all([
-      api.getSystemStatus(), api.listAdminAudit(1, pageSize, "", ""), api.listTicketMailFailures(1, pageSize)
+      statusSource, api.listAdminAudit(1, pageSize, "", ""), api.listTicketMailFailures(1, pageSize)
     ]).then(([nextStatus, nextAudit, nextFailures]) => {
       if (!active) return;
       setStatus(nextStatus);

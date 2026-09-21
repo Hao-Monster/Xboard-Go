@@ -1,9 +1,10 @@
 import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { APIClient, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
+import { APIClient, type AdminAPI, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
 import { BrandMark } from "./components/BrandMark";
 import { lazyWithPreload } from "./lib/lazyWithPreload";
+import { adminDataCache } from "./lib/dataPrefetchCache";
 
 import type { SystemConfigTab } from "./features/settings/SystemConfigShell";
 type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
@@ -93,6 +94,39 @@ export function adminPageFromHash(hash: string): AdminPage | undefined {
   const path = (hash.replace(/^#/, "").split("?")[0] ?? "").replace(/\/$/, "");
   if (path === "") return "servers";
   return (Object.keys(adminRoutes) as AdminPage[]).find((key) => adminRoutes[key] === path);
+}
+
+/** Hover-prefetch: fire JS chunk + API data in parallel before the user clicks. */
+function prefetchPageData(page: AdminPage, api: Pick<AdminAPI,
+  "listPlans" | "listServerGroups" | "listAdminOrders" | "listAdminUsers" |
+  "getSystemStatus" | "listCoupons" | "listNotices" | "listAdminNodes"
+>) {
+  preloadAdminPage(page);
+  switch (page) {
+    case "plans":
+      void adminDataCache.prefetch("plans", () => Promise.all([api.listPlans(), api.listServerGroups()]));
+      break;
+    case "orders":
+      void adminDataCache.prefetch("orders", () => Promise.all([api.listAdminOrders({ page: 1, page_size: 20 }), api.listPlans()]));
+      break;
+    case "users":
+      void adminDataCache.prefetch("users", () => api.listAdminUsers({ page: 1, page_size: 20, sort_by: "id", sort_desc: true }));
+      break;
+    case "system":
+      void adminDataCache.prefetch("system", () => api.getSystemStatus());
+      break;
+    case "nodes":
+      void adminDataCache.prefetch("nodes", () => api.listAdminNodes());
+      break;
+    case "coupons":
+      void adminDataCache.prefetch("coupons", () => api.listCoupons());
+      break;
+    case "notices":
+      void adminDataCache.prefetch("notices", () => api.listNotices());
+      break;
+    default:
+      break;
+  }
 }
 
 
@@ -372,15 +406,16 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
     if (nextPage === page) return;
-    const sequence = ++adminNavigationSequence.current;
     if (!canLeaveAdminPage()) return;
-    void loadAdminPage(nextPage).then(() => {
-      if (sequence !== adminNavigationSequence.current) return;
-      window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
-      startTransition(() => {
-        setMachineNodeTarget(null);
-        setPage(nextPage);
-      });
+    ++adminNavigationSequence.current;
+    // Kick off JS chunk load in parallel — Suspense shows skeleton while it loads
+    void loadAdminPage(nextPage).catch(() => undefined);
+    // Fire data prefetch in parallel (no-op if hover already did it)
+    prefetchPageData(nextPage, api);
+    window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
+    startTransition(() => {
+      setMachineNodeTarget(null);
+      setPage(nextPage);
     });
   };
   const signOut = () => {
@@ -459,8 +494,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
                             key={item.page}
                             className={`nav-link ${isActive ? "active" : ""}`}
                             aria-current={isActive ? "page" : undefined}
-                            onPointerEnter={() => preloadAdminPage(item.page)}
-                            onFocus={() => preloadAdminPage(item.page)}
+                            onPointerEnter={() => prefetchPageData(item.page, api)}
+                            onFocus={() => prefetchPageData(item.page, api)}
                             onClick={() => navigateAdminPage(item.page)}
                           >
                             {item.label}
@@ -475,7 +510,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
           </div>
         </nav>
         <div className="admin-content">
-          <Suspense fallback={<div className="app-loading">正在加载管理页面…</div>}>
+          <Suspense fallback={<AdminPageSkeleton page={page} />}>
             {activeConfigTab !== undefined && <SystemConfigShell
               api={api} activeTab={activeConfigTab}
               onTabChange={(tab) => navigateAdminPage(configDestinations[tab])}
@@ -515,6 +550,37 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
           </Suspense>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Skeleton screen shown by Suspense while the admin page JS chunk is loading. */
+function AdminPageSkeleton({ page }: { page: AdminPage }) {
+  const isTable = ["plans", "orders", "users", "tickets", "coupons", "gift-cards",
+    "notices", "knowledge", "clients", "plugins", "payments", "distributors",
+    "groups", "routes", "servers", "nodes"].includes(page);
+  const isDashboard = page === "system";
+  return (
+    <div className="admin-page-skeleton">
+      <div className="skeleton-block skeleton-eyebrow" />
+      <div className="skeleton-block skeleton-page-title" />
+      <div className="skeleton-block skeleton-page-sub" />
+      {isTable && (
+        <>
+          <div className="skeleton-block skeleton-toolbar" />
+          <div className="skeleton-block skeleton-table-header" />
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="skeleton-block skeleton-table-row" />
+          ))}
+        </>
+      )}
+      {isDashboard && (
+        <div className="skeleton-card-grid">
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="skeleton-block skeleton-metric-card" />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
