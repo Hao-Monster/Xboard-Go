@@ -61,15 +61,30 @@ export function useAdminData<T>(
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const refreshCountRef = useRef(0);
+  // If key changes, adjust state during render
+  const [prevKey, setPrevKey] = useState(key);
+  if (prevKey !== key) {
+    setPrevKey(key);
+    setData(cached?.data);
+    setInitialLoading(cached === undefined);
+    setRefreshing(false);
+    setError("");
+  }
+
   // Keep fetcher stable reference to avoid spurious effect runs.
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const doFetch = useCallback((isBackground: boolean, overridePromise?: Promise<T>) => {
     const seq = ++refreshCountRef.current;
-    if (isBackground) setRefreshing(true);
-    else setInitialLoading(true);
-    setError("");
+    queueMicrotask(() => {
+      if (seq !== refreshCountRef.current) return;
+      if (isBackground) setRefreshing(true);
+      else setInitialLoading(true);
+      setError("");
+    });
 
     const promise = overridePromise ?? fetcherRef.current();
     void promise.then((result) => {
@@ -88,27 +103,21 @@ export function useAdminData<T>(
   }, [key]);
 
   useEffect(() => {
-    const now = Date.now();
-    const isStale = cached === undefined || now - cached.fetchedAt > staleTtlMs;
+    const entry = staleStore.get(key) as { data: T; fetchedAt: number } | undefined;
+    const isStale = entry === undefined || Date.now() - entry.fetchedAt > staleTtlMs;
 
     if (!isStale) {
-      // Data is fresh — nothing to do. Update state in case key changed.
-      setData(cached.data);
-      setInitialLoading(false);
       return;
     }
 
-    if (cached !== undefined) {
-      // Stale data available — show it immediately, refresh in background.
-      setData(cached.data);
-      setInitialLoading(false);
+    if (entry !== undefined) {
+      // Stale data available — refresh in background.
       doFetch(true, prefetchedPromise as Promise<T> | undefined);
     } else {
       // No cached data — use prefetch promise if available, otherwise fetch.
       doFetch(false, prefetchedPromise as Promise<T> | undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, staleTtlMs, doFetch]);
+  }, [key, staleTtlMs, doFetch, prefetchedPromise]);
 
   const refresh = useCallback(() => {
     staleStore.delete(key);
