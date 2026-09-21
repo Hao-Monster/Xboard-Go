@@ -275,7 +275,7 @@ func legacyThemeDefinition(item store.Theme) map[string]any {
 			{"label": "主题色", "field_name": "theme_color", "field_type": "select", "select_options": paletteOptions, "default_value": item.Config.ThemeColor},
 			{"label": "背景", "field_name": "background_url", "field_type": "select", "select_options": item.Backgrounds, "default_value": item.Config.BackgroundURL},
 			{"label": "字号", "field_name": "font_scale", "field_type": "select", "select_options": []string{"small", "normal", "large"}, "default_value": item.Config.FontScale},
-			{"label": "圆角", "field_name": "radius", "field_type": "select", "select_options": []string{"compact", "rounded", "pill"}, "default_value": item.Config.Radius},
+			{"label": "圆角", "field_name": "radius", "field_type": "select", "select_options": []string{"compact", "rounded", "pill", "square"}, "default_value": item.Config.Radius},
 		},
 	}
 }

@@ -1473,7 +1473,7 @@ export interface ThemeConfig {
   theme_color: string;
   background_url: string;
   font_scale: "small" | "normal" | "large";
-  radius: "compact" | "rounded" | "pill";
+  radius: "compact" | "rounded" | "pill" | "square";
 }
 
 export interface ThemeAppearance {

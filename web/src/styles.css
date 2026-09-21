@@ -23,6 +23,7 @@ html[data-theme-font-scale="large"] { font-size: 17px; }
 html[data-theme-radius="compact"] { --theme-card-radius: 8px; --theme-control-radius: 5px; }
 html[data-theme-radius="rounded"] { --theme-card-radius: 16px; --theme-control-radius: 9px; }
 html[data-theme-radius="pill"] { --theme-card-radius: 24px; --theme-control-radius: 999px; }
+html[data-theme-radius="square"] { --theme-card-radius: 0px; --theme-control-radius: 0px; }
 body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--theme-text); background-color: var(--theme-background); background-image: var(--theme-background-image), radial-gradient(circle at 15% -10%, color-mix(in srgb, var(--theme-primary) 22%, transparent) 0, transparent 34rem); background-position: center, center; background-size: cover, auto; background-attachment: fixed, scroll; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -909,3 +910,102 @@ html[data-theme-sidebar-style="light"] .app-frame > .admin-layout > .admin-sideb
 .system-content-area { min-width: 0; }
 .system-content-area > .page-shell { width: 100%; padding-top: 12px; }
 @media (max-width: 700px) { .system-config-page { padding: 24px 12px 72px; } .system-tab-button { padding: 8px; } }
+
+/* ==========================================================================
+   Compact Right-Angle Theme Style (紧凑直角风格)
+   Pure geometric precision, razor-sharp 0px borders, high-density technical UI
+   ========================================================================== */
+html[data-theme-radius="square"] .brand-mark,
+html[data-theme-radius="square"] .nav-link,
+html[data-theme-radius="square"] .button,
+html[data-theme-radius="square"] .icon-button,
+html[data-theme-radius="square"] input,
+html[data-theme-radius="square"] textarea,
+html[data-theme-radius="square"] select,
+html[data-theme-radius="square"] .modal,
+html[data-theme-radius="square"] .modal-panel,
+html[data-theme-radius="square"] .security-card,
+html[data-theme-radius="square"] .site-settings-card,
+html[data-theme-radius="square"] .login-card,
+html[data-theme-radius="square"] .detail-section,
+html[data-theme-radius="square"] .issued-token,
+html[data-theme-radius="square"] .issued-token code,
+html[data-theme-radius="square"] .count-badge,
+html[data-theme-radius="square"] .session-row,
+html[data-theme-radius="square"] .status-badge,
+html[data-theme-radius="square"] .overview-metric,
+html[data-theme-radius="square"] .invitation-panel,
+html[data-theme-radius="square"] .system-filter-bar,
+html[data-theme-radius="square"] .filter-bar,
+html[data-theme-radius="square"] .machine-card,
+html[data-theme-radius="square"] .empty-card,
+html[data-theme-radius="square"] .metrics div,
+html[data-theme-radius="square"] .badge,
+html[data-theme-radius="square"] .count-pill,
+html[data-theme-radius="square"] .alert,
+html[data-theme-radius="square"] .user-filter-bar,
+html[data-theme-radius="square"] .user-advanced-filters,
+html[data-theme-radius="square"] .user-bulk-toolbar,
+html[data-theme-radius="square"] .user-bulk-menu,
+html[data-theme-radius="square"] .user-bulk-menu button,
+html[data-theme-radius="square"] .bulk-scope-options label,
+html[data-theme-radius="square"] .user-detail-field,
+html[data-theme-radius="square"] .node-bulk-toolbar,
+html[data-theme-radius="square"] .node-definition-form fieldset,
+html[data-theme-radius="square"] .node-advanced-settings,
+html[data-theme-radius="square"] .resource-table-wrap,
+html[data-theme-radius="square"] .match-list code,
+html[data-theme-radius="square"] .route-action,
+html[data-theme-radius="square"] .notice-order-list li,
+html[data-theme-radius="square"] .notice-order-list li > span:first-child::before,
+html[data-theme-radius="square"] .notice-card,
+html[data-theme-radius="square"] .markdown-body code,
+html[data-theme-radius="square"] .markdown-body pre,
+html[data-theme-radius="square"] .knowledge-category-card,
+html[data-theme-radius="square"] .knowledge-attachment-editor,
+html[data-theme-radius="square"] .knowledge-attachment-list li,
+html[data-theme-radius="square"] .knowledge-rich-toolbar,
+html[data-theme-radius="square"] .knowledge-rich-insert-row,
+html[data-theme-radius="square"] .theme-card,
+html[data-theme-radius="square"] .theme-preview-image,
+html[data-theme-radius="square"] .theme-config-preview,
+html[data-theme-radius="square"] .theme-swatch span,
+html[data-theme-radius="square"] .theme-swatch strong,
+html[data-theme-radius="square"] .system-config-nav,
+html[data-theme-radius="square"] .system-config-nav-tab,
+html[data-theme-radius="square"] .system-tab-button,
+html[data-theme-radius="square"] .rr-table-wrap,
+html[data-theme-radius="square"] .sg-table-wrap,
+html[data-theme-radius="square"] .plan-table-wrap,
+html[data-theme-radius="square"] .plan-card,
+html[data-theme-radius="square"] .plan-feature-tag,
+html[data-theme-radius="square"] .plan-action-btn,
+html[data-theme-radius="square"] .node-table-container,
+html[data-theme-radius="square"] [class*="-card"],
+html[data-theme-radius="square"] [class*="-badge"],
+html[data-theme-radius="square"] [class*="-pill"],
+html[data-theme-radius="square"] [class*="-modal"],
+html[data-theme-radius="square"] [class*="-menu"] {
+  border-radius: 0 !important;
+}
+
+html[data-theme-radius="square"] input[type="checkbox"] {
+  border-radius: 0 !important;
+}
+
+/* Enhanced precision micro-details for square technical theme */
+html[data-theme-radius="square"] .badge,
+html[data-theme-radius="square"] .count-pill,
+html[data-theme-radius="square"] .status-badge,
+html[data-theme-radius="square"] .count-badge,
+html[data-theme-radius="square"] .route-action {
+  border-radius: 0 !important;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+html[data-theme-radius="square"] :focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 1px;
+}
+
