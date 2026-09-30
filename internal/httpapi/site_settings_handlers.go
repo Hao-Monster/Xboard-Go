@@ -8,6 +8,7 @@ import (
 
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/Hao-Monster/Xboard-Go/internal/theme"
 )
 
 type guestConfigResponse struct {
@@ -48,7 +49,7 @@ func (s *server) getGuestConfig(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if themeAppearance.Config.BackgroundURL != "" {
+	if themeAppearance.Config.BackgroundURL != "" && !theme.IsRemoteBackgroundURL(themeAppearance.Config.BackgroundURL) {
 		themeAppearance.Config.BackgroundURL = themeAssetURL(themeAppearance.Name, themeAppearance.PackageSHA256, themeAppearance.Config.BackgroundURL)
 	}
 	emailWhitelistSuffix := any(0)

@@ -20,11 +20,12 @@ const maxThemeUploadBody = theme.MaxArchiveBytes + 64<<10
 var themeArchiveFilenamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}\.[zZ][iI][pP]$`)
 
 type themeConfigRequest struct {
-	Revision      int64  `json:"revision"`
-	ThemeColor    string `json:"theme_color"`
-	BackgroundURL string `json:"background_url"`
-	FontScale     string `json:"font_scale"`
-	Radius        string `json:"radius"`
+	CustomHTML    *string `json:"custom_html"`
+	Revision      int64   `json:"revision"`
+	ThemeColor    string  `json:"theme_color"`
+	BackgroundURL string  `json:"background_url"`
+	FontScale     string  `json:"font_scale"`
+	Radius        string  `json:"radius"`
 }
 
 func (s *server) listThemes(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +99,17 @@ func (s *server) updateThemeConfig(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "主题配置版本无效", nil)
 		return
 	}
+	current, err := s.store.GetTheme(r.Context(), r.PathValue("name"))
+	if writeThemeStoreError(w, err) {
+		return
+	}
+	footer := current.Config.CustomHTML
+	if input.CustomHTML != nil {
+		footer = *input.CustomHTML
+	}
 	session, _ := sessionFromContext(r.Context())
 	updated, err := s.store.UpdateThemeConfig(r.Context(), session.UserID, r.PathValue("name"), input.Revision, theme.Config{
-		ThemeColor: input.ThemeColor, BackgroundURL: input.BackgroundURL, FontScale: input.FontScale, Radius: input.Radius,
+		CustomHTML: footer, ThemeColor: input.ThemeColor, BackgroundURL: input.BackgroundURL, FontScale: input.FontScale, Radius: input.Radius,
 	}, s.now())
 	if writeThemeStoreError(w, err) {
 		return
@@ -232,16 +241,15 @@ func (s *server) legacySaveThemeConfig(w http.ResponseWriter, r *http.Request) {
 	if !decodeStrictUTF8JSON(w, r, &input) {
 		return
 	}
-	if input.Config.CustomHTML != nil && strings.TrimSpace(*input.Config.CustomHTML) != "" {
-		writeLegacyInviteFailure(w, http.StatusUnprocessableEntity, "出于安全原因不支持自定义 HTML 或脚本")
-		return
-	}
 	current, err := s.store.GetTheme(r.Context(), input.Name)
 	if err != nil {
 		writeLegacyThemeError(w, err)
 		return
 	}
 	config := current.Config
+	if input.Config.CustomHTML != nil {
+		config.CustomHTML = *input.Config.CustomHTML
+	}
 	if input.Config.ThemeColor != nil {
 		config.ThemeColor = *input.Config.ThemeColor
 	}

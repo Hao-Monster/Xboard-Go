@@ -655,3 +655,41 @@ func httptestRequest(api http.Handler, method, path string, headers map[string]s
 	api.ServeHTTP(response, request)
 	return response
 }
+
+func TestAdminDistributorSettlementMonthContract(t *testing.T) {
+	api, db := newTestAPI(t)
+	plan, dealer := createHTTPDistributorFixture(t, db)
+	admin := loginAdmin(t, api)
+	if _, err := db.CreateDistributorOrder(context.Background(), store.CreateDistributorOrderInput{DistributorUserID: dealer.ID, PlanID: plan.ID, Period: "monthly"}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/api/v1/admin/admin/distributors/%d/settlement", dealer.ID)
+	for _, request := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/v1/admin/admin/distributor-orders?settlement_month=invalid", ""},
+		{http.MethodGet, "/api/v1/admin/admin/distributor-orders/export?settlement_month=invalid", ""},
+		{http.MethodGet, path + "?settlement_month=invalid", ""},
+		{http.MethodPost, path, `{"settlement_month":"invalid"}`},
+	} {
+		response := admin.request(t, api, request.method, request.path, request.body)
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid month %s: %d %s", request.path, response.Code, response.Body)
+		}
+	}
+	absentMonth := fixedNow().AddDate(0, -2, 0).Format("2006-01")
+	listed := admin.request(t, api, http.MethodGet, "/api/v1/admin/admin/distributor-orders?settlement_month="+absentMonth, "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"total":0`) {
+		t.Fatalf("month list: %d %s", listed.Code, listed.Body)
+	}
+	preview := admin.request(t, api, http.MethodGet, path+"?settlement_month="+absentMonth, "")
+	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"count":0`) {
+		t.Fatalf("month preview: %d %s", preview.Code, preview.Body)
+	}
+	settled := admin.request(t, api, http.MethodPost, path, fmt.Sprintf(`{"settlement_month":%q}`, absentMonth))
+	if settled.Code != http.StatusOK || !strings.Contains(settled.Body.String(), `"count":0`) {
+		t.Fatalf("month settle: %d %s", settled.Code, settled.Body)
+	}
+	remaining := admin.request(t, api, http.MethodGet, path, "")
+	if remaining.Code != http.StatusOK || !strings.Contains(remaining.Body.String(), `"count":1`) {
+		t.Fatalf("excluded month changed: %d %s", remaining.Code, remaining.Body)
+	}
+}

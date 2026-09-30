@@ -1,3 +1,4 @@
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { AdminAPI, CommissionSettings, CommissionSettingsInput } from "../../lib/api";
@@ -97,32 +98,32 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
   ];
 
   return <main className="page-shell commission-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Referral commission</p><h1>佣金设置</h1><p className="muted">配置邀请订单返佣、确认方式与三级分佣规则。</p></div></header>
+    <header className="page-header"><div><h1>佣金设置</h1><p className="muted">配置邀请订单返佣、确认方式与三级分佣规则。</p></div></header>
     {loading && draft === null && <div className="empty-card" aria-live="polite">正在加载佣金设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {draft === null && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载佣金设置</button>}
     {draft !== null && current !== null && <section className="site-settings-card" aria-labelledby="commission-settings-heading">
-      <div className="section-heading"><div><h2 id="commission-settings-heading">邀请佣金设置</h2><p className="muted">所有比例使用整数百分比；保存后仅影响后续订单和待处理佣金。</p></div><span className="count-pill">Revision {current.revision}</span></div>
-      <form className="form-stack commission-settings-form" onSubmit={(event) => void save(event)}>
+      <div className="section-heading"><div><h2 id="commission-settings-heading">邀请佣金设置</h2><p className="muted">所有比例使用整数百分比；保存后仅影响后续订单和待处理佣金。</p></div></div>
+      <AutoSaveForm saving={saving} className="form-stack commission-settings-form" onSubmit={(event) => void save(event)}>
         <fieldset className="settings-fieldset">
           <legend>邀请码设置</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
           <p className="small muted">开启后用户注册必须填写邀请码。</p>
           <div className="commission-settings-grid">
             <label>邀请码生成上限<input type="number" required min={0} max={100} step={1} value={draft.invite_gen_limit} onChange={(event) => updateDraft("invite_gen_limit", numberValue(event.currentTarget))} /></label>
           </div>
-          <p className="small muted">用户可生成的邀请码数量上限；0 为不限制或禁止生成。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
-          <p className="small muted">开启后生成的邀请码没有有效期限制。</p>
+          <p className="small muted">用户可生成的未使用邀请码数量上限；0 表示禁止创建新邀请码。</p>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
+          <p className="small muted">开启后，邀请码使用后不会失效，同一码可供多个新用户注册。</p>
         </fieldset>
         <fieldset className="settings-fieldset">
           <legend>基础返佣</legend>
           <div className="commission-settings-grid">
             <label>全局邀请佣金比例（%）<input type="number" required min={0} max={100} step={1} value={draft.invite_commission} onChange={(event) => updateDraft("invite_commission", numberValue(event.currentTarget))} /></label>
             <div className="commission-switches">
-              <label className="switch-label"><input type="checkbox" checked={draft.commission_first_time_enable} onChange={(event) => updateDraft("commission_first_time_enable", event.target.checked)} />仅首次有效订单返佣</label>
-              <label className="switch-label"><input type="checkbox" checked={draft.commission_auto_check_enable} onChange={(event) => updateDraft("commission_auto_check_enable", event.target.checked)} />自动确认到期佣金</label>
-              <label className="switch-label"><input type="checkbox" checked={draft.withdraw_close_enable} onChange={(event) => updateDraft("withdraw_close_enable", event.target.checked)} />佣金直接计入账户余额</label>
+              <label className="switch-label"><input type="checkbox" role="switch" checked={draft.commission_first_time_enable} onChange={(event) => updateDraft("commission_first_time_enable", event.target.checked)} />仅首次有效订单返佣</label>
+              <label className="switch-label"><input type="checkbox" role="switch" checked={draft.commission_auto_check_enable} onChange={(event) => updateDraft("commission_auto_check_enable", event.target.checked)} />自动确认到期佣金</label>
+              <label className="switch-label"><input type="checkbox" role="switch" checked={draft.withdraw_close_enable} onChange={(event) => updateDraft("withdraw_close_enable", event.target.checked)} />佣金直接计入账户余额</label>
             </div>
           </div>
           {draft.withdraw_close_enable && <p className="alert warning">启用后，已确认佣金会直接计入账户余额，不再进入可划转的佣金余额。</p>}
@@ -137,7 +138,7 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
         </fieldset>
         <fieldset className="settings-fieldset">
           <legend>三级分佣</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.commission_distribution_enable} onChange={(event) => updateDraft("commission_distribution_enable", event.target.checked)} />启用三级分佣</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.commission_distribution_enable} onChange={(event) => updateDraft("commission_distribution_enable", event.target.checked)} />启用三级分佣</label>
           <div className="commission-level-grid">
             {(["commission_distribution_l1", "commission_distribution_l2", "commission_distribution_l3"] as const).map((field, index) => <label key={field}>{["一级", "二级", "三级"][index]}分佣比例（%）<input type="number" required min={0} max={100} step={1} disabled={!draft.commission_distribution_enable} value={rateValue(field)} onChange={(event) => updateDraft(field, numberValue(event.currentTarget))} /></label>)}
           </div>
@@ -149,7 +150,7 @@ export function CommissionSettingsPage({ api }: { api: CommissionSettingsAPI }) 
           {error !== "" && <button className="button secondary" type="button" disabled={saving} onClick={() => void load()}>刷新最新设置</button>}
           <button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : "保存佣金设置"}</button>
         </div>
-      </form>
+      </AutoSaveForm>
     </section>}
   </main>;
 }

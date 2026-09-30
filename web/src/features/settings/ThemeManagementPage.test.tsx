@@ -19,7 +19,7 @@ const xboard: ThemeItem = {
 };
 
 const aurora: ThemeItem = {
-  ...xboard, name: "Aurora", description: "Custom", images: ["assets/preview.png"],
+  ...xboard, config: {...xboard.config, font_scale: "large", radius: "square"}, name: "Aurora", description: "Custom", images: ["assets/preview.png"],
   package_sha256: "a".repeat(64), is_system: false, is_active: false, can_delete: true,
   updated_at: "2026-08-30T12:00:00Z"
 };
@@ -31,7 +31,7 @@ describe("ThemeManagementPage", () => {
     const user = userEvent.setup();
     const dirty = vi.fn();
     const changed = vi.fn();
-    const saved = { ...aurora, revision: 2, config: { ...aurora.config, theme_color: "blue", font_scale: "large" } };
+    const saved = { ...aurora, revision: 2, config: { ...aurora.config, theme_color: "blue", background_url: "https://images.example.test/bg.png", custom_html: "<p>联系支持</p>" } };
     const api = {
       listThemes: vi.fn().mockResolvedValue(catalog),
 	  updateThemeLayout: vi.fn(),
@@ -51,19 +51,20 @@ describe("ThemeManagementPage", () => {
     await user.click(xboardSettingsButton);
     expect(await screen.findByRole("dialog", { name: "Xboard 主题设置" })).toBeVisible();
     expect(screen.getByLabelText("主题色").querySelectorAll("option")).toHaveLength(4);
-    expect(screen.getByLabelText("圆角").querySelectorAll("option")).toHaveLength(4);
+    expect(screen.queryByLabelText("圆角")).not.toBeInTheDocument();
+    expect(screen.getByRole("option", {name:"蓝色"})).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await waitFor(() => expect(xboardSettingsButton).toHaveFocus());
 
     await user.click(settingsButton);
     expect(await screen.findByRole("dialog", { name: "Aurora 主题设置" })).toBeVisible();
     await user.selectOptions(screen.getByLabelText("主题色"), "blue");
-    await user.selectOptions(screen.getByLabelText("字号"), "large");
-    await user.selectOptions(screen.getByLabelText("圆角"), "square");
+    await user.type(screen.getByLabelText("背景 URL"), "https://images.example.test/bg.png");
+    await user.type(screen.getByLabelText("自定义页脚 HTML"), "<p>联系支持</p>");
     await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(true));
     await user.click(screen.getByRole("button", { name: "保存主题设置" }));
     await waitFor(() => expect(api.updateThemeConfig).toHaveBeenCalledWith("Aurora", {
-      revision: 1, theme_color: "blue", background_url: "", font_scale: "large", radius: "square"
+      revision: 1, theme_color: "blue", background_url: "https://images.example.test/bg.png", custom_html: "<p>联系支持</p>", font_scale: "large", radius: "square"
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("主题设置已保存");
     expect(changed).toHaveBeenCalledTimes(1);

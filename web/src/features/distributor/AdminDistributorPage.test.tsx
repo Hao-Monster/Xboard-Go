@@ -18,7 +18,7 @@ const order = makeOrder();
 const detail: AdminDistributorOrderDetail = { order, hwid: { enabled: true, limit: 1, registered_count: 1 }, subscribe_url: "https://board.example.test/api/v1/client/subscribe?token=administrator-only" };
 
 describe("AdminDistributorPage", () => {
-  it("covers filtering, detail mutations, HWID devices, and transactional settlement", async () => {
+  it.each([false, true])("covers filtering, detail mutations and settlement with embedded=%s", async (embedded) => {
     const api = {
       listAdminDistributorOptions: vi.fn().mockResolvedValue([distributor]),
       listAdminDistributorOrders: vi.fn().mockResolvedValue({ items: [order], total: 1, page: 1, page_size: 20 }),
@@ -33,13 +33,24 @@ describe("AdminDistributorPage", () => {
       exportAdminDistributorOrders: vi.fn()
     };
     const user = userEvent.setup();
-    render(<AdminDistributorPage api={api} />);
+    render(<AdminDistributorPage api={api} embedded={embedded} />);
     expect(await screen.findByText(order.order.trade_no)).toBeVisible();
+    if (embedded) {
+      expect(screen.getByRole("heading", { name: "分销订单与结算" })).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "结算月份" }));
+      const picker = within(screen.getByRole("dialog", { name: "结算月份选择" }));
+      const year = new Date().getFullYear();
+      for (let i = year; i > 2026; i--) await user.click(picker.getByRole("button", { name: "上一年" }));
+      for (let i = year; i < 2026; i++) await user.click(picker.getByRole("button", { name: "下一年" }));
+      await user.click(picker.getByRole("button", { name: "8月" }));
+      await waitFor(() => expect(api.listAdminDistributorOrders).toHaveBeenLastCalledWith(expect.objectContaining({ settlement_month: "2026-08" })));
+    }
+
 
     await user.selectOptions(screen.getByLabelText("分销商"), "9");
     await waitFor(() => expect(api.listAdminDistributorOrders).toHaveBeenLastCalledWith(expect.objectContaining({ distributor_user_id: 9 })));
-    await user.type(screen.getByPlaceholderText("订单、客户名或订阅凭据"), "administrator-only");
-    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await user.type(screen.getByPlaceholderText(embedded ? "订单号/用户名称/订阅链接" : "订单、客户名或订阅凭据"), "administrator-only");
+    await user.click(screen.getByRole("button", { name: embedded ? "查询" : "搜索" }));
     await waitFor(() => expect(api.listAdminDistributorOrders).toHaveBeenLastCalledWith(expect.objectContaining({ search: "administrator-only" })));
 
     await user.click(screen.getByRole("button", { name: `分销订单详情：${order.order.trade_no}` }));
@@ -67,7 +78,10 @@ describe("AdminDistributorPage", () => {
     const settlement = await screen.findByRole("dialog", { name: "分销订单结算" });
     expect(await within(settlement).findByText("¥100.00")).toBeVisible();
     await user.click(within(settlement).getByRole("button", { name: "确认结算" }));
-    await waitFor(() => expect(api.settleAdminDistributorOrders).toHaveBeenCalledWith(9));
+    await waitFor(() => embedded
+      ? expect(api.settleAdminDistributorOrders).toHaveBeenCalledWith(9, "2026-08")
+      : expect(api.settleAdminDistributorOrders).toHaveBeenCalledWith(9));
+    if (embedded) expect(api.previewAdminDistributorSettlement).toHaveBeenCalledWith(9, "2026-08");
   });
 });
 

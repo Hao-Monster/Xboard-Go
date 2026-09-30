@@ -336,3 +336,69 @@ func equalTimePointers(left, right *time.Time) bool {
 	}
 	return left.Equal(*right)
 }
+
+func TestPlanDistributorHWIDLimitCompatibility(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	input := SavePlanInput{Name: "HWID plan", TransferEnableGiB: 100}
+	plan, err := database.CreatePlan(ctx, input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DistributorHWIDLimit != 1 {
+		t.Fatalf("default limit = %d", plan.DistributorHWIDLimit)
+	}
+	limit := 7
+	input.DistributorHWIDLimit = &limit
+	plan, err = database.UpdatePlan(ctx, plan.ID, plan.Revision, input, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.DistributorHWIDLimit = nil
+	plan, err = database.UpdatePlan(ctx, plan.ID, plan.Revision, input, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DistributorHWIDLimit != 7 {
+		t.Fatalf("omitted field overwrote limit: %d", plan.DistributorHWIDLimit)
+	}
+	for _, invalid := range []int{0, -1, 101} {
+		input.DistributorHWIDLimit = &invalid
+		if _, err := database.CreatePlan(ctx, input, now); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("limit %d accepted: %v", invalid, err)
+		}
+	}
+}
+
+func TestSchemaV65PreservesPlansAndConstrainsHWIDLimit(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	plan, err := database.CreatePlan(ctx, SavePlanInput{Name: "Existing", TransferEnableGiB: 23}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.ExecContext(ctx, `ALTER TABLE plans DROP COLUMN distributor_hwid_limit; PRAGMA user_version = 64`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := database.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var name string
+	var traffic int64
+	var limit int
+	if err := database.db.QueryRowContext(ctx, `SELECT name, transfer_enable_gib, distributor_hwid_limit FROM plans WHERE id = ?`, plan.ID).Scan(&name, &traffic, &limit); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Existing" || traffic != 23 || limit != 1 {
+		t.Fatalf("migration changed plan: %q/%d/%d", name, traffic, limit)
+	}
+	for _, invalid := range []int{0, 101} {
+		if _, err := database.db.ExecContext(ctx, `UPDATE plans SET distributor_hwid_limit = ? WHERE id = ?`, invalid, plan.ID); err == nil {
+			t.Fatalf("database accepted limit %d", invalid)
+		}
+	}
+}

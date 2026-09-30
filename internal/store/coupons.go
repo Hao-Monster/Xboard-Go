@@ -24,6 +24,14 @@ const (
 const couponCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 func (s *Store) CreateCoupon(ctx context.Context, input SaveCouponInput, now time.Time) (Coupon, error) {
+	if strings.TrimSpace(input.Code) == "" {
+		coupons, err := s.CreateCouponBatch(ctx, input, 1, now)
+		if err != nil {
+			return Coupon{}, err
+		}
+		return coupons[0], nil
+	}
+
 	normalized, err := normalizeCouponInput(input, now)
 	if err != nil {
 		return Coupon{}, err

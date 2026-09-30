@@ -38,7 +38,13 @@ describe("PluginManagementPage", () => {
 
     expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
     expect(screen.getByText("Telegram Bot")).toBeVisible();
+    expect(screen.queryByText("EPay")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "支付方式" }));
     expect(screen.getByText("EPay")).toBeVisible();
+    expect(screen.queryByText("Telegram Bot")).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜索插件" }), "missing");
+    expect(screen.getByText("暂无匹配插件")).toBeVisible();
+    await user.clear(screen.getByRole("searchbox", { name: "搜索插件" }));
     await user.click(screen.getByRole("button", { name: "禁用：EPay" }));
     await waitFor(() => expect(updateTrustedPlugin).toHaveBeenCalledWith("epay", {
       revision: 1, enabled: false, config: {}

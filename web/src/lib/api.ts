@@ -310,6 +310,7 @@ export type PlanPeriod = "monthly" | "quarterly" | "half_yearly" | "yearly" | "t
 export type PlanPrices = Partial<Record<PlanPeriod, number>>;
 
 export interface PlanDetails {
+  distributor_hwid_limit?: number;
   id: number;
   group_id: number | null;
   transfer_enable: number;
@@ -337,6 +338,7 @@ export interface Plan extends PlanDetails {
 }
 
 export interface PlanInput {
+  distributor_hwid_limit?: number;
   group_id: number | null;
   transfer_enable: number;
   name: string;
@@ -467,6 +469,7 @@ export interface DistributorOrderPage {
 }
 
 export interface DistributorOrderQuery {
+ settlement_month?: string;
 	page?: number;
 	page_size?: number;
 	search?: string;
@@ -1475,6 +1478,7 @@ export interface ThemePalette {
 }
 
 export interface ThemeConfig {
+  custom_html?: string;
   theme_color: string;
   background_url: string;
   font_scale: "small" | "normal" | "large";
@@ -1809,8 +1813,8 @@ export interface AdminAPI {
 	updateAdminDistributorHWID: (orderID: number, enabled: boolean, limit: number) => Promise<DistributorHWIDSettings>;
 	listAdminDistributorHWIDDevices: (orderID: number, search?: string) => Promise<DistributorHWIDDevice[]>;
 	deleteAdminDistributorHWIDDevice: (orderID: number, deviceID: number) => Promise<void>;
-	previewAdminDistributorSettlement: (userID: number) => Promise<DistributorSettlementSummary>;
-	settleAdminDistributorOrders: (userID: number) => Promise<DistributorSettlementSummary>;
+	previewAdminDistributorSettlement: (userID: number, settlementMonth?: string) => Promise<DistributorSettlementSummary>;
+	settleAdminDistributorOrders: (userID: number, settlementMonth?: string) => Promise<DistributorSettlementSummary>;
 	exportAdminDistributorOrders: (query?: DistributorOrderQuery) => Promise<Blob>;
   listCoupons: (query?: CouponQuery) => Promise<CouponPage>;
   createCoupon: (input: CouponInput) => Promise<Coupon>;
@@ -2414,12 +2418,12 @@ export class APIClient implements AdminAPI {
 		await this.request<boolean>(`/api/v1/admin/distributor-orders/${orderID}/hwid/devices/${deviceID}`, { method: "DELETE" });
 	}
 
-	async previewAdminDistributorSettlement(userID: number): Promise<DistributorSettlementSummary> {
-		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement`);
+	async previewAdminDistributorSettlement(userID: number, settlementMonth?: string): Promise<DistributorSettlementSummary> {
+		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement${settlementMonth ? `?settlement_month=${encodeURIComponent(settlementMonth)}` : ""}`);
 	}
 
-	async settleAdminDistributorOrders(userID: number): Promise<DistributorSettlementSummary> {
-		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement`, { method: "POST", body: {} });
+	async settleAdminDistributorOrders(userID: number, settlementMonth?: string): Promise<DistributorSettlementSummary> {
+		return this.request<DistributorSettlementSummary>(`/api/v1/admin/distributors/${userID}/settlement`, { method: "POST", body: settlementMonth ? { settlement_month: settlementMonth } : {} });
 	}
 
 	async exportAdminDistributorOrders(query: DistributorOrderQuery = {}): Promise<Blob> {
@@ -2459,10 +2463,11 @@ export class APIClient implements AdminAPI {
     return this.download("/api/v1/admin/coupons/batch", { ...input, code: "", count });
   }
 
-  async listGiftCardTemplates(page = 1, pageSize = 20, type?: GiftCardType, status?: boolean): Promise<GiftCardTemplatePage> {
+  async listGiftCardTemplates(page = 1, pageSize = 20, type?: GiftCardType, status?: boolean, search?: string): Promise<GiftCardTemplatePage> {
     const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (type !== undefined) query.set("type", String(type));
     if (status !== undefined) query.set("status", String(status));
+    if (search) query.set("search", search);
     return this.request<GiftCardTemplatePage>(`/api/v1/admin/gift-card/templates?${query.toString()}`);
   }
 
@@ -3098,6 +3103,7 @@ function readCookie(name: string): string | null {
 
 function distributorOrderQuery(query: DistributorOrderQuery): string {
 	const params = new URLSearchParams();
+ if (query.settlement_month) params.set("settlement_month", query.settlement_month);
 	if (query.page !== undefined) params.set("page", String(query.page));
 	if (query.page_size !== undefined) params.set("page_size", String(query.page_size));
 	if (query.search !== undefined && query.search.trim() !== "") params.set("search", query.search.trim());

@@ -1,0 +1,16 @@
+.markdown-source-editor { border: 1px solid var(--theme-border); border-radius: var(--theme-control-radius, 6px); overflow: hidden; }
+.markdown-source-toolbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid var(--theme-border); }
+.markdown-source-toolbar button { border: 0; background: transparent; color: var(--theme-muted); padding: 5px 7px; cursor: pointer; font-size: 12px; }
+.markdown-source-toolbar button:hover { color: var(--theme-text); background: var(--theme-surface); }
+.markdown-source-toolbar button:disabled { opacity: .4; cursor: default; }
+.markdown-source-editor textarea { display: block; width: 100%; border: 0; border-radius: 0; resize: vertical; min-height: 160px; }
+.tag-input-control { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--theme-border); border-radius: var(--theme-control-radius, 6px); }
+.tag-input-control input { flex: 1; min-width: 140px; border: 0; }
+.tag-input-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; background: var(--theme-surface); border: 1px solid var(--theme-border); border-radius: 4px; font-size: 12px; }
+.tag-input-chip button { color: inherit; border: 0; background: transparent; cursor: pointer; }
+
+.markdown-heading-menu { position: relative; }
+.markdown-heading-menu > div { display: flex; position: absolute; z-index: 3; top: 100%; background: var(--theme-surface); border: 1px solid var(--theme-border); border-radius: 4px; }
+.markdown-editor-panes { display: grid; grid-template-columns: 1fr 1fr; }
+.markdown-editor-panes > .markdown-body { padding: 12px; border-left: 1px solid var(--theme-border); overflow-wrap: anywhere; }
+@media (max-width: 600px) { .markdown-editor-panes { grid-template-columns: 1fr; } }

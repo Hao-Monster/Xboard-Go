@@ -1,3 +1,5 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { AdminAPI, Plan, SiteSettings, SiteSettingsInput } from "../../lib/api";
@@ -85,7 +87,7 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
 
   return <main className="page-shell site-settings-page">
     {activeSubTab === undefined && (
-      <header className="page-header"><div><p className="eyebrow">Configuration</p><h1>系统设置</h1><p className="muted">配置站点身份、订阅公开地址和注册安全策略。</p></div></header>
+      <header className="page-header"><div><h1>{translateAdmin("系统设置")}</h1><p className="muted">配置站点身份、订阅公开地址和注册安全策略。</p></div></header>
     )}
     {loading && draft === null && <div className="empty-card">正在加载站点设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
@@ -93,44 +95,45 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
     {draft !== null && current !== null && <section className="site-settings-card" aria-labelledby="site-settings-heading">
       <div className="section-heading">
         <div>
-          <h2 id="site-settings-heading">{activeSubTab === "security" ? "安全设置" : "站点设置"}</h2>
+          <h2 id="site-settings-heading">{activeSubTab === "security" ? translateAdmin("安全设置") : translateAdmin("站点设置")}</h2>
           <p className="muted">
             {activeSubTab === "security"
               ? "配置管理端安全访问路径、图形验证码及防刷防爆破安全策略。"
-              : "字段与旧 Xboard 站点设置保持同一业务含义。"}
+              : "配置站点信息、注册试用和公开订阅地址。"}
           </p>
         </div>
-        <span className="count-pill">Revision {current.revision}</span>
+
       </div>
-      <form className="form-stack site-settings-form" onSubmit={(event) => void save(event)}>
+      <AutoSaveForm saving={saving} className="form-stack site-settings-form" onSubmit={(event) => void save(event)}>
         {showSite && <div className="site-settings-fields">
-          <label>站点名称<input required placeholder="请输入站点名称" value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
-          <label>站点描述<textarea placeholder="请输入站点描述" value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
+          <label>{translateAdmin("站点名称")}<input required placeholder={translateAdmin("请输入站点名称")} value={draft.app_name} onChange={(event) => updateDraft("app_name", event.target.value)} /></label>
+          <label>{translateAdmin("站点描述")}<textarea placeholder={translateAdmin("请输入站点描述")} value={draft.app_description} onChange={(event) => updateDraft("app_description", event.target.value)} /></label>
           <div className="site-settings-url-grid">
-            <label>站点网址<input type="url" placeholder="请输入站点URL，末尾不要/" value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
-            <label>用户条款(TOS)URL<input type="url" placeholder="请输入用户条款(TOS)URL" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
-            <label>LOGO<input type="url" placeholder="请输入LOGO URL，末尾不要/" value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
+            <label>{translateAdmin("站点网址")}<input type="url" placeholder={translateAdmin("请输入站点URL，末尾不要/")} value={draft.app_url} onChange={(event) => updateDraft("app_url", event.target.value)} /></label>
+            <label>{translateAdmin("用户条款(TOS)URL")}<input type="url" placeholder="请输入用户条款(TOS)URL" value={draft.tos_url} onChange={(event) => updateDraft("tos_url", event.target.value)} /></label>
+            <label>LOGO<input type="url" placeholder={translateAdmin("请输入LOGO URL，末尾不要/")} value={draft.logo} onChange={(event) => updateDraft("logo", event.target.value)} /></label>
           </div>
-          <fieldset className="settings-fieldset">
-            <legend>访问安全</legend>
-            <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
-            <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
-            <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
-            {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
-          </fieldset>
+
           <fieldset className="settings-fieldset">
             <legend>订阅公开地址</legend>
-            <label className="switch-label"><input type="checkbox" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
+            <label className="switch-label"><input type="checkbox" role="switch" checked={draft.force_https} onChange={(event) => updateDraft("force_https", event.target.checked)} />强制使用 HTTPS 生成公开地址</label>
             <label>订阅公开地址<textarea aria-describedby="subscribe-url-help" placeholder={"https://subscribe-a.example.com\nhttps://subscribe-b.example.com"} value={(draft.subscribe_url ?? "").split(",").join("\n")} onChange={(event) => updateDraft("subscribe_url", event.target.value)} /></label>
             <p className="small muted" id="subscribe-url-help">每行一个地址，最多 32 个。外网地址必须使用 HTTPS，不能包含账号、查询参数或片段；留空时使用站点网址。</p>
           </fieldset>
           <div className="site-settings-url-grid">
             <label>货币代码<input required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" placeholder="请输入货币代码（如 CNY、USD）" value={draft.currency} onChange={(event) => updateDraft("currency", event.target.value.toUpperCase())} /></label>
-            <label>货币符号<input maxLength={16} placeholder="请输入货币符号（如 ¥、$）" value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
+            <label>{translateAdmin("货币符号")}<input maxLength={16} placeholder="请输入货币符号（如 ¥、$）" value={draft.currency_symbol} onChange={(event) => updateDraft("currency_symbol", event.target.value)} /></label>
           </div>
-          <label className="switch-label"><input type="checkbox" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />停止新用户注册</label>
-          <label className="switch-label"><input type="checkbox" checked={draft.ticket_must_wait_reply} onChange={(event) => updateDraft("ticket_must_wait_reply", event.target.checked)} />工单等待回复限制</label>
-          <p className="small muted">开启后，有未回复的工单时用户不能提交新工单。</p>
+            <label>{translateAdmin("注册试用")}<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
+              <option value={0}>{translateAdmin("关闭")}</option>
+              {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+            </select></label>
+            <p className="small muted" id="registration-trial-plan-help">{translateAdmin("选择需要试用的订阅，如果没有选项请先前往订阅管理添加。")}</p>
+            {draft.try_out_plan_id !== 0 && <label>{translateAdmin("注册试用时长")}<input aria-describedby="registration-trial-duration-help" type="number" required min={1} max={8760} step={1} value={draft.try_out_hour} onChange={(event) => updateDraft("try_out_hour", Number(event.target.value))} /></label>}
+            {draft.try_out_plan_id !== 0 && <p className="small muted" id="registration-trial-duration-help">{translateAdmin("注册试用时长，单位为小时。")}</p>}
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.stop_register} onChange={(event) => updateDraft("stop_register", event.target.checked)} />{translateAdmin("停止新用户注册")}</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.ticket_must_wait_reply} onChange={(event) => updateDraft("ticket_must_wait_reply", event.target.checked)} />{translateAdmin("工单等待回复限制")}</label>
+          <p className="small muted">开启后，用户在同一工单中发送消息后，必须等待管理员回复才能继续留言。</p>
           <p className="small muted">网址可留空；非空时必须是完整的 HTTP 或 HTTPS 地址。LOGO 用于显示需要品牌标识的地方。站点描述最多 500 个字符。</p>
           <fieldset className="settings-fieldset">
             <legend>流量重置策略</legend>
@@ -141,79 +144,72 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
           </fieldset>
           <fieldset className="settings-fieldset">
             <legend>优惠券系统</legend>
-            <label className="switch-label"><input type="checkbox" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
+            <label className="switch-label"><input type="checkbox" role="switch" checked={draft.coupon_enabled} onChange={(event) => updateDraft("coupon_enabled", event.target.checked)} />启用优惠券</label>
             <p className="small muted">关闭后用户不能验证或使用优惠券，已有订单及优惠券数据保持不变。</p>
           </fieldset>
         </div>}
 
         {showSecurity && <div className="security-settings-fields">
-          {activeSubTab === "security" && <fieldset className="settings-fieldset">
+          <fieldset className="settings-fieldset">
             <legend>访问安全</legend>
-            <label className="switch-label"><input type="checkbox" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
+            <label className="switch-label"><input type="checkbox" role="switch" checked={draft.safe_mode_enable} onChange={(event) => updateDraft("safe_mode_enable", event.target.checked)} />安全模式（仅允许站点网址的域名访问前端）</label>
             <label>管理员安全路径<input required minLength={8} maxLength={64} pattern="[A-Za-z0-9_-]+" value={draft.secure_path} onChange={(event) => updateDraft("secure_path", event.target.value)} /></label>
             <p className="small muted">至少 8 位，仅限字母、数字、下划线和连字符。修改后管理页面以及 V1/V2 管理接口立即切换到新路径；安全路径不能替代登录和权限校验。</p>
             {draft.safe_mode_enable && draft.app_url.trim() === "" && <p className="alert warning">启用安全模式前必须配置站点网址。</p>}
-          </fieldset>}
+          </fieldset>
           <fieldset className="settings-fieldset">
             <legend>注册安全策略</legend>
-            <label>注册试用<select aria-describedby="registration-trial-plan-help" value={draft.try_out_plan_id} onChange={(event) => updateDraft("try_out_plan_id", Number(event.target.value))}>
-              <option value={0}>关闭</option>
-              {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-            </select></label>
-            <p className="small muted" id="registration-trial-plan-help">选择需要试用的订阅，如果没有选项请先前往订阅管理添加。</p>
-            {draft.try_out_plan_id !== 0 && <label>注册试用时长<input aria-describedby="registration-trial-duration-help" type="number" required min={1} max={8760} step={1} value={draft.try_out_hour} onChange={(event) => updateDraft("try_out_hour", Number(event.target.value))} /></label>}
-            {draft.try_out_plan_id !== 0 && <p className="small muted" id="registration-trial-duration-help">注册试用时长，单位为小时。</p>}
-            <label className="switch-label"><input type="checkbox" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
+            <label className="switch-label"><input type="checkbox" role="switch" checked={draft.captcha_enable} onChange={(event) => updateDraft("captcha_enable", event.target.checked)} />验证码</label>
             <p className="small muted">保护直接注册、注册邮箱验证码和找回密码验证码请求；密码登录不使用此策略。</p>
-            {draft.captcha_enable && <label>验证码类型<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
+            {draft.captcha_enable && <label>{translateAdmin("验证码类型")}<select value={draft.captcha_type} onChange={(event) => updateDraft("captcha_type", event.target.value as SiteDraft["captcha_type"])}>
             <option value="recaptcha">Google reCAPTCHA v2</option><option value="recaptcha-v3">Google reCAPTCHA v3</option><option value="turnstile">Cloudflare Turnstile</option>
           </select></label>}
           {draft.captcha_enable && draft.captcha_type === "recaptcha" && <div className="captcha-settings-grid">
             <label>reCAPTCHA v2 站点密钥<input required value={draft.recaptcha_site_key} onChange={(event) => updateDraft("recaptcha_site_key", event.target.value)} /></label>
             <label>reCAPTCHA v2 服务端密钥<input type="password" autoComplete="off" placeholder={current.recaptcha_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.recaptcha_secret ?? ""} onChange={(event) => setDraft({ ...draft, recaptcha_secret: event.target.value, clear_recaptcha_secret: false })} /></label>
-            {current.recaptcha_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_recaptcha_secret === true} onChange={(event) => updateDraft("clear_recaptcha_secret", event.target.checked)} />清除 reCAPTCHA v2 服务端密钥</label>}
+            {current.recaptcha_secret_configured && <label className="switch-label"><input type="checkbox" role="switch" checked={draft.clear_recaptcha_secret === true} onChange={(event) => updateDraft("clear_recaptcha_secret", event.target.checked)} />清除 reCAPTCHA v2 服务端密钥</label>}
           </div>}
           {draft.captcha_enable && draft.captcha_type === "recaptcha-v3" && <div className="captcha-settings-grid">
             <label>reCAPTCHA v3 站点密钥<input required value={draft.recaptcha_v3_site_key} onChange={(event) => updateDraft("recaptcha_v3_site_key", event.target.value)} /></label>
             <label>reCAPTCHA v3 服务端密钥<input type="password" autoComplete="off" placeholder={current.recaptcha_v3_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.recaptcha_v3_secret ?? ""} onChange={(event) => setDraft({ ...draft, recaptcha_v3_secret: event.target.value, clear_recaptcha_v3_secret: false })} /></label>
             <label>reCAPTCHA v3 分数阈值<input type="number" required min={0.01} max={1} step={0.01} value={draft.recaptcha_v3_score_threshold} onChange={(event) => updateDraft("recaptcha_v3_score_threshold", Number(event.target.value))} /></label>
-            {current.recaptcha_v3_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_recaptcha_v3_secret === true} onChange={(event) => updateDraft("clear_recaptcha_v3_secret", event.target.checked)} />清除 reCAPTCHA v3 服务端密钥</label>}
+            {current.recaptcha_v3_secret_configured && <label className="switch-label"><input type="checkbox" role="switch" checked={draft.clear_recaptcha_v3_secret === true} onChange={(event) => updateDraft("clear_recaptcha_v3_secret", event.target.checked)} />清除 reCAPTCHA v3 服务端密钥</label>}
           </div>}
           {draft.captcha_enable && draft.captcha_type === "turnstile" && <div className="captcha-settings-grid">
             <label>Turnstile 站点密钥<input required value={draft.turnstile_site_key} onChange={(event) => updateDraft("turnstile_site_key", event.target.value)} /></label>
             <label>Turnstile 服务端密钥<input type="password" autoComplete="off" placeholder={current.turnstile_secret_configured ? "已配置，留空保持不变" : "请输入服务端密钥"} value={draft.turnstile_secret ?? ""} onChange={(event) => setDraft({ ...draft, turnstile_secret: event.target.value, clear_turnstile_secret: false })} /></label>
-            {current.turnstile_secret_configured && <label className="switch-label"><input type="checkbox" checked={draft.clear_turnstile_secret === true} onChange={(event) => updateDraft("clear_turnstile_secret", event.target.checked)} />清除 Turnstile 服务端密钥</label>}
+            {current.turnstile_secret_configured && <label className="switch-label"><input type="checkbox" role="switch" checked={draft.clear_turnstile_secret === true} onChange={(event) => updateDraft("clear_turnstile_secret", event.target.checked)} />清除 Turnstile 服务端密钥</label>}
           </div>}
           {draft.captcha_enable && <p className="small muted">服务端密钥加密保存且不会回显；留空保存会保留现有密钥。只有明确勾选清除后才会删除。</p>}
-          <label className="switch-label"><input type="checkbox" checked={draft.email_verify} onChange={(event) => updateDraft("email_verify", event.target.checked)} />邮箱验证</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.email_verify} onChange={(event) => updateDraft("email_verify", event.target.checked)} />{translateAdmin("邮箱验证")}</label>
           <p className="small muted">启用后，新用户必须通过 6 位一次性邮箱验证码；请先在邮件设置中启用 SMTP。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.email_whitelist_enable} onChange={(event) => updateDraft("email_whitelist_enable", event.target.checked)} />邮箱后缀白名单</label>
-          {draft.email_whitelist_enable && <label>邮箱后缀<textarea required aria-describedby="email-whitelist-help" value={draft.email_whitelist_suffix.join("\n")} onChange={(event) => updateDraft("email_whitelist_suffix", suffixesFromText(event.target.value))} /></label>}
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.email_whitelist_enable} onChange={(event) => updateDraft("email_whitelist_enable", event.target.checked)} />{translateAdmin("邮箱后缀白名单")}</label>
+          {draft.email_whitelist_enable && <label>{translateAdmin("邮箱后缀")}<textarea required aria-describedby="email-whitelist-help" value={draft.email_whitelist_suffix.join("\n")} onChange={(event) => updateDraft("email_whitelist_suffix", suffixesFromText(event.target.value))} /></label>}
           {draft.email_whitelist_enable && <p className="small muted" id="email-whitelist-help">每行一个完整域名，不支持通配符；域名匹配不区分大小写。</p>}
-          <label className="switch-label"><input type="checkbox" checked={draft.email_gmail_limit_enable} onChange={(event) => updateDraft("email_gmail_limit_enable", event.target.checked)} />禁止使用Gmail多别名</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.email_gmail_limit_enable} onChange={(event) => updateDraft("email_gmail_limit_enable", event.target.checked)} />{translateAdmin("禁止使用Gmail多别名")}</label>
           <p className="small muted">启用后拒绝 Gmail 与 Googlemail 地址中包含点号或加号的别名，不影响其他邮箱域名。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.register_limit_by_ip_enable} onChange={(event) => updateDraft("register_limit_by_ip_enable", event.target.checked)} />IP注册限制</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.register_limit_by_ip_enable} onChange={(event) => updateDraft("register_limit_by_ip_enable", event.target.checked)} />{translateAdmin("IP注册限制")}</label>
           {draft.register_limit_by_ip_enable && <div className="registration-policy-grid">
-            <label>注册次数<input type="number" required min={1} max={100} value={draft.register_limit_count} onChange={(event) => updateDraft("register_limit_count", Number(event.target.value))} /></label>
+            <label>{translateAdmin("注册次数")}<input type="number" required min={1} max={100} value={draft.register_limit_count} onChange={(event) => updateDraft("register_limit_count", Number(event.target.value))} /></label>
             <label>限制时长（分钟）<input type="number" required min={1} max={10080} value={draft.register_limit_expire} onChange={(event) => updateDraft("register_limit_expire", Number(event.target.value))} /></label>
           </div>}
           <p className="small muted">只统计成功注册；达到次数后，在滑动窗口结束前拒绝同一来源 IP 的新注册。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.invite_force} onChange={(event) => updateDraft("invite_force", event.target.checked)} />强制邀请码</label>
           <div className="registration-policy-grid">
             <label>邀请码生成上限<input type="number" required min={0} max={100} value={draft.invite_gen_limit} onChange={(event) => updateDraft("invite_gen_limit", Number(event.target.value))} /></label>
           </div>
-          <label className="switch-label"><input type="checkbox" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.invite_never_expire} onChange={(event) => updateDraft("invite_never_expire", event.target.checked)} />邀请码永不过期</label>
           <p className="small muted">生成上限为 0 时禁止创建新邀请码；“永不过期”开启后，同一码可关联多个新用户。</p>
         </fieldset>
         <fieldset className="settings-fieldset">
           <legend>登录安全策略</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.password_limit_enable} onChange={(event) => updateDraft("password_limit_enable", event.target.checked)} />密码错误次数限制</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.password_limit_enable} onChange={(event) => updateDraft("password_limit_enable", event.target.checked)} />密码错误次数限制</label>
           {draft.password_limit_enable && <div className="registration-policy-grid">
             <label>密码错误次数<input type="number" required min={1} max={20} value={draft.password_limit_count} onChange={(event) => updateDraft("password_limit_count", Number(event.target.value))} /></label>
             <label>登录锁定时长（分钟）<input type="number" required min={1} max={1440} value={draft.password_limit_expire} onChange={(event) => updateDraft("password_limit_expire", Number(event.target.value))} /></label>
           </div>}
           <p className="small muted">达到错误次数后，从下一次登录开始锁定该邮箱；成功登录不会清空当前计数。邮箱大小写和首尾空格按同一账号统计，未知账号使用相同失败提示，并始终保留独立的来源 IP 防护。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.login_with_mail_link_enable} onChange={(event) => updateDraft("login_with_mail_link_enable", event.target.checked)} />邮件链接登录</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.login_with_mail_link_enable} onChange={(event) => updateDraft("login_with_mail_link_enable", event.target.checked)} />邮件链接登录</label>
           <p className="small muted">启用后，已有用户可通过 5 分钟有效、仅能使用一次的邮件链接登录；请先在邮件设置中启用 SMTP。</p>
         </fieldset>
         </div>}
@@ -224,7 +220,7 @@ export function SiteSettingsPage({ api, onIdentityChanged, onSecurePathChanged, 
             {saving ? "正在保存…" : activeSubTab === "security" ? "保存安全设置" : "保存站点设置"}
           </button>
         </div>
-      </form>
+      </AutoSaveForm>
     </section>}
   </main>;
 }

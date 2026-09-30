@@ -207,7 +207,7 @@ func (s *server) listGiftCardTemplates(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	filter := store.GiftCardTemplateFilter{Page: page, PageSize: size}
+	filter := store.GiftCardTemplateFilter{Page: page, PageSize: size, Search: r.URL.Query().Get("search")}
 	if raw := strings.TrimSpace(r.URL.Query().Get("type")); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil {
@@ -608,7 +608,7 @@ func (s *server) legacyGiftCardPage(w http.ResponseWriter, r *http.Request, kind
 	var err error
 	switch kind {
 	case "templates":
-		filter := store.GiftCardTemplateFilter{Page: page, PageSize: size}
+		filter := store.GiftCardTemplateFilter{Page: page, PageSize: size, Search: r.URL.Query().Get("search")}
 		if raw := strings.TrimSpace(r.URL.Query().Get("type")); raw != "" {
 			parsed, parseErr := strconv.Atoi(raw)
 			if parseErr != nil {

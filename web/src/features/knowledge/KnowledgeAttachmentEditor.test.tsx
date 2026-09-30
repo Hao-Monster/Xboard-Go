@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -61,30 +61,18 @@ describe("KnowledgeAttachmentEditor", () => {
     const accepted = fireEvent.paste(screen.getByLabelText("内容"), { clipboardData: { items: [{ kind: "file", type: image.type, getAsFile: () => image }] } });
     expect(accepted).toBe(false);
     await waitFor(() => expect(screen.getByTestId("knowledge-body")).toHaveTextContent(`![clipboard.png](${inline.placeholder})`));
-    const preview = screen.getByRole("region", { name: "知识正文预览" });
-    expect(within(preview).queryByRole("img")).not.toBeInTheDocument();
-    expect(within(preview).getByText("clipboard.png")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "知识正文预览" })).not.toBeInTheDocument();
     expect(api.initializeKnowledgeAttachment).toHaveBeenCalledWith(image, "b".repeat(64));
   });
 
-  it("clones all attachments from another article into an independent draft", async () => {
-    const user = userEvent.setup();
-    const api = attachmentAPI();
-    const blocking = vi.fn();
-    const source = { ...readyAttachment, knowledge_id: 9 };
-    const clone = { ...readyAttachment, uuid: "550e8400-e29b-41d4-a716-446655440009", placeholder: "knowledge-attachment://550e8400-e29b-41d4-a716-446655440009" };
-    let resolveClone: ((items: Array<{ source_uuid: string; attachment: KnowledgeAttachment }>) => void) | undefined;
-    const pendingClone = new Promise<Array<{ source_uuid: string; attachment: KnowledgeAttachment }>>((resolve) => { resolveClone = resolve; });
-    vi.mocked(api.listKnowledgeAttachments).mockResolvedValueOnce(pageOf()).mockResolvedValueOnce(pageOf(source));
-    vi.mocked(api.cloneKnowledgeAttachments).mockReturnValueOnce(pendingClone);
-    render(<Harness api={api} onBlockingChange={blocking} />);
-    await user.type(screen.getByLabelText("来源知识编号"), "9");
-    await user.click(screen.getByRole("button", { name: "复制全部附件" }));
-    await waitFor(() => expect(blocking).toHaveBeenLastCalledWith(true));
-    resolveClone?.([{ source_uuid: source.uuid, attachment: clone }]);
-    await waitFor(() => expect(screen.getByTestId("knowledge-body")).toHaveTextContent(`[guide.txt](${clone.placeholder})`));
-    await waitFor(() => expect(blocking).toHaveBeenLastCalledWith(false));
-    expect(api.cloneKnowledgeAttachments).toHaveBeenCalledWith(9, [source.uuid], "b".repeat(64));
+  it("exposes separate media pickers and omits non-legacy clone and preview controls", () => {
+    const api = attachmentAPI(); render(<Harness api={api} />);
+    expect(screen.getByLabelText("上传图片")).toHaveAttribute("accept", "image/*");
+    expect(screen.getByLabelText("上传视频")).toHaveAttribute("accept", "video/*");
+    expect(screen.getByLabelText("选择知识附件")).not.toHaveAttribute("accept");
+    expect(screen.queryByLabelText("来源知识编号")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "显示预览" })).not.toBeInTheDocument();
+    expect(api.cloneKnowledgeAttachments).not.toHaveBeenCalled();
   });
 
   it("converts allowed pasted HTML to Markdown and drops executable content", () => {
@@ -112,7 +100,7 @@ describe("KnowledgeAttachmentEditor", () => {
     fireEvent.paste(editor, { clipboardData: { items: [], getData: (type: string) => type === "text/html" ? `<p>安全 <a href="javascript:alert(1)">文字</a></p>` : "" } });
     await waitFor(() => expect(screen.getByTestId("knowledge-body")).toHaveTextContent("安全 文字"));
     expect(screen.getByTestId("knowledge-body")).not.toHaveTextContent("javascript");
-    expect(screen.getByRole("region", { name: "知识正文预览" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "知识正文预览" })).not.toBeInTheDocument();
   });
 
   it("rejects unsafe QR links before calling the server", async () => {

@@ -44,12 +44,12 @@ describe("SubscriptionSettingsPage", () => {
 
     expect(await screen.findByRole("heading", { name: "订阅设置" })).toBeVisible();
     expect(screen.getByLabelText("订阅路径")).toHaveValue("s");
-    expect(screen.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "在订阅中展示订阅信息" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "在线路名称中显示协议名称" })).toBeChecked();
     expect(screen.getByLabelText("Sing-box 订阅模板")).toHaveValue(initial.templates.singbox);
 
     fireEvent.change(screen.getByLabelText("订阅路径"), { target: { value: "feeds_1" } });
-    await user.click(screen.getByRole("checkbox", { name: "在订阅中展示订阅信息" }));
+    await user.click(screen.getByRole("switch", { name: "在订阅中展示订阅信息" }));
     await user.click(screen.getByRole("button", { name: "Clash" }));
     fireEvent.change(screen.getByLabelText("Clash 订阅模板"), { target: { value: updated.templates.clash } });
     await user.click(screen.getByRole("button", { name: "保存订阅设置" }));
@@ -59,7 +59,7 @@ describe("SubscriptionSettingsPage", () => {
       templates: { ...initial.templates, clash: updated.templates.clash }
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("订阅设置已保存");
-    expect(screen.getByText("Revision 4")).toBeVisible();
+    expect(screen.queryByText("Revision 4")).not.toBeInTheDocument();
   });
 
   it("keeps unsaved text available after a revision conflict", async () => {
@@ -99,15 +99,15 @@ describe("SubscriptionSettingsPage", () => {
     const user = userEvent.setup();
     render(<SubscriptionSettingsPage api={api} />);
 
-    await user.click(await screen.findByRole("checkbox", { name: "允许用户更改订阅" }));
+    await user.click(await screen.findByRole("switch", { name: "允许用户更改订阅" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "月流量重置方式" }), "4");
-    await user.click(screen.getByRole("checkbox", { name: "开启折抵方案" }));
+    await user.click(screen.getByRole("switch", { name: "开启折抵方案" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "当订阅新购时触发事件" }), "1");
     await user.selectOptions(screen.getByRole("combobox", { name: "当订阅续费时触发事件" }), "0");
     await user.selectOptions(screen.getByRole("combobox", { name: "当订阅变更时触发事件" }), "1");
     expect(screen.getByLabelText("订阅路径")).toHaveValue("s");
-    expect(screen.getByRole("checkbox", { name: "在订阅中展示订阅信息" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "在线路名称中显示协议名称" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "在订阅中展示订阅信息" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "在线路名称中显示协议名称" })).toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "保存订阅策略" }));
     await waitFor(() => expect(api.updateSubscriptionPolicySettings).toHaveBeenCalledWith({
@@ -121,6 +121,6 @@ describe("SubscriptionSettingsPage", () => {
       default_remind_expire: true,
       default_remind_traffic: false
     }));
-    expect(screen.getByText("策略 Revision 8")).toBeVisible();
+    expect(screen.queryByText("策略 Revision 8")).not.toBeInTheDocument();
   });
 });

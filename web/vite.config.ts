@@ -27,7 +27,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        strictExecutionOrder: true,
+        codeSplitting: {
+          // Assign only matched modules. Recursively capturing shared React/API
+          // dependencies pulls lazy Markdown pages into the initial entry.
+          includeDependenciesRecursively: false,
+          groups: [{ name(id) {
+          id = id.replaceAll("\\", "/");
           // Keep heavy vendor libs as their own chunks for long-term caching
           if (id.includes("node_modules/react-dom")) return "react-dom";
           if (id.includes("node_modules/react-markdown") || id.includes("node_modules/remark") || id.includes("node_modules/rehype")) return "markdown";
@@ -40,6 +46,8 @@ export default defineConfig({
               id.includes("features/payments")) {
             return "admin-finance-tools";
           }
+          return null;
+        } }]
         }
       }
     }

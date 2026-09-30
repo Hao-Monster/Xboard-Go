@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import Markdown from "react-markdown";
+import { SafeMarkdown } from "../../components/SafeMarkdown";
 
 import { Modal } from "../../components/Overlay";
 import type { DistributorOrder, DistributorQR, PlanOffer, PlanPeriod } from "../../lib/api";
@@ -70,7 +70,7 @@ export function DistributorPlansPage({ api, locale = "zh-CN" }: { api: Distribut
         <div className="section-heading"><div><h2>{plan.name}</h2><p className="muted">{copy.independentDelivery}</p></div><strong className="distributor-plan-price">¥{formatCents(cents)}</strong></div>
         <dl className="distributor-plan-specs"><div><dt>{copy.traffic}</dt><dd>{plan.transfer_enable} GB</dd></div><div><dt>{copy.speed}</dt><dd>{limit(plan.speed_limit, "Mbps", copy.unlimited)}</dd></div><div><dt>{copy.devices}</dt><dd>{limit(plan.device_limit, locale === "zh-CN" ? "台" : "devices", copy.unlimited)}</dd></div><div><dt>{copy.resetMethod}</dt><dd>{resetLabel(plan.reset_traffic_method, copy)}</dd></div></dl>
         <fieldset className="distributor-period-options"><legend>{copy.period}</legend>{options.map(([period, price]) => <label key={period}><input type="radio" name={`period-${plan.id}`} checked={selected === period} onChange={() => setPeriods((current) => ({ ...current, [plan.id]: period }))} /><span>{periodLabels[period]}<strong>¥{formatCents(price)}</strong></span></label>)}</fieldset>
-        {plan.content !== "" && <details><summary>{copy.planDetails}</summary><div className="markdown-body plan-content"><Markdown>{plan.content}</Markdown></div></details>}
+        {plan.content !== "" && <details><summary>{copy.planDetails}</summary><div className="markdown-body plan-content"><SafeMarkdown>{plan.content}</SafeMarkdown></div></details>}
         <button className="button primary distributor-buy-button" type="button" disabled={buying !== null || cents <= 0} onClick={() => void purchase(plan, selected)}>{buying === plan.id ? copy.ordering : copy.orderAction}</button>
       </article>;
     })}</section>}

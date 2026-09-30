@@ -19,7 +19,11 @@ var (
 	distributorClaimPattern = regexp.MustCompile(`^[A-Za-z0-9]{64}$`)
 )
 
-func (s *Store) PreviewDistributorSettlement(ctx context.Context, distributorID int64) (DistributorSettlementSummary, error) {
+func (s *Store) PreviewDistributorSettlement(ctx context.Context, distributorID int64, month ...string) (DistributorSettlementSummary, error) {
+	start, end, monthErr := distributorSettlementMonthRange(month...)
+	if monthErr != nil {
+		return DistributorSettlementSummary{}, monthErr
+	}
 	if distributorID < 1 {
 		return DistributorSettlementSummary{}, ErrInvalidInput
 	}
@@ -32,13 +36,18 @@ func (s *Store) PreviewDistributorSettlement(ctx context.Context, distributorID 
 		FROM orders o
 		JOIN distributor_subscriptions ds ON ds.id = o.distributor_order_id
 		WHERE o.user_id = ? AND ds.distributor_user_id = ? AND o.status = ? AND o.paid_at IS NULL
-	`, distributorID, distributorID, OrderStatusCompleted).Scan(&result.Count, &result.TotalAmount); err != nil {
+        AND (? = 0 OR (o.created_at >= ? AND o.created_at < ?))
+	`, distributorID, distributorID, OrderStatusCompleted, start, start, end).Scan(&result.Count, &result.TotalAmount); err != nil {
 		return DistributorSettlementSummary{}, fmt.Errorf("preview distributor settlement: %w", err)
 	}
 	return result, nil
 }
 
-func (s *Store) SettleDistributorOrders(ctx context.Context, distributorID, administratorID int64, now time.Time) (DistributorSettlementSummary, error) {
+func (s *Store) SettleDistributorOrders(ctx context.Context, distributorID, administratorID int64, now time.Time, month ...string) (DistributorSettlementSummary, error) {
+	start, end, monthErr := distributorSettlementMonthRange(month...)
+	if monthErr != nil {
+		return DistributorSettlementSummary{}, monthErr
+	}
 	if distributorID < 1 || administratorID < 1 || now.Unix() < 0 {
 		return DistributorSettlementSummary{}, ErrInvalidInput
 	}
@@ -66,7 +75,8 @@ func (s *Store) SettleDistributorOrders(ctx context.Context, distributorID, admi
 		FROM orders o
 		JOIN distributor_subscriptions ds ON ds.id = o.distributor_order_id
 		WHERE o.user_id = ? AND ds.distributor_user_id = ? AND o.status = ? AND o.paid_at IS NULL
-	`, distributorID, distributorID, OrderStatusCompleted).Scan(&result.Count, &result.TotalAmount); err != nil {
+        AND (? = 0 OR (o.created_at >= ? AND o.created_at < ?))
+	`, distributorID, distributorID, OrderStatusCompleted, start, start, end).Scan(&result.Count, &result.TotalAmount); err != nil {
 		return DistributorSettlementSummary{}, fmt.Errorf("aggregate distributor settlement: %w", err)
 	}
 	if result.Count == 0 {
@@ -82,8 +92,9 @@ func (s *Store) SettleDistributorOrders(ctx context.Context, distributorID, admi
 			SELECT o.id FROM orders o
 			WHERE o.user_id = ? AND o.status = ? AND o.paid_at IS NULL
 			  AND o.distributor_order_id = distributor_subscriptions.id
+              AND (? = 0 OR (o.created_at >= ? AND o.created_at < ?))
 		)
-	`, DistributorSettlementSettled, now.Unix(), administratorID, now.Unix(), distributorID, distributorID, OrderStatusCompleted); err != nil {
+	`, DistributorSettlementSettled, now.Unix(), administratorID, now.Unix(), distributorID, distributorID, OrderStatusCompleted, start, start, end); err != nil {
 		return DistributorSettlementSummary{}, fmt.Errorf("synchronize distributor settlement: %w", err)
 	}
 	updated, err := tx.ExecContext(ctx, `
@@ -91,7 +102,8 @@ func (s *Store) SettleDistributorOrders(ctx context.Context, distributorID, admi
 		SET paid_at = ?,distributor_settled_by = ?,updated_at = ?
 		WHERE user_id = ? AND status = ? AND paid_at IS NULL
 		  AND distributor_order_id IN (SELECT id FROM distributor_subscriptions WHERE distributor_user_id = ?)
-	`, now.Unix(), administratorID, now.Unix(), distributorID, OrderStatusCompleted, distributorID)
+          AND (? = 0 OR (created_at >= ? AND created_at < ?))
+	`, now.Unix(), administratorID, now.Unix(), distributorID, OrderStatusCompleted, distributorID, start, start, end)
 	if err != nil {
 		return DistributorSettlementSummary{}, fmt.Errorf("settle distributor orders: %w", err)
 	}
@@ -532,4 +544,23 @@ func optionalTruncatedText(value string, maximum int) *string {
 	}
 	result := string(runes)
 	return &result
+}
+
+// Legacy settlement months follow the panel's Asia/Shanghai business calendar
+// and filter order creation time, using an inclusive start and exclusive end.
+func distributorSettlementMonthRange(month ...string) (int64, int64, error) {
+	if len(month) > 1 {
+		return 0, 0, ErrInvalidInput
+	}
+	if len(month) == 0 || month[0] == "" {
+		return 0, 0, nil
+	}
+	if trafficResetLocationError != nil {
+		return 0, 0, trafficResetLocationError
+	}
+	start, err := time.ParseInLocation("2006-01", month[0], trafficResetLocation)
+	if err != nil || start.Format("2006-01") != month[0] || start.Year() < 1971 {
+		return 0, 0, ErrInvalidInput
+	}
+	return start.Unix(), start.AddDate(0, 1, 0).Unix(), nil
 }

@@ -1862,6 +1862,7 @@ type DistributorOrder struct {
 }
 
 type DistributorOrderFilter struct {
+	SettlementMonth    string
 	Page               int
 	PageSize           int
 	DistributorUserID  *int64
@@ -2039,40 +2040,42 @@ type AssignOrderInput struct {
 }
 
 type Plan struct {
-	ID                 int64      `json:"id"`
-	GroupID            *int64     `json:"group_id"`
-	TransferEnableGiB  int64      `json:"transfer_enable"`
-	Name               string     `json:"name"`
-	SpeedLimit         *int       `json:"speed_limit"`
-	Show               bool       `json:"show"`
-	SortPosition       int        `json:"sort"`
-	Renew              bool       `json:"renew"`
-	Content            string     `json:"content"`
-	ResetTrafficMethod *int       `json:"reset_traffic_method"`
-	CapacityLimit      *int       `json:"capacity_limit"`
-	Prices             PlanPrices `json:"prices"`
-	Sell               bool       `json:"sell"`
-	DeviceLimit        *int       `json:"device_limit"`
-	Tags               []string   `json:"tags"`
-	UsersCount         int64      `json:"-"`
-	ActiveUsersCount   int64      `json:"-"`
-	CapacityUsersCount int64      `json:"-"`
-	Revision           int64      `json:"revision"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	DistributorHWIDLimit int        `json:"distributor_hwid_limit"`
+	ID                   int64      `json:"id"`
+	GroupID              *int64     `json:"group_id"`
+	TransferEnableGiB    int64      `json:"transfer_enable"`
+	Name                 string     `json:"name"`
+	SpeedLimit           *int       `json:"speed_limit"`
+	Show                 bool       `json:"show"`
+	SortPosition         int        `json:"sort"`
+	Renew                bool       `json:"renew"`
+	Content              string     `json:"content"`
+	ResetTrafficMethod   *int       `json:"reset_traffic_method"`
+	CapacityLimit        *int       `json:"capacity_limit"`
+	Prices               PlanPrices `json:"prices"`
+	Sell                 bool       `json:"sell"`
+	DeviceLimit          *int       `json:"device_limit"`
+	Tags                 []string   `json:"tags"`
+	UsersCount           int64      `json:"-"`
+	ActiveUsersCount     int64      `json:"-"`
+	CapacityUsersCount   int64      `json:"-"`
+	Revision             int64      `json:"revision"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 type SavePlanInput struct {
-	GroupID            *int64
-	TransferEnableGiB  int64
-	Name               string
-	SpeedLimit         *int
-	Content            string
-	ResetTrafficMethod *int
-	CapacityLimit      *int
-	Prices             PlanPrices
-	DeviceLimit        *int
-	Tags               []string
+	DistributorHWIDLimit *int
+	GroupID              *int64
+	TransferEnableGiB    int64
+	Name                 string
+	SpeedLimit           *int
+	Content              string
+	ResetTrafficMethod   *int
+	CapacityLimit        *int
+	Prices               PlanPrices
+	DeviceLimit          *int
+	Tags                 []string
 }
 
 type PlanState struct {

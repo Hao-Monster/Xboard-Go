@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { defaultProtocolSettings } from "./NodeDefinitionModal";
-import { NodeManagementPage } from "./NodeManagementPage";
+import { NodeManagementPage, nodeAvailability } from "./NodeManagementPage";
 
 const machine = {
   id: 5, name: "edge-sg", notes: "", is_active: true, last_seen_at: null, load_status: null,
@@ -31,6 +31,33 @@ const definition = {
 };
 
 describe("NodeManagementPage", () => {
+  it("shows TLS details only when supported and preserves the draft across the group dialog", async () => {
+    const api = nodeAPI([]);
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByRole("table", { name: "节点列表" });
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    const dialog = screen.getByRole("dialog", { name: "新建节点" });
+    const protocol = within(dialog).getByLabelText("协议类型");
+    await user.selectOptions(protocol, "socks");
+    expect(within(dialog).queryByLabelText("TLS")).not.toBeInTheDocument();
+    for (const type of ["naive", "http"]) {
+      await user.selectOptions(protocol, type);
+      expect(within(dialog).queryByLabelText("服务器名称指示(SNI)")).not.toBeInTheDocument();
+      await user.selectOptions(within(dialog).getByLabelText("TLS"), "1");
+      expect(within(dialog).getByLabelText("服务器名称指示(SNI)")).toBeVisible();
+    }
+    await user.type(within(dialog).getByLabelText("节点名称"), "Draft node");
+    await user.click(within(dialog).getByRole("button", { name: "添加权限组" }));
+    expect(dialog).toHaveAttribute("aria-modal", "false");
+    expect(screen.getByRole("dialog", { name: "创建权限组" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "创建权限组" })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("节点名称")).toHaveValue("Draft node");
+    expect(api.createServerGroup).not.toHaveBeenCalled();
+    expect(api.createAdminNodeDefinition).not.toHaveBeenCalled();
+  });
+
   it("locks the exact legacy defaults for all eleven protocols", () => {
     const tls = { server_name: "", allow_insecure: false, ech: { enabled: false, config: "", query_server_name: "", key: "" } };
     const multiplex = { enabled: false, protocol: "smux", max_connections: 4, padding: false, brutal: { enabled: false, up_mbps: 100, down_mbps: 100 } };
@@ -104,6 +131,7 @@ describe("NodeManagementPage", () => {
 
     await user.click(screen.getByRole("button", { name: "编辑节点：SG VLESS" }));
     const edit = screen.getByRole("dialog", { name: "编辑节点" });
+    expect(edit).toHaveClass("modal-panel");
     await user.clear(within(edit).getByLabelText("节点名称"));
     await user.type(within(edit).getByLabelText("节点名称"), "SG VLESS updated");
     await user.selectOptions(within(edit).getByLabelText("绑定服务器"), "");
@@ -117,7 +145,8 @@ describe("NodeManagementPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "复制节点：SG VLESS" }));
     await waitFor(() => expect(api.copyAdminNode).toHaveBeenCalledWith(41, 3));
     await user.click(screen.getByRole("button", { name: "编辑排序" }));
-    await user.click(screen.getByRole("button", { name: "上移节点：US Trojan" }));
+    screen.getByRole("button", { name: "拖拽节点：US Trojan" }).focus();
+    await user.keyboard("{ArrowUp}");
     expect(api.reorderAdminNodes).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "保存排序" }));
     await waitFor(() => expect(api.reorderAdminNodes).toHaveBeenCalledWith([{ id: 42, revision: 1 }, { id: 41, revision: 3 }]));
@@ -138,7 +167,7 @@ describe("NodeManagementPage", () => {
     ]);
     await user.selectOptions(protocol, "tuic");
     expect(within(dialog).getByLabelText("拥塞控制")).toHaveValue("bbr");
-    expect(within(dialog).getByLabelText("UDP Relay")).toHaveValue("native");
+    expect(within(dialog).getByLabelText("UDP中继模式")).toHaveValue("native");
     await user.selectOptions(protocol, "vmess");
     expect(within(within(dialog).getByLabelText("传输协议")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
       "tcp", "ws", "grpc", "h2", "httpupgrade", "xhttp"
@@ -148,14 +177,15 @@ describe("NodeManagementPage", () => {
     await user.selectOptions(protocol, "trojan");
     expect(within(within(dialog).getByLabelText("安全性")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual(["1", "2"]);
     await user.selectOptions(protocol, "hysteria");
-    await user.selectOptions(within(dialog).getByLabelText("版本"), "1");
+    await user.selectOptions(within(dialog).getByLabelText("协议版本"), "1");
+    expect(within(dialog).getByLabelText("服务器名称指示(SNI)").compareDocumentPosition(within(dialog).getByLabelText("上行宽带 (Mbps)")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(within(dialog).getByLabelText("ALPN")).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual([
       "hysteria", "http/1.1", "h2", "h3"
     ]);
     await user.selectOptions(protocol, "anytls");
-    expect(within(dialog).getByLabelText("Padding Scheme")).toHaveValue("");
+    expect(within(dialog).getByLabelText("填充方案")).toHaveValue("");
     await user.click(within(dialog).getByRole("button", { name: "使用默认方案" }));
-    expect(within(dialog).getByLabelText("Padding Scheme")).toHaveValue([
+    expect(within(dialog).getByLabelText("填充方案")).toHaveValue([
       "stop=8", "0=30-30", "1=100-400", "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
       "3=9-9,500-1000", "4=500-1000", "5=500-1000", "6=500-1000", "7=500-1000"
     ].join("\n"));
@@ -163,7 +193,7 @@ describe("NodeManagementPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "高级设置" }));
     const multiplexDialog = screen.getByRole("dialog", { name: "高级协议配置" });
     await user.click(within(multiplexDialog).getByRole("tab", { name: "多路复用" }));
-    expect(within(multiplexDialog).getByRole("checkbox", { name: "多路复用" })).not.toBeChecked();
+    expect(within(multiplexDialog).getByRole("switch", { name: "多路复用 (Multiplex)" })).not.toBeChecked();
     await user.click(within(multiplexDialog).getByRole("button", { name: "取消" }));
     await user.selectOptions(protocol, "shadowsocks");
     expect(within(dialog).getByLabelText("加密算法")).toHaveValue("aes-128-gcm");
@@ -181,6 +211,9 @@ describe("NodeManagementPage", () => {
     await user.click(within(advanced).getByRole("button", { name: "Save" }));
     await user.type(within(dialog).getByLabelText("节点名称"), "New Shadowsocks");
     await user.type(within(dialog).getByLabelText("节点地址"), "ss.example.test");
+    expect(within(dialog).getByLabelText("连接端口")).toHaveValue("");
+    await user.type(within(dialog).getByLabelText("连接端口"), "443");
+    await user.type(within(dialog).getByLabelText("服务端口"), "443");
     await user.click(within(dialog).getByRole("button", { name: "提交" }));
     await waitFor(() => expect(api.createAdminNodeDefinition).toHaveBeenCalledWith(expect.objectContaining({
       type: "shadowsocks", name: "New Shadowsocks", host: "ss.example.test", rate: 1,
@@ -222,7 +255,7 @@ describe("NodeManagementPage", () => {
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const dialog = screen.getByRole("dialog", { name: "新建节点" });
     await user.selectOptions(within(dialog).getByLabelText("协议类型"), "vless");
-    const parentSearch = within(dialog).getByLabelText("搜索父节点");
+    const parentSearch = await within(dialog).findByLabelText("搜索父节点");
     await user.type(parentSearch, "beyond");
     await waitFor(() => expect(api.listAdminNodeParentOptions).toHaveBeenCalledWith({ type: "vless", q: "beyond" }));
     const parent = within(dialog).getByLabelText("父级节点");
@@ -293,18 +326,18 @@ describe("NodeManagementPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "高级设置" }));
     const advanced = screen.getByRole("dialog", { name: "高级协议配置" });
     await user.click(within(advanced).getByRole("tab", { name: "多路复用" }));
-    await user.click(within(advanced).getByRole("checkbox", { name: "多路复用" }));
+    await user.click(within(advanced).getByRole("switch", { name: "多路复用 (Multiplex)" }));
     expect(within(advanced).getByLabelText("Brutal 加速")).toBeVisible();
     await user.click(within(advanced).getByLabelText("Brutal 加速"));
     expect(within(advanced).getByLabelText("Brutal 上行 (Mbps)")).toHaveValue(100);
     await user.click(within(advanced).getByRole("button", { name: "Save" }));
     await user.selectOptions(within(dialog).getByLabelText("传输协议"), "ws");
     await user.click(within(dialog).getByRole("button", { name: "编辑协议" }));
-    const transport = screen.getByRole("dialog", {name:"编辑传输协议"});
+    const transport = screen.getByRole("dialog", {name:"编辑协议配置"});
     await user.click(within(transport).getByRole("button", { name: "套用 WebSocket 模板" }));
     expect(within(transport).getByLabelText("传输协议设置 (JSON)")).toHaveValue(JSON.stringify({ path: "/", headers: { Host: "v2ray.com" } }, null, 2));
 
-    await user.click(within(transport).getByRole("button", {name:"保存"}));
+    await user.click(within(transport).getByRole("button", {name:"确定"}));
     await user.selectOptions(protocol, "trojan");
     await user.selectOptions(within(dialog).getByLabelText("安全性"), "2");
     expect(within(dialog).getByLabelText("Reality 允许不安全连接")).not.toBeChecked();
@@ -322,8 +355,11 @@ describe("NodeManagementPage", () => {
     await user.selectOptions(within(dialog).getByLabelText("协议类型"), "shadowsocks");
     await user.type(within(dialog).getByLabelText("节点名称"), "Timed Shadowsocks");
     await user.type(within(dialog).getByLabelText("节点地址"), "timed.example.test");
+    expect(within(dialog).getByLabelText("连接端口")).toHaveValue("");
+    await user.type(within(dialog).getByLabelText("连接端口"), "443");
+    await user.type(within(dialog).getByLabelText("服务端口"), "443");
     await user.click(within(dialog).getByLabelText("启用动态倍率"));
-    await user.click(within(dialog).getByRole("button", { name: "添加时间段" }));
+    await user.click(within(dialog).getByRole("button", { name: "添加规则" }));
     fireEvent.change(within(dialog).getByLabelText("动态倍率 1 开始"), { target: { value: "01:15" } });
     fireEvent.change(within(dialog).getByLabelText("动态倍率 1 结束"), { target: { value: "05:45" } });
     fireEvent.change(within(dialog).getByLabelText("动态倍率 1 倍率"), { target: { value: "0.5" } });
@@ -335,7 +371,7 @@ describe("NodeManagementPage", () => {
     await user.type(within(advanced).getByLabelText("DNS Provider"), "cloudflare");
     await user.type(within(advanced).getByLabelText("DNS 环境变量"), "CF_API_TOKEN=local-test-token");
     await user.click(within(advanced).getByRole("tab", { name: "自定义 Outbounds" }));
-    const outbounds = within(advanced).getByLabelText("自定义出站 (JSON 数组)");
+    const outbounds = within(advanced).getByLabelText("自定义 Outbounds (JSON)");
     fireEvent.change(outbounds, { target: { value: "invalid" } });
     await user.click(within(advanced).getByRole("button", { name: "Save" }));
     expect(await within(advanced).findByRole("alert")).toHaveTextContent("Unexpected token");
@@ -426,3 +462,14 @@ function nodeAPI(items = [node]) {
     deleteAdminNodes: vi.fn()
   };
 }
+
+it("distinguishes unavailable, no-push, and healthy nodes at the legacy five-minute boundary", () => {
+  const now = Date.parse("2026-10-01T00:00:00Z");
+  const recent = new Date(now - 299_999).toISOString();
+  const stale = new Date(now - 300_000).toISOString();
+  expect(nodeAvailability({ last_check_at: null, last_push_at: recent }, now)).toBe("offline");
+  expect(nodeAvailability({ last_check_at: stale, last_push_at: recent }, now)).toBe("offline");
+  expect(nodeAvailability({ last_check_at: recent, last_push_at: null }, now)).toBe("no-push");
+  expect(nodeAvailability({ last_check_at: recent, last_push_at: stale }, now)).toBe("no-push");
+  expect(nodeAvailability({ last_check_at: recent, last_push_at: recent }, now)).toBe("online");
+});

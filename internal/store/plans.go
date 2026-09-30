@@ -55,12 +55,12 @@ func (s *Store) CreatePlan(ctx context.Context, input SavePlanInput, now time.Ti
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO plans (
 			group_id, transfer_enable_gib, name, speed_limit, show, sort_position, renew, content,
-			reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json,
+			reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, distributor_hwid_limit,
 			revision, created_at, updated_at
-		) VALUES (?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, 0, ?, ?, 1, ?, ?)
+		) VALUES (?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, 0, ?, ?, COALESCE(?, 1), 1, ?, ?)
 	`, normalized.GroupID, normalized.TransferEnableGiB, normalized.Name, normalized.SpeedLimit, position,
 		normalized.Content, normalized.ResetTrafficMethod, normalized.CapacityLimit, pricesJSON,
-		normalized.DeviceLimit, tagsJSON, now.Unix(), now.Unix())
+		normalized.DeviceLimit, tagsJSON, normalized.DistributorHWIDLimit, now.Unix(), now.Unix())
 	if err != nil {
 		return Plan{}, fmt.Errorf("create plan: %w", err)
 	}
@@ -105,11 +105,11 @@ func (s *Store) UpdatePlan(ctx context.Context, planID, revision int64, input Sa
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE plans SET group_id = ?, transfer_enable_gib = ?, name = ?, speed_limit = ?, content = ?,
-			reset_traffic_method = ?, capacity_limit = ?, prices_json = ?, device_limit = ?, tags_json = ?,
+			reset_traffic_method = ?, capacity_limit = ?, prices_json = ?, device_limit = ?, tags_json = ?, distributor_hwid_limit = COALESCE(?, distributor_hwid_limit),
 			revision = revision + 1, updated_at = ?
 		WHERE id = ? AND revision = ?
 	`, normalized.GroupID, normalized.TransferEnableGiB, normalized.Name, normalized.SpeedLimit, normalized.Content,
-		normalized.ResetTrafficMethod, normalized.CapacityLimit, pricesJSON, normalized.DeviceLimit, tagsJSON,
+		normalized.ResetTrafficMethod, normalized.CapacityLimit, pricesJSON, normalized.DeviceLimit, tagsJSON, normalized.DistributorHWIDLimit,
 		now.Unix(), planID, revision)
 	if err != nil {
 		return Plan{}, fmt.Errorf("update plan: %w", err)
@@ -321,7 +321,7 @@ type planQueryer interface {
 const planSelect = `
 	SELECT p.id, p.group_id, p.transfer_enable_gib, p.name, p.speed_limit, p.show, p.sort_position,
 	       p.renew, p.content, p.reset_traffic_method, p.capacity_limit, p.prices_json, p.sell,
-	       p.device_limit, p.tags_json, COALESCE(uc.users_count, 0), COALESCE(uc.active_users_count, 0),
+	       p.device_limit, p.tags_json, p.distributor_hwid_limit, COALESCE(uc.users_count, 0), COALESCE(uc.active_users_count, 0),
 	       COALESCE(uc.capacity_users, 0), p.revision, p.created_at, p.updated_at
 	FROM plans p
 	LEFT JOIN (
@@ -369,7 +369,7 @@ func scanPlan(row rowScanner) (Plan, error) {
 	var createdAt, updatedAt int64
 	if err := row.Scan(&plan.ID, &groupID, &plan.TransferEnableGiB, &plan.Name, &speedLimit, &plan.Show,
 		&plan.SortPosition, &plan.Renew, &plan.Content, &resetMethod, &capacityLimit, &pricesJSON,
-		&plan.Sell, &deviceLimit, &tagsJSON, &plan.UsersCount, &plan.ActiveUsersCount, &plan.CapacityUsersCount,
+		&plan.Sell, &deviceLimit, &tagsJSON, &plan.DistributorHWIDLimit, &plan.UsersCount, &plan.ActiveUsersCount, &plan.CapacityUsersCount,
 		&plan.Revision, &createdAt, &updatedAt); errors.Is(err, sql.ErrNoRows) {
 		return Plan{}, ErrNotFound
 	} else if err != nil {
@@ -455,6 +455,9 @@ func planContentLimit(value *int) string {
 }
 
 func normalizePlanInput(input SavePlanInput) (SavePlanInput, string, string, error) {
+	if input.DistributorHWIDLimit != nil && (*input.DistributorHWIDLimit < 1 || *input.DistributorHWIDLimit > 100) {
+		return SavePlanInput{}, "", "", fmt.Errorf("%w: invalid distributor HWID limit", ErrInvalidInput)
+	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.Content = strings.TrimSpace(input.Content)
 	if input.Name == "" || !utf8.ValidString(input.Name) || utf8.RuneCountInString(input.Name) > maxPlanNameRunes ||

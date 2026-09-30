@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
+import { SafeMarkdown } from "../../components/SafeMarkdown";
 
 import type { NoticePage } from "../../lib/api";
 
@@ -40,10 +40,7 @@ export function UserNoticesPage({ api }: { api: UserNoticeAPI }) {
           {notice.image_url !== null && <img className="notice-cover" src={notice.image_url} alt="" loading="lazy" referrerPolicy="no-referrer" />}
           <div className="notice-card-body">
             <div className="notice-card-heading"><div><h2>{notice.title}</h2><time dateTime={notice.updated_at}>{formatDate(notice.updated_at)}</time></div><div className="notice-tags">{notice.tags.map((tag) => <span className="count-pill" key={tag}>{tag}</span>)}</div></div>
-            <div className="markdown-body"><Markdown components={{
-              a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; },
-              img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; }
-            }}>{notice.content}</Markdown></div>
+            <div className="markdown-body"><SafeMarkdown>{notice.content}</SafeMarkdown></div>
           </div>
         </article>)}</section>
       )}

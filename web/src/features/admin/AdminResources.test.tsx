@@ -34,6 +34,8 @@ describe("ServerGroupsPage", () => {
 
     await user.click(screen.getByRole("button", { name: "添加权限组" }));
     let dialog = screen.getByRole("dialog", { name: "创建权限组" });
+    expect(within(dialog).getByRole("button", { name: "创建权限组" })).toBeDisabled();
+    expect(within(dialog).getByLabelText("组名称")).toHaveFocus();
     await user.type(within(dialog).getByLabelText("组名称"), "New group");
     await user.click(within(dialog).getByRole("button", { name: "创建权限组" }));
     await waitFor(() => expect(api.createServerGroup).toHaveBeenCalledWith("New group"));
@@ -89,7 +91,7 @@ describe("RoutingRulesPage", () => {
     await user.type(within(dialog).getByLabelText(/备注/), "Proxy overseas");
     await user.type(within(dialog).getByLabelText(/匹配规则/), "*.example.com{enter}geoip:us");
     await user.selectOptions(within(dialog).getByLabelText(/动作/), "proxy");
-    await user.type(within(dialog).getByLabelText(/代理出站标记/), "warp-out");
+    await user.type(within(dialog).getByLabelText(/转发标签/), "warp-out");
     await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.createRoutingRule).toHaveBeenCalledWith({
       remarks: "Proxy overseas", match: ["*.example.com", "geoip:us"], action: "proxy", action_value: "warp-out"
@@ -104,7 +106,7 @@ describe("RoutingRulesPage", () => {
     await user.click(screen.getByRole("button", { name: "编辑路由规则：Proxy overseas" }));
     dialog = screen.getByRole("dialog", { name: "编辑路由" });
     await user.selectOptions(within(dialog).getByLabelText(/动作/), "direct");
-    expect(within(dialog).queryByLabelText(/代理出站标记/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/转发标签/)).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.updateRoutingRule).toHaveBeenCalledWith(12, {
       remarks: "Proxy overseas", match: ["*.example.com", "geoip:us"], action: "direct", action_value: ""

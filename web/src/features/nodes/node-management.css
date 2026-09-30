@@ -11,14 +11,15 @@
 
 .node-management-page h1 {
   margin-bottom: 4px;
-  font-size: 1.35rem;
+  font-size: 24px;
+  line-height: 32px;
   letter-spacing: -.03em;
 }
 
 .node-management-page .page-header .muted {
   margin: 0;
-  font-size: .78rem;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .node-management-page .button.compact {
@@ -30,14 +31,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .node-toolbar-search {
   position: relative;
   flex: 1 1 220px;
   min-width: min(220px, 100%);
-  max-width: 320px;
+  max-width: 250px;
 }
 
 .node-toolbar-search input {
@@ -96,6 +97,17 @@
   left: 0;
 }
 
+.node-toolbar > .button:first-child { min-width: 94px; }
+.node-toolbar.is-sorting > :not(.node-toolbar-spacer):not(.button):not(.node-sort-hint) { display: none; }
+.node-toolbar.is-sorting > .button:disabled:first-child { display: none; }
+.node-table.is-sorting :is(th, td):nth-child(3),
+.node-table.is-sorting :is(th, td):nth-child(5),
+.node-table.is-sorting :is(th, td):nth-child(6),
+.node-table.is-sorting :is(th, td):nth-child(7),
+.node-table.is-sorting :is(th, td):nth-child(8),
+.node-table.is-sorting :is(th, td):nth-child(9),
+.node-table.is-sorting :is(th, td):nth-child(11) { display: none; }
+
 .node-menu.node-menu-floating {
   position: fixed;
   z-index: 80;
@@ -139,7 +151,7 @@
 }
 
 .node-table-wrap {
-  margin-top: 12px;
+  margin-top: 16px;
   overflow: auto;
   border: 1px solid var(--theme-border);
   border-radius: 10px;
@@ -527,3 +539,11 @@
 .node-table .node-status,
 .node-table .node-group-badge { white-space: nowrap; overflow-wrap: normal; }
 .node-table tbody tr:hover { background: color-mix(in srgb, var(--theme-primary) 5%, var(--theme-surface)); }
+
+.node-availability-dot { display: inline-block; width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; background: #a1a1aa; vertical-align: middle; margin-right: 8px; }
+.node-availability-dot.online { background: #10b981; }
+.node-availability-dot.no-push { background: #f59e0b; }
+.node-availability-dot.offline { background: #ef4444; }
+.node-deploy-name .node-availability-dot { width: 8px; height: 8px; margin-right: 0; }
+.node-address-row { flex-wrap: wrap; }
+.node-address-row > small { white-space: nowrap; font-size: 11px; }

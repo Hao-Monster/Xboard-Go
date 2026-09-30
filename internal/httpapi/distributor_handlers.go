@@ -165,7 +165,7 @@ func (s *server) listAdminDistributorOrders(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	filter := store.DistributorOrderFilter{
-		Page: page, PageSize: pageSize, Search: r.URL.Query().Get("search"), IncludeTokenSearch: true,
+		Page: page, PageSize: pageSize, Search: r.URL.Query().Get("search"), IncludeTokenSearch: true, SettlementMonth: r.URL.Query().Get("settlement_month"),
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("distributor_user_id")); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
@@ -313,7 +313,7 @@ func (s *server) previewAdminDistributorSettlement(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	value, err := s.store.PreviewDistributorSettlement(r.Context(), distributorID)
+	value, err := s.store.PreviewDistributorSettlement(r.Context(), distributorID, r.URL.Query().Get("settlement_month"))
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -326,12 +326,14 @@ func (s *server) settleAdminDistributorOrders(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	var input struct{}
+	var input struct {
+		SettlementMonth string `json:"settlement_month"`
+	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
-	value, err := s.store.SettleDistributorOrders(r.Context(), distributorID, session.UserID, s.now())
+	value, err := s.store.SettleDistributorOrders(r.Context(), distributorID, session.UserID, s.now(), input.SettlementMonth)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -367,7 +369,7 @@ func (s *server) legacyAdminDistributorSettlementPreview(w http.ResponseWriter, 
 		writeLegacyOrderFail(w, http.StatusUnprocessableEntity, "请选择有效的分销商")
 		return
 	}
-	value, err := s.store.PreviewDistributorSettlement(r.Context(), distributorID)
+	value, err := s.store.PreviewDistributorSettlement(r.Context(), distributorID, r.URL.Query().Get("settlement_month"))
 	if err != nil {
 		writeLegacyAdminDistributorError(w, err)
 		return
@@ -377,13 +379,14 @@ func (s *server) legacyAdminDistributorSettlementPreview(w http.ResponseWriter, 
 
 func (s *server) legacyAdminSettleDistributorOrders(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DistributorUserID int64 `json:"distributor_user_id"`
+		DistributorUserID int64  `json:"distributor_user_id"`
+		SettlementMonth   string `json:"settlement_month"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	session, _ := sessionFromContext(r.Context())
-	value, err := s.store.SettleDistributorOrders(r.Context(), input.DistributorUserID, session.UserID, s.now())
+	value, err := s.store.SettleDistributorOrders(r.Context(), input.DistributorUserID, session.UserID, s.now(), input.SettlementMonth)
 	if err != nil {
 		writeLegacyAdminDistributorError(w, err)
 		return

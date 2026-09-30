@@ -14,6 +14,7 @@ import (
 	_ "image/png"
 	"io"
 	"math"
+	"net/url"
 	"path"
 	"regexp"
 	"sort"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
 const (
@@ -51,6 +54,7 @@ type Palette struct {
 }
 
 type Config struct {
+	CustomHTML    string `json:"custom_html,omitempty"`
 	ThemeColor    string `json:"theme_color"`
 	BackgroundURL string `json:"background_url"`
 	FontScale     string `json:"font_scale"`
@@ -223,11 +227,14 @@ func ValidateManifest(manifest Manifest) error {
 }
 
 func ValidateConfig(manifest Manifest, config Config) error {
+	if len(config.CustomHTML) > 16384 || !utf8.ValidString(config.CustomHTML) || footerPolicy.Sanitize(config.CustomHTML) != config.CustomHTML {
+		return errors.New("theme footer contains unsupported HTML; only safe text formatting and links are allowed")
+	}
 	if _, exists := manifest.Palettes[config.ThemeColor]; !exists {
 		return errors.New("theme color is not defined by the manifest")
 	}
-	if config.BackgroundURL != "" && !contains(manifest.Backgrounds, config.BackgroundURL) {
-		return errors.New("theme background is not defined by the manifest")
+	if config.BackgroundURL != "" && !contains(manifest.Backgrounds, config.BackgroundURL) && !IsRemoteBackgroundURL(config.BackgroundURL) {
+		return errors.New("theme background must be a packaged asset or an HTTPS URL")
 	}
 	if config.FontScale != "small" && config.FontScale != "normal" && config.FontScale != "large" {
 		return errors.New("theme font scale is invalid")
@@ -388,4 +395,21 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+var footerPolicy = func() *bluemonday.Policy {
+	p := bluemonday.NewPolicy()
+	p.AllowElements("p", "div", "span", "br", "strong", "b", "em", "i", "u", "small", "ul", "ol", "li", "a")
+	p.AllowAttrs("href", "title").OnElements("a")
+	p.AllowURLSchemes("https", "http", "mailto")
+	p.AllowRelativeURLs(true)
+	return p
+}()
+
+func IsRemoteBackgroundURL(value string) bool {
+	if len(value) > 2048 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\t") {
+		return false
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "https" && parsed.Hostname() != "" && parsed.User == nil
 }

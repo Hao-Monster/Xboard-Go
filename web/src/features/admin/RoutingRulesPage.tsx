@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 // Responsive full-width routing rules management
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -101,20 +102,18 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
     <main className="page-shell resource-page rr-page">
       {/* Header */}
       <header className="rr-header">
-        <h1 className="rr-title">路由管理</h1>
-        <p className="rr-subtitle">管理所有路由规则，包括添加、删除、编辑等操作。</p>
+        <h1 className="rr-title">{translateAdmin("路由管理")}</h1>
+        <p className="rr-subtitle">{translateAdmin("管理所有路由组，包括添加、删除、编辑等操作。")}</p>
       </header>
 
       {/* Toolbar */}
       <div className="rr-toolbar">
         <button className="button secondary compact rr-add-btn" onClick={() => setEditing(null)}>
-          <span className="rr-plus" aria-hidden="true">+</span>
-          添加路由
-        </button>
+          <span className="rr-plus" aria-hidden="true">+</span>{translateAdmin("添加路由")}</button>
         <input
           className="rr-search"
           type="search"
-          placeholder="搜索路由..."
+          placeholder={translateAdmin("搜索路由...")}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           aria-label="搜索路由"
@@ -125,7 +124,7 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
       {error !== "" && (
         <div className="alert error resource-alert" role="alert">
           {error}
-          <button className="button ghost compact" onClick={() => void refresh()}>重试</button>
+          <button className="button ghost compact" onClick={() => void refresh()}>{translateAdmin("重试")}</button>
         </div>
       )}
 
@@ -138,28 +137,19 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
             <thead>
               <tr>
                 <th className="rr-th-id">
-                  <button className="rr-sort-btn" onClick={() => toggleSort("id")}>
-                    组ID {sortIcon("id")}
+                  <button className="rr-sort-btn" onClick={() => toggleSort("id")}>{translateAdmin("组ID")}{sortIcon("id")}
                   </button>
                 </th>
-                <th className="rr-th-remarks">
-                  <button className="rr-sort-btn" onClick={() => toggleSort("remarks")}>
-                    备注 {sortIcon("remarks")}
-                  </button>
-                </th>
-                <th className="rr-th-match">动作值</th>
-                <th className="rr-th-action">
-                  <button className="rr-sort-btn" onClick={() => toggleSort("action")}>
-                    动作 {sortIcon("action")}
-                  </button>
-                </th>
-                <th className="rr-th-ops">操作</th>
+                <th className="rr-th-remarks">{translateAdmin("备注")}</th>
+                <th className="rr-th-match">{translateAdmin("动作值")}</th>
+                <th className="rr-th-action">{translateAdmin("动作")}</th>
+                <th className="rr-th-ops">{translateAdmin("操作")}</th>
               </tr>
             </thead>
             <tbody>
               {paged.length === 0 ? (
                 <tr className="rr-empty-row">
-                  <td colSpan={5} className="rr-empty-cell">暂无数据</td>
+                  <td colSpan={5} className="rr-empty-cell">{translateAdmin("暂无数据")}</td>
                 </tr>
               ) : paged.map((rule) => (
                 <tr key={rule.id}>
@@ -192,7 +182,7 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
                       <button
                         className="rr-icon-btn"
                         aria-label={`编辑路由规则：${rule.remarks}`}
-                        title="编辑"
+                        title={translateAdmin("编辑")}
                         onClick={() => setEditing(rule)}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -203,7 +193,7 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
                       <button
                         className="rr-icon-btn rr-icon-btn-danger"
                         aria-label={`删除路由规则：${rule.remarks}`}
-                        title="删除"
+                        title={translateAdmin("删除")}
                         onClick={() => setDeleting(rule)}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -227,9 +217,7 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
         <div className="rr-footer">
           <span className="rr-footer-status">已选择 0 项，共 {sorted.length} 项</span>
           <div className="rr-pagination">
-            <label className="rr-page-size-label">
-              每页显示
-              <select
+            <label className="rr-page-size-label">{translateAdmin("每页显示")}<select
                 className="rr-page-size-select"
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
@@ -238,9 +226,7 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
                 {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </label>
-            <span className="rr-page-info">
-              第
-              <input
+            <span className="rr-page-info">{translateAdmin("第")}<input
                 className="rr-page-input"
                 type="number"
                 min={1}
@@ -253,8 +239,8 @@ export function RoutingRulesPage({ api }: { api: RoutesAPI }) {
             </span>
             <div className="rr-page-btns">
               <button className="rr-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="首页">«</button>
-              <button className="rr-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="上一页">‹</button>
-              <button className="rr-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="下一页">›</button>
+              <button className="rr-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label={translateAdmin("上一页")}>‹</button>
+              <button className="rr-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label={translateAdmin("下一页")}>›</button>
               <button className="rr-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="末页">»</button>
             </div>
           </div>
@@ -341,8 +327,7 @@ function RouteEditor({
       </div>
       <form className="rr-modal-body" onSubmit={(e) => void submit(e)}>
         <div className="rr-form-field">
-          <label className="rr-field-label" htmlFor="rr-remarks">
-            备注 <span className="rr-required" aria-hidden="true">*</span>
+          <label className="rr-field-label" htmlFor="rr-remarks">{translateAdmin("备注")}<span className="rr-required" aria-hidden="true">*</span>
           </label>
           <input
             id="rr-remarks"
@@ -350,13 +335,12 @@ function RouteEditor({
             value={remarks}
             maxLength={255}
             required
-            placeholder="请输入备注"
+            placeholder={translateAdmin("请输入备注")}
             onChange={(e) => setRemarks(e.target.value)}
           />
         </div>
         <div className="rr-form-field">
-          <label className="rr-field-label" htmlFor="rr-match">
-            匹配规则 <span className="rr-required" aria-hidden="true">*</span>
+          <label className="rr-field-label" htmlFor="rr-match">{translateAdmin("匹配规则")}<span className="rr-required" aria-hidden="true">*</span>
           </label>
           <textarea
             id="rr-match"
@@ -370,8 +354,7 @@ function RouteEditor({
           />
         </div>
         <div className="rr-form-field">
-          <label className="rr-field-label" htmlFor="rr-action">
-            动作 <span className="rr-required" aria-hidden="true">*</span>
+          <label className="rr-field-label" htmlFor="rr-action">{translateAdmin("动作")}<span className="rr-required" aria-hidden="true">*</span>
           </label>
           <select
             id="rr-action"
@@ -379,16 +362,16 @@ function RouteEditor({
             value={action}
             onChange={(e) => setAction(e.target.value as RoutingAction)}
           >
-            <option value="block">禁止访问</option>
-            <option value="dns">指定DNS服务器进行解析</option>
-            <option value="direct">直连</option>
-            <option value="proxy">转发</option>
+            <option value="block">{translateAdmin("禁止访问")}</option>
+            <option value="dns">{translateAdmin("指定DNS服务器进行解析")}</option>
+            <option value="direct">{translateAdmin("直连")}</option>
+            <option value="proxy">{translateAdmin("转发")}</option>
           </select>
         </div>
         {needsValue && (
           <div className="rr-form-field">
             <label className="rr-field-label" htmlFor="rr-action-value">
-              {action === "dns" ? "DNS 服务器地址" : "代理出站标记"} <span className="rr-required" aria-hidden="true">*</span>
+              {action === "dns" ? "DNS 服务器地址" : translateAdmin("转发标签 (Outbound Tag)")} <span className="rr-required" aria-hidden="true">*</span>
             </label>
             <input
               id="rr-action-value"
@@ -396,16 +379,16 @@ function RouteEditor({
               value={actionValue}
               maxLength={255}
               required
-              placeholder={action === "dns" ? "例如：8.8.8.8" : "例如：proxy-out"}
+              placeholder={action === "dns" ? "例如：8.8.8.8" : translateAdmin("请输入转发标签")}
               onChange={(e) => setActionValue(e.target.value)}
             />
           </div>
         )}
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
         <div className="rr-modal-footer">
-          <button className="button ghost" type="button" onClick={onClose}>取消</button>
+          <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary" disabled={saving} type="submit">
-            {saving ? "正在保存…" : "确认"}
+            {saving ? "正在保存…" : translateAdmin("确认")}
           </button>
         </div>
       </form>
@@ -452,9 +435,9 @@ function RouteDelete({
         </p>
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
         <div className="rr-modal-footer">
-          <button className="button ghost" onClick={onClose}>取消</button>
+          <button className="button ghost" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary destructive" disabled={busy} onClick={() => void remove()}>
-            {busy ? "正在删除…" : "确认删除"}
+            {busy ? "正在删除…" : translateAdmin("确认删除")}
           </button>
         </div>
       </div>

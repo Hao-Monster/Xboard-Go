@@ -657,3 +657,27 @@ func TestGiftCardMaximumInviterRewardDoesNotOverflow(t *testing.T) {
 		t.Fatalf("balances user=%d inviter=%d", userBalance, inviterBalance)
 	}
 }
+
+func TestGiftCardTemplateSearchIsLiteralAndPaginated(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	admin, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "gift-search@example.test", PasswordHash: "hash"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Welcome 100%", "Welcome standard", "Other"} {
+		if _, err := database.CreateGiftCardTemplate(ctx, SaveGiftCardTemplateInput{Name: name, Type: GiftCardTypeGeneral, Status: true, Rewards: GiftCardReward{Balance: 100}}, admin.ID, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		search string
+		total  int64
+	}{{"welcome", 2}, {"%", 1}, {"' OR 1=1 --", 0}, {"missing", 0}} {
+		page, err := database.ListGiftCardTemplates(ctx, GiftCardTemplateFilter{Page: 1, PageSize: 1, Search: tc.search})
+		if err != nil || page.Total != tc.total || len(page.Items) > 1 {
+			t.Fatalf("search %q: %+v %v", tc.search, page, err)
+		}
+	}
+}

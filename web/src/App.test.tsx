@@ -65,13 +65,15 @@ describe("App public identity bootstrap", () => {
 		expect(navigation).toHaveClass("admin-sidebar");
 		expect(navigation.parentElement).toHaveClass("admin-layout");
 		expect(document.querySelector(".topbar .admin-nav")).not.toBeInTheDocument();
-		expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
+		await userEvent.click(screen.getByLabelText("账号菜单"));
+    expect(screen.getByText("hybrid@example.test", { exact: true })).toBeVisible();
 		expect(screen.getByRole("button", { name: "分销管理" })).toBeVisible();
 		expect(screen.getByRole("button", { name: "系统配置" })).toBeVisible();
 		expect(screen.queryByRole("heading", { name: "分销订阅中心" })).not.toBeInTheDocument();
 	});
 
   it("warns before leaving client app settings with unsaved changes", async () => {
+    await import("./features/settings/SystemConfigShell");
     const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
     vi.stubGlobal("confirm", confirm);
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
@@ -115,7 +117,7 @@ describe("App public identity bootstrap", () => {
     await user.type(version, "5.0.0");
     await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
-    expect(screen.getByRole("heading", { name: "客户端版本" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "APP设置" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
@@ -516,7 +518,7 @@ describe("App public identity bootstrap", () => {
     const sidebar = await screen.findByRole("navigation", { name: "管理端导航" });
     expect(sidebar).toBeVisible();
 
-    expect(within(sidebar).getAllByRole("button").map(button => button.textContent)).toEqual([
+    expect(within(sidebar).getAllByRole("button").filter(button => button.getAttribute("aria-label") !== "切换侧边栏").map(button => button.textContent)).toEqual([
       "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理",
       "节点管理", "服务器管理", "节点管理", "权限组管理", "路由管理",
       "订阅管理", "套餐管理", "订单管理", "分销管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
@@ -524,6 +526,24 @@ describe("App public identity bootstrap", () => {
     for (const removed of ["个人中心", "账号安全", "邮件设置", "节点网络", "订阅财务", "用户支持"]) {
       expect(within(sidebar).queryByText(removed)).not.toBeInTheDocument();
     }
+    const collapse = within(sidebar).getByRole("button", { name: "切换侧边栏" });
+    await userEvent.click(collapse);
+    expect(collapse).toHaveAttribute("aria-expanded", "false");
+    expect(within(sidebar).getByRole("button", { name: "客户端管理" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "切换明暗主题" }));
+    expect(document.documentElement).toHaveAttribute("data-admin-color-mode", "light");
+    await userEvent.click(screen.getByRole("button", { name: "切换明暗主题" }));
+    expect(document.documentElement).toHaveAttribute("data-admin-color-mode", "dark");
+    localStorage.removeItem("xboard-admin-color-mode");
+    await userEvent.click(collapse);
+    await userEvent.keyboard("{Control>}k{/Control}");
+    const searchDialog = screen.getByRole("dialog", { name: "搜索菜单和功能" });
+    await userEvent.type(within(searchDialog).getByRole("searchbox"), "客户端");
+    expect(within(searchDialog).getByRole("button", { name: "客户端管理" })).toBeVisible();
+    expect(within(searchDialog).queryByRole("button", { name: "套餐管理" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "搜索菜单和功能" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "分销管理快捷入口" })).toBeVisible();
     const group = within(sidebar).getByRole("button", { name: "系统管理 菜单" });
     await userEvent.click(group);
     expect(group).toHaveAttribute("aria-expanded", "false");
@@ -531,7 +551,7 @@ describe("App public identity bootstrap", () => {
     await userEvent.click(group);
     await userEvent.click(within(sidebar).getByRole("button", { name: "系统配置" }));
     const config = await screen.findByRole("navigation", { name: "系统配置子导航" });
-    expect(within(config).getAllByRole("button").map(button => button.textContent)).toEqual([
+    expect(within(config).getAllByRole("button").filter(button => button.getAttribute("aria-label") !== "切换侧边栏").map(button => button.textContent)).toEqual([
       "站点设置", "安全设置", "订阅设置", "邀请&佣金设置", "节点配置", "邮件设置", "Telegram设置", "APP设置", "订阅模板"
     ]);
     await userEvent.click(within(config).getByRole("button", { name: "安全设置" }));

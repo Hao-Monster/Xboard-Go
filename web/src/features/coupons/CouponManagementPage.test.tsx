@@ -26,16 +26,21 @@ describe("CouponManagementPage", () => {
     render(<CouponManagementPage api={api} />);
 
     expect(await screen.findByText("SAVE500")).toBeVisible();
-    await user.type(screen.getByPlaceholderText("搜索名称或券码"), "SAVE");
-    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await user.type(screen.getByPlaceholderText("搜索优惠券..."), "SAVE");
     await waitFor(() => expect(api.listCoupons).toHaveBeenLastCalledWith(expect.objectContaining({ query: "SAVE", page: 1 })));
 
-    await user.click(screen.getByRole("button", { name: "新增优惠券" }));
-    await user.type(screen.getByLabelText("卷名称"), "新用户优惠");
-    await user.type(screen.getByLabelText("卷码"), "SAVE500");
+    await user.click(screen.getByRole("button", { name: "添加优惠券" }));
+    expect(screen.getByLabelText("批量生成数量")).toHaveValue(null);
+    expect(screen.getByLabelText("自定义优惠码")).not.toBeRequired();
+    await user.click(screen.getByRole("button", { name: "选择优惠券有效期" }));
+    const starts = screen.getByLabelText<HTMLInputElement>("开始时间").value;
+    const ends = screen.getByLabelText<HTMLInputElement>("结束时间").value;
+    expect(new Date(ends).getTime() - new Date(starts).getTime()).toBe(7 * 86_400_000);
+    await user.type(screen.getByLabelText("优惠券名称"), "新用户优惠");
+    await user.type(screen.getByLabelText("自定义优惠码"), "SAVE500");
     await user.clear(screen.getByLabelText("优惠金额（元）"));
     await user.type(screen.getByLabelText("优惠金额（元）"), "5");
-    await user.click(screen.getByRole("button", { name: "保存优惠券" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.createCoupon).toHaveBeenCalledWith(expect.objectContaining({
       code: "SAVE500", name: "新用户优惠", type: 1, value: 500, show: true
     })));
@@ -58,9 +63,9 @@ describe("CouponManagementPage", () => {
 
     expect(await screen.findByText("SAVE500")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "编辑" }));
-    await user.clear(screen.getByLabelText("卷名称"));
-    await user.type(screen.getByLabelText("卷名称"), updated.name);
-    await user.click(screen.getByRole("button", { name: "保存优惠券" }));
+    await user.clear(screen.getByLabelText("优惠券名称"));
+    await user.type(screen.getByLabelText("优惠券名称"), updated.name);
+    await user.click(screen.getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.updateCoupon).toHaveBeenCalledWith(coupon.id, expect.objectContaining({
       code: coupon.code, name: updated.name, type: coupon.type, value: coupon.value
     })));

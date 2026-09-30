@@ -1,4 +1,6 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { DateTimeInput } from "../../components/DateTimeInput";
 import { Modal } from "../../components/Overlay";
 import {
   APIError,
@@ -11,7 +13,6 @@ import {
   type AdminUserFilterOperator,
   type AdminUserGeneratedCredential,
   type AdminUserGenerateInput,
-  type AdminUserGenerateMode,
   type AdminUser,
   type AdminUserCreateInput,
   type AdminUserQuery,
@@ -56,8 +57,6 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   const [plans, setPlans] = useState<Plan[]>([]);
   const [total, setTotal] = useState(0);
   const [emailPrefix, setEmailPrefix] = useState("");
-  const [status, setStatus] = useState("all");
-  const [groupID, setGroupID] = useState("");
   const [appliedQuery, setAppliedQuery] = useState<AdminUserQuery>(defaultUserQuery);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterDraft[]>([]);
@@ -146,9 +145,6 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
       sort_desc: appliedQuery.sort_desc ?? true, filters: wireAdvancedFilters(advancedFilters)
     };
     if (emailPrefix.trim() !== "") query.email_prefix = emailPrefix.trim();
-    if (status === "active") query.banned = false;
-    if (status === "banned") query.banned = true;
-    if (groupID !== "") query.group_id = Number(groupID);
     void runQuery(query);
   };
 
@@ -238,9 +234,8 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
   return <main className="page-shell">
     <header className="page-header">
       <div>
-        <p className="eyebrow">Identity and access</p>
-        <h1>用户管理</h1>
-        <p className="muted">在这里可以管理用户，包括增加、删除、编辑、查询等操作。</p>
+        <h1>{translateAdmin("用户管理")}</h1>
+        <p className="muted">{translateAdmin("在这里可以管理用户，包括增加、删除、编辑、查询等操作。")}</p>
       </div>
     </header>
 
@@ -249,12 +244,10 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <button
           className="button primary user-create-btn"
           type="button"
-          aria-label="新增用户"
+          aria-label={translateAdmin("创建用户")}
           onClick={() => setCreating(true)}
         >
-          <span className="user-btn-plus" aria-hidden="true">+</span>
-          新增用户
-        </button>
+          <span className="user-btn-plus" aria-hidden="true">+</span>{translateAdmin("创建用户")}</button>
         <form className="user-quick-filter-form" onSubmit={submitFilters}>
           <div className="user-search-box-wrap">
             <svg className="user-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
@@ -267,34 +260,10 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
               aria-label="邮箱前缀"
               className="user-search-input"
               value={emailPrefix}
-              onChange={(event) => setEmailPrefix(event.target.value)}
-              placeholder="搜索用户邮箱..."
+              onChange={(event) => { const value = event.target.value; setEmailPrefix(value); setSelectedUserIDs(new Set()); void runQuery({ ...appliedQuery, page: 1, email_prefix: value.trim() || undefined }); }}
+              placeholder={translateAdmin("搜索用户邮箱...")}
             />
           </div>
-          <select
-            aria-label="用户状态"
-            className="user-toolbar-select"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">全部用户状态</option>
-            <option value="active">正常</option>
-            <option value="banned">已封禁</option>
-          </select>
-          <select
-            aria-label="权限组筛选"
-            className="user-toolbar-select"
-            value={groupID}
-            onChange={(event) => setGroupID(event.target.value)}
-          >
-            <option value="">全部权限组</option>
-            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-          </select>
-          {!advancedOpen && (
-            <button className="button secondary user-query-btn" type="submit" disabled={loading}>
-              查询用户
-            </button>
-          )}
         </form>
       </div>
 
@@ -304,7 +273,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
           className={`button ghost user-filter-btn ${advancedOpen ? "active" : ""}`}
           type="button"
           aria-expanded={advancedOpen}
-          aria-label="高级筛选"
+          aria-label={translateAdmin("高级筛选")}
           onClick={() => setAdvancedOpen((value) => !value)}
         >
           <svg className="user-filter-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
@@ -317,9 +286,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
             <line x1="1" y1="14" x2="7" y2="14" />
             <line x1="9" y1="8" x2="15" y2="8" />
             <line x1="17" y1="16" x2="23" y2="16" />
-          </svg>
-          高级筛选
-          {advancedFilters.length > 0 && <span className="user-filter-badge">{advancedFilters.length}</span>}
+          </svg>{translateAdmin("高级筛选")}{advancedFilters.length > 0 && <span className="user-filter-badge">{advancedFilters.length}</span>}
         </button>
 
         <div className="user-bulk-menu-wrap">
@@ -352,7 +319,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <aside className="user-advanced-drawer-panel" onClick={(event) => event.stopPropagation()} aria-label="高级筛选面板">
           <div className="user-advanced-drawer-header">
             <div>
-              <h3>高级筛选</h3>
+              <h3>{translateAdmin("高级筛选")}</h3>
               <p className="small muted">添加一个或多个筛选条件来精确查找用户（全部条件同时满足）</p>
             </div>
             <button
@@ -367,21 +334,20 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 
           <div className="user-advanced-drawer-body">
             <div className="user-advanced-drawer-toolbar">
-              <span className="small text-semibold">筛选条件</span>
+              <span className="small text-semibold">{translateAdmin("筛选条件")}</span>
               <button
                 className="button secondary compact"
                 type="button"
-                aria-label="添加筛选条件"
+                aria-label={translateAdmin("添加条件")}
                 disabled={advancedFilters.length >= 10}
                 onClick={() => setAdvancedFilters((current) => [...current, { id: nextFilterID.current++, field: "email", operator: "contains", value: "" }])}
               >
-                <span aria-hidden="true">+ </span>添加筛选条件
-              </button>
+                <span aria-hidden="true">+ </span>{translateAdmin("添加条件")}</button>
             </div>
 
             {advancedFilters.length === 0 ? (
               <div className="user-advanced-empty-hint small muted">
-                暂未添加筛选条件，点击上方“添加筛选条件”开始配置。
+                暂未添加条件，点击上方“添加条件”开始配置。
               </div>
             ) : (
               <div className="user-advanced-rules-stack">
@@ -433,9 +399,7 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
               onClick={() => {
                 setAdvancedFilters([]);
               }}
-            >
-              重置
-            </button>
+            >{translateAdmin("重置")}</button>
             <button
               className="button primary"
               type="button"
@@ -443,15 +407,13 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
                 submitFilters(event);
                 setAdvancedOpen(false);
               }}
-            >
-              查询用户
-            </button>
+            >{translateAdmin("应用筛选")}</button>
           </div>
         </aside>
       </div>
     )}
 
-    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void runQuery(appliedQuery)}>重试</button></div>}
+    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void runQuery(appliedQuery)}>{translateAdmin("重试")}</button></div>}
 		{groupError !== "" && <div className="alert warning resource-alert" role="alert"><span>{groupError}</span><button className="button ghost compact" onClick={() => void retryGroups()}>重试权限组</button></div>}
     {planError !== "" && <div className="alert warning resource-alert" role="alert"><span>{planError}</span><button className="button ghost compact" onClick={() => void retryPlans()}>重试套餐</button></div>}
     {bulkError !== "" && <div className="alert error resource-alert" role="alert">{bulkError}</div>}
@@ -462,36 +424,36 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
           <thead><tr>
             <th scope="col" aria-label="选择"><input type="checkbox" aria-label="选择本页用户" checked={allVisibleSelected} disabled={loading} onChange={(event) => toggleVisibleSelection(event.target.checked)} /></th>
             <SortableHeader label="ID" field="id" query={appliedQuery} onSort={sortBy} />
-            <th scope="col">邮箱</th>
-            <SortableHeader label="在线设备" field="online_count" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="状态" field="banned" query={appliedQuery} onSort={sortBy} />
-            <th scope="col">订阅</th><th scope="col">权限组</th>
-            <SortableHeader label="已用流量" field="traffic_used" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="总流量" field="transfer_enable" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="到期时间" field="expired_at" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="余额" field="balance" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="佣金" field="commission_balance" query={appliedQuery} onSort={sortBy} />
-            <SortableHeader label="注册时间" field="created_at" query={appliedQuery} onSort={sortBy} />
-            <th scope="col">操作</th>
+            <th scope="col">{translateAdmin("邮箱")}</th>
+            <SortableHeader label={translateAdmin("在线设备")} field="online_count" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("状态")} field="banned" query={appliedQuery} onSort={sortBy} />
+            <th scope="col">{translateAdmin("订阅")}</th><th scope="col">{translateAdmin("权限组")}</th>
+            <SortableHeader label={translateAdmin("已用流量")} field="traffic_used" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("总流量")} field="transfer_enable" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("到期时间")} field="expired_at" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("余额")} field="balance" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("佣金")} field="commission_balance" query={appliedQuery} onSort={sortBy} />
+            <SortableHeader label={translateAdmin("注册时间")} field="created_at" query={appliedQuery} onSort={sortBy} />
+            <th scope="col">{translateAdmin("操作")}</th>
           </tr></thead>
           <tbody>{users.map((account) => <tr key={account.id}>
             <td data-label="选择"><input type="checkbox" aria-label={`选择用户：${account.email}`} checked={selectedUserIDs.has(account.id)} disabled={loading} onChange={(event) => toggleUserSelection(account.id, event.target.checked)} /></td>
             <td data-label="ID">#{account.id}</td>
             <td data-label="邮箱"><strong>{account.email}</strong><small className="muted">{roleSummary(account) || "普通用户"}</small>{account.is_distributor && account.distributor_name && <small>{account.distributor_name}</small>}</td>
-            <td data-label="在线设备">{account.online_count} / {account.device_limit === 0 ? "∞" : account.device_limit}<small className="muted">最后登录 {formatTimestamp(account.last_login_at)}</small></td>
-            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.lifecycle_status === "anonymized" ? "已匿名化" : account.lifecycle_status === "deactivated" ? "已停用" : account.banned ? "已封禁" : "正常"}</span></td>
+            <td data-label="在线设备">{account.online_count} / {account.device_limit === 0 ? "∞" : account.device_limit}<small className="muted">{translateAdmin("最后登录")}{formatTimestamp(account.last_login_at)}</small></td>
+            <td data-label="状态"><span className={`status-badge ${account.banned ? "blocked" : "enabled"}`}>{account.lifecycle_status === "anonymized" ? "已匿名化" : account.lifecycle_status === "deactivated" ? "已停用" : account.banned ? translateAdmin("已封禁") : translateAdmin("正常")}</span></td>
             <td data-label="订阅">{account.plan_name ?? "无订阅"}</td>
             <td data-label="权限组">{account.group_name ?? (account.group_id === null ? "未分组" : groupNames.get(account.group_id) ?? `#${account.group_id}`)}</td>
             <td data-label="已用流量">{formatBytes(account.traffic_used ?? account.traffic_upload + account.traffic_download)}</td>
             <td data-label="总流量">{formatBytes(account.transfer_enable)}</td>
-            <td data-label="到期时间">{account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)}</td>
+            <td data-label="到期时间">{account.expired_at === null ? translateAdmin("长期有效") : formatTimestamp(account.expired_at)}</td>
             <td data-label="余额">{formatMoney(account.balance)}</td>
             <td data-label="佣金">{formatMoney(account.commission_balance)}<small className="muted">{commissionLabel(account)}</small></td>
             <td data-label="注册时间">{formatTimestamp(account.created_at)}</td>
-            <td data-label="操作"><div className="row-actions"><button className="button ghost compact" aria-label={`查看详情：${account.email}`} onClick={() => setViewing(account)}>详情</button><button className="button ghost compact" aria-label={`编辑用户：${account.email}`} onClick={() => setEditing(account)}>编辑</button><button className="button ghost compact" aria-label={`重置密码：${account.email}`} onClick={() => setResetting(account)}>重置密码</button><button className="button ghost compact" aria-label={`用户操作：${account.email}`} onClick={() => setOperating(account)}>用户操作</button></div></td>
+            <td data-label="操作"><div className="row-actions"><button className="button ghost compact" aria-label={`查看详情：${account.email}`} onClick={() => setViewing(account)}>详情</button><button className="button ghost compact" aria-label={`编辑用户：${account.email}`} onClick={() => setEditing(account)}>{translateAdmin("编辑")}</button><button className="button ghost compact" aria-label={`重置密码：${account.email}`} onClick={() => setResetting(account)}>{translateAdmin("重置密码")}</button><button className="button ghost compact" aria-label={`用户操作：${account.email}`} onClick={() => setOperating(account)}>用户操作</button></div></td>
           </tr>)}</tbody>
         </table>
-        <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>上一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>下一页</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
+        <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>{translateAdmin("上一页")}</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>{translateAdmin("下一页")}</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
       </div>}
 
     {creating && <UserGenerator api={api} plans={plans} onClose={() => setCreating(false)} onGenerated={() => void runQuery(appliedQuery)} />}
@@ -553,8 +515,8 @@ function AdminUserBulkMailDialog({ api, selectedUserIDs, query, initialScope, on
       setBusy(false);
     }
   };
-  return <Modal title="发送邮件" className="wide-modal" onClose={onClose}>
-    <ModalHeader title="发送邮件" onClose={onClose} />
+  return <Modal title={translateAdmin("发送邮件")} className="wide-modal" onClose={onClose}>
+    <ModalHeader title={translateAdmin("发送邮件")} onClose={onClose} />
     <p className="muted">向所选或已筛选用户发送邮件</p>
     <form className="form-stack" onSubmit={(event) => void submit(event)}>
       <fieldset className="settings-fieldset"><legend>发送范围</legend><div className="bulk-scope-options">
@@ -562,11 +524,11 @@ function AdminUserBulkMailDialog({ api, selectedUserIDs, query, initialScope, on
         <label><input type="radio" name="mail-scope" value="filtered" checked={scope === "filtered"} disabled={!filteredAvailable} onChange={() => setScope("filtered")} />筛选后的用户</label>
         <label><input type="radio" name="mail-scope" value="all" checked={scope === "all"} onChange={() => setScope("all")} />全部用户</label>
       </div></fieldset>
-      <label>邮件主题<input value={subject} required maxLength={255} placeholder="例如：系统通知（支持占位符）" onChange={(event) => setSubject(event.target.value)} /></label>
+      <label>{translateAdmin("邮件主题")}<input value={subject} required maxLength={255} placeholder="例如：系统通知（支持占位符）" onChange={(event) => setSubject(event.target.value)} /></label>
       <label>邮件正文<textarea value={content} required maxLength={65_536} rows={12} placeholder="请输入邮件正文（可使用占位符）" onChange={(event) => setContent(event.target.value)} /></label>
-      <p className="muted small">支持 <code>{"{{key}}"}</code> 或 <code>{"{{key|默认值}}"}</code>。可用变量：app.name、app.url、now、user.id、user.email、user.uuid、user.plan_name、user.expired_at、user.transfer_enable、user.transfer_used、user.transfer_left。邮件按纯文本发送。</p>
+      <p className="muted small">{translateAdmin("支持")}<code>{"{{key}}"}</code> 或 <code>{"{{key|默认值}}"}</code>。可用变量：app.name、app.url、now、user.id、user.email、user.uuid、user.plan_name、user.expired_at、user.transfer_enable、user.transfer_used、user.transfer_left。邮件按纯文本发送。</p>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在创建任务…" : "发送"}</button></div>
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在创建任务…" : translateAdmin("发送")}</button></div>
     </form>
   </Modal>;
 }
@@ -596,12 +558,12 @@ function AdminUserBulkBanDialog({ api, selectedUserIDs, query, scope, onClose, o
   const scopeDescription = scope === "selected"
     ? `此操作将封禁选中的 ${selectedUserIDs.size} 名用户。`
     : scope === "filtered" ? "此操作将封禁筛选结果中的所有用户。" : "此操作将封禁系统中的所有用户。";
-  return <Modal title="确认批量封禁" role="alertdialog" onClose={onClose}>
-    <ModalHeader title="确认批量封禁" onClose={onClose} />
+  return <Modal title={translateAdmin("确认批量封禁")} role="alertdialog" onClose={onClose}>
+    <ModalHeader title={translateAdmin("确认批量封禁")} onClose={onClose} />
     <p>{scopeDescription}</p>
     <p className="muted">此操作无法撤销。当前管理员和系统内部账号会被安全跳过。</p>
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
-    <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button danger" type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "正在封禁…" : "确认封禁"}</button></div>
+    <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{translateAdmin("取消")}</button><button className="button danger" type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "正在封禁…" : translateAdmin("确认封禁")}</button></div>
   </Modal>;
 }
 
@@ -665,15 +627,15 @@ function AdminUserBulkJobsDialog({ api, onClose }: { api: UsersAPI; onClose: () 
     <p className="muted">邮件和导出任务在后台执行；这里显示实际进度、失败和下载状态。</p>
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
     {loading && jobs.length === 0 ? <div className="alert" role="status">正在读取批量任务…</div> : jobs.length === 0 ? <div className="empty-card">暂无批量任务。</div> :
-      <div className="resource-table-wrap bulk-job-table-wrap"><table className="resource-table" aria-label="批量任务列表"><thead><tr><th>类型</th><th>范围</th><th>状态</th><th>进度</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}>
+      <div className="resource-table-wrap bulk-job-table-wrap"><table className="resource-table" aria-label="批量任务列表"><thead><tr><th>{translateAdmin("类型")}</th><th>范围</th><th>{translateAdmin("状态")}</th><th>{translateAdmin("进度")}</th><th>{translateAdmin("创建时间")}</th><th>{translateAdmin("操作")}</th></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}>
         <td data-label="类型">{bulkJobKindLabel(job.kind)}</td>
         <td data-label="范围">{bulkScopeLabel(job.scope)}</td>
         <td data-label="状态"><span className={`status-badge ${job.status === "failed" ? "blocked" : job.status === "succeeded" ? "enabled" : ""}`}>{bulkJobStatusLabel(job.status)}</span>{job.last_error && <small className="muted">{job.last_error}</small>}</td>
-        <td data-label="进度">{job.processed_count} / {job.total_count}<small className="muted">成功 {job.success_count} · 失败 {job.failure_count} · 跳过 {job.skipped_count}</small></td>
+        <td data-label="进度">{job.processed_count} / {job.total_count}<small className="muted">{translateAdmin("成功")}{job.success_count} · 失败 {job.failure_count} · 跳过 {job.skipped_count}</small></td>
         <td data-label="创建时间">{formatTimestamp(job.created_at)}{job.output_size !== undefined && <small className="muted">{formatBytes(job.output_size)}</small>}</td>
-        <td data-label="操作"><div className="row-actions">{job.kind === "csv" && job.status === "succeeded" && <button className="button secondary compact" type="button" disabled={actionID !== ""} onClick={() => void download(job)}>下载</button>}{bulkJobCancellable(job.status) && <button className="button ghost compact" type="button" disabled={actionID !== ""} onClick={() => void cancel(job)}>取消任务</button>}</div></td>
+        <td data-label="操作"><div className="row-actions">{job.kind === "csv" && job.status === "succeeded" && <button className="button secondary compact" type="button" disabled={actionID !== ""} onClick={() => void download(job)}>{translateAdmin("下载")}</button>}{bulkJobCancellable(job.status) && <button className="button ghost compact" type="button" disabled={actionID !== ""} onClick={() => void cancel(job)}>取消任务</button>}</div></td>
       </tr>)}</tbody></table></div>}
-    <div className="form-actions"><button className="button primary" type="button" onClick={onClose}>关闭</button></div>
+    <div className="form-actions"><button className="button primary" type="button" onClick={onClose}>{translateAdmin("关闭")}</button></div>
   </Modal>;
 }
 
@@ -694,27 +656,27 @@ function UserDetail({ api, account, onClose }: { api: UsersAPI; account: AdminUs
 			setCopyState("error");
 		}
 	};
-  return <Modal title="用户详情" onClose={onClose}>
-    <ModalHeader title="用户详情" onClose={onClose} />
+  return <Modal title={translateAdmin("用户详情")} onClose={onClose}>
+    <ModalHeader title={translateAdmin("用户详情")} onClose={onClose} />
     <div className="user-detail-grid">
-      <DetailField label="ID" value={`#${account.id}`} /><DetailField label="邮箱" value={account.email} />
-      <DetailField label="角色" value={roleSummary(account) || "普通用户"} /><DetailField label="状态" value={account.banned ? "已封禁" : "正常"} />
-      <DetailField label="套餐" value={account.plan_name ?? "无订阅"} /><DetailField label="权限组" value={account.group_name ?? "未分组"} />
-      <DetailField label="邀请人" value={account.invite_user_email ?? "无"} /><DetailField label="Telegram" value={account.telegram_id === null ? "未绑定" : String(account.telegram_id)} />
-      <DetailField label="备注" value={account.remarks ?? "无"} wide />
-      <DetailField label="已用流量" value={`${formatBytes(account.traffic_used)}（上行 ${formatBytes(account.traffic_upload)} / 下行 ${formatBytes(account.traffic_download)}）`} />
-      <DetailField label="总流量" value={formatBytes(account.transfer_enable)} /><DetailField label="在线设备" value={String(account.online_count)} />
+      <DetailField label="ID" value={`#${account.id}`} /><DetailField label={translateAdmin("邮箱")} value={account.email} />
+      <DetailField label="角色" value={roleSummary(account) || "普通用户"} /><DetailField label={translateAdmin("状态")} value={account.banned ? translateAdmin("已封禁") : translateAdmin("正常")} />
+      <DetailField label={translateAdmin("套餐")} value={account.plan_name ?? "无订阅"} /><DetailField label={translateAdmin("权限组")} value={account.group_name ?? "未分组"} />
+      <DetailField label={translateAdmin("邀请人")} value={account.invite_user_email ?? "无"} /><DetailField label="Telegram" value={account.telegram_id === null ? "未绑定" : String(account.telegram_id)} />
+      <DetailField label={translateAdmin("备注")} value={account.remarks ?? "无"} wide />
+      <DetailField label={translateAdmin("已用流量")} value={`${formatBytes(account.traffic_used)}（上行 ${formatBytes(account.traffic_upload)} / 下行 ${formatBytes(account.traffic_download)}）`} />
+      <DetailField label={translateAdmin("总流量")} value={formatBytes(account.transfer_enable)} /><DetailField label={translateAdmin("在线设备")} value={String(account.online_count)} />
       <DetailField label="速度 / 设备限制" value={`${account.speed_limit === 0 ? "不限速" : `${account.speed_limit} Mbps`} / ${account.device_limit === 0 ? "不限设备" : `${account.device_limit} 台`}`} />
       <DetailField label="上次 / 下次重置" value={`${formatTimestamp(account.last_reset_at)} / ${formatTimestamp(account.next_reset_at)}（${account.reset_count} 次）`} />
-      <DetailField label="余额" value={formatMoney(account.balance)} /><DetailField label="佣金" value={`${formatMoney(account.commission_balance)} · ${commissionLabel(account)}`} />
-      <DetailField label="专享折扣" value={account.discount === null ? "系统默认" : `${account.discount}%`} /><DetailField label="到期时间" value={account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)} />
+      <DetailField label={translateAdmin("余额")} value={formatMoney(account.balance)} /><DetailField label={translateAdmin("佣金")} value={`${formatMoney(account.commission_balance)} · ${commissionLabel(account)}`} />
+      <DetailField label="专享折扣" value={account.discount === null ? "系统默认" : `${account.discount}%`} /><DetailField label={translateAdmin("到期时间")} value={account.expired_at === null ? translateAdmin("长期有效") : formatTimestamp(account.expired_at)} />
       <DetailField label="提醒" value={`${account.remind_expire ? "到期提醒开启" : "到期提醒关闭"} · ${account.remind_traffic ? "流量提醒开启" : "流量提醒关闭"}`} />
       <DetailField label="最后登录 / 在线" value={`${formatTimestamp(account.last_login_at)} / ${formatTimestamp(account.last_online_at)}`} />
       <DetailField label="注册 / 更新" value={`${formatTimestamp(account.created_at)} / ${formatTimestamp(account.updated_at)}`} wide />
     </div>
 		{copyState === "copied" && <div className="alert success" role="status">订阅地址已复制；页面不会展示或缓存该凭据。</div>}
 		{copyState === "error" && <div className="alert error" role="alert">复制失败，请检查浏览器剪贴板权限后重试。</div>}
-    <div className="form-actions"><button className="button secondary" type="button" disabled={copyState === "copying"} onClick={() => void copySubscriptionURL()}>{copyState === "copying" ? "正在复制…" : "复制订阅 URL"}</button><button className="button primary" type="button" onClick={onClose}>关闭</button></div>
+    <div className="form-actions"><button className="button secondary" type="button" disabled={copyState === "copying"} onClick={() => void copySubscriptionURL()}>{copyState === "copying" ? "正在复制…" : "复制订阅 URL"}</button><button className="button primary" type="button" onClick={onClose}>{translateAdmin("关闭")}</button></div>
   </Modal>;
 }
 
@@ -743,13 +705,13 @@ function UserOperationsDialog({ account, currentUserID, onLifecycle, onClose, on
 		<ModalHeader title="用户操作" onClose={onClose} />
 		<p className="muted">当前用户：<strong>{account.email}</strong></p>
 		<div className="user-operation-grid">
-			<button className="button secondary" type="button" disabled={inactive} onClick={onAssign}>分配订单</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onAssign}>{translateAdmin("分配订单")}</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("orders")}>TA 的订单</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("invitations")}>TA 的邀请</button>
 			<button className="button secondary" type="button" onClick={() => onRelated("traffic")}>TA 的流量记录</button>
-			<button className="button secondary" type="button" disabled={inactive} onClick={onTrafficReset}>重置流量</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onTrafficReset}>{translateAdmin("重置流量")}</button>
 			<button className="button secondary" type="button" disabled={inactive} onClick={onSubscriptionReset}>重置 UUID 与订阅地址</button>
-			<button className="button secondary" type="button" disabled={inactive} onClick={onPassword}>重置密码</button>
+			<button className="button secondary" type="button" disabled={inactive} onClick={onPassword}>{translateAdmin("重置密码")}</button>
       {!inactive && <button className="button danger" type="button" disabled={account.id === currentUserID} onClick={() => onLifecycle("deactivate")}>停用用户</button>}
       {account.lifecycle_status === "deactivated" && <>
         <button className="button secondary" type="button" disabled={!recoveryOpen} onClick={() => onLifecycle("restore")}>恢复用户</button>
@@ -758,7 +720,7 @@ function UserOperationsDialog({ account, currentUserID, onLifecycle, onClose, on
 		</div>
     {account.lifecycle_status === "deactivated" && <p>用户已停用。恢复截止：{formatTimestamp(account.restore_until ?? null)}。到期后不会自动清除，需管理员明确执行匿名化。</p>}
     {account.lifecycle_status === "anonymized" && <p role="status">用户已匿名化，无法恢复。订单与金额记录仍保留。</p>}
-		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button></div>
+		<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>{translateAdmin("关闭")}</button></div>
 	</Modal>;
 }
 
@@ -791,7 +753,7 @@ function UserLifecycleDialog({ api, account, action, onClose, onSaved }: {
       {action === "anonymize" && <p>这将不可逆地清除账号身份资料和工单正文，保留订单、余额与佣金事实。有待处理提现时不能匿名化。已下载文件和历史备份按保留策略另行管理。</p>}
       <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={(event) => setConfirmed(event.target.checked)} />我已了解并确认执行{labels[action]}</label>
       {error && <p role="alert">{error}</p>}
-      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button danger" type="submit" disabled={busy || !confirmed}>{busy ? "处理中…" : "确认执行"}</button></div>
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{translateAdmin("取消")}</button><button className="button danger" type="submit" disabled={busy || !confirmed}>{busy ? "处理中…" : "确认执行"}</button></div>
     </form>
   </Modal>;
 }
@@ -831,8 +793,8 @@ function SubscriptionSecurityReset({ api, account, onClose, onReset }: {
 		{error !== "" && <div className="alert error" role="alert">{error}</div>}
 		{completed && <div className="alert success" role="status">订阅凭据已重置。请通过“复制订阅 URL”重新获取地址。</div>}
 		<div className="form-actions">
-			{completed || stale ? <button className="button primary" type="button" onClick={close}>关闭</button> : <>
-				<button className="button ghost" type="button" disabled={busy} onClick={close}>取消</button>
+			{completed || stale ? <button className="button primary" type="button" onClick={close}>{translateAdmin("关闭")}</button> : <>
+				<button className="button ghost" type="button" disabled={busy} onClick={close}>{translateAdmin("取消")}</button>
 				<button className="button danger" type="button" disabled={busy} onClick={() => void reset()}>{busy ? "正在重置…" : "确认重置订阅凭据"}</button>
 			</>}
 		</div>
@@ -875,11 +837,11 @@ function UserRelatedDialog({ api, account, initialTab, onClose }: { api: UsersAP
 		{loading && <div className="alert" role="status">正在读取关联记录…</div>}
 		{error !== "" && <div className="alert error" role="alert">{error}</div>}
 		{!loading && error === "" && total === 0 && <div className="empty-card">暂无相关记录。</div>}
-		{!loading && error === "" && result?.tab === "orders" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>订单号</th><th>套餐</th><th>金额</th><th>状态</th><th>创建时间</th></tr></thead><tbody>{result.page.items.map((order) => <tr key={order.id}><td className="monospace">{order.trade_no}</td><td>{order.plan_name}</td><td>{formatMoney(order.total_amount)}</td><td>{adminOrderStatusLabel(order.status)}</td><td>{formatTimestamp(order.created_at)}</td></tr>)}</tbody></table>}
-		{!loading && error === "" && result?.tab === "invitations" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>ID</th><th>邮箱</th><th>状态</th><th>注册时间</th></tr></thead><tbody>{result.page.items.map((user) => <tr key={user.id}><td>#{user.id}</td><td>{user.email}</td><td>{user.banned ? "已封禁" : "正常"}</td><td>{formatTimestamp(user.created_at)}</td></tr>)}</tbody></table>}
-		{!loading && error === "" && result?.tab === "traffic" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>时间</th><th>上行</th><th>下行</th><th>倍率</th><th>总计</th></tr></thead><tbody>{result.page.items.map((item) => <tr key={`${item.record_at}-${item.record_type}-${item.rate_micros}`}><td>{formatTimestamp(item.record_at)}</td><td>{formatBytes(item.upload)}</td><td>{formatBytes(item.download)}</td><td>{formatRate(item.rate_micros)}</td><td>{formatBytes(item.upload + item.download)}</td></tr>)}</tbody></table>}
-		{total > 20 && <div className="pagination-footer"><button className="button ghost compact" type="button" disabled={loading || pageNumber <= 1} onClick={() => selectPage(pageNumber - 1)}>上一页</button><span>第 {pageNumber} 页</span><button className="button ghost compact" type="button" disabled={loading || pageNumber*20 >= total} onClick={() => selectPage(pageNumber + 1)}>下一页</button></div>}
-		<div className="form-actions"><button className="button primary" type="button" aria-label="关闭关联记录面板" onClick={onClose}>关闭</button></div>
+		{!loading && error === "" && result?.tab === "orders" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>{translateAdmin("订单号")}</th><th>{translateAdmin("套餐")}</th><th>{translateAdmin("金额")}</th><th>{translateAdmin("状态")}</th><th>{translateAdmin("创建时间")}</th></tr></thead><tbody>{result.page.items.map((order) => <tr key={order.id}><td className="monospace">{order.trade_no}</td><td>{order.plan_name}</td><td>{formatMoney(order.total_amount)}</td><td>{adminOrderStatusLabel(order.status)}</td><td>{formatTimestamp(order.created_at)}</td></tr>)}</tbody></table>}
+		{!loading && error === "" && result?.tab === "invitations" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>ID</th><th>{translateAdmin("邮箱")}</th><th>{translateAdmin("状态")}</th><th>{translateAdmin("注册时间")}</th></tr></thead><tbody>{result.page.items.map((user) => <tr key={user.id}><td>#{user.id}</td><td>{user.email}</td><td>{user.banned ? translateAdmin("已封禁") : translateAdmin("正常")}</td><td>{formatTimestamp(user.created_at)}</td></tr>)}</tbody></table>}
+		{!loading && error === "" && result?.tab === "traffic" && result.page.items.length > 0 && <table className="resource-table"><thead><tr><th>{translateAdmin("时间")}</th><th>上行</th><th>下行</th><th>{translateAdmin("倍率")}</th><th>{translateAdmin("总计")}</th></tr></thead><tbody>{result.page.items.map((item) => <tr key={`${item.record_at}-${item.record_type}-${item.rate_micros}`}><td>{formatTimestamp(item.record_at)}</td><td>{formatBytes(item.upload)}</td><td>{formatBytes(item.download)}</td><td>{formatRate(item.rate_micros)}</td><td>{formatBytes(item.upload + item.download)}</td></tr>)}</tbody></table>}
+		{total > 20 && <div className="pagination-footer"><button className="button ghost compact" type="button" disabled={loading || pageNumber <= 1} onClick={() => selectPage(pageNumber - 1)}>{translateAdmin("上一页")}</button><span>{translateAdmin("第")}{pageNumber} 页</span><button className="button ghost compact" type="button" disabled={loading || pageNumber*20 >= total} onClick={() => selectPage(pageNumber + 1)}>{translateAdmin("下一页")}</button></div>}
+		<div className="form-actions"><button className="button primary" type="button" aria-label="关闭关联记录面板" onClick={onClose}>{translateAdmin("关闭")}</button></div>
 	</Modal>;
 }
 
@@ -916,21 +878,21 @@ function UserTrafficResetDialog({ api, account, onClose, onReset }: { api: Users
 			setSaving(false);
 		}
 	};
-	return <Modal title="重置流量" onClose={onClose}>
-		<ModalHeader title="重置流量" onClose={onClose} />
+	return <Modal title={translateAdmin("重置流量")} onClose={onClose}>
+		<ModalHeader title={translateAdmin("重置流量")} onClose={onClose} />
 		<div className="subscription-template-tabs" role="tablist" aria-label="流量重置视图">
-			<button type="button" role="tab" aria-selected={tab === "reset"} className={tab === "reset" ? "active" : ""} onClick={() => setTab("reset")}>重置流量</button>
-			<button type="button" role="tab" aria-selected={tab === "history"} className={tab === "history" ? "active" : ""} onClick={() => { setError(""); setTab("history"); }}>重置历史</button>
+			<button type="button" role="tab" aria-selected={tab === "reset"} className={tab === "reset" ? "active" : ""} onClick={() => setTab("reset")}>{translateAdmin("重置流量")}</button>
+			<button type="button" role="tab" aria-selected={tab === "history"} className={tab === "history" ? "active" : ""} onClick={() => { setError(""); setTab("history"); }}>{translateAdmin("重置历史")}</button>
 		</div>
 		{tab === "reset" && <form className="form-stack" onSubmit={(event) => void submit(event)}>
-			<div className="user-detail-grid"><DetailField label="用户邮箱" value={account.email} /><DetailField label="已用流量" value={formatBytes(account.traffic_upload + account.traffic_download)} /><DetailField label="总流量" value={formatBytes(account.transfer_enable)} /><DetailField label="到期时间" value={account.expired_at === null ? "长期有效" : formatTimestamp(account.expired_at)} /></div>
+			<div className="user-detail-grid"><DetailField label={translateAdmin("用户邮箱")} value={account.email} /><DetailField label={translateAdmin("已用流量")} value={formatBytes(account.traffic_upload + account.traffic_download)} /><DetailField label={translateAdmin("总流量")} value={formatBytes(account.transfer_enable)} /><DetailField label={translateAdmin("到期时间")} value={account.expired_at === null ? translateAdmin("长期有效") : formatTimestamp(account.expired_at)} /></div>
 			<div className="alert warning">此操作不可撤销，将同时把上行和下行流量清零，并记录管理员、原因和重置前后值。</div>
 			<label>重置原因（可选）<textarea name="reason" value={reason} maxLength={255} disabled={result !== null} onChange={(event) => setReason(event.target.value)} /></label>
 			{result !== null && <div className="alert success" role="status">流量已重置：{formatBytes(result.upload_before + result.download_before)} → 0 B。</div>}
 			{error !== "" && <div className="alert error" role="alert">{error}</div>}
-			<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>关闭</button><button className="button primary" type="submit" disabled={saving || result !== null}>{saving ? "正在重置…" : "确认重置流量"}</button></div>
+			<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>{translateAdmin("关闭")}</button><button className="button primary" type="submit" disabled={saving || result !== null}>{saving ? "正在重置…" : translateAdmin("确认重置流量")}</button></div>
 		</form>}
-		{tab === "history" && <>{error !== "" && <div className="alert error" role="alert">{error}</div>}{history === null ? <div className="alert" role="status">正在读取重置历史…</div> : history.items.length === 0 ? <div className="empty-card">暂无重置历史。</div> : <table className="resource-table"><thead><tr><th>时间</th><th>来源</th><th>重置前</th><th>原因</th><th>操作人</th></tr></thead><tbody>{history.items.map((item) => <tr key={item.id}><td>{formatTimestamp(item.reset_at)}</td><td>{item.trigger_source === "manual" ? "手工" : "定时"}</td><td>{formatBytes(item.upload_before + item.download_before)}</td><td>{item.reason || "—"}</td><td>{item.administrator_email ?? "系统"}</td></tr>)}</tbody></table>}<div className="form-actions"><button className="button primary" type="button" onClick={onClose}>关闭</button></div></>}
+		{tab === "history" && <>{error !== "" && <div className="alert error" role="alert">{error}</div>}{history === null ? <div className="alert" role="status">正在读取重置历史…</div> : history.items.length === 0 ? <div className="empty-card">暂无重置历史。</div> : <table className="resource-table"><thead><tr><th>{translateAdmin("时间")}</th><th>来源</th><th>重置前</th><th>原因</th><th>操作人</th></tr></thead><tbody>{history.items.map((item) => <tr key={item.id}><td>{formatTimestamp(item.reset_at)}</td><td>{item.trigger_source === "manual" ? "手工" : "定时"}</td><td>{formatBytes(item.upload_before + item.download_before)}</td><td>{item.reason || "—"}</td><td>{item.administrator_email ?? "系统"}</td></tr>)}</tbody></table>}<div className="form-actions"><button className="button primary" type="button" onClick={onClose}>{translateAdmin("关闭")}</button></div></>}
 	</Modal>;
 }
 
@@ -949,11 +911,10 @@ function DetailField({ label, value, wide = false }: { label: string; value: str
 function UserGenerator({ api, plans, onClose, onGenerated }: {
   api: UsersAPI; plans: Plan[]; onClose: () => void; onGenerated: () => void;
 }) {
-  const [mode, setMode] = useState<AdminUserGenerateMode>("single");
-  const [email, setEmail] = useState("");
   const [emailPrefix, setEmailPrefix] = useState("");
   const [emailDomain, setEmailDomain] = useState("");
-  const [count, setCount] = useState("10");
+  const [count, setCount] = useState("");
+  const mode = Number(count || "1") > 1 ? (emailPrefix.trim() ? "prefixed_batch" : "random_batch") : emailPrefix.trim() ? "single" : "random_batch";
   const [password, setPassword] = useState("");
   const [planID, setPlanID] = useState("");
   const [expiredAt, setExpiredAt] = useState("");
@@ -978,11 +939,11 @@ function UserGenerator({ api, plans, onClose, onGenerated }: {
         is_distributor: isDistributor, distributor_name: isDistributor ? distributorName.trim() : null
       };
       if (mode === "single") {
-        request.email = email.trim();
+        request.email = `${emailPrefix.trim()}@${emailDomain.trim()}`;
         if (password !== "") request.password = password;
       } else {
         request.email_domain = emailDomain.trim();
-        request.count = safeRangeInteger(count, "生成数量", 1, 500);
+        request.count = safeRangeInteger(count || "1", "生成数量", 1, 500);
         if (mode === "prefixed_batch") request.email_prefix = emailPrefix.trim();
       }
       const result = await api.generateAdminUsers(request);
@@ -995,35 +956,26 @@ function UserGenerator({ api, plans, onClose, onGenerated }: {
     }
   };
 
-  return <Modal title="新增用户" onClose={busy ? () => undefined : onClose}>
-    <ModalHeader title="新增用户" onClose={busy ? () => undefined : onClose} />
-    {credentials === null ? <form className="form-stack" onSubmit={(event) => void submit(event)}>
-      <label>生成方式<select aria-label="生成方式" value={mode} onChange={(event) => { setMode(event.target.value as AdminUserGenerateMode); setError(""); }}>
-        <option value="single">单个用户</option><option value="random_batch">随机账号批量</option><option value="prefixed_batch">固定前缀批量</option>
-      </select></label>
-      {mode === "single" ? <>
-        <label>邮箱<input type="email" maxLength={320} required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <label>初始密码（留空安全生成）<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-      </> : <>
-        {mode === "prefixed_batch" && <label>账号前缀<input maxLength={256} required value={emailPrefix} onChange={(event) => setEmailPrefix(event.target.value)} placeholder="例如 team，将生成 team_1" /></label>}
-        <label>邮箱域<input maxLength={253} required value={emailDomain} onChange={(event) => setEmailDomain(event.target.value)} placeholder="例如 example.com" /></label>
-        <label>生成数量（1～500）<input type="number" min="1" max="500" step="1" required value={count} onChange={(event) => setCount(event.target.value)} /></label>
-        <p className="muted small">批量账号分别使用 CSPRNG 生成独立初始密码，不允许设置共享密码。</p>
-      </>}
-      <label>订阅计划<select aria-label="订阅计划" value={planID} disabled={isDistributor} onChange={(event) => setPlanID(event.target.value)}><option value="">无</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
+  return <Modal title={translateAdmin("创建用户")} onClose={busy ? () => undefined : onClose}>
+    <ModalHeader title={translateAdmin("创建用户")} onClose={busy ? () => undefined : onClose} />
+    {credentials === null ? <form className="form-stack user-generation-form" onSubmit={(event) => void submit(event)}>
+      <div><span>邮箱*</span><div className="user-email-parts"><input aria-label="邮箱账号" autoFocus maxLength={256} placeholder={translateAdmin("帐号(批量生成请留空)")} value={emailPrefix} onChange={event => setEmailPrefix(event.target.value)} /><span>@</span><input aria-label="邮箱域" required maxLength={253} placeholder={translateAdmin("域")} value={emailDomain} onChange={event => setEmailDomain(event.target.value)} /></div></div>
+      <label>初始密码（留空安全生成）<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} disabled={mode !== "single"} value={password} placeholder="留空则自动生成独立密码" onChange={event => setPassword(event.target.value)} /></label>
+      <DateTimeInput label={translateAdmin("到期时间")} value={expiredAt} onChange={setExpiredAt} />
+      <label>{translateAdmin("订阅计划")}<select aria-label={translateAdmin("订阅计划")} value={planID} disabled={isDistributor} onChange={(event) => setPlanID(event.target.value)}><option value="">{translateAdmin("无")}</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
       {selectedPlan !== undefined && <p className="muted small">套餐将原子设置权限组、{selectedPlan.transfer_enable} GiB 流量、限速与设备限制。</p>}
       {isDistributor && <p className="muted small">与 Xboard 业务一致，分销商账号仅用于下单，本身不开通订阅套餐。</p>}
-      <label>到期时间（留空表示长期有效）<input type="datetime-local" value={expiredAt} onChange={(event) => setExpiredAt(event.target.value)} /></label>
+      <label>{translateAdmin("生成数量")}<input aria-label={translateAdmin("生成数量")} type="number" min={1} max={500} step={1} value={count} placeholder={translateAdmin("如果为批量生产请输入生成数量")} onChange={event => setCount(event.target.value)} /></label>
       <fieldset className="settings-fieldset"><legend>账号角色</legend>
         <label className="switch-label"><input type="checkbox" checked={isDistributor} onChange={(event) => { setIsDistributor(event.target.checked); if (event.target.checked) setPlanID(""); else setDistributorName(""); }} />分销商</label>
         {isDistributor && <label>分销商名称<input value={distributorName} minLength={1} maxLength={100} required onChange={(event) => setDistributorName(event.target.value)} /></label>}
       </fieldset>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在安全生成…" : mode === "single" ? "创建" : "生成账号"}</button></div>
+      <div className="form-actions"><button className="button ghost" type="button" disabled={busy} onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在安全生成…" : translateAdmin("确认")}</button></div>
     </form> : <div className="form-stack user-generation-result">
       <div className="alert warning" role="status">已生成 {credentials.length} 个账号。明文密码只在本窗口保留；关闭前请下载并妥善保管。</div>
-      <div className="resource-table-wrap user-credential-table-wrap"><table className="resource-table user-credential-table" aria-label="一次性账号凭据"><thead><tr><th>账号</th><th>初始密码</th><th>到期时间</th><th>订阅地址</th></tr></thead><tbody>
-        {credentials.map((credential) => <tr key={credential.id}><td>{credential.email}</td><td><code>{credential.password}</code></td><td>{credential.expired_at === null ? "长期有效" : formatTimestamp(credential.expired_at)}</td><td><code>{credential.subscribe_url}</code></td></tr>)}
+      <div className="resource-table-wrap user-credential-table-wrap"><table className="resource-table user-credential-table" aria-label="一次性账号凭据"><thead><tr><th>账号</th><th>初始密码</th><th>{translateAdmin("到期时间")}</th><th>订阅地址</th></tr></thead><tbody>
+        {credentials.map((credential) => <tr key={credential.id}><td>{credential.email}</td><td><code>{credential.password}</code></td><td>{credential.expired_at === null ? translateAdmin("长期有效") : formatTimestamp(credential.expired_at)}</td><td><code>{credential.subscribe_url}</code></td></tr>)}
       </tbody></table></div>
       <div className="form-actions"><button className="button secondary" type="button" onClick={() => downloadGeneratedUsersCSV(credentials)}>下载安全 CSV</button><button className="button primary" type="button" onClick={onClose}>完成</button></div>
     </div>}
@@ -1151,37 +1103,37 @@ function UserEditor({ api, groups, plans, account, currentUserID, onClose, onSav
   return <Modal title={title} onClose={onClose}>
     <ModalHeader title={title} onClose={onClose} />
     <form className="form-stack" onSubmit={(event) => void submit(event)}>
-      <label>邮箱<input type="email" value={email} maxLength={320} required onChange={(event) => setEmail(event.target.value)} /></label>
+      <label>{translateAdmin("邮箱")}<input type="email" value={email} maxLength={320} required onChange={(event) => setEmail(event.target.value)} /></label>
 			<label>{editing ? "新密码（留空不修改）" : "初始密码"}<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} required={!editing} onChange={(event) => setPassword(event.target.value)} /></label>
 			{editing && <label>邀请人邮箱（留空表示无）<input type="email" maxLength={320} value={inviteUserEmail} onChange={(event) => setInviteUserEmail(event.target.value)} /></label>}
-			{editing && <label>套餐<select value={planID} onChange={(event) => selectPlan(event.target.value)}><option value="">无订阅</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>}
-      <label>权限组<select value={groupID} onChange={(event) => setGroupID(event.target.value)}><option value="">未分组</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+			{editing && <label>{translateAdmin("套餐")}<select value={planID} onChange={(event) => selectPlan(event.target.value)}><option value="">无订阅</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>}
+      <label>{translateAdmin("权限组")}<select value={groupID} onChange={(event) => setGroupID(event.target.value)}><option value="">未分组</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
 			<label>{editing ? "流量额度（GiB）" : "流量额度（字节）"}<input type="number" min="0" max={editing ? undefined : Number.MAX_SAFE_INTEGER} step={editing ? "any" : "1"} value={transferEnable} required onChange={(event) => setTransferEnable(event.target.value)} /></label>
       <label>到期时间（留空表示不限期）<input type="datetime-local" value={expiredAt} onChange={(event) => setExpiredAt(event.target.value)} /></label>
       <div className="time-grid"><label>限速（Mbps，0 为不限速）<input type="number" min="0" step="1" value={speedLimit} required onChange={(event) => setSpeedLimit(event.target.value)} /></label><label>设备数（0 为不限设备）<input type="number" min="0" max="1000" step="1" value={deviceLimit} required onChange={(event) => setDeviceLimit(event.target.value)} /></label></div>
-			{editing && <fieldset className="settings-fieldset"><legend>流量使用</legend><div className="time-grid">
+			{editing && <fieldset className="settings-fieldset"><legend>{translateAdmin("流量使用")}</legend><div className="time-grid">
 				<label>已用上行流量（GiB）<input type="number" min="0" step="any" value={trafficUpload} required onChange={(event) => setTrafficUpload(event.target.value)} /></label>
 				<label>已用下行流量（GiB）<input type="number" min="0" step="any" value={trafficDownload} required onChange={(event) => setTrafficDownload(event.target.value)} /></label>
 			</div></fieldset>}
 			{editing && <fieldset className="settings-fieldset"><legend>财务与折扣</legend>
 				<div className="time-grid"><label>余额（元）<input type="text" inputMode="decimal" value={balance} required onChange={(event) => setBalance(event.target.value)} /></label><label>佣金余额（元）<input type="text" inputMode="decimal" value={commissionBalance} required onChange={(event) => setCommissionBalance(event.target.value)} /></label></div>
-				<div className="time-grid"><label>佣金类型<select value={commissionType} onChange={(event) => setCommissionType(event.target.value)}><option value="0">系统默认</option><option value="1">循环佣金</option><option value="2">首次佣金</option></select></label><label>佣金比例（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={commissionRate} onChange={(event) => setCommissionRate(event.target.value)} /></label></div>
+				<div className="time-grid"><label>{translateAdmin("佣金类型")}<select value={commissionType} onChange={(event) => setCommissionType(event.target.value)}><option value="0">系统默认</option><option value="1">循环佣金</option><option value="2">首次佣金</option></select></label><label>佣金比例（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={commissionRate} onChange={(event) => setCommissionRate(event.target.value)} /></label></div>
 				<label>专享折扣（留空使用系统默认）<input type="number" min="0" max="100" step="1" value={discount} onChange={(event) => setDiscount(event.target.value)} /></label>
 			</fieldset>}
 			{editing && <fieldset className="settings-fieldset"><legend>联系与提醒</legend>
 				<label>Telegram ID（留空表示未绑定）<input type="number" min="1" step="1" value={telegramID} onChange={(event) => setTelegramID(event.target.value)} /></label>
 				<div className="role-switch-grid"><label className="switch-label"><input type="checkbox" checked={remindExpire} onChange={(event) => setRemindExpire(event.target.checked)} />到期提醒</label><label className="switch-label"><input type="checkbox" checked={remindTraffic} onChange={(event) => setRemindTraffic(event.target.checked)} />流量提醒</label></div>
-				<label>备注<textarea maxLength={4096} rows={4} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></label>
+				<label>{translateAdmin("备注")}<textarea maxLength={4096} rows={4} value={remarks} onChange={(event) => setRemarks(event.target.value)} /></label>
 			</fieldset>}
       <fieldset className="settings-fieldset"><legend>账号角色（可并存）</legend><div className="role-switch-grid">
-        <label className="switch-label"><input type="checkbox" checked={isAdmin} disabled={editing && current?.id === currentUserID} onChange={(event) => setIsAdmin(event.target.checked)} />管理员</label>
-        <label className="switch-label"><input type="checkbox" checked={isStaff} onChange={(event) => setIsStaff(event.target.checked)} />员工</label>
+        <label className="switch-label"><input type="checkbox" checked={isAdmin} disabled={editing && current?.id === currentUserID} onChange={(event) => setIsAdmin(event.target.checked)} />{translateAdmin("管理员")}</label>
+        <label className="switch-label"><input type="checkbox" checked={isStaff} onChange={(event) => setIsStaff(event.target.checked)} />{translateAdmin("员工")}</label>
         <label className="switch-label"><input type="checkbox" checked={isDistributor} onChange={(event) => { setIsDistributor(event.target.checked); if (!event.target.checked) setDistributorName(""); }} />分销商</label>
       </div>{isDistributor && <label>分销商名称<input aria-label="分销商名称" value={distributorName} minLength={1} maxLength={100} aria-invalid={error.includes("分销商名称")} onChange={(event) => setDistributorName(event.target.value)} /></label>}</fieldset>
       <label className="switch-label"><input type="checkbox" checked={banned} disabled={editing && current?.id === currentUserID} onChange={(event) => setBanned(event.target.checked)} />封禁用户</label>
       {editing && current?.id === currentUserID && <p className="muted small">为防止当前管理员锁定自己，此账号不能在本页封禁或移除管理员角色。</p>}
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
-      <div className="form-actions">{conflict && <button className="button secondary" type="button" disabled={busy} onClick={() => void reload()}>加载最新状态</button>}<button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在保存…" : editing ? "保存" : "创建"}</button></div>
+      <div className="form-actions">{conflict && <button className="button secondary" type="button" disabled={busy} onClick={() => void reload()}>加载最新状态</button>}<button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在保存…" : editing ? translateAdmin("保存") : "创建"}</button></div>
     </form>
   </Modal>;
 }
@@ -1200,8 +1152,8 @@ function PasswordReset({ api, account, onClose, onSaved }: { api: UsersAPI; acco
   };
   return <Modal title="重置用户密码" onClose={onClose}>
     <ModalHeader title="重置用户密码" onClose={onClose} />
-    <p className="muted">重置 {account.email} 的密码后，该用户所有现有会话会立即失效。</p>
-    <form className="form-stack" onSubmit={(event) => void submit(event)}><label>新密码<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在重置…" : "确认重置"}</button></div></form>
+    <p className="muted">{translateAdmin("重置")}{account.email} 的密码后，该用户所有现有会话会立即失效。</p>
+    <form className="form-stack" onSubmit={(event) => void submit(event)}><label>新密码<input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在重置…" : translateAdmin("确认重置")}</button></div></form>
   </Modal>;
 }
 

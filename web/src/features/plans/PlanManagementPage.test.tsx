@@ -15,6 +15,17 @@ const plan: Plan = {
 };
 
 describe("PlanManagementPage", () => {
+  it("applies the legacy base-price discounts only to the open draft", async () => {
+    const api = planAPI([plan]); const user = userEvent.setup(); render(<PlanManagementPage api={api} />);
+    await screen.findByText("Pro"); await user.click(screen.getByRole("button", { name: "添加套餐" }));
+    const form = within(screen.getByRole("dialog", { name: "添加套餐" }));
+    await user.type(form.getByLabelText("基础价格"), "10");
+    for (const [label, value] of Object.entries({ 月付: 10, 季付: 28.5, 半年付: 54, 年付: 102, 两年付: 192, 三年付: 270, 流量包: 10, 重置包: 10 })) expect(form.getByLabelText(label)).toHaveValue(value);
+    await user.clear(form.getByLabelText("基础价格"));
+    expect(form.getByLabelText("月付")).toHaveValue(10);
+    await user.click(form.getByRole("button", { name: "取消" }));
+    expect(api.createPlan).not.toHaveBeenCalled(); expect(api.updatePlan).not.toHaveBeenCalled();
+  });
   it("exposes the legacy plan fields and converts major-unit prices to integer cents", async () => {
     const created: Plan = { ...plan, id: 12, name: "Starter", show: false, sell: false, renew: true, prices: { monthly: 199 } };
     const api = planAPI([plan]);
@@ -23,25 +34,28 @@ describe("PlanManagementPage", () => {
     render(<PlanManagementPage api={api} />);
 
     expect(await screen.findByText("Pro")).toBeVisible();
-    expect(screen.getByText("不限量")).toBeVisible();
-    expect(screen.getByText("总 3")).toBeVisible();
-    expect(screen.getByText("有效 2 · 活跃率 67%")).toBeVisible();
+    expect(screen.getAllByRole("columnheader").map(cell => cell.textContent)).toEqual(["ID", "显示", "新购", "续费", "名称", "统计", "权限组", "价格", "操作"]);
+    expect(screen.getByTitle("总用户数")).toHaveTextContent("3");
+    expect(screen.getByTitle("有效用户数")).toHaveTextContent("2");
     await user.click(screen.getByRole("button", { name: "添加套餐" }));
     const dialog = screen.getByRole("dialog", { name: "添加套餐" });
-    for (const label of ["套餐名称", "标签", "服务器分组", "流量（GiB）", "速度限制", "设备限制", "容量限制", "流量重置方式", "月付", "季付", "半年付", "年付", "两年付", "三年付", "流量包", "重置包", "套餐描述"]) {
+    for (const label of ["套餐名称", "标签", "服务器分组", "流量（GB）", "速度限制", "设备限制", "分销 HWID 设备上限", "容量限制", "流量重置方式", "月付", "季付", "半年付", "年付", "两年付", "三年付", "流量包", "重置包", "套餐说明"]) {
       expect(within(dialog).getByLabelText(label)).toBeVisible();
     }
     await user.click(within(dialog).getByRole("button", { name: "使用模板" }));
-    const description = within(dialog).getByLabelText("套餐描述");
+    const description = within(dialog).getByLabelText("套餐说明");
     expect(within(dialog).getByDisplayValue(/## 套餐特点/)).toBe(description);
     await user.click(within(dialog).getByRole("button", { name: "显示预览" }));
     expect(within(dialog).getByRole("heading", { name: "套餐特点" })).toBeVisible();
     await user.clear(description);
     await user.type(within(dialog).getByLabelText("套餐名称"), "Starter");
-    const traffic = within(dialog).getByLabelText("流量（GiB）");
+    const traffic = within(dialog).getByLabelText("流量（GB）");
+    expect(traffic).toHaveValue(null);
     await user.clear(traffic);
     await user.type(traffic, "50");
     await user.selectOptions(within(dialog).getByLabelText("服务器分组"), "7");
+    await user.clear(within(dialog).getByLabelText("分销 HWID 设备上限"));
+    await user.type(within(dialog).getByLabelText("分销 HWID 设备上限"), "7");
     const prices = {
       "月付": "1.01", "季付": "2.02", "半年付": "3.03", "年付": "4.04",
       "两年付": "5.05", "三年付": "6.06", "流量包": "7.07", "重置包": "8.08"
@@ -50,10 +64,10 @@ describe("PlanManagementPage", () => {
       await user.type(within(dialog).getByLabelText(label), value);
     }
     await user.type(within(dialog).getByLabelText("标签"), "入门, 稳定");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(within(dialog).getByRole("button", { name: "提交" }));
 
     await waitFor(() => expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Starter", transfer_enable: 50, group_id: 7,
+      name: "Starter", transfer_enable: 50, group_id: 7, distributor_hwid_limit: 7,
       prices: {
         monthly: 101, quarterly: 202, half_yearly: 303, yearly: 404,
         two_yearly: 505, three_yearly: 606, onetime: 707, reset_traffic: 808
@@ -73,7 +87,7 @@ describe("PlanManagementPage", () => {
     render(<PlanManagementPage api={api} />);
     expect(await screen.findByText("Enterprise")).toBeVisible();
 
-    await user.click(screen.getAllByRole("checkbox", { name: "销售" })[0]!);
+    await user.click(screen.getAllByRole("switch", { name: "新购" })[0]!);
     await waitFor(() => expect(api.setPlanState).toHaveBeenCalledWith(11, 1, true, false, true));
     await user.type(screen.getByRole("searchbox", { name: "搜索套餐" }), "enterprise");
     expect(screen.queryByText("Pro")).not.toBeInTheDocument();
@@ -96,7 +110,7 @@ describe("PlanManagementPage", () => {
     api.setPlanState.mockImplementation(() => new Promise<Plan>((_resolve, reject) => { rejectState = reject; }));
     const user = userEvent.setup();
     render(<PlanManagementPage api={api} />);
-    const sell = await screen.findByRole("checkbox", { name: "销售" });
+    const sell = await screen.findByRole("switch", { name: "新购" });
 
     await user.click(sell);
     expect(sell).not.toBeChecked();
