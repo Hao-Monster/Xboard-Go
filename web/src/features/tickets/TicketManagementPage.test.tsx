@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Ticket, TicketSettings } from "../../lib/api";
+import type { Ticket, TicketPage, TicketSettings } from "../../lib/api";
+import { TicketSettingsDialog } from "./TicketSettingsDialog";
 import { TicketManagementPage } from "./TicketManagementPage";
 
 const ticket: Ticket = {
@@ -20,7 +21,22 @@ const settings: TicketSettings = {
 };
 
 describe("TicketManagementPage", () => {
-  it("filters, searches, views, replies to, and closes user tickets", async () => {
+  it("does not let an older initial request replace the selected status", async () => {
+    let resolveInitial!: (value: TicketPage) => void;
+    const initial = new Promise<TicketPage>(resolve => { resolveInitial = resolve; });
+    const api = {
+      listAdminTickets: vi.fn().mockReturnValueOnce(initial).mockResolvedValue({items:[{...ticket,subject:"Closed ticket",status:1}],total:1,page:1,page_size:20}),
+      getAdminTicket:vi.fn(), replyAdminTicket:vi.fn(), closeAdminTicket:vi.fn(),
+      transitionCommissionWithdrawal:vi.fn(),getTicketSettings:vi.fn(),updateTicketSettings:vi.fn()
+    };
+    render(<TicketManagementPage api={api} />);
+    await userEvent.click(screen.getByRole("tab",{name:"已关闭"}));
+    expect(await screen.findByText("Closed ticket")).toBeVisible();
+    await act(async () => { resolveInitial({items:[ticket],total:1,page:1,page_size:20}); await initial; });
+    expect(screen.getByText("Closed ticket")).toBeVisible();
+    expect(screen.queryByText("Route outage")).not.toBeInTheDocument();
+  });
+  it("filters by priority, views, replies to, and closes user tickets", async () => {
     const answered: Ticket = {
       ...detail, reply_status: 1,
       messages: [...(detail.messages ?? []), { id: 2, ticket_id: 11, is_me: false, message: "Resolved", created_at: "2026-08-24T10:01:00Z", updated_at: "2026-08-24T10:01:00Z" }]
@@ -37,13 +53,10 @@ describe("TicketManagementPage", () => {
 
     expect(await screen.findByRole("heading", { name: "工单管理" })).toBeVisible();
     expect(await screen.findByText("Route outage", { exact: true })).toBeVisible();
-    await user.type(screen.getByRole("searchbox", { name: "搜索工单" }), "user@example.test");
-    await user.selectOptions(screen.getByLabelText("工单级别"), "1");
-    await user.selectOptions(screen.getByLabelText("回复状态"), "0");
-    await user.click(screen.getByRole("button", { name: "查询工单" }));
-    await waitFor(() => expect(api.listAdminTickets).toHaveBeenLastCalledWith({
-      page: 1, page_size: 20, status: 0, level: 1, reply_status: 0, query: "user@example.test"
-    }));
+    await user.click(screen.getByRole("button", { name: "优先级" }));
+    await user.click(screen.getByRole("checkbox", { name: "中" }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(api.listAdminTickets).toHaveBeenLastCalledWith({page:1,page_size:20,status:0,level:1}));
 
     await user.click(screen.getByRole("button", { name: "查看工单：Route outage" }));
     let dialog = await screen.findByRole("dialog", { name: "工单详情" });
@@ -52,7 +65,7 @@ describe("TicketManagementPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "回复" }));
     await waitFor(() => expect(api.replyAdminTicket).toHaveBeenCalledWith(11, "Resolved"));
     expect(await within(dialog).findByText("Resolved")).toBeVisible();
-    expect(await screen.findByText("没有符合条件的工单。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "查看工单：Route outage" })).toBeVisible();
 
     await user.click(within(dialog).getByRole("button", { name: /^关闭工单$/ }));
     const confirmation = screen.getByRole("dialog", { name: "关闭工单" });
@@ -61,7 +74,7 @@ describe("TicketManagementPage", () => {
     expect(await within(dialog).findByText("已关闭")).toBeVisible();
 
     await user.click(within(dialog).getByRole("button", { name: "关闭工单详情" }));
-    await user.click(screen.getByRole("button", { name: "已关闭" }));
+    await user.click(screen.getByRole("tab", { name: "已关闭" }));
     await waitFor(() => expect(api.listAdminTickets).toHaveBeenLastCalledWith({ page: 1, page_size: 20, status: 1 }));
     dialog = screen.queryByRole("dialog", { name: "工单详情" }) as HTMLElement;
     expect(dialog).not.toBeInTheDocument();
@@ -94,9 +107,7 @@ describe("TicketManagementPage", () => {
       transitionCommissionWithdrawal: vi.fn(), getTicketSettings: vi.fn().mockResolvedValue(settings), updateTicketSettings: vi.fn().mockResolvedValue(updated)
     };
     const user = userEvent.setup();
-    render(<TicketManagementPage api={api} />);
-
-    await user.click(await screen.findByRole("button", { name: "工单设置" }));
+    render(<TicketSettingsDialog api={api} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog", { name: "工单设置" });
     await user.click(within(dialog).getByLabelText("用户必须等待管理员回复"));
     await user.click(within(dialog).getByLabelText("启用工单回复邮件"));

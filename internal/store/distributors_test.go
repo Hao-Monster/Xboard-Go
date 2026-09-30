@@ -505,3 +505,88 @@ func createDistributorFixture(t testing.TB, database *Store, now time.Time) (Pla
 	}
 	return plan, distributor
 }
+
+func TestNewDistributorSubscriptionInheritsPlanHWIDLimit(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	plan, distributor := createDistributorFixture(t, database, now)
+	input := CreateDistributorOrderInput{DistributorUserID: distributor.ID, PlanID: plan.ID, Period: "month_price"}
+	first, err := database.CreateDistributorOrder(ctx, input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit := 7
+	_, err = database.UpdatePlan(ctx, plan.ID, plan.Revision, SavePlanInput{
+		Name: plan.Name, GroupID: plan.GroupID, TransferEnableGiB: plan.TransferEnableGiB,
+		Prices: plan.Prices, DistributorHWIDLimit: &limit,
+	}, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := database.CreateDistributorOrder(ctx, input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Subscription.HWIDLimit != 7 {
+		t.Fatalf("new subscription limit = %d", second.Subscription.HWIDLimit)
+	}
+	var existingLimit int
+	if err := database.db.QueryRowContext(ctx, `SELECT hwid_limit FROM distributor_subscriptions WHERE id = ?`, first.Subscription.ID).Scan(&existingLimit); err != nil {
+		t.Fatal(err)
+	}
+	if existingLimit != 1 {
+		t.Fatalf("existing subscription changed to %d", existingLimit)
+	}
+}
+
+func TestDistributorSettlementMonthBoundaries(t *testing.T) {
+	db := newTestStore(t)
+	ctx := context.Background()
+	start := time.Date(2026, 8, 1, 0, 0, 0, 0, trafficResetLocation)
+	plan, dealer := createDistributorFixture(t, db, start.Add(-time.Hour))
+	admin, err := db.CreateAdminUser(ctx, CreateAdminUserInput{Email: "month-admin@example.test", PasswordHash: "hash", IsAdmin: true}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	times := []time.Time{start.Add(-time.Second), start, start.AddDate(0, 1, 0).Add(-time.Second), start.AddDate(0, 1, 0)}
+	for _, at := range times {
+		if _, err := db.CreateDistributorOrder(ctx, CreateDistributorOrderInput{DistributorUserID: dealer.ID, PlanID: plan.ID, Period: "monthly"}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	filter := DistributorOrderFilter{DistributorUserID: &dealer.ID, SettlementMonth: "2026-08"}
+	page, err := db.ListDistributorOrders(ctx, filter, start.AddDate(0, 2, 0))
+	if err != nil || page.Total != 2 {
+		t.Fatalf("month list total=%d err=%v", page.Total, err)
+	}
+	exported := 0
+	err = db.StreamDistributorOrderExport(ctx, filter, func(DistributorOrderExportRow) error { exported++; return nil })
+	if err != nil || exported != 2 {
+		t.Fatalf("month export=%d err=%v", exported, err)
+	}
+	preview, err := db.PreviewDistributorSettlement(ctx, dealer.ID, "2026-08")
+	if err != nil || preview.Count != 2 || preview.TotalAmount != 200000 {
+		t.Fatalf("month preview=%+v err=%v", preview, err)
+	}
+	result, err := db.SettleDistributorOrders(ctx, dealer.ID, admin.ID, start.AddDate(0, 2, 0), "2026-08")
+	if err != nil || result.Count != preview.Count || result.TotalAmount != preview.TotalAmount {
+		t.Fatalf("month settle=%+v err=%v", result, err)
+	}
+	remaining, err := db.PreviewDistributorSettlement(ctx, dealer.ID)
+	if err != nil || remaining.Count != 2 {
+		t.Fatalf("other months=%+v err=%v", remaining, err)
+	}
+	repeated, err := db.SettleDistributorOrders(ctx, dealer.ID, admin.ID, start.AddDate(0, 2, 0), "2026-08")
+	if err != nil || repeated.Count != 0 {
+		t.Fatalf("month repeat=%+v err=%v", repeated, err)
+	}
+	for _, invalid := range []string{"2026-13", "2026-8", "2026-08-01", "invalid"} {
+		if _, err := db.PreviewDistributorSettlement(ctx, dealer.ID, invalid); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid month %q: %v", invalid, err)
+		}
+		if _, err := db.SettleDistributorOrders(ctx, dealer.ID, admin.ID, start, invalid); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid settlement month %q: %v", invalid, err)
+		}
+	}
+}

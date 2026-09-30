@@ -1,3 +1,5 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { ClientAppSettings, ClientAppSettingsInput } from "../../lib/api";
@@ -103,12 +105,12 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
 
   const absent = current === null || draft === null;
   return <main className="page-shell client-app-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Client applications</p><h1>客户端版本</h1><p className="muted">配置与旧版 Xboard 一致的 Windows、macOS 和 Android 客户端版本及下载地址。</p></div></header>
+    <header className="page-header"><div><h1>{translateAdmin("APP设置")}</h1><p className="muted">配置 Windows、macOS 和 Android 应用版本及下载地址。</p></div></header>
     {loading && absent && <div className="empty-card">正在加载客户端版本设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {absent && !loading && <button className="button secondary" type="button" onClick={reload}>重新加载客户端版本设置</button>}
-    {!absent && <form className="client-app-settings-form" onSubmit={(event) => void save(event)}>
-      <div className="section-heading"><div><h2>应用发布信息</h2><p className="muted">留空表示暂不提供该平台的版本信息；下载地址仅接受绝对 HTTPS URL。</p></div><span className="count-pill">Revision {current.revision}</span></div>
+    {!absent && <AutoSaveForm saving={saving} className="client-app-settings-form" onSubmit={(event) => void save(event)}>
+      <div className="section-heading"><div><h2>应用发布信息</h2><p className="muted">留空表示暂不提供该平台的版本信息；下载地址仅接受绝对 HTTPS URL。</p></div></div>
       <div className="client-app-platform-grid">
         {platforms.map((platform) => <section className="site-settings-card client-app-platform-card" key={platform.name} aria-labelledby={`client-app-${platform.name}-heading`}>
           <div className="section-heading"><div><h2 id={`client-app-${platform.name}-heading`}>{platform.name}</h2><p className="muted">{platform.description}</p></div></div>
@@ -123,7 +125,7 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
         {error !== "" && <button className="button secondary" type="button" disabled={saving || loading} onClick={reload}>重新加载最新设置</button>}
         <button className="button primary" type="submit" disabled={saving || !dirty}>{saving ? "正在保存…" : "保存客户端版本"}</button>
       </div>
-    </form>}
+    </AutoSaveForm>}
   </main>;
 }
 

@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useState, type ReactNode } from "react";
 
 import type { SiteSettings } from "../../lib/api";
@@ -149,8 +150,8 @@ export function SystemConfigShell({
     <div className="system-config-page">
       <header className="page-header system-page-header">
         <div>
-          <h1 className="system-page-title">系统设置</h1>
-          <p className="system-page-desc">管理系统核心配置，包括站点、安全、订阅、邀请佣金、节点、邮件和通知等设置</p>
+          <h1 className="system-page-title">{translateAdmin("系统设置")}</h1>
+          <p className="system-page-desc">{translateAdmin("管理系统核心配置，包括站点、安全、订阅、邀请佣金、节点、邮件和通知等设置")}</p>
         </div>
       </header>
 
@@ -165,13 +166,13 @@ export function SystemConfigShell({
                 type="button"
                 className={`system-tab-button ${isActive ? "active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
-                aria-label={item.buttonName}
+                aria-label={translateAdmin(item.buttonName)}
                 onClick={() => handleSelectTab(item.key)}
               >
                 <span className="system-tab-icon">
                   <Icon />
                 </span>
-                <span className="system-tab-label">{item.label}</span>
+                <span className="system-tab-label">{translateAdmin(item.label)}</span>
               </button>
             );
           })}

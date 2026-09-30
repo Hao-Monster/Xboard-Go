@@ -46,8 +46,8 @@ describe("MailSettingsPage", () => {
     expect(screen.getByLabelText("SMTP 密码")).toHaveAttribute("placeholder", "已安全保存；留空保持不变");
     expect(screen.getByLabelText("加密方式")).toHaveValue("starttls");
     expect(screen.getByLabelText("发件人地址")).toHaveValue(initial.smtp_from_address);
-    expect(screen.getByRole("checkbox", { name: "启用 SMTP 邮件服务" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "启用订阅到期和流量提醒" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用 SMTP 邮件服务" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用订阅到期和流量提醒" })).not.toBeChecked();
 
     changeValue("SMTP 主机", updated.smtp_host);
     changeValue("SMTP 端口", String(updated.smtp_port));
@@ -55,7 +55,7 @@ describe("MailSettingsPage", () => {
     changeValue("SMTP 密码", "new-smtp-password");
     await user.selectOptions(screen.getByLabelText("加密方式"), "tls");
     changeValue("发件人地址", updated.smtp_from_address);
-    await user.click(screen.getByRole("checkbox", { name: "启用订阅到期和流量提醒" }));
+    await user.click(screen.getByRole("switch", { name: "启用订阅到期和流量提醒" }));
     await user.click(screen.getByRole("button", { name: "保存邮件设置" }));
 
     await waitFor(() => expect(api.updateMailSettings).toHaveBeenCalledWith({
@@ -88,7 +88,7 @@ describe("MailSettingsPage", () => {
 
     expect(await screen.findByLabelText("SMTP 主机")).toHaveValue(initial.smtp_host);
     changeValue("SMTP 主机", "draft.example.test");
-    await user.click(screen.getByRole("checkbox", { name: "清除已保存的 SMTP 密码" }));
+    await user.click(screen.getByRole("switch", { name: "清除已保存的 SMTP 密码" }));
     await user.click(screen.getByRole("button", { name: "保存邮件设置" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("设置已被其他管理员修改，请刷新后重试");

@@ -36,7 +36,7 @@ describe("NodeAgentSettingsPage", () => {
     expect(screen.getByLabelText("拉取间隔（秒）")).toHaveValue(60);
     expect(screen.getByLabelText("推送间隔（秒）")).toHaveValue(60);
     expect(screen.queryByLabelText("设备限制模式")).not.toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "启用节点 WebSocket" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用节点 WebSocket" })).toBeChecked();
     expect(screen.getByLabelText("WebSocket 地址")).toHaveValue("");
     expect(screen.queryByDisplayValue(/legacy-agent-token/i)).not.toBeInTheDocument();
     const telemetry = screen.getByRole("region", { name: "节点鉴权迁移遥测" });
@@ -103,7 +103,7 @@ describe("NodeAgentSettingsPage", () => {
     };
     const user = userEvent.setup();
     render(<NodeAgentSettingsPage api={api} />);
-    const checkbox = await screen.findByRole("checkbox", { name: "启用节点 WebSocket" });
+    const checkbox = await screen.findByRole("switch", { name: "启用节点 WebSocket" });
     expect(checkbox).toBeDisabled();
     expect(screen.getByText("当前部署没有启用 WebSocket 服务能力，管理设置不能绕过部署约束。")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "保存节点配置" }));

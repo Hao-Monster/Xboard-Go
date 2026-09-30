@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
@@ -17,6 +18,9 @@ const telegramTextFields = [
 ] as const;
 
 export function PluginManagementPage({ api, onNavigate }: { api: PluginAPI; onNavigate: (destination: PluginDestination) => void }) {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<"feature" | "payment" | "all">("feature");
+  const [status, setStatus] = useState("");
   const [plugins, setPlugins] = useState<TrustedPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyCode, setBusyCode] = useState("");
@@ -62,17 +66,23 @@ export function PluginManagementPage({ api, onNavigate }: { api: PluginAPI; onNa
     }
   };
 
+  const visiblePlugins = plugins.filter(plugin => (category === "all" || plugin.type === category) && (status === "" || plugin.enabled === (status === "enabled")) && `${plugin.name} ${plugin.code}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+
   return <main className="page-shell resource-page plugin-page">
-    <header className="page-header"><div><p className="eyebrow">Trusted core extensions</p><h1>插件管理</h1><p className="muted">仅管理随 Xboard-Go 编译、经过审查的 7 个内置能力；不执行上传的 PHP、ZIP 或任意第三方代码。</p></div></header>
-    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void load()}>重试</button></div>}
-    {loading && plugins.length === 0 ? <div className="empty-card">正在加载可信插件…</div> : <section className="resource-table-wrap" aria-label="可信插件列表"><table className="resource-table"><thead><tr><th>插件</th><th>类型</th><th>版本</th><th>状态</th><th>配置</th><th>操作</th></tr></thead><tbody>{plugins.map((plugin) => <tr key={plugin.code}>
-      <td data-label="插件"><strong>{plugin.name}</strong><small className="muted">{plugin.code}</small></td>
-      <td data-label="类型">{plugin.type === "payment" ? "支付" : "功能"}</td>
-      <td data-label="版本"><code>{plugin.version}</code></td>
-      <td data-label="状态"><span className="count-pill">{plugin.enabled ? "已启用" : "已禁用"}</span></td>
-      <td data-label="配置"><span className="row-actions">{plugin.code === "telegram" ? <><button className="button secondary compact" aria-label={`插件配置：${plugin.name}`} onClick={() => setEditing(plugin)}>插件文案</button><button className="button ghost compact" aria-label={`业务设置：${plugin.name}`} onClick={() => onNavigate("telegram")}>机器人设置</button></> : <button className="button secondary compact" aria-label={`支付配置：${plugin.name}`} onClick={() => onNavigate("payments")}>支付配置</button>}</span></td>
-      <td data-label="操作"><button className={`button compact ${plugin.enabled ? "danger" : "primary"}`} aria-label={`${plugin.enabled ? "禁用" : "启用"}：${plugin.name}`} disabled={busyCode !== ""} onClick={() => void toggle(plugin)}>{busyCode === plugin.code ? "正在保存…" : plugin.enabled ? "禁用" : "启用"}</button></td>
-    </tr>)}</tbody></table></section>}
+    <header className="page-header"><div><h1>{translateAdmin("插件管理")}</h1><p className="muted">管理内置插件及其业务配置。</p></div></header>
+    <div className="resource-toolbar"><input type="search" aria-label="搜索插件" placeholder={translateAdmin("搜索插件名称或描述...")} value={search} onChange={event => setSearch(event.target.value)} /><select aria-label="插件状态" value={status} onChange={event => setStatus(event.target.value)}><option value="">{translateAdmin("全部状态")}</option><option value="enabled">{translateAdmin("已启用")}</option><option value="disabled">{translateAdmin("已禁用")}</option></select></div>
+    <div role="tablist" aria-label="插件分类" className="plugin-category-tabs">{([['feature', '功能'], ['payment', '支付方式'], ['all', '所有插件']] as const).map(([value, label]) => <button type="button" role="tab" aria-selected={category === value} key={value} onClick={() => setCategory(value)}>{label}</button>)}</div>
+    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void load()}>{translateAdmin("重试")}</button></div>}
+    {loading && plugins.length === 0 ? <div className="empty-card">正在加载可信插件…</div> : <section className="plugin-cards" role="tabpanel" aria-label={category === "feature" ? "功能" : category === "payment" ? "支付方式" : translateAdmin("所有插件")}>
+      {visiblePlugins.length === 0 && <div className="empty-card">暂无匹配插件</div>}
+      {visiblePlugins.map(plugin => <article className="plugin-card" key={plugin.code}>
+        <h3>{plugin.name}</h3><div className="row-actions"><span className="count-pill">{plugin.type === "payment" ? "支付方式" : "功能"}</span><span className="count-pill">{plugin.enabled ? translateAdmin("已启用") : translateAdmin("已禁用")}</span></div>
+        <p className="muted"><code>{plugin.code}</code> · v{plugin.version}</p>
+        <div className="row-actions">{plugin.code === "telegram" ? <><button className="button secondary compact" aria-label={`插件配置：${plugin.name}`} onClick={() => setEditing(plugin)}>{translateAdmin("配置")}</button><button className="button ghost compact" aria-label={`业务设置：${plugin.name}`} onClick={() => onNavigate("telegram")}>机器人设置</button></> : <button className="button secondary compact" aria-label={`支付配置：${plugin.name}`} onClick={() => onNavigate("payments")}>{translateAdmin("配置")}</button>}
+          <button className={`button compact ${plugin.enabled ? "danger" : "primary"}`} aria-label={`${plugin.enabled ? translateAdmin("禁用") : translateAdmin("启用")}：${plugin.name}`} disabled={busyCode !== ""} onClick={() => void toggle(plugin)}>{busyCode === plugin.code ? "正在保存…" : plugin.enabled ? translateAdmin("禁用") : translateAdmin("启用")}</button>
+        </div>
+      </article>)}
+    </section>}
     {editing !== null && <TelegramPluginEditor api={api} plugin={editing} onClose={() => setEditing(null)} onSaved={(updated) => { replace(updated); setEditing(null); }} />}
   </main>;
 }
@@ -92,11 +102,11 @@ function TelegramPluginEditor({ api, plugin, onClose, onSaved }: { api: PluginAP
       setSaving(false);
     }
   };
-  return <Modal title="Telegram 插件配置" onClose={onClose}><div className="modal-header"><div><p className="eyebrow">Telegram Bot 1.0.1</p><h2>Telegram 插件配置</h2></div><button className="icon-button" aria-label="关闭 Telegram 插件配置" onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}>
+  return <Modal title="Telegram 插件配置" onClose={onClose}><div className="modal-header"><div><h2>Telegram 插件配置</h2></div><button className="icon-button" aria-label="关闭 Telegram 插件配置" onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}>
     <fieldset className="settings-fieldset"><legend>业务通知</legend><label className="toggle-row"><input aria-label="工单通知" type="checkbox" checked={config.enable_ticket_notify === true} onChange={(event) => setConfig((current) => ({ ...current, enable_ticket_notify: event.target.checked }))} /><span>向管理员发送工单通知</span></label><label className="toggle-row"><input aria-label="支付通知" type="checkbox" checked={config.enable_payment_notify === true} onChange={(event) => setConfig((current) => ({ ...current, enable_payment_notify: event.target.checked }))} /><span>向管理员发送支付通知</span></label></fieldset>
     <fieldset className="settings-fieldset"><legend>命令与引导文案</legend>{telegramTextFields.map(([key, label]) => <label key={key}>{label}<textarea aria-label={label} required maxLength={4096} rows={key === "help_text" ? 5 : 3} value={typeof config[key] === "string" ? config[key] : ""} onChange={(event) => setConfig((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</fieldset>
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
-    <div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" disabled={saving}>{saving ? "正在保存…" : "保存插件配置"}</button></div>
+    <div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" disabled={saving}>{saving ? "正在保存…" : "保存插件配置"}</button></div>
   </form></Modal>;
 }
 

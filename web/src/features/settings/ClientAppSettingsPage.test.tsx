@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ClientAppSettings } from "../../lib/api";
+import type { ClientAppSettings, ClientAppSettingsInput } from "../../lib/api";
 import { ClientAppSettingsPage } from "./ClientAppSettingsPage";
 
 const initial: ClientAppSettings = {
@@ -14,6 +14,17 @@ const initial: ClientAppSettings = {
 };
 
 describe("ClientAppSettingsPage", () => {
+  it("automatically saves edits and uses the returned revision for the next edit", async () => {
+    const api = { getClientAppSettings: vi.fn().mockResolvedValue(initial), updateClientAppSettings: vi.fn().mockImplementation((input: ClientAppSettingsInput) => Promise.resolve({ ...initial, ...input, revision: input.revision + 1 })) };
+    render(<ClientAppSettingsPage api={api} />);
+    const field = await screen.findByLabelText("Windows 版本");
+    fireEvent.change(field, { target: { value: "5.0.0" } });
+    await waitFor(() => expect(api.updateClientAppSettings).toHaveBeenCalledWith(expect.objectContaining({ revision: 4, windows_version: "5.0.0" })), { timeout: 2500 });
+    await waitFor(() => expect(field).toBeEnabled());
+    fireEvent.change(field, { target: { value: "5.0.1" } });
+    await waitFor(() => expect(api.updateClientAppSettings).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 5, windows_version: "5.0.1" })), { timeout: 2500 });
+  });
+
   it("shows all six legacy fields on first open and saves one complete revisioned update", async () => {
     const user = userEvent.setup();
     const dirty = vi.fn();
@@ -26,7 +37,7 @@ describe("ClientAppSettingsPage", () => {
     };
     render(<ClientAppSettingsPage api={api} onDirtyChange={dirty} />);
 
-    expect(await screen.findByRole("heading", { name: "客户端版本" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "APP设置" })).toBeVisible();
     expect(screen.getByLabelText("Windows 版本")).toHaveValue("4.8.1");
     expect(screen.getByLabelText("Windows 下载地址")).toHaveValue("https://download.example.test/windows.exe");
     expect(screen.getByLabelText("macOS 版本")).toHaveValue("4.8.2");

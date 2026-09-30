@@ -72,6 +72,9 @@ func (s *Store) GetDistributorOrderByTradeNo(ctx context.Context, distributorID 
 }
 
 func (s *Store) ListDistributorOrders(ctx context.Context, filter DistributorOrderFilter, now time.Time) (DistributorOrderPage, error) {
+	if _, _, err := distributorSettlementMonthRange(filter.SettlementMonth); err != nil {
+		return DistributorOrderPage{}, err
+	}
 	if now.Unix() < 0 || filter.Page < 0 || filter.PageSize < 0 || filter.DistributorUserID != nil && *filter.DistributorUserID < 1 {
 		return DistributorOrderPage{}, ErrInvalidInput
 	}
@@ -298,7 +301,12 @@ func safeTrafficTotal(upload, download int64) int64 {
 
 func distributorOrderWhere(filter DistributorOrderFilter) (string, []any) {
 	where := ` WHERE o.distributor_order_id IS NOT NULL`
-	args := make([]any, 0, 8)
+	args := make([]any, 0, 10)
+	if filter.SettlementMonth != "" {
+		start, end, _ := distributorSettlementMonthRange(filter.SettlementMonth)
+		where += ` AND o.created_at >= ? AND o.created_at < ?`
+		args = append(args, start, end)
+	}
 	if filter.DistributorUserID != nil {
 		where += ` AND o.user_id = ? AND ds.distributor_user_id = ?`
 		args = append(args, *filter.DistributorUserID, *filter.DistributorUserID)
@@ -338,6 +346,9 @@ func distributorSearchToken(value string) string {
 }
 
 func (s *Store) StreamDistributorOrderExport(ctx context.Context, filter DistributorOrderFilter, emit func(DistributorOrderExportRow) error) error {
+	if _, _, err := distributorSettlementMonthRange(filter.SettlementMonth); err != nil {
+		return err
+	}
 	if emit == nil || filter.DistributorUserID != nil && *filter.DistributorUserID < 1 {
 		return ErrInvalidInput
 	}

@@ -15,7 +15,7 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 	api, database := newTestAPI(t)
 	admin := loginAdmin(t, api)
 	created := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/plans", `{
-		"name":"Pro","transfer_enable":100,"speed_limit":200,"device_limit":3,"capacity_limit":0,
+		"name":"Pro","transfer_enable":100,"distributor_hwid_limit":7,"speed_limit":200,"device_limit":3,"capacity_limit":0,
 		"reset_traffic_method":1,"prices":{"monthly":101,"quarterly":202,"half_yearly":303,"yearly":404,
 		"two_yearly":505,"three_yearly":606,"onetime":707,"reset_traffic":808},"tags":["推荐"],
 		"content":"{{transfer}}/{{speed}}/{{devices}}/{{reset_method}}"
@@ -23,7 +23,7 @@ func TestPlanEndpointsEnforceLifecycleVisibilityAndRevision(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create plan status = %d; body=%s", created.Code, created.Body)
 	}
-	if !containsAll(created.Body.String(), `"users_count":0`, `"active_users_count":0`, `"capacity_users_count":0`) {
+	if !containsAll(created.Body.String(), `"users_count":0`, `"active_users_count":0`, `"capacity_users_count":0`, `"distributor_hwid_limit":7`) {
 		t.Fatalf("create plan statistics body=%s", created.Body)
 	}
 	var payload struct {

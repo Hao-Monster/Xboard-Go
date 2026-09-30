@@ -1,8 +1,8 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type Dispatch, type SetStateAction } from "react";
 
 import type { KnowledgeAttachment, KnowledgeAttachmentPage, KnowledgeAttachmentUpload } from "../../lib/api";
 import { secureRandomUUID } from "../../lib/random";
-import { SafeKnowledgeMarkdown } from "./UserKnowledgePage";
 
 export interface KnowledgeAttachmentAPI {
   initializeKnowledgeAttachment: (file: File, draftToken: string) => Promise<KnowledgeAttachmentUpload>;
@@ -46,15 +46,12 @@ const markerPrefix = "xboard-knowledge-upload:";
 export function KnowledgeAttachmentEditor({ api, articleID, draftToken, body, setBody, onBlockingChange }: Props) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [sourceArticleID, setSourceArticleID] = useState("");
-  const [cloning, setCloning] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkLabel, setLinkLabel] = useState("");
   const [linkURL, setLinkURL] = useState("");
   const [qrOpen, setQROpen] = useState(false);
   const [qrURL, setQRURL] = useState("");
   const [qrBusy, setQRBusy] = useState(false);
-  const [previewing, setPreviewing] = useState(true);
   const mounted = useRef(true);
   const generation = useRef(0);
   const controllers = useRef(new Set<AbortController>());
@@ -84,7 +81,7 @@ export function KnowledgeAttachmentEditor({ api, articleID, draftToken, body, se
       .catch((cause: unknown) => { if (mounted.current && generation.current === currentGeneration) setLoadError(messageOf(cause)); });
   }, [api, articleID, draftToken]);
 
-  const blocked = cloning || items.some((item) => item.status === "queued" || item.status === "uploading" || item.status === "failed" || item.status === "cancelling");
+  const blocked = items.some((item) => item.status === "queued" || item.status === "uploading" || item.status === "failed" || item.status === "cancelling");
   useEffect(() => onBlockingChange(blocked), [blocked, onBlockingChange]);
 
   const addFiles = (files: File[]) => {
@@ -194,51 +191,27 @@ export function KnowledgeAttachmentEditor({ api, articleID, draftToken, body, se
     } catch (cause) { setLoadError(messageOf(cause)); } finally { setQRBusy(false); }
   };
 
-  const cloneFromArticle = async () => {
-    const sourceID = Number(sourceArticleID);
-    if (!Number.isSafeInteger(sourceID) || sourceID < 1 || sourceID === articleID) { setLoadError("请输入其他文章的有效编号。"); return; }
-    setCloning(true); setLoadError("");
-    try {
-      const source = await api.listKnowledgeAttachments({ knowledgeID: sourceID, perPage: 100 });
-      if (source.items.length === 0) { setLoadError("来源文章没有可复制的附件。"); return; }
-      const cloned = await api.cloneKnowledgeAttachments(sourceID, source.items.map((item) => item.uuid), draftToken);
-      const additions = cloned.map(({ attachment }) => markdownFor(attachment));
-      setItems((current) => [...current, ...cloned.map(({ attachment }) => ({
-        id: attachment.uuid, name: attachment.original_name, size: attachment.size, status: "complete" as const,
-        progress: 100, attachment, markdown: markdownFor(attachment)
-      }))]);
-      setBody((current) => `${current}${current.trim() === "" ? "" : "\n\n"}${additions.join("\n\n")}`);
-      setSourceArticleID("");
-    } catch (cause) { setLoadError(messageOf(cause)); } finally { setCloning(false); }
-  };
-
-  const previewBody = items.reduce((current, item) => item.attachment === undefined
-    ? current : current.replaceAll(item.attachment.placeholder, item.attachment.url), body);
-
-  return <section className="knowledge-attachment-editor" aria-labelledby="knowledge-attachment-heading">
-    <div className="editor-toolbar"><div><strong id="knowledge-attachment-heading">文章附件</strong><p className="muted small">支持大文件分片续传；粘贴图片会自动上传。</p></div>
-      <label className="button secondary compact attachment-picker">添加附件<input aria-label="选择知识附件" type="file" multiple onChange={choose} /></label></div>
-    <div className="attachment-clone-row"><label>从其他文章复制附件<input aria-label="来源知识编号" type="number" min={1} value={sourceArticleID} onChange={(event) => setSourceArticleID(event.target.value)} /></label>
-      <button className="button ghost compact" type="button" disabled={cloning || sourceArticleID === ""} onClick={() => void cloneFromArticle()}>{cloning ? "正在复制…" : "复制全部附件"}</button></div>
+  return <section className="knowledge-attachment-editor" aria-label="知识编辑器">
     <div className="knowledge-rich-toolbar" role="toolbar" aria-label="知识正文编辑工具">
       <label className="sr-only" htmlFor="knowledge-heading-level">正文格式</label><select id="knowledge-heading-level" aria-label="正文格式" defaultValue="P" onChange={(event) => { setHeading(event.target.value); event.target.value = "P"; }}><option value="P">正文</option><option value="H1">标题 1</option><option value="H2">标题 2</option><option value="H3">标题 3</option></select>
       <button className="button ghost compact" type="button" onClick={() => wrapSelection("**", "**", "粗体文本")}>粗体</button>
       <button className="button ghost compact" type="button" onClick={() => wrapSelection("*", "*", "强调文本")}>斜体</button>
       <button className="button ghost compact" type="button" onClick={() => wrapSelection("`", "`", "代码")}>代码</button>
-      <button className="button ghost compact" type="button" aria-expanded={linkOpen} onClick={() => { setLinkOpen((current) => !current); setQROpen(false); }}>插入链接</button>
-      <button className="button ghost compact" type="button" aria-expanded={qrOpen} onClick={() => { setQROpen((current) => !current); setLinkOpen(false); }}>插入二维码</button>
-      <button className="button ghost compact" type="button" aria-pressed={previewing} onClick={() => setPreviewing((current) => !current)}>{previewing ? "隐藏预览" : "显示预览"}</button>
+      <button className="button ghost compact" type="button" aria-expanded={linkOpen} aria-label="插入链接" onClick={() => { setLinkOpen((current) => !current); setQROpen(false); }}>链接</button>
+      <button className="button ghost compact" type="button" aria-expanded={qrOpen} aria-label="插入二维码" onClick={() => { setQROpen((current) => !current); setLinkOpen(false); }}>二维码</button>
+      <label className="button ghost compact attachment-picker">图片<input aria-label="上传图片" type="file" accept="image/*" multiple onChange={choose} /></label>
+      <label className="button ghost compact attachment-picker">视频<input aria-label="上传视频" type="file" accept="video/*" multiple onChange={choose} /></label>
+      <label className="button ghost compact attachment-picker" title="上传任意附件">📎<input aria-label="选择知识附件" type="file" multiple onChange={choose} /></label>
     </div>
     {linkOpen && <div className="knowledge-rich-insert-row"><label>链接文字<input aria-label="链接文字" maxLength={256} value={linkLabel} onChange={(event) => setLinkLabel(event.target.value)} /></label><label>链接地址<input aria-label="链接地址" type="url" maxLength={2048} placeholder="https://example.com" value={linkURL} onChange={(event) => setLinkURL(event.target.value)} /></label><button className="button secondary compact" type="button" onClick={insertLink}>确认插入</button></div>}
     {qrOpen && <div className="knowledge-rich-insert-row"><label>二维码链接<input aria-label="二维码链接" type="url" maxLength={2048} placeholder="https://example.com" value={qrURL} onChange={(event) => setQRURL(event.target.value)} /></label><button className="button secondary compact" type="button" disabled={qrBusy} onClick={() => void insertQRCode()}>{qrBusy ? "正在生成并上传…" : "生成并上传二维码"}</button></div>}
-    <div className={`knowledge-rich-editor-grid${previewing ? " has-preview" : ""}`}><textarea ref={textarea} aria-label="内容" name="body" required maxLength={1_048_576} value={body} onPaste={paste} onChange={(event) => setBody(event.target.value)} />
-      {previewing && <div className="markdown-body knowledge-rich-preview" role="region" aria-label="知识正文预览"><SafeKnowledgeMarkdown body={previewBody} /></div>}</div>
+    <textarea ref={textarea} aria-label={translateAdmin("内容")} name="body" required maxLength={1_048_576} value={body} onPaste={paste} onChange={(event) => setBody(event.target.value)} />
     {loadError !== "" && <div className="alert error" role="alert">{loadError}</div>}
     {items.length > 0 && <ul className="knowledge-attachment-list">{items.map((item) => <li key={item.id}>
       <span><strong>{item.name}</strong><small className="muted">{formatBytes(item.size)} · {statusLabel(item.status)}</small></span>
       <progress max={100} value={item.progress} aria-label={`${item.name} 上传进度`} />
-      <span className="row-actions">{item.status === "failed" && <button className="button secondary compact" type="button" onClick={() => retryItem(item)}>重试</button>}
-        <button className="button ghost compact" type="button" disabled={item.status === "cancelling"} onClick={() => void cancel(item)}>{item.status === "complete" ? "移除" : "取消"}</button></span>
+      <span className="row-actions">{item.status === "failed" && <button className="button secondary compact" type="button" onClick={() => retryItem(item)}>{translateAdmin("重试")}</button>}
+        <button className="button ghost compact" type="button" disabled={item.status === "cancelling"} onClick={() => void cancel(item)}>{item.status === "complete" ? "移除" : translateAdmin("取消")}</button></span>
       {item.error !== undefined && item.error !== "" && <small className="error-text">{item.error}</small>}
     </li>)}</ul>}
   </section>;

@@ -367,3 +367,20 @@ func TestCouponHotPathsUseDedicatedIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateCouponGeneratesCodeWhenOmitted(t *testing.T) {
+	database := newTestStore(t)
+	now := time.Now().UTC()
+	input := SaveCouponInput{Name: "Automatic code", Type: CouponTypeFixed, Value: 100, Show: true, StartedAt: now, EndedAt: now.Add(7 * 24 * time.Hour)}
+	first, err := database.CreateCoupon(t.Context(), input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := database.CreateCoupon(t.Context(), input, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validCouponCode(first.Code) || first.Code == second.Code || first.Name != input.Name || first.Value != 100 {
+		t.Fatal("generated coupon code or business fields are invalid")
+	}
+}

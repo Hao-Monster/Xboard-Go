@@ -21,7 +21,7 @@ func TestImportLegacyPlansIsVerifiedIdempotentAndPreservesRelations(t *testing.T
 		ID: 41, GroupID: &group.ID, TransferEnableGiB: 100, Name: "Legacy Pro", SpeedLimit: &speed,
 		Show: true, SortPosition: 7, Renew: false, Content: "legacy content", ResetTrafficMethod: &method,
 		CapacityLimit: &capacity, Prices: PlanPrices{"monthly": 123, "quarterly": 345}, Sell: true,
-		DeviceLimit: &devices, Tags: []string{"推荐", "稳定"}, CreatedAt: now.Add(-time.Hour).Unix(), UpdatedAt: now.Unix(),
+		DeviceLimit: &devices, DistributorHWIDLimit: 3, Tags: []string{"推荐", "稳定"}, CreatedAt: now.Add(-time.Hour).Unix(), UpdatedAt: now.Unix(),
 	}}
 	input := LegacyPlansImport{
 		Slice: LegacyPlansSlice, SourceSHA256: strings.Repeat("a", 64), SourceSize: 4096,
@@ -42,7 +42,7 @@ func TestImportLegacyPlansIsVerifiedIdempotentAndPreservesRelations(t *testing.T
 		t.Fatalf("traffic reset setting = %#v, err=%v", settings, err)
 	}
 	imported, err := database.GetPlan(ctx, 41, now)
-	if err != nil || imported.Name != "Legacy Pro" || imported.Prices["monthly"] != 123 || imported.GroupID == nil || *imported.GroupID != group.ID {
+	if err != nil || imported.Name != "Legacy Pro" || imported.DistributorHWIDLimit != 3 || imported.Prices["monthly"] != 123 || imported.GroupID == nil || *imported.GroupID != group.ID {
 		t.Fatalf("imported plan = %#v, err=%v", imported, err)
 	}
 	second, err := database.ImportLegacyPlans(ctx, input, now.Add(time.Minute))
@@ -91,4 +91,17 @@ func TestImportLegacyPlansRejectsDirtyTargetAndMissingGroupAtomically(t *testing
 			t.Fatalf("dirty traffic reset setting error = %v, want ErrConflict", err)
 		}
 	})
+}
+
+func TestLegacyPlanDefaultHWIDPreservesHistoricalChecksum(t *testing.T) {
+	plans := []LegacyPlan{{ID: 1, Name: "Historical"}}
+	historical := LegacyPlansChecksum(plans)
+	plans[0].DistributorHWIDLimit = 1
+	if LegacyPlansChecksum(plans) != historical {
+		t.Fatal("default HWID changed historical checksum")
+	}
+	plans[0].DistributorHWIDLimit = 3
+	if LegacyPlansChecksum(plans) == historical {
+		t.Fatal("nondefault HWID omitted from checksum")
+	}
 }

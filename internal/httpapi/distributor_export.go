@@ -44,7 +44,7 @@ func (s *server) exportDistributorOrders(w http.ResponseWriter, r *http.Request)
 
 func distributorExportFilter(w http.ResponseWriter, r *http.Request, ownerID *int64, includeTokenSearch bool) (store.DistributorOrderFilter, bool) {
 	filter := store.DistributorOrderFilter{
-		Page: 1, PageSize: 1, DistributorUserID: ownerID, Search: r.URL.Query().Get("search"), IncludeTokenSearch: includeTokenSearch,
+		SettlementMonth: r.URL.Query().Get("settlement_month"), Page: 1, PageSize: 1, DistributorUserID: ownerID, Search: r.URL.Query().Get("search"), IncludeTokenSearch: includeTokenSearch,
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("distributor_user_id")); ownerID == nil && raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)

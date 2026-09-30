@@ -85,6 +85,7 @@ export function NodeFilter({
         disabled={disabled}
         onClick={() => {setSearch("");setIsOpen((prev) => !prev);}}
       >
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></svg>
         <span className="node-filter-button-label">{label}</span>
         {value.length > 0 && (
           <span className="node-filter-button-count">{value.length}</span>
@@ -118,6 +119,7 @@ export function NodeFilter({
           </div>
 
           <div className="node-filter-options-list" role="group" aria-label={label}>
+            <small className="muted">Suggestions · {filteredOptions.length}</small>
             {filteredOptions.length === 0 ? (
               <div className="node-filter-empty">无匹配选项</div>
             ) : (

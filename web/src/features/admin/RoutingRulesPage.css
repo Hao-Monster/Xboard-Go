@@ -393,3 +393,12 @@
   .rr-footer { flex-direction: column; align-items: stretch; }
   .rr-pagination { flex-direction: column; align-items: stretch; }
 }
+
+/* Style the native picker while retaining its keyboard and form semantics. */
+@supports (appearance: base-select) {
+  .rr-field-select, .rr-field-select::picker(select) { appearance: base-select; }
+  .rr-field-select::picker(select) { color: var(--theme-text); background: var(--theme-surface); border: 1px solid var(--theme-border); border-radius: 6px; padding: 4px; box-shadow: 0 4px 12px #0002; }
+  .rr-field-select option { min-height: 32px; padding: 6px 8px; border-radius: 3px; }
+  .rr-field-select option:hover, .rr-field-select option:focus { background: color-mix(in srgb, var(--theme-border) 50%, transparent); }
+  .rr-field-select option::checkmark { order: 1; margin-left: auto; }
+}

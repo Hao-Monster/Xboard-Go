@@ -4,7 +4,7 @@
 .modal-panel.node-definition-modal {
   width: 576px;
   max-width: calc(100vw - 32px);
-  max-height: 88vh;
+  max-height: calc(100dvh - 88px);
   padding: 0;
   border-radius: var(--theme-card-radius, 14px);
   background: var(--theme-surface);
@@ -693,3 +693,17 @@
 :is(.node-definition-modal,.node-definition-drawer) .node-modal-close { position: absolute; right: -12px; top: -12px; width: 24px; height:24px; border:0; }
 :is(.node-definition-modal,.node-definition-drawer) .node-footer-actions > .secondary { margin-right:auto; }
 @media(max-width:480px) { :is(.node-definition-modal,.node-definition-drawer) .node-protocol-top-bar { width:132px; flex-basis:132px; } }
+
+.node-definition-modal .switch-row-item { position: relative; }
+.node-definition-modal .switch-label { display: flex; flex-direction: row-reverse; justify-content: space-between; width: 100%; font-weight: 400; }
+.node-definition-modal .switch-label input[role="switch"] { appearance: none; width: 34px; height: 18px; min-height: 0; border-radius: 20px; border: 1px solid var(--theme-border); background: var(--theme-muted); position: relative; flex: 0 0 34px; padding: 0; }
+.node-definition-modal .switch-label input[role="switch"]::after { content: ""; position: absolute; width: 12px; height: 12px; border-radius: 50%; top: 2px; left: 2px; background: var(--theme-background); }
+.node-definition-modal .switch-label input[role="switch"]:checked { background: var(--theme-text); }
+.node-definition-modal .switch-label input[role="switch"]:checked::after { transform: translateX(16px); }
+.node-definition-modal .rate-range-heading, .node-group-field-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.node-definition-modal .rate-range-row { grid-template-columns: repeat(3,minmax(0,1fr)); border: 1px solid var(--theme-border); border-radius: 8px; padding: 12px; position: relative; }
+.rate-rule-title { grid-column: 1/-1; font-size: 12px; margin-bottom: 12px; }
+.node-definition-modal .rate-rule-remove { position: absolute; top: 5px; right: 6px; }
+.node-definition-modal .rate-range-list { padding: 16px; }
+.node-definition-modal .add-range-btn { margin: 0; }
+.node-group-field-heading { color: var(--theme-text); font-size: 13px; }

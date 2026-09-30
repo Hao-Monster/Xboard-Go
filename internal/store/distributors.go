@@ -125,8 +125,8 @@ func (s *Store) CreateDistributorOrder(ctx context.Context, input CreateDistribu
 		INSERT INTO distributor_subscriptions (
 			original_order_id,distributor_user_id,subscriber_user_id,customer_name,claim_token_hash,
 			delivery_status,settlement_status,hwid_enabled,hwid_limit,created_at,updated_at
-		) VALUES (?, ?, ?, ?, ?, 0, 0, 1, 1, ?, ?)
-	`, orderID, input.DistributorUserID, subscriberID, nullableStringValue(customerName), hex.EncodeToString(claimHash[:]), now.Unix(), now.Unix())
+		) VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?)
+	`, orderID, input.DistributorUserID, subscriberID, nullableStringValue(customerName), hex.EncodeToString(claimHash[:]), plan.DistributorHWIDLimit, now.Unix(), now.Unix())
 	if err != nil {
 		return DistributorOrder{}, fmt.Errorf("create distributor subscription: %w", err)
 	}

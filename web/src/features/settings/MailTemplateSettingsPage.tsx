@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import type { MailSettingsTestResult, MailTemplate, MailTemplateName, MailTemplatePreview, MailTemplateSummary } from "../../lib/api";
@@ -189,28 +190,28 @@ export function MailTemplateSettingsPage({ api }: { api: MailTemplateAPI }) {
   };
 
   return <main className="page-shell mail-template-page">
-    <header className="page-header"><div><p className="eyebrow">Email templates</p><h1>邮件模板</h1><p className="muted">管理与旧版 Xboard 一致的五类系统邮件；预览和真实投递共用服务端安全渲染器。</p></div></header>
+    <header className="page-header"><div><h1>{translateAdmin("邮件模板")}</h1><p className="muted">管理与旧版 Xboard 一致的五类系统邮件；预览和真实投递共用服务端安全渲染器。</p></div></header>
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {success !== "" && <div className="alert success global-alert" role="status">{success}</div>}
     <div className="mail-template-layout">
       <aside className="site-settings-card mail-template-list" aria-label="邮件模板列表">
         {templates.map((template) => <button key={template.name} type="button" className={`mail-template-item ${current?.name === template.name ? "active" : ""}`} aria-current={current?.name === template.name ? "true" : undefined} onClick={() => select(template.name)}>
-          <span>{template.label}</span><small>{template.customized ? "已自定义" : "默认"}</small>
+          <span>{template.label}</span><small>{template.customized ? translateAdmin("已自定义") : "默认"}</small>
         </button>)}
         {!loading && templates.length === 0 && <p className="muted">没有可用模板。</p>}
       </aside>
       <section className="site-settings-card mail-template-editor">
         {loading && current === null ? <div className="empty-card">正在加载邮件模板…</div> : current === null || draft === null ? <button className="button secondary" type="button" onClick={() => void loadCatalog()}>重新加载</button> : <form className="form-stack" onSubmit={(event) => void save(event)}>
-          <div className="section-heading"><div><h2>{current.label}</h2><p className="muted">{current.customized ? "当前使用自定义模板" : "当前使用系统默认模板"}</p></div><span className="count-pill">Revision {current.revision}</span></div>
-          <label>邮件主题<input maxLength={255} required value={draft.subject} onChange={(event) => { setDraft({ ...draft, subject: event.target.value }); setPreview(null); setSuccess(""); }} /></label>
+          <div className="section-heading"><div><h2>{current.label}</h2><p className="muted">{current.customized ? "当前使用自定义模板" : "当前使用系统默认模板"}</p></div></div>
+          <label>{translateAdmin("邮件主题")}<input maxLength={255} required value={draft.subject} onChange={(event) => { setDraft({ ...draft, subject: event.target.value }); setPreview(null); setSuccess(""); }} /></label>
           <label>HTML 内容<textarea ref={contentRef} rows={18} maxLength={262144} required value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setPreview(null); setSuccess(""); }} /></label>
           <div className="mail-template-variables" aria-label="可用变量">
             <strong>插入变量</strong>
             {[...current.required_variables, ...current.optional_variables].map((variable) => <button key={variable} className="button ghost compact monospace" type="button" onClick={() => insertVariable(variable)}>{`{{${variable}}}`}{current.required_variables.includes(variable) ? " *" : ""}</button>)}
           </div>
           <p className="muted small">仅支持上列占位符；变量会自动转义，脚本、事件属性和危险链接会在服务端移除。标 * 的变量必须保留。</p>
-          <div className="form-actions split"><div>{current.customized && <button className="button ghost" type="button" disabled={busy !== ""} onClick={() => void reset()}>{busy === "reset" ? "正在恢复…" : "恢复默认"}</button>}<button className="button secondary" type="button" disabled={busy !== ""} onClick={() => void renderPreview()}>{busy === "preview" ? "正在生成…" : "预览"}</button></div><button className="button primary" type="submit" disabled={busy !== "" || !dirty}>{busy === "save" ? "正在保存…" : "保存模板"}</button></div>
-          <div className="mail-template-test-row"><label>测试收件人<input type="email" maxLength={320} placeholder="留空发送给当前管理员" value={recipient} onChange={(event) => setRecipient(event.target.value)} /></label><button className="button secondary" type="button" title={dirty ? "请先保存当前修改" : undefined} disabled={busy !== "" || dirty} onClick={() => void sendTest()}>{busy === "test" ? "正在发送…" : "发送测试邮件"}</button></div>
+          <div className="form-actions split"><div>{current.customized && <button className="button ghost" type="button" disabled={busy !== ""} onClick={() => void reset()}>{busy === "reset" ? "正在恢复…" : translateAdmin("恢复默认")}</button>}<button className="button secondary" type="button" disabled={busy !== ""} onClick={() => void renderPreview()}>{busy === "preview" ? "正在生成…" : translateAdmin("预览")}</button></div><button className="button primary" type="submit" disabled={busy !== "" || !dirty}>{busy === "save" ? "正在保存…" : "保存模板"}</button></div>
+          <div className="mail-template-test-row"><label>测试收件人<input type="email" maxLength={320} placeholder="留空发送给当前管理员" value={recipient} onChange={(event) => setRecipient(event.target.value)} /></label><button className="button secondary" type="button" title={dirty ? "请先保存当前修改" : undefined} disabled={busy !== "" || dirty} onClick={() => void sendTest()}>{busy === "test" ? "正在发送…" : translateAdmin("发送测试邮件")}</button></div>
           {preview !== null && <section className="mail-template-preview" aria-label="邮件模板预览"><h3>{preview.subject}</h3><iframe title="邮件 HTML 预览" sandbox="" srcDoc={preview.html} /><details><summary>纯文本备用内容</summary><pre>{preview.text}</pre></details></section>}
         </form>}
       </section>

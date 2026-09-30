@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -50,9 +51,8 @@ const protocols = [
 type MenuState =
   | null
   | { kind: "bulk" }
-  | { kind: "bulk-bind" }
   | { kind: "row"; id: number }
-  | { kind: "row-bind"; id: number };
+;
 
 export function NodeManagementPage({ api, initialMachineID, initiallyCreating = false }: Props) {
   const [nodes, setNodes] = useState<ListNode[]>([]);
@@ -77,6 +77,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
   const [draft, setDraft] = useState<ListNode[] | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [copiedKind, setCopiedKind] = useState<"address" | "id">("address");
   const [copiedID, setCopiedID] = useState<number | null>(null);
   const [observedAt, setObservedAt] = useState(() => Date.now());
   const [pageInput, setPageInput] = useState("1");
@@ -278,8 +279,8 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
       return next;
     });
   };
-  const copyAddress = async (node: ListNode) => {
-    const address = `${node.host}:${node.port}`;
+  const copyAddress = async (node: ListNode, kind: "address" | "id" = "address") => {
+    const address = kind === "id" ? String(node.id) : `${node.host}:${node.port}`;
     try {
       if (navigator.clipboard?.writeText !== undefined) await navigator.clipboard.writeText(address);
       else {
@@ -294,6 +295,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
         field.remove();
         if (!copied) throw new Error("复制失败，请手动复制地址。");
       }
+      setCopiedKind(kind);
       setCopiedID(node.id);
       window.clearTimeout(copiedTimer.current);
       copiedTimer.current = window.setTimeout(() => setCopiedID((current) => current === node.id ? null : current), 1600);
@@ -312,63 +314,52 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
   return <main className="page-shell node-management-page">
     <header className="page-header">
       <div>
-        <h1>节点管理</h1>
-        <p className="muted">管理所有节点，包括添加、删除、编辑等操作。</p>
+        <h1>{translateAdmin("节点管理")}</h1>
+        <p className="muted">{translateAdmin("管理所有节点，包括添加、删除、编辑等操作。")}</p>
       </div>
     </header>
 
-    <div className="node-toolbar" aria-label="节点筛选">
-      <button className="button primary compact" type="button" disabled={busy || pending || sorting} onClick={() => setEditing("create")}>添加节点</button>
+    <div className={`node-toolbar${sorting ? " is-sorting" : ""}`} aria-label="节点筛选" onKeyDown={event => { if (event.key === "Escape" && sorting && !busy && !pending) cancelSort(); }}>
+      {sorting && <p className="node-sort-hint">拖拽节点调整顺序，完成后点击保存排序。</p>}
+      <button className="button compact" type="button" disabled={busy || pending || sorting} onClick={() => setEditing("create")}><span aria-hidden="true">+</span>{translateAdmin("添加节点")}</button>
       <div className="node-toolbar-search">
-        <input aria-label="搜索节点" type="search" placeholder="搜索节点..." value={queryInput} disabled={sorting || busy} onChange={(event) => setQueryInput(event.target.value)} />
+        <input aria-label="搜索节点" type="search" placeholder={translateAdmin("搜索节点...")} value={queryInput} disabled={sorting || busy} onChange={(event) => setQueryInput(event.target.value)} />
       </div>
-      <NodeFilter label="类型" options={protocols.map(([value,label])=>({value,label}))} value={filters.types ?? []} disabled={sorting || busy} onChange={types=>patchFilters(current=>({...current,types:types.length ? types : undefined}))}/>
-      <NodeFilter label="服务器" options={[{value:"unassigned",label:"独立部署"},...machines.map(machine=>({value:String(machine.id),label:machine.name}))]} value={[...(filters.machine_ids ?? (filters.machine_id ? [filters.machine_id] : [])).map(String),...(filters.unassigned ? ["unassigned"]:[])]} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,machine_id:undefined,machine_ids:values.filter(value=>value!=="unassigned").map(Number),unassigned:values.includes("unassigned") || undefined}))}/>
-      <NodeFilter label="权限组" options={groups.map(group=>({value:String(group.id),label:group.name}))} value={(filters.group_ids ?? []).map(String)} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,group_ids:values.length ? values.map(Number):undefined}))}/>
+      <NodeFilter label={translateAdmin("类型")} options={protocols.map(([value,label])=>({value,label}))} value={filters.types ?? []} disabled={sorting || busy} onChange={types=>patchFilters(current=>({...current,types:types.length ? types : undefined}))}/>
+      <NodeFilter label={translateAdmin("服务器")} options={[{value:"unassigned",label:"独立部署"},...machines.map(machine=>({value:String(machine.id),label:machine.name}))]} value={[...(filters.machine_ids ?? (filters.machine_id ? [filters.machine_id] : [])).map(String),...(filters.unassigned ? ["unassigned"]:[])]} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,machine_id:undefined,machine_ids:values.filter(value=>value!=="unassigned").map(Number),unassigned:values.includes("unassigned") || undefined}))}/>
+      <NodeFilter label={translateAdmin("权限组")} options={groups.map(group=>({value:String(group.id),label:group.name}))} value={(filters.group_ids ?? []).map(String)} disabled={sorting || busy} onChange={values=>patchFilters(current=>({...current,group_ids:values.length ? values.map(Number):undefined}))}/>
       <ActionMenu
-        open={menu?.kind === "bulk" || menu?.kind === "bulk-bind"}
-        label="操作"
+        open={menu?.kind === "bulk"}
+        label={translateAdmin("操作")}
         ariaLabel="批量操作"
-        disabled={busy || pending || selectedTargets.length === 0}
-        onToggle={() => setMenu((current) => current?.kind === "bulk" || current?.kind === "bulk-bind" ? null : { kind: "bulk" })}
+        disabled={busy || pending}
+        onToggle={() => setMenu((current) => current?.kind === "bulk" ? null : { kind: "bulk" })}
         onClose={closeMenu}
       >
-        {menu?.kind === "bulk-bind" ? <>
-          <div className="node-menu-heading">绑定服务器</div>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { machine_id: null }); }}>解除绑定</button>
-          {machines.map((machine) => <button type="button" role="menuitem" key={machine.id} disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { machine_id: machine.id }); }}>{machine.name}</button>)}
-          <div className="node-menu-separator" />
-          <button type="button" role="menuitem" onClick={() => setMenu({ kind: "bulk" })}>返回</button>
-        </> : <>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { show: true }); }}>显示节点</button>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { show: false }); }}>隐藏节点</button>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { enabled: true }); }}>启用节点</button>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState(selectedTargets, { enabled: false }); }}>禁用节点</button>
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "reset", targets: selectedTargets }); }}>重置流量</button>
-          <button type="button" role="menuitem" className="danger-text" disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "delete", targets: selectedTargets }); }}>删除</button>
-          <div className="node-menu-separator" />
-          <button type="button" role="menuitem" disabled={busy || pending} onClick={() => setMenu({ kind: "bulk-bind" })}>服务器绑定</button>
-        </>}
+          <button type="button" role="menuitem" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); updateState(selectedTargets, { show: true }); }} aria-label={translateAdmin("显示节点")}>显示节点 ({selectedTargets.length})</button>
+          <button type="button" role="menuitem" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); updateState(selectedTargets, { show: false }); }} aria-label={translateAdmin("隐藏节点")}>隐藏节点 ({selectedTargets.length})</button>
+          <button type="button" role="menuitem" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); updateState(selectedTargets, { enabled: true }); }} aria-label={translateAdmin("启用节点")}>启用节点 ({selectedTargets.length})</button>
+          <button type="button" role="menuitem" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); updateState(selectedTargets, { enabled: false }); }} aria-label={translateAdmin("禁用节点")}>禁用节点 ({selectedTargets.length})</button>
+          <button type="button" role="menuitem" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); setConfirming({ kind: "reset", targets: selectedTargets }); }} aria-label={translateAdmin("重置流量")}>重置流量 ({selectedTargets.length})</button>
+          <button type="button" role="menuitem" className="danger-text" disabled={busy || pending || selectedTargets.length === 0} onClick={() => { closeMenu(); setConfirming({ kind: "delete", targets: selectedTargets }); }} aria-label={translateAdmin("删除")}>删除节点 ({selectedTargets.length})</button>
       </ActionMenu>
       <div className="node-toolbar-spacer" />
       {sorting ? <>
-        <button className="button primary compact" type="button" disabled={busy || pending} onClick={() => void saveSort()}>{busy ? "正在保存排序…" : "保存排序"}</button>
-        <button className="button ghost compact" type="button" disabled={busy || pending} onClick={cancelSort}>取消</button>
+        <button className="button primary compact" type="button" disabled={busy || pending} onClick={() => void saveSort()}>{busy ? "正在保存排序…" : translateAdmin("保存排序")}</button>
       </> : <button
         className="button secondary compact"
         type="button"
         disabled={!canReorder}
         title={sortDisabledReason}
         onClick={startSort}
-      >编辑排序</button>}
+      >{translateAdmin("编辑排序")}</button>}
     </div>
 
-    {sorting && <p className="node-sort-hint">拖拽或使用上移/下移调整顺序，确认后一次性保存。</p>}
-    {error !== "" && <div className="alert error resource-alert" role="alert">{error}<button className="button ghost compact" type="button" onClick={() => { setError(""); refresh(); }}>重试</button></div>}
-    {catalogError !== "" && <div className="alert warning resource-alert" role="alert">{catalogError}<button className="button ghost compact" type="button" onClick={() => { setCatalogError(""); refresh(); }}>重试</button></div>}
+    {error !== "" && <div className="alert error resource-alert" role="alert">{error}<button className="button ghost compact" type="button" onClick={() => { setError(""); refresh(); }}>{translateAdmin("重试")}</button></div>}
+    {catalogError !== "" && <div className="alert warning resource-alert" role="alert">{catalogError}<button className="button ghost compact" type="button" onClick={() => { setCatalogError(""); refresh(); }}>{translateAdmin("重试")}</button></div>}
 
     {loading && nodes.length === 0 ? <div className="empty-card" aria-live="polite">正在加载节点…</div> : <section className="node-table-wrap">
-      <table className="node-table" aria-label="节点列表" aria-busy={loading}>
+      <table className={`node-table${sorting ? " is-sorting" : ""}`} aria-label="节点列表" aria-busy={loading}>
         <thead>
           <tr>
             <th scope="col">
@@ -382,16 +373,16 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
                 onChange={(event) => toggleAll(event.target.checked)}
               />
             </th>
-            <SortableHeader label="节点ID" field="id" current={filters.sort_by} order={filters.sort_order} disabled={sorting || busy} onSort={toggleSort} />
-            <th scope="col">显隐</th>
-            <th scope="col">节点</th>
-            <th scope="col">部署方式</th>
-            <th scope="col">地址</th>
-            <SortableHeader label="在线人数" field="online_count" current={filters.sort_by} order={filters.sort_order} disabled={sorting || busy} onSort={toggleSort} />
-            <th scope="col">倍率</th>
-            <th scope="col">权限组</th>
-            <th scope="col">流量使用</th>
-            <th scope="col">操作</th>
+            <SortableHeader label={translateAdmin("节点ID")} field="id" current={filters.sort_by} order={filters.sort_order} disabled={sorting || busy} onSort={toggleSort} />
+            <th scope="col">{translateAdmin("显隐")}</th>
+            <th scope="col">{translateAdmin("节点")}</th>
+            <th scope="col" aria-label={translateAdmin("部署方式")}>{translateAdmin("部署方式")}<span tabIndex={0} title="独立部署或关联服务器部署" aria-label="部署方式说明">ⓘ</span></th>
+            <th scope="col">{translateAdmin("地址")}</th>
+            <SortableHeader label={translateAdmin("在线人数")} field="online_count" current={filters.sort_by} order={filters.sort_order} disabled={sorting || busy} onSort={toggleSort} />
+            <th scope="col" aria-label={translateAdmin("倍率")}>{translateAdmin("倍率")}<span tabIndex={0} title="使用流量按此倍率计入用户流量" aria-label="倍率说明">ⓘ</span></th>
+            <th scope="col" aria-label={translateAdmin("权限组")}>{translateAdmin("权限组")}<span tabIndex={0} title="拥有对应权限组的用户可以使用此节点" aria-label="权限组说明">ⓘ</span></th>
+            <th scope="col">{translateAdmin("流量使用")}</th>
+            <th scope="col">{translateAdmin("操作")}</th>
           </tr>
         </thead>
         <tbody>
@@ -402,6 +393,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
             const machine = node.machine_id === null ? undefined : machineByID.get(node.machine_id);
             const status = machine === undefined ? null : machineStatus(machine, observedAt);
             const used = node.traffic_upload + node.traffic_download;
+            const availability = nodeAvailability(node, observedAt);
             return <tr
               key={node.id}
               className={`admin-node-table-row${node.enabled ? "" : " is-disabled"}${dragIndex === index ? " is-dragging" : ""}${dropIndex === index ? " is-drop-target" : ""}`}
@@ -438,9 +430,9 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
               </td>
               <td data-label="节点ID">
                 <span className="node-id-cell">
-                  {sorting && <button type="button" className="node-drag-handle" aria-label={`拖拽节点：${node.name}`} disabled={busy || pending}>⠿</button>}
+                  {sorting && <button type="button" className="node-drag-handle" aria-label={`拖拽节点：${node.name}`} title="拖拽调整排序，或使用键盘上下方向键" disabled={busy || pending} onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); moveDraft(index, index + (event.key === "ArrowUp" ? -1 : 1)); } }}>⠿</button>}
                   {parentID !== undefined && parentID !== null && <span className="node-parent-arrow" title={`父节点 #${parentID}`} aria-label={`父节点 #${parentID}`}>{node.id} → </span>}
-                  <strong>{parentID ?? node.id}</strong>
+                  <span className="node-protocol-badge" title={protocolLabel(node.type)}><ProtocolIcon type={node.type} /></span><strong>{parentID ?? node.id}</strong><button type="button" className="node-icon-button" aria-label={`复制节点ID：${node.name}`} onClick={() => void copyAddress(node, "id")}><CopyIcon /></button>{copiedID === node.id && copiedKind === "id" && <span className="node-copy-ok">已复制</span>}
                 </span>
               </td>
               <td data-label="显隐">
@@ -449,15 +441,14 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
                   className="node-switch"
                   role="switch"
                   aria-checked={node.show}
-                  aria-label={`${node.show ? "隐藏" : "显示"}节点：${node.name}`}
+                  aria-label={`${node.show ? "隐藏" : translateAdmin("显示")}节点：${node.name}`}
                   disabled={busy || pending}
                   onClick={() => updateState([nodeRevision(node)], { show: !node.show })}
                 ><span /></button>
               </td>
               <td data-label="节点">
-                <button type="button" className="node-name-button" aria-label={`编辑节点：${node.name}`} disabled={busy || pending} onClick={() => setEditing(node)}>{node.name}</button>
+                <span className={`node-availability-dot ${availability}`} role="img" aria-label={availability === "online" ? "节点在线" : availability === "no-push" ? "节点在线但未推送" : "节点离线"} title={availability === "online" ? "节点在线" : availability === "no-push" ? "节点在线但未推送" : "节点离线"} /><button type="button" className="node-name-button" aria-label={`编辑节点：${node.name}`} disabled={busy || pending} onClick={() => setEditing(node)}>{node.name}</button>
                 <div className="node-name-meta">
-                  <span className="node-protocol-badge"><ProtocolIcon type={node.type} />{protocolLabel(node.type)}</span>
                   {!node.enabled && <span className="node-tag">已停用</span>}
                   {nodeExternalCode(node) !== undefined && nodeExternalCode(node) !== "" && <span className="node-tag">{nodeExternalCode(node)}</span>}
                   {nodeTags(node).map((tag) => <span className="node-tag" key={tag}>{tag}</span>)}
@@ -466,25 +457,25 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
               <td data-label="部署方式">
                 <div className="node-deploy">
                   <span className="node-deploy-name">
-                    {node.machine_id === null ? "独立部署" : machine?.name ?? node.machine_name ?? `#${node.machine_id}`}
-                    {status !== null && <span className={`node-status ${status}`}>{status === "online" ? "在线" : status === "inactive" ? "已停用" : "离线"}</span>}
+                    {status !== null && <span className={`node-availability-dot ${status}`} aria-hidden="true" />}
+                    {node.machine_id === null ? translateAdmin("独立部署") : machine?.name ?? node.machine_name ?? `#${node.machine_id}`}
+                    {status !== null && <span className={`node-status ${status}`}>{status === "online" ? translateAdmin("在线") : status === "inactive" ? "已停用" : translateAdmin("离线")}</span>}
                   </span>
                 </div>
               </td>
               <td data-label="地址">
                 <div className="node-address">
                   <span className="node-address-row">
-                    <code>{node.host}:{node.port}</code>
+                    <code>{node.host}:{node.port}</code>{serverPort !== undefined && <small className="muted">({translateAdmin("内部端口")} {serverPort})</small>}
                     <button type="button" className="node-icon-button" aria-label={`复制地址：${node.name}`} disabled={busy || pending} onClick={() => void copyAddress(node)}>
                       <CopyIcon />
                     </button>
-                    {copiedID === node.id && <span className="node-copy-ok">已复制</span>}
+                    {copiedID === node.id && copiedKind === "address" && <span className="node-copy-ok">已复制</span>}
                   </span>
-                  {serverPort !== undefined && <small className="muted">内部端口 {serverPort}</small>}
                 </div>
               </td>
-              <td data-label="在线人数">{node.online_count}</td>
-              <td data-label="倍率">{formatRateMultiplier(node.rate)}</td>
+              <td data-label="在线人数"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="7" r="4" /><path d="M5 21v-3a7 7 0 0 1 14 0v3" /></svg> {node.online_count}</td>
+              <td data-label="倍率"><span className="node-group-badge">{formatRateMultiplier(node.rate)}</span></td>
               <td data-label="权限组">
                 <span className="node-groups">
                   {node.group_ids.length === 0
@@ -495,37 +486,24 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
               <td data-label="流量使用">
                 <div className="node-traffic">
                   <span>{quota !== undefined && quota > 0 ? `${formatBytes(used)} / ${formatBytes(quota)}` : formatBytes(used)}</span>
-                  <small className="muted">↑ {formatBytes(node.traffic_upload)} · ↓ {formatBytes(node.traffic_download)}</small>
+
                 </div>
               </td>
               <td data-label="操作">
-                {sorting ? <div className="row-actions node-row-actions">
-                  <button className="button compact ghost" type="button" disabled={busy || index === 0} aria-label={`上移节点：${node.name}`} onClick={() => moveDraft(index, index - 1)}>↑</button>
-                  <button className="button compact ghost" type="button" disabled={busy || index === rows.length - 1} aria-label={`下移节点：${node.name}`} onClick={() => moveDraft(index, index + 1)}>↓</button>
-                </div> : <ActionMenu
-                  open={(menu?.kind === "row" && menu.id === node.id) || (menu?.kind === "row-bind" && menu.id === node.id)}
+                {sorting ? null : <ActionMenu
+                  open={(menu?.kind === "row" && menu.id === node.id)}
                   label="⋯"
                   ariaLabel={`节点操作：${node.name}`}
                   compact
                   disabled={busy || pending}
-                  onToggle={() => setMenu((current) => (current?.kind === "row" && current.id === node.id) || (current?.kind === "row-bind" && current.id === node.id) ? null : { kind: "row", id: node.id })}
+                  onToggle={() => setMenu((current) => (current?.kind === "row" && current.id === node.id) ? null : { kind: "row", id: node.id })}
                   onClose={closeMenu}
                 >
-                  {menu?.kind === "row-bind" && menu.id === node.id ? <>
-                    <div className="node-menu-heading">绑定服务器</div>
-                    <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState([nodeRevision(node)], { machine_id: null }); }}>解除绑定</button>
-                    {machines.map((item) => <button type="button" role="menuitem" key={item.id} disabled={busy || pending} onClick={() => { closeMenu(); updateState([nodeRevision(node)], { machine_id: item.id }); }}>{item.name}</button>)}
-                    <div className="node-menu-separator" />
-                    <button type="button" role="menuitem" onClick={() => setMenu({ kind: "row", id: node.id })}>返回</button>
-                  </> : <>
-                    <button type="button" role="menuitem" aria-label={`编辑节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setEditing(node); }}>编辑</button>
-                    <button type="button" role="menuitem" aria-label={`复制节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); void run(() => api.copyAdminNode(node.id, node.revision), false); }}>复制</button>
-                    <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState([nodeRevision(node)], { show: !node.show }); }}>{node.show ? "隐藏" : "显示"}</button>
-                    <button type="button" role="menuitem" disabled={busy || pending} onClick={() => { closeMenu(); updateState([nodeRevision(node)], { enabled: !node.enabled }); }}>{node.enabled ? "停用" : "启用"}</button>
-                    <button type="button" role="menuitem" disabled={busy || pending} onClick={() => setMenu({ kind: "row-bind", id: node.id })}>服务器绑定</button>
-                    <button type="button" role="menuitem" aria-label={`重置流量：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "reset", targets: [nodeRevision(node)] }); }}>重置流量</button>
-                    <button type="button" role="menuitem" className="danger-text" aria-label={`删除节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "delete", targets: [nodeRevision(node)] }); }}>删除</button>
-                  </>}
+                    <button type="button" role="menuitem" aria-label={`编辑节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setEditing(node); }}>{translateAdmin("编辑")}</button>
+                    <button type="button" role="menuitem" aria-label={`复制节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); void run(() => api.copyAdminNode(node.id, node.revision), false); }}>{translateAdmin("复制")}</button>
+                    <button type="button" role="menuitem" aria-label={`重置流量：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "reset", targets: [nodeRevision(node)] }); }}>{translateAdmin("重置流量")}</button>
+                    <button type="button" role="menuitem" className="danger-text" aria-label={`删除节点：${node.name}`} disabled={busy || pending} onClick={() => { closeMenu(); setConfirming({ kind: "delete", targets: [nodeRevision(node)] }); }}>{translateAdmin("删除")}</button>
+
                 </ActionMenu>}
               </td>
             </tr>;
@@ -535,13 +513,12 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
       <footer className="node-pagination">
         <span>已选择 {selected.length} 项，共 {total} 项</span>
         <div className="node-pagination-controls">
-          <label>每页显示
-            <select aria-label="每页显示" value={pageSize} disabled={pending || busy || sorting} onChange={(event) => { setLoading(true); setPage(1); setPageSize(Number(event.target.value)); }}>
+          <label>{translateAdmin("每页显示")}<select aria-label={translateAdmin("每页显示")} value={pageSize} disabled={pending || busy || sorting} onChange={(event) => { setLoading(true); setPage(1); setPageSize(Number(event.target.value)); }}>
               {pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
             </select>
           </label>
-          <button type="button" aria-label="跳转到第一页" disabled={page <= 1 || pending || busy || sorting} onClick={() => setPage(1)}>«</button>
-          <button type="button" aria-label="上一页" disabled={page <= 1 || pending || busy || sorting} onClick={() => setPage((current) => Math.max(1, current - 1))}>‹</button>
+          <button type="button" aria-label={translateAdmin("跳转到第一页")} disabled={page <= 1 || pending || busy || sorting} onClick={() => setPage(1)}>«</button>
+          <button type="button" aria-label={translateAdmin("上一页")} disabled={page <= 1 || pending || busy || sorting} onClick={() => setPage((current) => Math.max(1, current - 1))}>‹</button>
           <input
             aria-label="页码"
             type="number"
@@ -553,8 +530,8 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
             onBlur={commitPageInput}
             onKeyDown={(event) => { if (event.key === "Enter") commitPageInput(); }}
           />
-          <button type="button" aria-label="下一页" disabled={page >= pageCount || pending || busy || sorting} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>›</button>
-          <button type="button" aria-label="跳转到最后一页" disabled={page >= pageCount || pending || busy || sorting} onClick={() => setPage(pageCount)}>»</button>
+          <button type="button" aria-label={translateAdmin("下一页")} disabled={page >= pageCount || pending || busy || sorting} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>›</button>
+          <button type="button" aria-label={translateAdmin("跳转到最后一页")} disabled={page >= pageCount || pending || busy || sorting} onClick={() => setPage(pageCount)}>»</button>
         </div>
       </footer>
     </section>}
@@ -698,9 +675,9 @@ function ConfirmNodeMutation({ api, kind, targets, onClose, onDone }: {
     <p>{kind === "delete" ? `确定删除选中的 ${targets.length} 个节点吗？该操作不会删除历史审计记录。` : `确定将选中的 ${targets.length} 个节点当前累计流量归零吗？历史统计会保留。`}</p>
     {error !== "" && <div className="alert error" role="alert">{error}</div>}
     <div className="form-actions">
-      <button className="button ghost" type="button" disabled={busy} onClick={handleClose}>取消</button>
+      <button className="button ghost" type="button" disabled={busy} onClick={handleClose}>{translateAdmin("取消")}</button>
       <button className={`button primary${kind === "delete" ? " destructive" : ""}`} type="button" disabled={busy} onClick={() => void submit()}>
-        {busy ? "正在处理…" : kind === "delete" ? "确认删除" : "确认重置"}
+        {busy ? "正在处理…" : kind === "delete" ? translateAdmin("确认删除") : translateAdmin("确认重置")}
       </button>
     </div>
   </Modal>;
@@ -754,4 +731,10 @@ function nodeExternalCode(node: ListNode): string | undefined {
 }
 function nodeTags(node: ListNode): string[] {
   return Array.isArray(node.tags) ? node.tags.filter((tag) => tag.trim() !== "") : [];
+}
+
+export function nodeAvailability(node: Pick<AdminNode, "last_check_at" | "last_push_at">, observedAt: number): "online" | "no-push" | "offline" {
+  const recent = (value: string | null) => value !== null && new Date(value).getTime() > observedAt - 300_000;
+  if (!recent(node.last_check_at)) return "offline";
+  return recent(node.last_push_at) ? "online" : "no-push";
 }

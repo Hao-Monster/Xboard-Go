@@ -1,3 +1,5 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { AdminAPI, NodeAgentSettings, NodeAgentSettingsInput } from "../../lib/api";
@@ -89,15 +91,15 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
   };
 
   return <main className="page-shell node-agent-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Node compatibility</p><h1>节点配置</h1><p className="muted">管理旧单节点通讯兼容设置。新部署优先使用服务器机器凭据。</p></div></header>
+    <header className="page-header"><div><h1>{translateAdmin("节点配置")}</h1><p className="muted">管理旧单节点通讯兼容设置。新部署优先使用服务器机器凭据。</p></div></header>
     {loading && draft === null && <div className="empty-card" aria-live="polite">正在加载节点配置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {draft === null && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载节点配置</button>}
     {draft !== null && current !== null && <section className="site-settings-card" aria-labelledby="node-agent-settings-heading">
-      <div className="section-heading"><div><h2 id="node-agent-settings-heading">节点通讯设置</h2><p className="muted">字段和旧 Xboard 节点配置保持同一业务含义。</p></div><span className="count-pill">Revision {current.revision}</span></div>
-      <form className="form-stack node-agent-settings-form" onSubmit={(event) => void save(event)}>
+      <div className="section-heading"><div><h2 id="node-agent-settings-heading">节点通讯设置</h2><p className="muted">字段和旧 Xboard 节点配置保持同一业务含义。</p></div></div>
+      <AutoSaveForm saving={saving} className="form-stack node-agent-settings-form" onSubmit={(event) => void save(event)}>
         <fieldset className="settings-fieldset">
-          <legend>通讯密钥</legend>
+          <legend>{translateAdmin("通讯密钥")}</legend>
           <p className="small muted">{current.server_token_configured ? `已配置（前缀 ${current.server_token_prefix}…）` : "尚未配置"}。密钥仅在替换或生成成功后显示一次。</p>
           <label>密钥操作<select aria-label="通讯密钥操作" value={tokenAction} onChange={(event) => { setTokenAction(event.target.value as TokenAction); setManualToken(""); setSaved(false); }}>
             <option value="preserve">保持现有密钥</option><option value="replace">手动替换密钥</option><option value="generate">随机生成新密钥</option>
@@ -114,9 +116,9 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
         <p className="small muted">对应原版“节点拉取动作轮询间隔”与“节点推送动作轮询间隔”，默认建议 60 秒。</p>
         <fieldset className="settings-fieldset">
           <legend>WebSocket</legend>
-          <label className="switch-label"><input type="checkbox" checked={draft.server_ws_enable} disabled={!current.websocket_available && !draft.server_ws_enable} onChange={(event) => updateDraft("server_ws_enable", event.target.checked)} />启用节点 WebSocket</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.server_ws_enable} disabled={!current.websocket_available && !draft.server_ws_enable} onChange={(event) => updateDraft("server_ws_enable", event.target.checked)} />启用节点 WebSocket</label>
           {!current.websocket_available && <p className="small muted">当前部署没有启用 WebSocket 服务能力，管理设置不能绕过部署约束。</p>}
-          <label>WebSocket 地址<input type="text" inputMode="url" maxLength={2048} placeholder="wss://panel.example.com/ws（留空自动生成）" value={draft.server_ws_url} onChange={(event) => updateDraft("server_ws_url", event.target.value)} /></label>
+          <label>{translateAdmin("WebSocket 地址")}<input type="text" inputMode="url" maxLength={2048} placeholder="wss://panel.example.com/ws（留空自动生成）" value={draft.server_ws_url} onChange={(event) => updateDraft("server_ws_url", event.target.value)} /></label>
         </fieldset>
         {telemetry !== null && <section className="settings-telemetry" aria-label="节点鉴权迁移遥测">
           <h3>节点鉴权迁移遥测</h3>
@@ -132,7 +134,7 @@ export function NodeAgentSettingsPage({ api }: { api: NodeAgentSettingsAPI }) {
           {error !== "" && <button className="button secondary" type="button" disabled={saving} onClick={() => void load()}>刷新最新设置</button>}
           <button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : "保存节点配置"}</button>
         </div>
-      </form>
+      </AutoSaveForm>
     </section>}
   </main>;
 }

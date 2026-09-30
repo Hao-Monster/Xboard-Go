@@ -309,3 +309,36 @@ func validThemeHTTPManifest(name, version string) string {
 		`"blue":{"background":"#101827","surface":"#172033","text":"#f4f4f5","muted":"#a1a1aa","primary":"#93c5fd","primary_text":"#111111","border":"#334155"}},` +
 		`"default_config":{"theme_color":"default","background_url":"","font_scale":"normal","radius":"rounded"}}`
 }
+
+func TestThemeSafeFooterAndBackgroundPersistence(t *testing.T) {
+	api, _ := newTestAPI(t)
+	administrator := loginAdmin(t, api)
+	saved := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/admin/themes/Xboard/config", `{"revision":1,"theme_color":"default","background_url":"https://images.example.test/bg.png","font_scale":"normal","radius":"rounded","custom_html":"<p>Support <a href=\"https://example.test/help\">Help</a></p>"}`)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("save status=%d body=%s", saved.Code, saved.Body)
+	}
+	preserved := administrator.request(t, api, http.MethodPatch, "/api/v1/admin/admin/themes/Xboard/config", `{"revision":2,"theme_color":"blue","background_url":"https://images.example.test/bg.png","font_scale":"normal","radius":"rounded"}`)
+	if preserved.Code != http.StatusOK {
+		t.Fatalf("preserve status=%d body=%s", preserved.Code, preserved.Body)
+	}
+	guest := plainAPIRequest(api, http.MethodGet, "/api/v1/guest/comm/config", "")
+	var payload struct {
+		Data struct {
+			Theme struct {
+				BackgroundURL string `json:"background_url"`
+				Config        struct {
+					CustomHTML string `json:"custom_html"`
+				} `json:"config"`
+			} `json:"theme"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(guest.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data.Theme.Config.CustomHTML != `<p>Support <a href="https://example.test/help">Help</a></p>` {
+		t.Fatalf("footer not preserved: %s", guest.Body)
+	}
+	if !strings.Contains(guest.Body.String(), `https://images.example.test/bg.png`) {
+		t.Fatalf("background missing: %s", guest.Body)
+	}
+}

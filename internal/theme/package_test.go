@@ -277,3 +277,27 @@ func TestValidateConfigAcceptsSquareRadius(t *testing.T) {
 	}
 }
 
+func TestThemeBackgroundURLAndSafeFooter(t *testing.T) {
+	manifest := Manifest{Palettes: map[string]Palette{"default": {}}, Backgrounds: []string{"assets/bg.png"}}
+	for _, background := range []string{"", "assets/bg.png", "https://images.example.test/background.png"} {
+		config := Config{ThemeColor: "default", BackgroundURL: background, FontScale: "normal", Radius: "rounded", CustomHTML: `<p>服务支持 <strong>全天在线</strong></p>`}
+		if err := ValidateConfig(manifest, config); err != nil {
+			t.Fatalf("valid config: %v", err)
+		}
+	}
+	for _, footer := range []string{`<p>Support<br>Available</p>`, `<a href="https://example.test/help">Help</a>`, `<a href="mailto:support@example.test">Email</a>`} {
+		if err := ValidateConfig(manifest, Config{ThemeColor: "default", FontScale: "normal", Radius: "rounded", CustomHTML: footer}); err != nil {
+			t.Fatalf("valid footer %q: %v", footer, err)
+		}
+	}
+	for _, background := range []string{"javascript:alert(1)", "data:image/svg+xml,<svg/>", "https://user:password@example.test/image", "//example.test/image", "file:///image"} {
+		if err := ValidateConfig(manifest, Config{ThemeColor: "default", BackgroundURL: background, FontScale: "normal", Radius: "rounded"}); err == nil {
+			t.Fatalf("accepted unsafe background %q", background)
+		}
+	}
+	for _, footer := range []string{`<script>alert(1)</script>`, `<p onclick="alert(1)">x</p>`, `<iframe src="https://example.test"></iframe>`, `<a href="javascript:alert(1)">x</a>`, `<style>body{display:none}</style>`} {
+		if err := ValidateConfig(manifest, Config{ThemeColor: "default", FontScale: "normal", Radius: "rounded", CustomHTML: footer}); err == nil {
+			t.Fatalf("accepted unsafe footer %q", footer)
+		}
+	}
+}

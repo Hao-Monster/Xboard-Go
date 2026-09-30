@@ -30,7 +30,7 @@ describe("TelegramSettingsPage", () => {
     expect(screen.getByLabelText("机器人令牌")).toHaveValue("");
     expect(screen.getByText("令牌已安全配置，留空保存将保持不变。")).toBeVisible();
     expect(screen.getByLabelText("Webhook Base URL")).toHaveValue("https://panel.example.test");
-    expect(screen.getByRole("checkbox", { name: "启用 Telegram 绑定引导" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用 Telegram 绑定引导" })).toBeChecked();
     expect(screen.getByLabelText("群组链接")).toHaveValue("https://t.me/xboard_group");
     const provision = screen.getByRole("button", { name: "一键设置 Webhook" });
     expect(provision).toBeEnabled();
@@ -102,7 +102,7 @@ describe("TelegramSettingsPage", () => {
     expect(await screen.findByRole("heading", { name: "Telegram 设置" })).toBeVisible();
     const provision = screen.getByRole("button", { name: "一键设置 Webhook" });
     expect(provision).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "启用 Telegram 绑定引导" }));
+    await user.click(screen.getByRole("switch", { name: "启用 Telegram 绑定引导" }));
     await user.type(screen.getByLabelText("机器人令牌"), "123456789:abcdefghijklmnopqrstuvwxyz_123456");
     expect(provision).toBeDisabled();
     await user.clear(screen.getByLabelText("Webhook Base URL"));

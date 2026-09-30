@@ -44,21 +44,21 @@ describe("CommissionSettingsPage", () => {
     render(<CommissionSettingsPage api={api} />);
 
     expect(await screen.findByRole("heading", { name: "邀请佣金设置" })).toBeVisible();
-    expect(screen.getByText("Revision 4", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Revision 4")).not.toBeInTheDocument();
     expect(screen.getByLabelText("全局邀请佣金比例（%）")).toHaveValue(20);
-    expect(screen.getByRole("checkbox", { name: "仅首次有效订单返佣" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "自动确认到期佣金" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "佣金直接计入账户余额" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "仅首次有效订单返佣" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "自动确认到期佣金" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "佣金直接计入账户余额" })).not.toBeChecked();
     expect(screen.getByLabelText("最低提现金额")).toHaveValue(100);
     expect(screen.getByLabelText("允许的提现方式（每行一个）")).toHaveValue("支付宝\nUSDT\nPaypal");
-    expect(screen.getByRole("checkbox", { name: "启用三级分佣" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "启用三级分佣" })).toBeChecked();
     expect(screen.getByText("当前用户侧有效比例：10% / 6% / 4%", { exact: true })).toBeVisible();
 
     await user.clear(screen.getByLabelText("全局邀请佣金比例（%）"));
     await user.type(screen.getByLabelText("全局邀请佣金比例（%）"), "25");
-    await user.click(screen.getByRole("checkbox", { name: "仅首次有效订单返佣" }));
-    await user.click(screen.getByRole("checkbox", { name: "自动确认到期佣金" }));
-    await user.click(screen.getByRole("checkbox", { name: "佣金直接计入账户余额" }));
+    await user.click(screen.getByRole("switch", { name: "仅首次有效订单返佣" }));
+    await user.click(screen.getByRole("switch", { name: "自动确认到期佣金" }));
+    await user.click(screen.getByRole("switch", { name: "佣金直接计入账户余额" }));
     const methods = screen.getByLabelText("允许的提现方式（每行一个）");
     await user.clear(methods);
     await user.type(methods, "银行转账{enter}  USDT  ");
@@ -85,7 +85,7 @@ describe("CommissionSettingsPage", () => {
       commission_distribution_l3: 25
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("佣金设置已保存");
-    expect(screen.getByText("Revision 5", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Revision 5")).not.toBeInTheDocument();
   });
 
   it("blocks unsafe totals locally, disables inactive levels, and supports conflict recovery", async () => {
@@ -98,7 +98,7 @@ describe("CommissionSettingsPage", () => {
     render(<CommissionSettingsPage api={api} />);
 
     expect(await screen.findByLabelText("一级分佣比例（%）")).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "启用三级分佣" }));
+    await user.click(screen.getByRole("switch", { name: "启用三级分佣" }));
     await user.clear(screen.getByLabelText("一级分佣比例（%）"));
     await user.type(screen.getByLabelText("一级分佣比例（%）"), "51");
     await user.click(screen.getByRole("button", { name: "保存佣金设置" }));

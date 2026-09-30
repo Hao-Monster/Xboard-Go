@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
@@ -164,10 +165,10 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
   };
   const themes = catalog?.themes ?? [];
   return <main className="page-shell theme-management-page">
-    <header className="page-header"><div><p className="eyebrow">Appearance</p><h1>主题配置</h1><p className="muted">上传安全的声明式主题，预览后配置并激活；主题不会执行第三方脚本或模板代码。</p></div>
+    <header className="page-header"><div><h1>{translateAdmin("主题配置")}</h1><p className="muted">上传安全的声明式主题，预览后配置并激活；主题不会执行第三方脚本或模板代码。</p></div>
       <div className="theme-upload-action">
         <input ref={uploadRef} className="visually-hidden" id="theme-upload" aria-label="上传主题包" type="file" accept=".zip,application/zip" disabled={busy !== ""} onChange={(event) => void upload(event)} />
-        <button className="button primary" type="button" disabled={busy !== ""} onClick={() => uploadRef.current?.click()}>{busy === "upload" ? "正在验证主题…" : "上传主题"}</button>
+        <button className="button primary" type="button" disabled={busy !== ""} onClick={() => uploadRef.current?.click()}>{busy === "upload" ? "正在验证主题…" : translateAdmin("上传主题")}</button>
       </div>
     </header>
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
@@ -178,22 +179,22 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
       <section className="site-settings-card" aria-labelledby="theme-layout-heading">
         <div className="section-heading"><div><h2 id="theme-layout-heading">导航样式</h2><p className="muted">侧栏明暗基于当前主题色计算，顶栏保持独立的明暗配置。</p></div></div>
         <div className="commission-settings-grid">
-          <label>侧栏样式<select value={catalog.sidebar_style} disabled={busy !== ""} onChange={(event) => void updateLayout(event.target.value as "light" | "dark", catalog.header_style)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
-          <label>顶栏样式<select value={catalog.header_style} disabled={busy !== ""} onChange={(event) => void updateLayout(catalog.sidebar_style, event.target.value as "light" | "dark")}><option value="light">浅色</option><option value="dark">深色</option></select></label>
+          <label>侧栏样式<select value={catalog.sidebar_style} disabled={busy !== ""} onChange={(event) => void updateLayout(event.target.value as "light" | "dark", catalog.header_style)}><option value="light">{translateAdmin("浅色")}</option><option value="dark">{translateAdmin("深色")}</option></select></label>
+          <label>顶栏样式<select value={catalog.header_style} disabled={busy !== ""} onChange={(event) => void updateLayout(catalog.sidebar_style, event.target.value as "light" | "dark")}><option value="light">{translateAdmin("浅色")}</option><option value="dark">{translateAdmin("深色")}</option></select></label>
         </div>
       </section>
-      <div className="section-heading theme-catalog-heading"><div><h2>主题目录</h2><p className="muted">当前主题：{catalog.active_theme}</p></div><span className="count-pill">{themes.length} 个主题 · Revision {catalog.revision}</span></div>
+      <div className="section-heading theme-catalog-heading"><div><h2>主题目录</h2><p className="muted">当前主题：{catalog.active_theme}</p></div><span className="count-pill">{themes.length} 个主题</span></div>
       <div className="theme-grid">
         {themes.map((item) => <article className={`theme-card${item.is_active ? " active" : ""}`} key={item.name}>
           <ThemeSwatch item={item} />
           <div className="theme-card-body">
             <div className="section-heading"><div><h2>{item.name}</h2><p className="muted">{item.description || "未提供主题说明"}</p></div><span className="count-pill">v{item.version}</span></div>
-            <div className="theme-badges"><span className={`status-badge ${item.is_active ? "enabled" : "warning"}`}>{item.is_active ? "当前主题" : "未激活"}</span>{item.is_system && <span className="badge inactive">系统主题</span>}</div>
+            <div className="theme-badges"><span className={`status-badge ${item.is_active ? "enabled" : "warning"}`}>{item.is_active ? translateAdmin("当前主题") : "未激活"}</span>{item.is_system && <span className="badge inactive">系统主题</span>}</div>
             <div className="theme-actions">
-              {item.images.length > 0 && <button className="button ghost compact" type="button" aria-label={`预览 ${item.name}`} onClick={() => showPreview(item)}>预览</button>}
-              <button className="button secondary compact" type="button" aria-label={`设置 ${item.name}`} disabled={busy !== ""} onClick={(event) => { settingsOpenerRef.current = event.currentTarget; void openSettings(item); }}>主题设置</button>
-              <button className="button primary compact" type="button" aria-label={item.is_active ? `当前主题 ${item.name}` : `激活 ${item.name}`} disabled={item.is_active || busy !== ""} onClick={() => void activate(item)}>{item.is_active ? "当前主题" : "激活主题"}</button>
-              {item.can_delete && <button className="button destructive compact" type="button" aria-label={`删除 ${item.name}`} disabled={busy !== ""} onClick={() => void remove(item)}>删除</button>}
+              {item.images.length > 0 && <button className="button ghost compact" type="button" aria-label={`预览 ${item.name}`} onClick={() => showPreview(item)}>{translateAdmin("预览")}</button>}
+              <button className="button secondary compact" type="button" aria-label={`设置 ${item.name}`} disabled={busy !== ""} onClick={(event) => { settingsOpenerRef.current = event.currentTarget; void openSettings(item); }}>{translateAdmin("主题设置")}</button>
+              <button className="button primary compact" type="button" aria-label={item.is_active ? `当前主题 ${item.name}` : `激活 ${item.name}`} disabled={item.is_active || busy !== ""} onClick={() => void activate(item)}>{item.is_active ? translateAdmin("当前主题") : translateAdmin("激活主题")}</button>
+              {item.can_delete && <button className="button destructive compact" type="button" aria-label={`删除 ${item.name}`} disabled={busy !== ""} onClick={() => void remove(item)}>{translateAdmin("删除")}</button>}
             </div>
           </div>
         </article>)}
@@ -201,20 +202,18 @@ export function ThemeManagementPage({ api, onDirtyChange = () => undefined, onTh
     </>}
 
     {preview !== null && <Modal title={`${preview.name} 主题预览`} className="theme-preview-modal" onClose={() => setPreview(null)}>
-        <div className="modal-header"><div><p className="eyebrow">Theme preview</p><h2>{preview.name} 主题预览</h2></div><button className="icon-button" type="button" aria-label="关闭预览" onClick={() => setPreview(null)}>×</button></div>
+        <div className="modal-header"><div><h2>{preview.name}{translateAdmin("主题预览")}</h2></div><button className="icon-button" type="button" aria-label="关闭预览" onClick={() => setPreview(null)}>×</button></div>
         <img className="theme-preview-image" src={themeAssetURL(preview, preview.images[previewIndex] ?? "")} alt={`${preview.name} 预览 ${previewIndex + 1}`} />
         {preview.images.length > 1 && <div className="theme-preview-controls"><button className="button secondary compact" type="button" onClick={() => setPreviewIndex((previewIndex + preview.images.length - 1) % preview.images.length)}>上一张</button><span>{previewIndex + 1} / {preview.images.length}</span><button className="button secondary compact" type="button" onClick={() => setPreviewIndex((previewIndex + 1) % preview.images.length)}>下一张</button></div>}
     </Modal>}
 
     {editing !== null && draft !== null && <Modal title={`${editing.name} 主题设置`} className="theme-settings-modal" restoreFocusRef={settingsOpenerRef} onClose={closeSettings}>
-        <div className="modal-header"><div><p className="eyebrow">Theme settings</p><h2>{editing.name} 主题设置</h2><p className="muted">Revision {editing.revision}</p></div><button className="icon-button" type="button" aria-label="关闭主题设置" disabled={saving} onClick={closeSettings}>×</button></div>
+        <div className="modal-header"><div><h2>{editing.name}{translateAdmin("主题设置")}</h2></div><button className="icon-button" type="button" aria-label="关闭主题设置" disabled={saving} onClick={closeSettings}>×</button></div>
         <form className="form-stack" onSubmit={(event) => void saveSettings(event)}>
-          <label>主题色<select value={draft.theme_color} disabled={busy !== ""} onChange={(event) => setDraft({ ...draft, theme_color: event.target.value })}>{Object.keys(editing.palettes).sort().map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-          <label>背景<select value={draft.background_url} disabled={busy !== ""} onChange={(event) => setDraft({ ...draft, background_url: event.target.value })}><option value="">无背景图片</option>{editing.backgrounds.map((background) => <option key={background} value={background}>{background}</option>)}</select></label>
-          <label>字号<select value={draft.font_scale} disabled={busy !== ""} onChange={(event) => setDraft({ ...draft, font_scale: event.target.value as ThemeConfig["font_scale"] })}><option value="small">小</option><option value="normal">标准</option><option value="large">大</option></select></label>
-          <label>圆角<select value={draft.radius} disabled={busy !== ""} onChange={(event) => setDraft({ ...draft, radius: event.target.value as ThemeConfig["radius"] })}><option value="compact">紧凑</option><option value="rounded">圆角</option><option value="pill">胶囊</option><option value="square">紧凑直角</option></select></label>
-          <div className="theme-config-preview" style={{ background: editing.palettes[draft.theme_color]?.background, color: editing.palettes[draft.theme_color]?.text, borderColor: editing.palettes[draft.theme_color]?.border, borderRadius: draft.radius === "square" ? "0px" : draft.radius === "compact" ? "8px" : draft.radius === "rounded" ? "16px" : "24px" }}><span style={{ color: editing.palettes[draft.theme_color]?.muted }}>实时预览</span><strong style={{ color: editing.palettes[draft.theme_color]?.primary }}>主题强调色</strong></div>
-          <div className="form-actions"><button className="button secondary" type="button" disabled={busy !== ""} onClick={closeSettings}>取消</button><button className="button primary" type="submit" disabled={!dirty || busy !== ""}>{busy.startsWith("save:") ? "正在保存…" : "保存主题设置"}</button></div>
+          <label>主题色<select value={draft.theme_color} disabled={busy !== ""} onChange={(event) => setDraft({ ...draft, theme_color: event.target.value })}>{Object.keys(editing.palettes).sort().map((name) => <option key={name} value={name}>{({default:"默认",blue:"蓝色",black:"黑色",darkblue:"深蓝色",green:"绿色",purple:"紫色",red:"红色",orange:"橙色",pink:"粉色"} as Record<string,string>)[name] ?? name}</option>)}</select></label>
+          <label>背景 URL<input aria-label="背景 URL" value={draft.background_url} disabled={busy !== ""} placeholder="https://" list="theme-background-assets" onChange={event => setDraft({...draft, background_url:event.target.value})} /><datalist id="theme-background-assets">{editing.backgrounds.map(background => <option key={background} value={background} />)}</datalist></label>
+          <label>自定义页脚 HTML<textarea aria-label="自定义页脚 HTML" rows={5} maxLength={16384} value={draft.custom_html ?? ""} disabled={busy !== ""} onChange={event => setDraft({...draft,custom_html:event.target.value})} /><small>支持文字、链接和基础排版；不支持脚本、事件属性或嵌入页面。</small></label>
+          <div className="form-actions"><button className="button secondary" type="button" disabled={busy !== ""} onClick={closeSettings}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={!dirty || busy !== ""}>{busy.startsWith("save:") ? "正在保存…" : "保存主题设置"}</button></div>
         </form>
     </Modal>}
   </main>;

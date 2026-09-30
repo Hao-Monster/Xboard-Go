@@ -1,3 +1,6 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { CodeEditor } from "../../components/CodeEditor";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type {
@@ -156,8 +159,8 @@ export function SubscriptionSettingsPage({
   return <main className="page-shell subscription-settings-page">
     <header className="page-header">
       <div>
-        <p className="eyebrow">Subscription</p>
-        <h1>{displayMode === "templates" ? "订阅模板" : "订阅设置"}</h1>
+
+        <h1>{displayMode === "templates" ? translateAdmin("订阅模板") : translateAdmin("订阅设置")}</h1>
         <p className="muted">
           {displayMode === "templates"
             ? "配置六类客户端订阅输出模板。"
@@ -168,48 +171,47 @@ export function SubscriptionSettingsPage({
     {loading && absent && <div className="empty-card">正在加载订阅设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {absent && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载订阅设置</button>}
-    {showSettings && policyDraft !== null && policyCurrent !== null && <form className="subscription-settings-layout" onSubmit={(event) => void savePolicy(event)}>
+    {showSettings && policyDraft !== null && policyCurrent !== null && <AutoSaveForm saving={policySaving} className="subscription-settings-layout" onSubmit={(event) => void savePolicy(event)}>
       <section className="site-settings-card subscription-policy" aria-labelledby="subscription-policy-heading">
-        <div className="section-heading"><div><h2 id="subscription-policy-heading">订阅策略</h2><p className="muted">订单开关和事件在保存后立即用于后续订单。</p></div><span className="count-pill">策略 Revision {policyCurrent.revision}</span></div>
+        <div className="section-heading"><div><h2 id="subscription-policy-heading">订阅策略</h2><p className="muted">订单开关和事件在保存后立即用于后续订单。</p></div></div>
         <div className="form-stack">
-          <label className="switch-label"><input type="checkbox" checked={policyDraft.plan_change_enable} onChange={(event) => updatePolicy("plan_change_enable", event.target.checked)} />允许用户更改订阅</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={policyDraft.plan_change_enable} onChange={(event) => updatePolicy("plan_change_enable", event.target.checked)} />{translateAdmin("允许用户更改订阅")}</label>
           <p className="small muted">关闭后，已有套餐的用户不能跨套餐变更。</p>
-          <label>月流量重置方式<select aria-label="月流量重置方式" value={policyDraft.reset_traffic_method} onChange={(event) => updatePolicy("reset_traffic_method", Number(event.target.value))}>{resetOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>{translateAdmin("月流量重置方式")}<select aria-label={translateAdmin("月流量重置方式")} value={policyDraft.reset_traffic_method} onChange={(event) => updatePolicy("reset_traffic_method", Number(event.target.value))}>{resetOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <p className="small muted">套餐未单独设置时使用此全局重置方式。</p>
-          <label className="switch-label"><input type="checkbox" checked={policyDraft.surplus_enable} onChange={(event) => updatePolicy("surplus_enable", event.target.checked)} />开启折抵方案</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={policyDraft.surplus_enable} onChange={(event) => updatePolicy("surplus_enable", event.target.checked)} />{translateAdmin("开启折抵方案")}</label>
           <p className="small muted">变更套餐时按旧版口径折抵剩余价值。</p>
-          <label>当订阅新购时触发事件<select aria-label="当订阅新购时触发事件" value={policyDraft.new_order_event_id} onChange={(event) => updatePolicy("new_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>当订阅续费时触发事件<select aria-label="当订阅续费时触发事件" value={policyDraft.renew_order_event_id} onChange={(event) => updatePolicy("renew_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>当订阅变更时触发事件<select aria-label="当订阅变更时触发事件" value={policyDraft.change_order_event_id} onChange={(event) => updatePolicy("change_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="switch-label"><input type="checkbox" checked={policyDraft.default_remind_expire} onChange={(event) => updatePolicy("default_remind_expire", event.target.checked)} />到期邮件提醒</label>
+          <label>{translateAdmin("当订阅新购时触发事件")}<select aria-label={translateAdmin("当订阅新购时触发事件")} value={policyDraft.new_order_event_id} onChange={(event) => updatePolicy("new_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>{translateAdmin("当订阅续费时触发事件")}<select aria-label={translateAdmin("当订阅续费时触发事件")} value={policyDraft.renew_order_event_id} onChange={(event) => updatePolicy("renew_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>{translateAdmin("当订阅变更时触发事件")}<select aria-label={translateAdmin("当订阅变更时触发事件")} value={policyDraft.change_order_event_id} onChange={(event) => updatePolicy("change_order_event_id", Number(event.target.value))}>{eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={policyDraft.default_remind_expire} onChange={(event) => updatePolicy("default_remind_expire", event.target.checked)} />到期邮件提醒</label>
           <p className="small muted">为新用户默认开启到期前邮件提醒。</p>
-          <label className="switch-label"><input type="checkbox" checked={policyDraft.default_remind_traffic} onChange={(event) => updatePolicy("default_remind_traffic", event.target.checked)} />流量邮件提醒</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={policyDraft.default_remind_traffic} onChange={(event) => updatePolicy("default_remind_traffic", event.target.checked)} />流量邮件提醒</label>
           <p className="small muted">为新用户默认开启流量用尽邮件提醒。</p>
         </div>
       </section>
       {policySaved && <div className="alert success" role="status">订阅策略已保存</div>}
       <div className="form-actions"><button className="button primary" type="submit" disabled={policySaving}>{policySaving ? "正在保存…" : "保存订阅策略"}</button></div>
-    </form>}
-    {draft !== null && current !== null && <form className="subscription-settings-layout" onSubmit={(event) => void save(event)}>
+    </AutoSaveForm>}
+    {draft !== null && current !== null && <AutoSaveForm saving={saving} className="subscription-settings-layout" onSubmit={(event) => void save(event)}>
       {showSettings && <section className="site-settings-card subscription-options" aria-labelledby="subscription-options-heading">
-        <div className="section-heading"><div><h2 id="subscription-options-heading">订阅输出</h2><p className="muted">修改路径后，旧路径下的所有订阅地址立即失效。</p></div><span className="count-pill">Revision {current.revision}</span></div>
+        <div className="section-heading"><div><h2 id="subscription-options-heading">订阅输出</h2><p className="muted">修改路径后，旧路径下的所有订阅地址立即失效。</p></div></div>
         <div className="form-stack">
-          <label>订阅路径<input required name="path" pattern="[A-Za-z0-9_-]{1,64}" maxLength={64} placeholder="s" value={draft.path} onChange={(event) => update("path", event.target.value)} /></label>
+          <label>{translateAdmin("订阅路径")}<input required name="path" pattern="[A-Za-z0-9_-]{1,64}" maxLength={64} placeholder="s" value={draft.path} onChange={(event) => update("path", event.target.value)} /></label>
           <p className="small muted">当前格式：/{draft.path || "{path}"}/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx；仅允许字母、数字、下划线和连字符。</p>
-          <label className="switch-label"><input type="checkbox" checked={draft.show_info} onChange={(event) => update("show_info", event.target.checked)} />在订阅中展示订阅信息</label>
-          <label className="switch-label"><input type="checkbox" checked={draft.show_protocol} onChange={(event) => update("show_protocol", event.target.checked)} />在线路名称中显示协议名称</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.show_info} onChange={(event) => update("show_info", event.target.checked)} />{translateAdmin("在订阅中展示订阅信息")}</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.show_protocol} onChange={(event) => update("show_protocol", event.target.checked)} />在线路名称中显示协议名称</label>
         </div>
       </section>}
       {showTemplates && <section className="site-settings-card subscription-template-editor" aria-labelledby="subscription-template-heading">
-        <div className="section-heading"><div><h2 id="subscription-template-heading">订阅模板</h2><p className="muted">六个模板与路径、开关在同一事务中保存。</p></div></div>
+        <div className="section-heading"><div><h2 id="subscription-template-heading">{translateAdmin("订阅模板")}</h2></div></div>
         <nav className="subscription-template-tabs" aria-label="订阅模板类型">
           {templateNames.map((name) => <button type="button" className={activeTemplate === name ? "active" : ""} aria-pressed={activeTemplate === name} key={name} onClick={() => setActiveTemplate(name)}>{templateLabels[name]}</button>)}
         </nav>
         <div className="subscription-template-actions" style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-          <button type="button" className="button secondary small" onClick={() => updateTemplate("")}>清空恢复系统默认模板</button>
+          <button type="button" className="button secondary small" data-autosave onClick={() => updateTemplate("")}>清空恢复系统默认模板</button>
         </div>
-        <label className="subscription-template-field">{templateLabels[activeTemplate]} 订阅模板
-          <textarea className="monospace" aria-label={`${templateLabels[activeTemplate]} 订阅模板`} spellCheck={false} value={draft.templates[activeTemplate]} onChange={(event) => updateTemplate(event.target.value)} />
+        <label className="subscription-template-field">{templateLabels[activeTemplate]}{translateAdmin("订阅模板")}<CodeEditor label={`${templateLabels[activeTemplate]} 订阅模板`} value={draft.templates[activeTemplate]} onChange={updateTemplate} />
         </label>
         <div className="small muted" style={{ marginTop: "0.5rem", lineHeight: "1.5" }}>
           <p>{new TextEncoder().encode(draft.templates[activeTemplate]).length.toLocaleString()} / 1,048,576 bytes；JSON/YAML 模板保存时由服务端校验结构。</p>
@@ -218,7 +220,7 @@ export function SubscriptionSettingsPage({
       </section>}
       {saved && <div className="alert success" role="status">{displayMode === "templates" ? "订阅模板已保存" : "订阅设置已保存"}</div>}
       <div className="form-actions"><button className="button primary" type="submit" disabled={saving}>{saving ? "正在保存…" : displayMode === "templates" ? "保存订阅模板" : "保存订阅设置"}</button></div>
-    </form>}
+    </AutoSaveForm>}
     {error !== "" && !absent && <div className="form-actions"><button className="button secondary" type="button" disabled={saving || policySaving} onClick={() => void load()}>刷新最新设置</button></div>}
   </main>;
 }

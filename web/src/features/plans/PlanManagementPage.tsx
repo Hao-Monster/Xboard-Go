@@ -1,13 +1,17 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import Markdown from "react-markdown";
+import { SafeMarkdown } from "../../components/SafeMarkdown";
 
+import { NodeGroupCreator } from "../nodes/NodeGroupCreator";
+import { TagInput } from "../../components/TagInput";
+import { MarkdownEditor } from "../../components/MarkdownEditor";
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, Plan, PlanInput, PlanPeriod, PlanPrices, ServerGroup } from "../../lib/api";
 import { invalidateAdminData } from "../../lib/useAdminData";
 import { adminDataCache } from "../../lib/dataPrefetchCache";
 import "./PlanManagementPage.css";
 
-type PlansAPI = Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups">;
+type PlansAPI = Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups"> & Partial<Pick<AdminAPI, "createServerGroup">>;
 
 const periods: Array<{ key: PlanPeriod; label: string }> = [
   { key: "monthly", label: "月付" }, { key: "quarterly", label: "季付" }, { key: "half_yearly", label: "半年付" },
@@ -126,22 +130,20 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
     <main className="page-shell resource-page pm-page">
       {/* Header */}
       <header className="pm-header">
-        <h1 className="pm-title">套餐管理</h1>
-        <p className="pm-subtitle">管理套餐权益、周期价格、容量、销售与续费状态。</p>
+        <h1 className="pm-title">{translateAdmin("订阅套餐")}</h1>
+        <p className="pm-subtitle">{translateAdmin("在这里可以配置订阅计划，包括添加、删除、编辑等操作。")}</p>
       </header>
 
       {/* Toolbar */}
       <div className="pm-toolbar">
         <div className="pm-toolbar-left">
           <button className="button secondary compact pm-add-btn" onClick={() => setEditing(null)}>
-            <span className="pm-plus" aria-hidden="true">+</span>
-            添加套餐
-          </button>
+            <span className="pm-plus" aria-hidden="true">+</span>{translateAdmin("添加套餐")}</button>
           <button
             className={`button secondary compact pm-sort-btn${sorting ? " pm-sort-active" : ""}`}
             onClick={() => { setSorting((v) => !v); setPage(1); }}
           >
-            {sorting ? "退出排序" : "编辑排序"}
+            {sorting ? "退出排序" : translateAdmin("编辑排序")}
           </button>
           {sorting && (
             <button
@@ -149,14 +151,14 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
               disabled={savingOrder}
               onClick={() => void saveOrder()}
             >
-              {savingOrder ? "正在保存…" : "保存排序"}
+              {savingOrder ? "正在保存…" : translateAdmin("保存排序")}
             </button>
           )}
         </div>
         <input
           className="pm-search"
           type="search"
-          placeholder="搜索套餐..."
+          placeholder={translateAdmin("搜索套餐...")}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           aria-label="搜索套餐"
@@ -167,7 +169,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
       {error !== "" && (
         <div className="alert error resource-alert" role="alert">
           {error}
-          <button className="button ghost compact" onClick={() => void refresh()}>刷新</button>
+          <button className="button ghost compact" onClick={() => void refresh()}>{translateAdmin("刷新")}</button>
         </div>
       )}
 
@@ -179,46 +181,31 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
           <table className="resource-table pm-table">
             <thead>
               <tr>
-                <th className="pm-th-plan">套餐</th>
-                <th className="pm-th-benefit">权益</th>
-                <th className="pm-th-stat">统计</th>
-                <th className="pm-th-price">价格</th>
-                <th className="pm-th-cap">容量</th>
-                <th className="pm-th-state">状态</th>
-                <th className="pm-th-ops">操作</th>
+                <th>ID</th><th>{translateAdmin("显示")}</th><th>{translateAdmin("新购")}</th><th>{translateAdmin("续费")}</th>
+                <th className="pm-th-plan">{translateAdmin("名称")}</th><th className="pm-th-stat">{translateAdmin("统计")}</th>
+                <th>{translateAdmin("权限组")}</th><th className="pm-th-price">{translateAdmin("价格")}</th><th className="pm-th-ops">{translateAdmin("操作")}</th>
               </tr>
             </thead>
             <tbody>
               {paged.length === 0 ? (
                 <tr className="pm-empty-row">
-                  <td colSpan={7} className="pm-empty-cell">{search ? "没有匹配的套餐。" : plans.length === 0 ? "尚未创建套餐。" : "暂无数据"}</td>
+                  <td colSpan={9} className="pm-empty-cell">{search ? "没有匹配的套餐。" : plans.length === 0 ? "尚未创建套餐。" : translateAdmin("暂无数据")}</td>
                 </tr>
               ) : paged.map((plan) => {
                 const sourceIndex = plans.findIndex((item) => item.id === plan.id);
                 const busy = busyIDs.has(plan.id);
                 return (
                   <tr key={plan.id} className={busy ? "pm-row-busy" : ""}>
-                    {/* 套餐 */}
-                    <td data-label="套餐" className="pm-td-plan">
-                      <strong className="pm-plan-name">{plan.name}</strong>
-                      <small className="pm-meta muted monospace">PID {plan.id} · Rev {plan.revision}</small>
-                      {plan.tags.length > 0 && (
-                        <div className="pm-tags">
-                          {plan.tags.map((tag) => <span key={tag} className="pm-tag">{tag}</span>)}
-                        </div>
-                      )}
-                    </td>
-                    {/* 权益 */}
-                    <td data-label="权益" className="pm-td-benefit">
-                      <span className="pm-traffic">{plan.transfer_enable} GiB</span>
-                      <small className="muted">速度 {limitText(plan.speed_limit)} Mbps · 设备 {limitText(plan.device_limit)} 台</small>
-                      <small className="muted">权限组 {plan.group_id === null ? "不限制" : groupNames.get(plan.group_id) ?? `#${plan.group_id}`}</small>
-                    </td>
-                    {/* 统计 */}
-                    <td data-label="统计" className="pm-td-stat">
-                      <strong>总 {plan.users_count}</strong>
-                      <small className="muted">有效 {plan.active_users_count} · 活跃率 {plan.users_count > 0 ? Math.round(plan.active_users_count / plan.users_count * 100) : 0}%</small>
-                    </td>
+                    <td data-label="ID">{plan.id}</td>
+                    {([['show', '显示'], ['sell', '新购'], ['renew', '续费']] as const).map(([field, label]) => <td key={field} data-label={label}>
+                      <label className="pm-switch-label" title={label}>
+                        <input type="checkbox" role="switch" aria-label={label} className="pm-switch-input" disabled={busy} checked={plan[field]} onChange={event => void updateState(plan, field, event.target.checked)} />
+                        <span className="pm-switch-track" aria-hidden="true" />
+                      </label>
+                    </td>)}
+                    <td data-label="名称" className="pm-td-plan"><strong className="pm-plan-name">{plan.name}</strong></td>
+                    <td data-label="统计" className="pm-td-stat"><span title="总用户数">{plan.users_count}</span><span title="有效用户数">{plan.active_users_count}</span></td>
+                    <td data-label="权限组">{plan.group_id === null ? '' : groupNames.get(plan.group_id) ?? `#${plan.group_id}`}</td>
                     {/* 价格 */}
                     <td data-label="价格" className="pm-td-price">
                       {periods.some(({ key }) => plan.prices[key] !== undefined) ? (
@@ -231,50 +218,6 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
                           ))}
                         </div>
                       ) : <span className="muted">未设置</span>}
-                    </td>
-                    {/* 容量 */}
-                    <td data-label="容量" className="pm-td-cap">
-                      {plan.capacity_limit === null || plan.capacity_limit <= 0
-                        ? <span className="pm-cap-unlimited">不限量</span>
-                        : <span className="pm-cap-count">{plan.capacity_users_count}/{plan.capacity_limit}</span>}
-                    </td>
-                    {/* 状态 */}
-                    <td data-label="状态" className="pm-td-state">
-                      <div className="pm-state-switches">
-                        <label className="pm-switch-label" title={busy ? "操作进行中" : ""}>
-                          <input
-                            type="checkbox"
-                            className="pm-switch-input"
-                            disabled={busy}
-                            checked={plan.show}
-                            onChange={(e) => void updateState(plan, "show", e.target.checked)}
-                          />
-                          <span className="pm-switch-track" aria-hidden="true" />
-                          <span className="pm-switch-text">展示</span>
-                        </label>
-                        <label className="pm-switch-label" title={busy ? "操作进行中" : ""}>
-                          <input
-                            type="checkbox"
-                            className="pm-switch-input"
-                            disabled={busy}
-                            checked={plan.sell}
-                            onChange={(e) => void updateState(plan, "sell", e.target.checked)}
-                          />
-                          <span className="pm-switch-track" aria-hidden="true" />
-                          <span className="pm-switch-text">销售</span>
-                        </label>
-                        <label className="pm-switch-label" title={busy ? "操作进行中" : ""}>
-                          <input
-                            type="checkbox"
-                            className="pm-switch-input"
-                            disabled={busy}
-                            checked={plan.renew}
-                            onChange={(e) => void updateState(plan, "renew", e.target.checked)}
-                          />
-                          <span className="pm-switch-track" aria-hidden="true" />
-                          <span className="pm-switch-text">续费</span>
-                        </label>
-                      </div>
                     </td>
                     {/* 操作 */}
                     <td data-label="操作" className="pm-td-ops">
@@ -309,7 +252,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
                             <button
                               className="pm-icon-btn"
                               aria-label={`编辑套餐：${plan.name}`}
-                              title="编辑"
+                              title={translateAdmin("编辑")}
                               onClick={() => setEditing(plan)}
                             >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -320,7 +263,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
                             <button
                               className="pm-icon-btn pm-icon-btn-danger"
                               aria-label={`删除套餐：${plan.name}`}
-                              title="删除"
+                              title={translateAdmin("删除")}
                               onClick={() => setDeleting(plan)}
                             >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -348,9 +291,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
           <span className="pm-footer-status">已选择 0 项，共 {filtered.length} 项</span>
           {!sorting && (
             <div className="pm-pagination">
-              <label className="pm-page-size-label">
-                每页显示
-                <select
+              <label className="pm-page-size-label">{translateAdmin("每页显示")}<select
                   className="pm-page-size-select"
                   value={pageSize}
                   onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
@@ -359,9 +300,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
                   {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </label>
-              <span className="pm-page-info">
-                第
-                <input
+              <span className="pm-page-info">{translateAdmin("第")}<input
                   className="pm-page-input"
                   type="number"
                   min={1}
@@ -374,8 +313,8 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
               </span>
               <div className="pm-page-btns">
                 <button className="pm-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1 || filtered.length === 0} aria-label="首页">«</button>
-                <button className="pm-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || filtered.length === 0} aria-label="上一页">‹</button>
-                <button className="pm-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || filtered.length === 0} aria-label="下一页">›</button>
+                <button className="pm-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || filtered.length === 0} aria-label={translateAdmin("上一页")}>‹</button>
+                <button className="pm-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || filtered.length === 0} aria-label={translateAdmin("下一页")}>›</button>
                 <button className="pm-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages || filtered.length === 0} aria-label="末页">»</button>
               </div>
             </div>
@@ -411,7 +350,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
   );
 }
 
-type PlanDraft = Omit<PlanInput, "prices" | "tags"> & { tagsText: string; prices: Record<PlanPeriod, string>; forceUpdate: boolean };
+type PlanDraft = Omit<PlanInput, "prices" | "tags" | "transfer_enable"> & { transfer_enable: number | ""; tagsText: string; prices: Record<PlanPeriod, string>; forceUpdate: boolean };
 
 function PlanEditor({ api, groups, plan, onClose, onSaved }: {
   api: PlansAPI; groups: ServerGroup[]; plan: Plan | null; onClose: () => void; onSaved: (plan: Plan) => void;
@@ -422,6 +361,9 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const [groupCreating, setGroupCreating] = useState(false);
+  const [basePrice, setBasePrice] = useState("");
+  const [createdGroups, setCreatedGroups] = useState<ServerGroup[]>([]);
   const update = <K extends keyof PlanDraft,>(key: K, value: PlanDraft[K]) => setDraft((cur) => ({ ...cur, [key]: value }));
 
   const submit = async (event: FormEvent) => {
@@ -430,10 +372,11 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
     setError("");
     try {
       const input: PlanInput = {
-        group_id: draft.group_id, transfer_enable: draft.transfer_enable, name: draft.name,
+        group_id: draft.group_id, transfer_enable: Number(draft.transfer_enable), name: draft.name,
         speed_limit: draft.speed_limit, content: draft.content,
         reset_traffic_method: draft.reset_traffic_method, capacity_limit: draft.capacity_limit,
         prices: pricesToCents(draft.prices), device_limit: draft.device_limit,
+        distributor_hwid_limit: draft.distributor_hwid_limit,
         tags: draft.tagsText.split(/[,，\n]/).map((tag) => tag.trim()).filter(Boolean),
       };
       onSaved(isCreate ? await api.createPlan(input) : await api.updatePlan(plan.id, plan.revision, input, draft.forceUpdate));
@@ -445,7 +388,7 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
   };
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} className="pm-editor-modal" onClose={onClose} suspended={groupCreating}>
       <div className="pm-modal-header">
         <div className="pm-modal-title-row">
           <h2 className="pm-modal-title">{title}</h2>
@@ -455,69 +398,72 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
         </div>
       </div>
       <form className="pm-modal-body" onSubmit={(e) => void submit(e)}>
+        <div className="pm-form-scroll"><div className="pm-details-grid">
         {/* 基本信息 */}
         <div className="pm-form-section">
-          <div className="pm-section-title">基本信息</div>
           <div className="pm-form-grid pm-form-grid-2">
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-name">套餐名称</label>
-              <input id="pm-name" className="pm-field-input" required maxLength={255}
-                value={draft.name} placeholder="请输入套餐名称"
+              <label className="pm-field-label" htmlFor="pm-name">{translateAdmin("套餐名称")}</label>
+              <input id="pm-name" className="pm-field-input" autoFocus required maxLength={255}
+                value={draft.name} placeholder={translateAdmin("请输入套餐名称")}
                 onChange={(e) => update("name", e.target.value)} />
             </div>
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-tags">标签</label>
-              <input id="pm-tags" className="pm-field-input"
-                value={draft.tagsText} placeholder="推荐, 稳定（逗号分隔）"
-                onChange={(e) => update("tagsText", e.target.value)} />
+              <label className="pm-field-label" htmlFor="pm-tags">{translateAdmin("标签")}</label>
+              <TagInput id="pm-tags" label={translateAdmin("标签")} value={draft.tagsText.split(/[,，\n]/).map(tag => tag.trim()).filter(Boolean)} onChange={tags => update("tagsText", tags.join(", "))} />
             </div>
           </div>
           <div className="pm-form-field">
-            <label className="pm-field-label" htmlFor="pm-group">服务器分组</label>
+            <div className="pm-group-label"><label className="pm-field-label" htmlFor="pm-group">{translateAdmin("服务器分组")}</label>{api.createServerGroup && <NodeGroupCreator buttonLabel={translateAdmin("添加分组")} create={name => api.createServerGroup!(name)} onOpenChange={setGroupCreating} onCreated={group => { setCreatedGroups(current => [...current, group]); update("group_id", group.id); }} />}</div>
             <select id="pm-group" className="pm-field-select"
               value={draft.group_id ?? ""}
               onChange={(e) => update("group_id", e.target.value === "" ? null : Number(e.target.value))}>
-              <option value="">不限制</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              <option value="">{translateAdmin("请选择服务器分组")}</option>
+              {[...groups, ...createdGroups].map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
         </div>
 
         {/* 权益配置 */}
         <div className="pm-form-section">
-          <div className="pm-section-title">权益配置</div>
           <div className="pm-form-grid pm-form-grid-4">
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-transfer">流量（GiB）</label>
-              <input id="pm-transfer" className="pm-field-input" type="number" min={1} required
+              <label className="pm-field-label" htmlFor="pm-transfer">流量（GB）</label>
+              <input placeholder={translateAdmin("请输入流量限制")} id="pm-transfer" className="pm-field-input" type="number" min={1} required
                 value={draft.transfer_enable}
-                onChange={(e) => update("transfer_enable", Number(e.target.value))} />
+                onChange={(e) => update("transfer_enable", e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-speed">速度限制</label>
+              <label className="pm-field-label" htmlFor="pm-speed">{translateAdmin("速度限制")}</label>
               <input id="pm-speed" className="pm-field-input" type="number" min={0} max={1_000_000_000}
-                value={draft.speed_limit ?? ""} placeholder="不限"
+                value={draft.speed_limit ?? ""} placeholder={translateAdmin("请输入速度限制")}
                 onChange={(e) => update("speed_limit", e.target.value === "" ? null : Number(e.target.value))} />
             </div>
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-device">设备限制</label>
+              <label className="pm-field-label" htmlFor="pm-device">{translateAdmin("设备限制")}</label>
               <input id="pm-device" className="pm-field-input" type="number" min={0} max={1000}
-                value={draft.device_limit ?? ""} placeholder="不限"
+                value={draft.device_limit ?? ""} placeholder={translateAdmin("请输入设备限制")}
                 onChange={(e) => update("device_limit", e.target.value === "" ? null : Number(e.target.value))} />
             </div>
             <div className="pm-form-field">
-              <label className="pm-field-label" htmlFor="pm-capacity">容量限制</label>
+              <label className="pm-field-label" htmlFor="pm-hwid">分销 HWID 设备上限</label>
+              <input id="pm-hwid" className="pm-field-input" type="number" min={1} max={100} required
+                value={draft.distributor_hwid_limit ?? 1}
+                onChange={(e) => update("distributor_hwid_limit", Number(e.target.value))} />
+            </div>
+            <div className="pm-form-field">
+              <label className="pm-field-label" htmlFor="pm-capacity">{translateAdmin("容量限制")}</label>
               <input id="pm-capacity" className="pm-field-input" type="number" min={0} max={1_000_000_000}
-                value={draft.capacity_limit ?? ""} placeholder="不限"
+                value={draft.capacity_limit ?? ""} placeholder={translateAdmin("请输入容量限制")}
                 onChange={(e) => update("capacity_limit", e.target.value === "" ? null : Number(e.target.value))} />
             </div>
           </div>
           <div className="pm-form-field">
-            <label className="pm-field-label" htmlFor="pm-reset-method">流量重置方式</label>
+            <label className="pm-field-label" htmlFor="pm-reset-method">{translateAdmin("流量重置方式")}</label>
             <select id="pm-reset-method" className="pm-field-select"
               value={draft.reset_traffic_method ?? ""}
               onChange={(e) => update("reset_traffic_method", e.target.value === "" ? null : Number(e.target.value))}>
-              <option value="">跟随系统</option>
+              <option value="">{translateAdmin("跟随系统")}</option>
               <option value={0}>每月 1 日</option>
               <option value={1}>按到期日每月</option>
               <option value={2}>永不重置</option>
@@ -527,48 +473,52 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
           </div>
         </div>
 
+        </div>
         {/* 周期价格 */}
         <div className="pm-form-section">
-          <div className="pm-section-title">周期价格（元）</div>
+          <div className="pm-section-title-row"><div className="pm-section-title">{translateAdmin("价格设置")}</div><label className="pm-base-price"><span aria-hidden="true">¥</span><input aria-label={translateAdmin("基础价格")} placeholder={translateAdmin("基础价格")} type="number" min={0} step="0.01" value={basePrice} onChange={event => {
+            const value = event.target.value; setBasePrice(value);
+            const amount = Number(value);
+            if (value.trim() === "" || !Number.isFinite(amount) || amount < 0) return;
+            const factors: Record<PlanPeriod, [number, number]> = { monthly: [1, 1], quarterly: [3, 0.95], half_yearly: [6, 0.9], yearly: [12, 0.85], two_yearly: [24, 0.8], three_yearly: [36, 0.75], onetime: [1, 1], reset_traffic: [1, 1] };
+            update("prices", Object.fromEntries(periods.map(({ key }) => [key, (amount * factors[key][0] * factors[key][1]).toFixed(2)])) as Record<PlanPeriod, string>);
+          }} /></label></div>
           <div className="pm-form-grid pm-form-grid-4">
             {periods.map((period) => (
-              <div key={period.key} className="pm-form-field">
+              <div key={period.key} className={`pm-form-field pm-price-${period.key}`}>
                 <label className="pm-field-label" htmlFor={`pm-price-${period.key}`}>{period.label}</label>
                 <input
                   id={`pm-price-${period.key}`}
                   className="pm-field-input"
                   type="number" min={0} step="0.01" inputMode="decimal"
                   value={draft.prices[period.key]}
-                  placeholder="留空禁用"
+                  placeholder=""
                   onChange={(e) => update("prices", { ...draft.prices, [period.key]: e.target.value })}
                 />
+                {period.key === "onetime" && <small>{translateAdmin("一次性流量包，无时间限制")}</small>}
+                {period.key === "reset_traffic" && <small>{translateAdmin("重置流量包，可多次使用")}</small>}
               </div>
             ))}
           </div>
         </div>
 
-        {/* 套餐描述 */}
+        {/* 套餐说明 */}
         <div className="pm-form-section">
           <div className="pm-section-title-row">
-            <span className="pm-section-title">套餐描述</span>
+            <span className="pm-section-title">{translateAdmin("套餐说明")}</span>
             <div className="pm-section-actions">
               <button className="pm-text-btn" type="button"
-                onClick={() => update("content", planDescriptionTemplate)}>
-                使用模板
-              </button>
+                onClick={() => update("content", planDescriptionTemplate)}>{translateAdmin("使用模板")}</button>
               <button className="pm-text-btn" type="button"
                 onClick={() => setPreviewing((v) => !v)}>
-                {previewing ? "隐藏预览" : "显示预览"}
+                {previewing ? translateAdmin("隐藏预览") : translateAdmin("显示预览")}
               </button>
             </div>
           </div>
-          <label className="sr-only" htmlFor="pm-content">套餐描述</label>
-          <textarea id="pm-content" className="pm-field-textarea" rows={8}
-            value={draft.content}
-            onChange={(e) => update("content", e.target.value)} />
-          <small className="pm-hint">支持安全的 Markdown；原始 HTML 不会执行。</small>
+          <label className="sr-only" htmlFor="pm-content">{translateAdmin("套餐说明")}</label>
+          <MarkdownEditor id="pm-content" label={translateAdmin("套餐说明")} value={draft.content} onChange={value => update("content", value)} />
           {previewing && (
-            <div className="pm-preview markdown-body" aria-label="套餐描述预览">
+            <div className="pm-preview markdown-body" aria-label="套餐说明预览">
               <SafeMarkdown>{draft.content}</SafeMarkdown>
             </div>
           )}
@@ -589,10 +539,11 @@ function PlanEditor({ api, groups, plan, onClose, onSaved }: {
 
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
 
+        </div>
         <div className="pm-modal-footer">
-          <button className="button ghost" type="button" onClick={onClose}>取消</button>
+          <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary" disabled={saving} type="submit">
-            {saving ? "正在保存…" : "保存"}
+            {saving ? "正在提交…" : translateAdmin("提交")}
           </button>
         </div>
       </form>
@@ -624,9 +575,9 @@ function PlanDelete({ api, plan, onClose, onDeleted }: {
         <p className="pm-delete-text">确定删除套餐 <strong>"{plan.name}"</strong> 吗？仍被用户或业务记录引用时，服务端会拒绝删除。</p>
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
         <div className="pm-modal-footer">
-          <button className="button ghost" onClick={onClose}>取消</button>
+          <button className="button ghost" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary destructive" disabled={busy} onClick={() => void remove()}>
-            {busy ? "正在删除…" : "确认删除"}
+            {busy ? "正在删除…" : translateAdmin("确认删除")}
           </button>
         </div>
       </div>
@@ -640,10 +591,11 @@ function planDraft(plan: Plan | null): PlanDraft {
     return [key, cents === undefined ? "" : formatCents(cents)];
   })) as Record<PlanPeriod, string>;
   return {
-    group_id: plan?.group_id ?? null, transfer_enable: plan?.transfer_enable ?? 1,
+    group_id: plan?.group_id ?? null, transfer_enable: plan?.transfer_enable ?? "",
     name: plan?.name ?? "", speed_limit: plan?.speed_limit ?? null,
     content: plan?.content ?? "", reset_traffic_method: plan?.reset_traffic_method ?? null,
     capacity_limit: plan?.capacity_limit ?? null, prices,
+    distributor_hwid_limit: plan?.distributor_hwid_limit ?? 1,
     device_limit: plan?.device_limit ?? null, tagsText: plan?.tags.join(", ") ?? "",
     forceUpdate: false,
   };
@@ -670,13 +622,5 @@ function formatCents(cents: number): string {
   return `${Math.trunc(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 }
 
-function limitText(value: number | null): string { return value === null || value === 0 ? "不限" : String(value); }
-
-function SafeMarkdown({ children }: { children: string }) {
-  return <Markdown components={{
-    a: ({ node, ...props }) => { void node; return <a {...props} target="_blank" rel="noopener noreferrer" />; },
-    img: ({ node, ...props }) => { void node; return <img {...props} loading="lazy" referrerPolicy="no-referrer" />; },
-  }}>{children}</Markdown>;
-}
 
 function messageOf(cause: unknown): string { return cause instanceof Error ? cause.message : "套餐请求失败"; }

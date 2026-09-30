@@ -19,23 +19,24 @@ const (
 )
 
 type LegacyPlan struct {
-	ID                 int64      `json:"id"`
-	GroupID            *int64     `json:"group_id"`
-	TransferEnableGiB  int64      `json:"transfer_enable"`
-	Name               string     `json:"name"`
-	SpeedLimit         *int64     `json:"speed_limit"`
-	Show               bool       `json:"show"`
-	SortPosition       int        `json:"sort"`
-	Renew              bool       `json:"renew"`
-	Content            string     `json:"content"`
-	ResetTrafficMethod *int64     `json:"reset_traffic_method"`
-	CapacityLimit      *int64     `json:"capacity_limit"`
-	Prices             PlanPrices `json:"prices"`
-	Sell               bool       `json:"sell"`
-	DeviceLimit        *int64     `json:"device_limit"`
-	Tags               []string   `json:"tags"`
-	CreatedAt          int64      `json:"created_at"`
-	UpdatedAt          int64      `json:"updated_at"`
+	ID                   int64      `json:"id"`
+	GroupID              *int64     `json:"group_id"`
+	TransferEnableGiB    int64      `json:"transfer_enable"`
+	Name                 string     `json:"name"`
+	SpeedLimit           *int64     `json:"speed_limit"`
+	Show                 bool       `json:"show"`
+	SortPosition         int        `json:"sort"`
+	Renew                bool       `json:"renew"`
+	Content              string     `json:"content"`
+	ResetTrafficMethod   *int64     `json:"reset_traffic_method"`
+	CapacityLimit        *int64     `json:"capacity_limit"`
+	Prices               PlanPrices `json:"prices"`
+	Sell                 bool       `json:"sell"`
+	DeviceLimit          *int64     `json:"device_limit"`
+	Tags                 []string   `json:"tags"`
+	CreatedAt            int64      `json:"created_at"`
+	UpdatedAt            int64      `json:"updated_at"`
+	DistributorHWIDLimit int        `json:"distributor_hwid_limit,omitempty"`
 }
 
 type LegacyPlansImport struct {
@@ -64,6 +65,12 @@ type LegacyPlansImportReport struct {
 
 func LegacyPlansChecksum(plans []LegacyPlan) string {
 	ordered := append([]LegacyPlan(nil), plans...)
+	// Omitted/default-one values retain the historical plans-v1 checksum.
+	for index := range ordered {
+		if ordered[index].DistributorHWIDLimit == 1 {
+			ordered[index].DistributorHWIDLimit = 0
+		}
+	}
 	sort.Slice(ordered, func(left, right int) bool { return ordered[left].ID < ordered[right].ID })
 	if ordered == nil {
 		ordered = []LegacyPlan{}
@@ -91,7 +98,7 @@ func ValidateLegacyPlansData(plans []LegacyPlan) error {
 			!validLegacyPlanInt(plan.DeviceLimit, 1_000) || !validLegacyPlanInt(plan.CapacityLimit, 1_000_000_000) ||
 			plan.ResetTrafficMethod != nil && (*plan.ResetTrafficMethod < 0 || *plan.ResetTrafficMethod > 4) ||
 			!validLegacyUnixTimestamp(plan.CreatedAt) || !validLegacyUnixTimestamp(plan.UpdatedAt) || plan.UpdatedAt < plan.CreatedAt ||
-			len(plan.Tags) > maxPlanTags {
+			len(plan.Tags) > maxPlanTags || plan.DistributorHWIDLimit < 0 || plan.DistributorHWIDLimit > 100 {
 			return fmt.Errorf("%w: invalid legacy plan id %d", ErrInvalidInput, plan.ID)
 		}
 		if _, exists := ids[plan.ID]; exists {
@@ -195,8 +202,8 @@ func (s *Store) ImportLegacyPlans(ctx context.Context, input LegacyPlansImport, 
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO plans (
 			id, group_id, transfer_enable_gib, name, speed_limit, show, sort_position, renew, content,
-			reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, revision, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+			reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, revision, created_at, updated_at, distributor_hwid_limit
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
 	`)
 	if err != nil {
 		return LegacyPlansImportReport{}, fmt.Errorf("prepare legacy plan import: %w", err)
@@ -214,7 +221,7 @@ func (s *Store) ImportLegacyPlans(ctx context.Context, input LegacyPlansImport, 
 		if _, err := statement.ExecContext(ctx, plan.ID, nullableInt64Value(plan.GroupID), plan.TransferEnableGiB,
 			plan.Name, nullableInt64Value(plan.SpeedLimit), plan.Show, plan.SortPosition, plan.Renew, plan.Content,
 			nullableInt64Value(plan.ResetTrafficMethod), nullableInt64Value(plan.CapacityLimit), string(prices), plan.Sell,
-			nullableInt64Value(plan.DeviceLimit), string(tags), plan.CreatedAt, plan.UpdatedAt); err != nil {
+			nullableInt64Value(plan.DeviceLimit), string(tags), plan.CreatedAt, plan.UpdatedAt, max(1, plan.DistributorHWIDLimit)); err != nil {
 			return LegacyPlansImportReport{}, fmt.Errorf("import legacy plan id %d: %w", plan.ID, err)
 		}
 	}
@@ -294,7 +301,7 @@ func validateLegacyPlanGroups(ctx context.Context, tx *sql.Tx, plans []LegacyPla
 func readLegacyTargetPlans(ctx context.Context, database queryer) ([]LegacyPlan, error) {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, group_id, transfer_enable_gib, name, speed_limit, show, sort_position, renew, content,
-		       reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, revision, created_at, updated_at
+		       reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, revision, created_at, updated_at, distributor_hwid_limit
 		FROM plans ORDER BY id
 	`)
 	if err != nil {
@@ -309,7 +316,7 @@ func readLegacyTargetPlans(ctx context.Context, database queryer) ([]LegacyPlan,
 		var revision int64
 		if err := rows.Scan(&plan.ID, &groupID, &plan.TransferEnableGiB, &plan.Name, &speedLimit, &plan.Show,
 			&plan.SortPosition, &plan.Renew, &plan.Content, &resetMethod, &capacityLimit, &prices, &plan.Sell,
-			&deviceLimit, &tags, &revision, &plan.CreatedAt, &plan.UpdatedAt); err != nil {
+			&deviceLimit, &tags, &revision, &plan.CreatedAt, &plan.UpdatedAt, &plan.DistributorHWIDLimit); err != nil {
 			return nil, fmt.Errorf("scan imported legacy plan: %w", err)
 		}
 		if revision != 1 {

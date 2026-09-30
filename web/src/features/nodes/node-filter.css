@@ -7,10 +7,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
-  padding: 6px 12px;
-  border: 1px solid var(--theme-border);
-  border-radius: 8px;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px dashed var(--theme-border);
+  border-radius: 6px;
   background: transparent;
   color: var(--theme-text);
   font-size: 0.85rem;
@@ -107,7 +107,7 @@
   scrollbar-width: thin;
 }
 
-.node-filter-option {
+.node-filter .node-filter-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -124,9 +124,10 @@
   background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
-.node-filter-checkbox {
+.node-filter .node-filter-checkbox {
   width: 16px;
   height: 16px;
+  min-height: 16px;
   cursor: pointer;
   accent-color: var(--theme-primary);
   margin: 0;

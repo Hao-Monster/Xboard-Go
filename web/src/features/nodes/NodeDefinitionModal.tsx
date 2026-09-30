@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { translateAdmin } from "../../lib/adminLocale";
+import { CodeEditor } from "../../components/CodeEditor";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 
-import { Drawer, Modal } from "../../components/Overlay";
+import { Modal } from "../../components/Overlay";
 import type {
   AdminNode, AdminNodeDefinition, AdminNodeDefinitionInput, AdminNodeParentOption, Machine, RoutingRule, ServerGroup
 } from "../../lib/api";
 import "./node-definition.css";
+import { NodeFilter } from "./NodeFilter";
 import { NodeGroupCreator } from "./NodeGroupCreator";
 
 export interface NodeDefinitionAPI {
@@ -67,10 +70,10 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [tagInput, setTagInput] = useState("");
-  const [transferGiB, setTransferGiB] = useState("0");
-  const [networkSettingsText, setNetworkSettingsText] = useState("{}");
-  const [customOutboundsText, setCustomOutboundsText] = useState("[]");
-  const [customRoutesText, setCustomRoutesText] = useState("[]");
+  const [transferGiB, setTransferGiB] = useState("");
+  const [networkSettingsText, setNetworkSettingsText] = useState("");
+  const [customOutboundsText, setCustomOutboundsText] = useState("");
+  const [customRoutesText, setCustomRoutesText] = useState("");
   const [certificateText, setCertificateText] = useState('{"cert_mode":"none"}');
   const [parentQuery, setParentQuery] = useState("");
   const [parentOptions, setParentOptions] = useState<AdminNodeParentOption[]>([]);
@@ -79,6 +82,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
   const [parentOptionsHaveMore, setParentOptionsHaveMore] = useState(false);
   const [advanced, setAdvanced] = useState<{ input: AdminNodeDefinitionInput; outbounds: string; routes: string; certificate: string } | null>(null);
   const [transportEditing, setTransportEditing] = useState(false);
+  const [groupCreating, setGroupCreating] = useState(false);
   const [advancedTab, setAdvancedTab] = useState("TLS");
   const cancelAdvanced = () => {
     if (advanced) { setInput(advanced.input); setCustomOutboundsText(advanced.outbounds); setCustomRoutesText(advanced.routes); setCertificateText(advanced.certificate); }
@@ -98,8 +102,8 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
         setInput(next);
         setTransferGiB(String(next.transfer_enable / (1024 ** 3)));
         setNetworkSettingsText(formatJSON(asRecord(next.protocol_settings.network_settings)));
-        setCustomOutboundsText(formatJSON(next.custom_outbounds));
-        setCustomRoutesText(formatJSON(next.custom_routes));
+        setCustomOutboundsText(next.custom_outbounds.length ? formatJSON(next.custom_outbounds) : "");
+        setCustomRoutesText(next.custom_routes.length ? formatJSON(next.custom_routes) : "");
         setCertificateText(formatJSON(next.certificate_config));
         setLoading(false);
       })
@@ -157,7 +161,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
     setParentOptions([]);
     setParentOptionsHaveMore(false);
     setParentOptionsError("");
-    setNetworkSettingsText("{}");
+    setNetworkSettingsText("");
   };
 
   const handleClose = () => {
@@ -225,7 +229,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
     setError("");
     try {
       const networkSettings = supportsNetwork(effectiveType)
-        ? parseJSONObject(networkSettingsText, "传输协议设置")
+        ? parseJSONObject(networkSettingsText.trim() || "{}", "传输协议设置")
         : {};
       const customOutbounds = parseJSONArray(customOutboundsText, "自定义出站");
       const customRoutes = parseJSONArray(customRoutesText, "自定义路由");
@@ -272,7 +276,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
         <div className="node-header-top-row">
           <div className="node-title-group">
             <h2 className="node-modal-title">{title}</h2>
-            <p className="node-modal-subtitle">管理所有节点，包括添加、删除、编辑等操作。</p>
+            <p className="node-modal-subtitle">{translateAdmin("管理所有节点，包括添加、删除、编辑等操作。")}</p>
           </div>
         <div className="node-protocol-top-bar">
           <label className="node-protocol-label">
@@ -283,7 +287,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               disabled={saving}
               onChange={(event) => changeProtocol(event.target.value)}
             >
-              {node === null && <option value="">选择协议类型</option>}
+              {node === null && <option value="">{translateAdmin("选择协议类型")}</option>}
               {protocols.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -312,9 +316,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
       ) : loadError !== "" ? (
         <div className="node-error-state" role="alert">
           <p className="node-error-message">加载节点定义失败：{loadError}</p>
-          <button className="button secondary compact" type="button" onClick={() => { setLoading(true); setLoadError(""); setLoadAttempt(current => current + 1); }}>
-            重试
-          </button>
+          <button className="button secondary compact" type="button" onClick={() => { setLoading(true); setLoadError(""); setLoadAttempt(current => current + 1); }}>{translateAdmin("重试")}</button>
         </div>
       ) : (
         <form className="node-definition-form" onSubmit={(event) => void submit(event)}>
@@ -323,20 +325,20 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               <div className="node-field-pair node-name-rate-pair">
               {/* 1. 节点名称 */}
               <label className="field-label">
-                <span>节点名称</span>
+                <span>{translateAdmin("节点名称")}</span>
                 <input
                   required
                   maxLength={255}
                   value={input.name}
                   onChange={(event) => setInput({ ...input, name: event.target.value })}
-                  placeholder="请输入节点名称"
+                  placeholder={translateAdmin("请输入节点名称")}
                 />
               </label>
 
               {/* 2. 基础倍率 x (disabled parent chosen with 子节点倍率继承自父节点) */}
               <div className="field-block">
                 <label className="field-label">
-                  <span>基础倍率</span>
+                  <span>{translateAdmin("基础倍率")}</span>
                   <div className="rate-input-wrap">
                     <input
                       required
@@ -347,13 +349,13 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                       disabled={input.parent_id !== null}
                       value={input.rate}
                       onChange={(event) => setInput({ ...input, rate: Number(event.target.value) })}
-                      placeholder={input.parent_id !== null ? "子节点倍率继承自父节点" : "1"}
+                      placeholder={input.parent_id !== null ? translateAdmin("子节点倍率继承自父节点") : "1"}
                     />
                     <span className="rate-suffix">x</span>
                   </div>
                 </label>
                 {input.parent_id !== null && (
-                  <small className="field-hint parent-rate-notice">子节点倍率继承自父节点</small>
+                  <small className="field-hint parent-rate-notice">{translateAdmin("子节点倍率继承自父节点")}</small>
                 )}
               </div>
 
@@ -363,63 +365,17 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                 <div className="switch-row-item">
                   <label className="switch-label">
                     <input
-                      type="checkbox"
+                      type="checkbox" role="switch"
                       checked={input.rate_time_enabled}
                       onChange={(event) => setInput({ ...input, rate_time_enabled: event.target.checked })}
                     />
-                    <span>启用动态倍率</span>
+                    <span>{translateAdmin("启用动态倍率")}</span>
                   </label>
-                  <small className="field-hint">根据时间段设置不同的倍率乘数</small>
+                  <small className="field-hint">{translateAdmin("根据时间段设置不同的倍率乘数")}</small>
                 </div>
                 {input.rate_time_enabled && (
                   <div className="rate-range-list">
-                    {input.rate_time_ranges.map((range, index) => (
-                      <div className="rate-range-row" key={`${index}-${range.start}`}>
-                        <label className="range-sublabel">
-                          <span>开始</span>
-                          <input
-                            type="time"
-                            aria-label={`动态倍率 ${index + 1} 开始`}
-                            value={range.start}
-                            onChange={(event) => updateRateRange(index, "start", event.target.value)}
-                          />
-                        </label>
-                        <label className="range-sublabel">
-                          <span>结束</span>
-                          <input
-                            type="time"
-                            aria-label={`动态倍率 ${index + 1} 结束`}
-                            value={range.end}
-                            onChange={(event) => updateRateRange(index, "end", event.target.value)}
-                          />
-                        </label>
-                        <label className="range-sublabel">
-                          <span>倍率</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="1000"
-                            step="0.01"
-                            aria-label={`动态倍率 ${index + 1} 倍率`}
-                            value={range.rate}
-                            onChange={(event) => updateRateRange(index, "rate", Number(event.target.value))}
-                          />
-                        </label>
-                        <button
-                          className="button compact ghost danger-text"
-                          type="button"
-                          onClick={() =>
-                            setInput({
-                              ...input,
-                              rate_time_ranges: input.rate_time_ranges.filter((_, position) => position !== index)
-                            })
-                          }
-                        >
-                          移除
-                        </button>
-                      </div>
-                    ))}
-                    <button
+                    <div className="rate-range-heading"><span>{translateAdmin("时间段规则")}</span>                    <button
                       className="button compact secondary add-range-btn"
                       type="button"
                       onClick={() =>
@@ -431,9 +387,57 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                           ]
                         })
                       }
-                    >
-                      添加时间段
-                    </button>
+                    >{translateAdmin("添加规则")}</button></div>
+                    {input.rate_time_ranges.length === 0 && <p className="muted">{translateAdmin("暂无规则，点击上方按钮添加")}</p>}
+                    {input.rate_time_ranges.map((range, index) => (
+                      <div className="rate-range-row" key={index}>
+                        <strong className="rate-rule-title">规则 {index + 1}</strong>
+                        <label className="range-sublabel">
+                          <span>{translateAdmin("开始时间")}</span>
+                          <input
+                            type="time"
+                            aria-label={`动态倍率 ${index + 1} 开始`}
+                            value={range.start}
+                            onChange={(event) => updateRateRange(index, "start", event.target.value)}
+                          />
+                        </label>
+                        <label className="range-sublabel">
+                          <span>{translateAdmin("结束时间")}</span>
+                          <input
+                            type="time"
+                            aria-label={`动态倍率 ${index + 1} 结束`}
+                            value={range.end}
+                            onChange={(event) => updateRateRange(index, "end", event.target.value)}
+                          />
+                        </label>
+                        <label className="range-sublabel">
+                          <span>{translateAdmin("倍率乘数")}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            step="0.01"
+                            aria-label={`动态倍率 ${index + 1} 倍率`}
+                            value={range.rate}
+                            onChange={(event) => updateRateRange(index, "rate", Number(event.target.value))}
+                          />
+                        </label>
+                        <button
+                          className="button compact ghost danger-text rate-rule-remove"
+                          aria-label={`删除规则 ${index + 1}`}
+                          type="button"
+                          onClick={() =>
+                            setInput({
+                              ...input,
+                              rate_time_ranges: input.rate_time_ranges.filter((_, position) => position !== index)
+                            })
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+
                   </div>
                 )}
               </div>
@@ -443,26 +447,24 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               <label className="field-label">
                 <span>流量限制(GB)</span>
                 <input
-                  required
                   type="number"
                   min="0"
                   step="0.01"
                   value={transferGiB}
                   onChange={(event) => setTransferGiB(event.target.value)}
-                  placeholder="0 为不限制"
+                  placeholder="留空或 0 为不限制"
                 />
               </label>
 
               {/* 5. 自定义节点ID ((选填)) */}
               <label className="field-label">
-                <span>
-                  自定义节点ID <small className="muted">(选填)</small>
+                <span>{translateAdmin("自定义节点ID")}<small className="muted">{translateAdmin("(选填)")}</small>
                 </span>
                 <input
                   maxLength={255}
                   value={input.external_code ?? ""}
                   onChange={(event) => setInput({ ...input, external_code: event.target.value })}
-                  placeholder="选填，自定义外部编码"
+                  placeholder={translateAdmin("请输入自定义节点ID")}
                 />
               </label>
 
@@ -470,7 +472,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               {/* 6. 节点标签 enter-to-add chips/remove */}
               <div className="field-block">
                 <label className="field-label">
-                  <span>节点标签</span>
+                  <span>{translateAdmin("节点标签")}</span>
                 </label>
                 <div className="chip-input-container">
                   {input.tags.map((tag) => (
@@ -489,8 +491,8 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                   <input
                     type="text"
                     className="chip-input"
-                    aria-label="节点标签"
-                    placeholder={input.tags.length === 0 ? "输入标签后回车添加" : "添加标签..."}
+                    aria-label={translateAdmin("节点标签")}
+                    placeholder={input.tags.length === 0 ? translateAdmin("输入后回车添加标签") : "添加标签..."}
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     onKeyDown={handleTagKeyDown}
@@ -501,15 +503,13 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                 </div>
               </div>
 
-              {api.createServerGroup && <NodeGroupCreator create={name => api.createServerGroup!(name)} onCreated={group => { setAddedGroups(current => [...current, group]); setInput(current => ({...current, group_ids: [...current.group_ids, group.id]})); }} />}
+
               <div className="field-block">
-                <label className="field-label">
-                  <span>权限组</span>
-                </label>
+                <div className="node-group-field-heading"><span>{translateAdmin("权限组")}</span>{api.createServerGroup && <NodeGroupCreator onOpenChange={setGroupCreating} create={name => api.createServerGroup!(name)} onCreated={group => { setAddedGroups(current => [...current, group]); setInput(current => ({...current, group_ids: [...current.group_ids, group.id]})); }} />}</div>
                 <div className="chips-picker-wrapper">
                   <div className="chips-list">
                     {input.group_ids.length === 0 ? (
-                      <span className="chips-empty-hint">请选择权限组</span>
+                      <span className="chips-empty-hint">{translateAdmin("请选择权限组")}</span>
                     ) : (
                       input.group_ids.map((id) => {
                         const group = availableGroups.find((g) => g.id === id);
@@ -535,7 +535,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                     <select
                       className="chip-add-select"
                       value=""
-                      aria-label="添加权限组"
+                      aria-label={translateAdmin("添加权限组")}
                       onChange={(e) => {
                         const id = Number(e.target.value);
                         if (id && !input.group_ids.includes(id)) {
@@ -558,29 +558,29 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
 
               {/* 8. 节点地址 */}
               <label className="field-label">
-                <span>节点地址</span>
+                <span>{translateAdmin("节点地址")}</span>
                 <input
                   required
                   maxLength={255}
                   value={input.host}
                   onChange={(event) => setInput({ ...input, host: event.target.value })}
-                  placeholder="例如: node.example.com 或 1.2.3.4"
+                  placeholder={translateAdmin("请输入节点域名或者IP")}
                 />
               </label>
 
               <div className="node-field-pair">
               {/* 9. 连接端口 with copy-to-server-port button */}
               <label className="field-label">
-                <span>连接端口</span>
+                <span>{translateAdmin("连接端口")}</span>
                 <div className="input-with-button">
                   <input
                     required
-                    aria-label="连接端口"
+                    aria-label={translateAdmin("连接端口")}
                     inputMode="numeric"
                     pattern="[0-9]{1,5}(-[0-9]{1,5})?"
                     value={input.port}
                     onChange={(event) => setInput({ ...input, port: event.target.value })}
-                    placeholder="443 或 10000-20000"
+                    placeholder={translateAdmin("用户连接端口")}
                   />
                   <button
                     className="button compact secondary copy-port-button"
@@ -601,20 +601,20 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
 
               {/* 10. 服务端口 */}
               <label className="field-label">
-                <span>服务端口</span>
+                <span>{translateAdmin("服务端口")}</span>
                 <input
                   required
                   type="number"
                   min="1"
                   max="65535"
-                  value={input.server_port}
+                  value={input.server_port || ""}
                   onChange={(event) => setInput({ ...input, server_port: Number(event.target.value) })}
                   placeholder="例如: 443"
                 />
               </label>
 
               </div>
-              {!input.type && <p>请先选择协议类型</p>}
+              {!input.type && <p>{translateAdmin("请先选择协议类型")}</p>}
               <ProtocolFields key={input.type} onDialogChange={setTransportEditing}
                 generateECH={api.generateNodeECH ? name => api.generateNodeECH!(name) : undefined}
                 input={input}
@@ -626,10 +626,10 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               {/* 12. 父级节点 searchable dropdown */}
               <div className="field-block parent-node-block">
                 <label className="field-label">
-                  <span>父级节点</span>
+                  <span>{translateAdmin("父级节点")}</span>
                 </label>
                 <div className="parent-search-row">
-                  <input
+                  {(parentOptionsHaveMore || parentQuery !== "") && <input
                     type="text"
                     className="parent-query-input"
                     aria-label="搜索父节点"
@@ -637,10 +637,10 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                     value={parentQuery}
                     onChange={(event) => setParentQuery(event.target.value)}
                     placeholder="搜索父节点 (名称或 #ID)"
-                  />
+                  />}
                   <select
                     className="parent-select"
-                    aria-label="父级节点"
+                    aria-label={translateAdmin("父级节点")}
                     value={input.parent_id ?? ""}
                     onChange={(event) =>
                       setInput({
@@ -649,7 +649,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                       })
                     }
                   >
-                    <option value="">无父节点</option>
+                    <option value="">{translateAdmin("无")}</option>
                     {parentOptions.map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
                         {candidate.name} (#{candidate.id})
@@ -657,7 +657,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                     ))}
                   </select>
                 </div>
-                <small className="field-hint" aria-live="polite">
+                {(parentOptionsLoading || parentOptionsError !== "" || parentOptionsHaveMore) && <small className="field-hint" aria-live="polite">
                   {parentOptionsLoading
                     ? "正在搜索父节点…"
                     : parentOptionsError !== ""
@@ -667,13 +667,13 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                     : parentOptions.length === 0
                     ? "没有匹配的同协议父节点。"
                     : `找到 ${parentOptions.length} 项。`}
-                </small>
+                </small>}
               </div>
 
               {/* 13. 路由组 chips */}
               <div className="field-block">
                 <label className="field-label">
-                  <span>路由组</span>
+                  <span>{translateAdmin("路由组")}</span>
                 </label>
                 <div className="chips-picker-wrapper">
                   <div className="chips-list">
@@ -728,7 +728,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               {/* 14. 绑定服务器 (独立部署 or name SID:id) and enabled switch for selected machine */}
               <div className="field-block machine-binding-block">
                 <label className="field-label">
-                  <span>绑定服务器</span>
+                  <span>{translateAdmin("绑定服务器")}</span>
                   <select
                     value={input.machine_id ?? ""}
                     onChange={(event) =>
@@ -738,7 +738,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                       })
                     }
                   >
-                    <option value="">独立部署</option>
+                    <option value="">{translateAdmin("独立部署")}</option>
                     {machines.map((machine) => (
                       <option key={machine.id} value={machine.id}>
                         {machine.name} SID:{machine.id}
@@ -746,17 +746,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                     ))}
                   </select>
                 </label>
-                <div className="switch-row-item machine-enabled-switch">
-                  <label className="switch-label">
-                    <input
-                      type="checkbox"
-                      checked={input.enabled}
-                      onChange={(event) => setInput({ ...input, enabled: event.target.checked })}
-                    />
-                    <span>启用运行</span>
-                  </label>
-                  <small className="field-hint">控制此节点是否在绑定的服务器上启用</small>
-                </div>
+
               </div>
 
             </div>
@@ -770,31 +760,29 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               </div>
             )}
             <div className="node-footer-actions">
-              {input.type && <button type="button" className="button secondary" disabled={saving} onClick={() => { setAdvanced({input, outbounds: customOutboundsText, routes: customRoutesText, certificate: certificateText}); setAdvancedTab("TLS"); }}>高级设置</button>}
+              {input.type && <button type="button" className="button secondary" disabled={saving} onClick={() => { setAdvanced({input, outbounds: customOutboundsText, routes: customRoutesText, certificate: certificateText}); setAdvancedTab("TLS"); }}>{translateAdmin("高级设置")}</button>}
               <button
                 className="button ghost"
                 type="button"
                 disabled={saving}
                 onClick={handleClose}
-              >
-                取消
-              </button>
+              >{translateAdmin("取消")}</button>
               <button
                 className="button primary"
                 type="submit"
                 disabled={saving || (node === null && !input.type)}
               >
-                {saving ? "正在保存…" : "提交"}
+                {saving ? "正在保存…" : translateAdmin("提交")}
               </button>
             </div>
           </div>
         </form>
       )}
-      {advanced && <Modal title="高级协议配置" className="node-definition-modal node-advanced-modal" onClose={cancelAdvanced}>
+      {advanced && <Modal title={translateAdmin("高级协议配置")} className="node-definition-modal node-advanced-modal" onClose={cancelAdvanced}>
         <div className="node-definition-header">
           <div className="node-header-top-row">
             <div className="node-title-group">
-              <h2 className="node-modal-title node-advanced-title">高级协议配置</h2>
+              <h2 className="node-modal-title node-advanced-title">{translateAdmin("高级协议配置")}</h2>
             </div>
           </div>
           <div role="tablist" aria-label="高级协议设置" className="node-advanced-tabs">
@@ -811,7 +799,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
                 <summary>其他设置</summary>
                 <div className="cert-expert-inner">
                   <label className="field-label"><span>监听地址</span><input required value={input.listen_address} onChange={e => setInput({...input, listen_address:e.target.value})}/></label>
-                  <label className="field-label"><span>排序</span><input type="number" min="0" value={input.sort} onChange={e => setInput({...input,sort:Number(e.target.value)})}/></label>
+                  <label className="field-label"><span>{translateAdmin("排序")}</span><input type="number" min="0" value={input.sort} onChange={e => setInput({...input,sort:Number(e.target.value)})}/></label>
                   <label className="field-label switch-label"><input type="checkbox" checked={input.show} onChange={e => setInput({...input,show:e.target.checked})}/><span>用户端显示</span></label>
                   <label className="field-label"><span>证书配置 (JSON 对象)</span><textarea spellCheck={false} value={certificateText} onChange={e => setCertificateText(e.target.value)}/></label>
                 </div>
@@ -824,21 +812,21 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
             )}
             {advancedTab === "自定义 Outbounds" && (
               <label className="field-label">
-                <span>自定义出站 (JSON 数组)</span>
-                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} value={customOutboundsText} onChange={e=>setCustomOutboundsText(e.target.value)}/>
+                <span>{translateAdmin("自定义 Outbounds (JSON)")}</span>
+                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} placeholder='[{"tag": "proxy", "protocol": "shadowsocks", ...}]' value={customOutboundsText} onChange={e=>setCustomOutboundsText(e.target.value)}/>
               </label>
             )}
             {advancedTab === "自定义 Routes" && (
               <label className="field-label">
-                <span>自定义路由 (JSON 数组)</span>
-                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} value={customRoutesText} onChange={e=>setCustomRoutesText(e.target.value)}/>
+                <span>{translateAdmin("自定义 Routes (JSON)")}</span>
+                <textarea className="node-advanced-json-editor" rows={14} spellCheck={false} placeholder='[{"outboundTag": "proxy", "domain": ["domain:google.com"], ...}]' value={customRoutesText} onChange={e=>setCustomRoutesText(e.target.value)}/>
               </label>
             )}
           </div>
           <div className="node-footer">
             {error && <div role="alert" className="alert error">{error}</div>}
             <div className="node-footer-actions">
-              <button type="button" className="button ghost" onClick={cancelAdvanced}>取消</button>
+              <button type="button" className="button ghost" onClick={cancelAdvanced}>{translateAdmin("取消")}</button>
               <button type="submit" className="button primary">Save</button>
             </div>
           </div>
@@ -847,18 +835,10 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
     </>
   );
 
-  if (node === null) {
-    return (
-      <Modal title={title} className="node-definition-modal" suspended={advanced !== null || transportEditing} onClose={handleClose}>
-        {content}
-      </Modal>
-    );
-  }
-
   return (
-    <Drawer title={title} className="node-definition-drawer" suspended={advanced !== null || transportEditing} onClose={handleClose}>
+    <Modal title={title} className="node-definition-modal" suspended={advanced !== null || transportEditing || groupCreating} onClose={handleClose}>
       {content}
-    </Drawer>
+    </Modal>
   );
 }
 
@@ -869,7 +849,7 @@ function CertificateFields({ value, onChange }: { value: Record<string, unknown>
   return (
     <div className="certificate-fields-stack">
       <label className="field-label">
-        <span>证书模式</span>
+        <span>{translateAdmin("证书模式")}</span>
         <select value={mode} onChange={(event) => set("cert_mode", event.target.value)}>
           <option value="none">none</option>
           <option value="http">http-01 (ACME)</option>
@@ -880,7 +860,7 @@ function CertificateFields({ value, onChange }: { value: Record<string, unknown>
       </label>
       {mode !== "none" && (
         <label className="field-label">
-          <span>证书域名</span>
+          <span>{translateAdmin("证书域名")}</span>
           <input
             maxLength={4096}
             value={stringValue(value.domain)}
@@ -1007,7 +987,7 @@ function ProtocolFields({
       {input.type === "shadowsocks" && (
         <>
           <label className="field-label">
-            <span>加密算法</span>
+            <span>{translateAdmin("加密算法")}</span>
             <input
               list="shadowsocks-ciphers"
               value={stringValue(settings.cipher)}
@@ -1023,7 +1003,7 @@ function ProtocolFields({
             </datalist>
           </label>
           <label className="field-label">
-            <span>插件</span>
+            <span>{translateAdmin("插件")}</span>
             <select
               value={stringValue(settings.plugin)}
               onChange={(event) => set("plugin", event.target.value)}
@@ -1037,21 +1017,21 @@ function ProtocolFields({
               <option value="kcptun">KCPTun</option>
             </select>
           </label>
-          <label className="field-label">
+          {stringValue(settings.plugin) !== "" && <label className="field-label">
             <span>插件参数</span>
             <input
               maxLength={4096}
               value={stringValue(settings.plugin_opts)}
               onChange={(event) => set("plugin_opts", event.target.value)}
             />
-          </label>
+          </label>}
         </>
       )}
 
       {["vmess", "trojan", "vless"].includes(input.type) && (
         <>
           <label className="field-label">
-            <span>安全性</span>
+            <span>{translateAdmin("安全性")}</span>
             <select
               value={Number(settings.tls ?? 0)}
               onChange={(event) => set("tls", Number(event.target.value))}
@@ -1064,68 +1044,13 @@ function ProtocolFields({
             </select>
           </label>
 
-          <div className="network-protocol-header-row">
-            <label className="field-label network-select-label">
-              <span>传输协议</span>
-              <select
-                value={stringValue(settings.network, "tcp")}
-                onChange={(event) => set("network", event.target.value)}
-              >
-                {[...networks, ...(input.type === "vless" ? [["kcp", "mKCP"]] as const : [])].map(
-                  ([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  )
-                )}
-              </select>
-            </label>
-            <button
-              type="button"
-              className={`button compact ${showNetworkSettings ? "primary" : "secondary"} network-settings-toggle-btn`}
-              onClick={() => {setNetworkDraft(networkSettingsText);setNetworkError("");setShowNetworkSettings(true);onDialogChange(true);}}
-            >
-              {showNetworkSettings ? "收起协议配置" : "编辑协议"}
-            </button>
-          </div>
-
-          {showNetworkSettings && <Modal title="编辑传输协议" className="node-definition-modal node-advanced-modal" onClose={closeNetwork}>
-            <div className="node-definition-header"><h2>编辑传输协议</h2></div>
-            <div className="node-definition-scroll node-form-compact">
-              <label>传输协议设置 (JSON)<textarea rows={14} value={networkDraft} onChange={event => setNetworkDraft(event.target.value)}/></label>
-              <div className="network-template-actions">{(networkTemplates[stringValue(settings.network,"tcp")] ?? []).map(template => <button className="button compact secondary" type="button" key={template.label} onClick={()=>setNetworkDraft(formatJSON(template.value))}>套用 {template.label} 模板</button>)}</div>
-            </div>
-            <div className="node-footer">{networkError && <div role="alert" className="alert error">{networkError}</div>}<div className="node-footer-actions">
-              <button className="button ghost" type="button" onClick={closeNetwork}>取消</button>
-              <button className="button primary" type="button" onClick={() => {try {parseJSONObject(networkDraft,"传输协议设置");setNetworkSettingsText(networkDraft);closeNetwork();}catch(cause){setNetworkError(errorMessage(cause));}}}>保存</button>
-            </div></div>
-          </Modal>}
-
-          {input.type === "vless" && (
-            <label className="field-label">
-              <span>流控</span>
-              <select
-                value={stringValue(settings.flow)}
-                onChange={(event) => set("flow", event.target.value)}
-              >
-                <option value="">None</option>
-                <option value="xtls-rprx-direct">xtls-rprx-direct</option>
-                <option value="xtls-rprx-splice">xtls-rprx-splice</option>
-                <option value="xtls-rprx-vision">xtls-rprx-vision</option>
-              </select>
-            </label>
-          )}
-
           {Number(settings.tls) === 1 && (
-            <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
-          )}
-
-          {Number(settings.tls) > 0 && (
-            <div className="utls-section">
+            <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} beforeECH={
+<div className="utls-section">
               <div className="switch-row-item">
                 <label className="switch-label">
                   <input
-                    type="checkbox"
+                    type="checkbox" role="switch"
                     checked={Boolean(asRecord(settings.utls).enabled)}
                     onChange={(event) =>
                       set("utls", { ...asRecord(settings.utls), enabled: event.target.checked })
@@ -1152,18 +1077,99 @@ function ProtocolFields({
                 </label>
               )}
             </div>
+            } />
           )}
-
-
-
+          {Number(settings.tls) === 2 && (<div className="utls-section">
+              <div className="switch-row-item">
+                <label className="switch-label">
+                  <input
+                    type="checkbox" role="switch"
+                    checked={Boolean(asRecord(settings.utls).enabled)}
+                    onChange={(event) =>
+                      set("utls", { ...asRecord(settings.utls), enabled: event.target.checked })
+                    }
+                  />
+                  <span>uTLS</span>
+                </label>
+              </div>
+              {Boolean(asRecord(settings.utls).enabled) && (
+                <label className="field-label">
+                  <span>客户端指纹 (uTLS)</span>
+                  <select
+                    value={stringValue(asRecord(settings.utls).fingerprint, "chrome")}
+                    onChange={(event) =>
+                      set("utls", { ...asRecord(settings.utls), fingerprint: event.target.value })
+                    }
+                  >
+                    {["chrome", "firefox", "safari", "ios", "edge", "random"].map((fingerprint) => (
+                      <option key={fingerprint} value={fingerprint}>
+                        {fingerprint}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>)}
           {Number(settings.tls) === 2 && <RealityFields settings={settings} set={set} />}
+
+          <div className="network-protocol-header-row">
+            <label className="field-label network-select-label">
+              <span>{translateAdmin("传输协议")}</span>
+              <select
+                value={stringValue(settings.network, "tcp")}
+                onChange={(event) => set("network", event.target.value)}
+              >
+                {[...networks, ...(input.type === "vless" ? [["kcp", "mKCP"]] as const : [])].map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={`button compact ${showNetworkSettings ? "primary" : "secondary"} network-settings-toggle-btn`}
+              onClick={() => {setNetworkDraft(networkSettingsText);setNetworkError("");setShowNetworkSettings(true);onDialogChange(true);}}
+            >
+              {showNetworkSettings ? "收起协议配置" : translateAdmin("编辑协议")}
+            </button>
+          </div>
+
+          {showNetworkSettings && <Modal title={translateAdmin("编辑协议配置")} className="node-definition-modal node-advanced-modal" onClose={closeNetwork}>
+            <div className="node-definition-header"><h2>{translateAdmin("编辑协议配置")}</h2></div>
+            <div className="node-definition-scroll node-form-compact">
+              <div className="network-template-actions">{(networkTemplates[stringValue(settings.network,"tcp")] ?? []).map(template => <button className="button compact secondary" type="button" key={template.label} onClick={()=>setNetworkDraft(formatJSON(template.value))}>套用 {template.label} 模板</button>)}</div>
+              <label>传输协议设置 (JSON)<CodeEditor label="传输协议设置 (JSON)" value={networkDraft} onChange={setNetworkDraft} /></label>
+            </div>
+            <div className="node-footer">{networkError && <div role="alert" className="alert error">{networkError}</div>}<div className="node-footer-actions">
+              <button className="button ghost" type="button" onClick={closeNetwork}>{translateAdmin("取消")}</button>
+              <button className="button primary" type="button" onClick={() => {try {parseJSONObject(networkDraft.trim() || "{}","传输协议设置");setNetworkSettingsText(networkDraft);closeNetwork();}catch(cause){setNetworkError(errorMessage(cause));}}}>{translateAdmin("确定")}</button>
+            </div></div>
+          </Modal>}
+
+          {input.type === "vless" && (
+            <label className="field-label">
+              <span>{translateAdmin("流控")}</span>
+              <select
+                value={stringValue(settings.flow)}
+                onChange={(event) => set("flow", event.target.value)}
+              >
+                <option value="">None</option>
+                <option value="xtls-rprx-direct">xtls-rprx-direct</option>
+                <option value="xtls-rprx-splice">xtls-rprx-splice</option>
+                <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+              </select>
+            </label>
+          )}
 
           {input.type === "vless" && (
             <div className="vless-encryption-section">
               <div className="switch-row-item">
                 <label className="switch-label">
                   <input
-                    type="checkbox"
+                    type="checkbox" role="switch"
                     checked={Boolean(asRecord(settings.encryption).enabled)}
                     onChange={(event) =>
                       set("encryption", { ...asRecord(settings.encryption), enabled: event.target.checked })}
@@ -1203,7 +1209,7 @@ function ProtocolFields({
       {input.type === "hysteria" && (
         <>
           <label className="field-label">
-            <span>版本</span>
+            <span>{translateAdmin("协议版本")}</span>
             <select
               value={Number(settings.version ?? 2)}
               onChange={(event) => set("version", Number(event.target.value))}
@@ -1232,30 +1238,32 @@ function ProtocolFields({
           <div className="switch-row-item">
             <label className="switch-label">
               <input
-                type="checkbox"
+                type="checkbox" role="switch"
                 checked={Boolean(asRecord(settings.obfs).open)}
                 onChange={(event) =>
                   set("obfs", { ...asRecord(settings.obfs), open: event.target.checked })}
               />
-              <span>混淆</span>
+              <span>{translateAdmin("混淆")}</span>
             </label>
           </div>
 
           {Boolean(asRecord(settings.obfs).open) && (
             <label className="field-label">
-              <span>混淆密码</span>
+              <span>{translateAdmin("混淆密码")}</span>
               <input
                 maxLength={4096}
                 value={stringValue(asRecord(settings.obfs).password)}
                 onChange={(event) =>
                   set("obfs", { ...asRecord(settings.obfs), password: event.target.value })}
-                placeholder="混淆密码"
+                placeholder={translateAdmin("混淆密码")}
               />
             </label>
           )}
 
+          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+
           <label className="field-label">
-            <span>上行带宽 (Mbps)</span>
+            <span>{translateAdmin("上行宽带")} (Mbps)</span>
             <input
               type="number"
               min="0"
@@ -1267,7 +1275,7 @@ function ProtocolFields({
           </label>
 
           <label className="field-label">
-            <span>下行带宽 (Mbps)</span>
+            <span>{translateAdmin("下行宽带")} (Mbps)</span>
             <input
               type="number"
               min="0"
@@ -1279,7 +1287,7 @@ function ProtocolFields({
           </label>
 
           <label className="field-label">
-            <span>端口跳跃间隔 (秒)</span>
+            <span>{translateAdmin("Hop 间隔 (秒)")}</span>
             <input
               type="number"
               min="1"
@@ -1291,7 +1299,7 @@ function ProtocolFields({
             />
           </label>
 
-          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+
         </>
       )}
 
@@ -1309,7 +1317,7 @@ function ProtocolFields({
           </label>
 
           <label className="field-label">
-            <span>拥塞控制</span>
+            <span>{translateAdmin("拥塞控制")}</span>
             <select
               value={stringValue(settings.congestion_control, "bbr")}
               onChange={(event) => set("congestion_control", event.target.value)}
@@ -1320,23 +1328,11 @@ function ProtocolFields({
             </select>
           </label>
 
-          <label className="field-label">
-            <span>ALPN</span>
-            <select
-              multiple
-              aria-label="ALPN"
-              value={asStringArray(settings.alpn)}
-              onChange={(event) =>
-                set("alpn", Array.from(event.currentTarget.selectedOptions, (option) => option.value))}
-            >
-              <option value="h3">h3</option>
-              <option value="h2">HTTP/2</option>
-              <option value="http/1.1">HTTP/1.1</option>
-            </select>
-          </label>
+          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+          <NodeFilter label="ALPN" options={[{value:"h3",label:"HTTP/3"},{value:"h2",label:"HTTP/2"},{value:"http/1.1",label:"HTTP/1.1"}]} value={asStringArray(settings.alpn)} onChange={value => set("alpn", value)} />
 
           <label className="field-label">
-            <span>UDP Relay</span>
+            <span>{translateAdmin("UDP中继模式")}</span>
             <select
               value={stringValue(settings.udp_relay_mode, "native")}
               onChange={(event) => set("udp_relay_mode", event.target.value)}
@@ -1346,11 +1342,11 @@ function ProtocolFields({
             </select>
           </label>
 
-          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+
         </>
       )}
 
-      {["socks", "naive", "http"].includes(input.type) && (
+      {["naive", "http"].includes(input.type) && (
         <>
           <label className="field-label">
             <span>TLS</span>
@@ -1358,18 +1354,18 @@ function ProtocolFields({
               value={Number(settings.tls ?? 0)}
               onChange={(event) => set("tls", Number(event.target.value))}
             >
-              <option value={0}>不支持</option>
-              <option value={1}>支持</option>
+              <option value={0}>{translateAdmin("不支持")}</option>
+              <option value={1}>{translateAdmin("支持")}</option>
             </select>
           </label>
-          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+          {Number(settings.tls) === 1 && <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />}
         </>
       )}
 
       {input.type === "mieru" && (
         <>
           <label className="field-label">
-            <span>传输协议</span>
+            <span>{translateAdmin("传输协议")}</span>
             <select
               value={stringValue(settings.transport, "TCP")}
               onChange={(event) => set("transport", event.target.value)}
@@ -1379,8 +1375,10 @@ function ProtocolFields({
             </select>
           </label>
           <label className="field-label">
-            <span>Traffic Pattern</span>
-            <input
+            <span>{translateAdmin("流量 (Base64)")}</span>
+            <textarea
+              rows={3}
+              placeholder={translateAdmin("请输入 Base64 字符串用于微调网络行为")}
               maxLength={4096}
               value={stringValue(settings.traffic_pattern)}
               onChange={(event) => set("traffic_pattern", event.target.value)}
@@ -1392,18 +1390,14 @@ function ProtocolFields({
 
       {input.type === "anytls" && (
         <>
+          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
           <label className="field-label">
-            <span>ALPN</span>
-            <input
-              maxLength={64}
-              value={stringValue(settings.alpn)}
-              onChange={(event) => set("alpn", event.target.value)}
-            />
-          </label>
-          <label className="field-label">
-            <span>Padding Scheme</span>
+            <span>{translateAdmin("填充方案")}</span>
+            <small className="field-hint">{translateAdmin("用于混淆流量特征的填充方案，每行一条规则，支持通配符 *")}</small>
             <textarea
               rows={5}
+              aria-label={translateAdmin("填充方案")}
+              placeholder={translateAdmin("选择填充方案")}
               value={asStringArray(settings.padding_scheme).join("\n")}
               onChange={(event) =>
                 set("padding_scheme", event.target.value.split(/\r?\n/).filter(Boolean))}
@@ -1413,18 +1407,16 @@ function ProtocolFields({
               type="button"
               style={{ marginTop: "4px", alignSelf: "flex-start" }}
               onClick={() => set("padding_scheme", defaultAnyTLSPaddingScheme)}
-            >
-              使用默认方案
-            </button>
+            >{translateAdmin("使用默认方案")}</button>
           </label>
-          <TLSFields generateECH={generateECH} tls={tls} setTLS={(field, value) => setNested(tlsKey, field, value)} />
+
         </>
       )}
     </div>
   );
 }
 
-function TLSFields({ tls, setTLS, generateECH }: { generateECH?: (name: string) => Promise<{key: string; config: string}>; tls: Record<string, unknown>; setTLS: (field: string, value: unknown) => void }) {
+function TLSFields({ tls, setTLS, generateECH, beforeECH }: { beforeECH?: ReactNode; generateECH?: (name: string) => Promise<{key: string; config: string}>; tls: Record<string, unknown>; setTLS: (field: string, value: unknown) => void }) {
   const ech = asRecord(tls.ech);
   const [generating, setGenerating] = useState(false);
   const [keyError, setKeyError] = useState("");
@@ -1440,7 +1432,7 @@ function TLSFields({ tls, setTLS, generateECH }: { generateECH?: (name: string) 
   return (
     <div className="tls-fields-group">
       <label className="field-label">
-        <span>服务器名称指示(SNI)</span>
+        <span>{translateAdmin("服务器名称指示(SNI)")}</span>
         <input
           maxLength={255}
           value={stringValue(tls.server_name)}
@@ -1451,17 +1443,18 @@ function TLSFields({ tls, setTLS, generateECH }: { generateECH?: (name: string) 
       <div className="switch-row-item">
         <label className="switch-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={Boolean(tls.allow_insecure)}
             onChange={(event) => setTLS("allow_insecure", event.target.checked)}
           />
-          <span>允许不安全?</span>
+          <span>{translateAdmin("允许不安全?")}</span>
         </label>
       </div>
+      {beforeECH}
       <div className="switch-row-item">
         <label className="switch-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={Boolean(ech.enabled)}
             onChange={(event) => setTLS("ech", { ...ech, enabled: event.target.checked })}
           />
@@ -1470,10 +1463,10 @@ function TLSFields({ tls, setTLS, generateECH }: { generateECH?: (name: string) 
       </div>
       {Boolean(ech.enabled) && (
         <div className="ech-fields-stack">
-          {generateECH && <button type="button" className="button secondary compact" disabled={generating} onClick={() => void generate()}>{generating ? "正在生成…" : "自动生成 ECH 密钥对"}</button>}
+          {generateECH && <button type="button" className="button secondary compact" disabled={generating} onClick={() => void generate()}>{generating ? "正在生成…" : translateAdmin("自动生成 ECH 密钥对")}</button>}
           {keyError && <div role="alert" className="alert error">{keyError}</div>}
           <label className="field-label">
-            <span>ECH 配置 (PEM)</span>
+            <span>{translateAdmin("ECH 配置 (PEM)")}</span>
             <textarea
               rows={3}
               value={stringValue(ech.config)}
@@ -1491,7 +1484,7 @@ function TLSFields({ tls, setTLS, generateECH }: { generateECH?: (name: string) 
             />
           </label>
           <label className="field-label">
-            <span>ECH 查询域名</span>
+            <span>{translateAdmin("ECH 查询域名")}</span>
             <input
               maxLength={255}
               value={stringValue(ech.query_server_name)}
@@ -1558,7 +1551,7 @@ function RealityFields({ settings, set }: { settings: Record<string, unknown>; s
       <div className="switch-row-item">
         <label className="switch-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={Boolean(reality.allow_insecure)}
             onChange={(event) => update("allow_insecure", event.target.checked)}
           />
@@ -1577,17 +1570,17 @@ function MultiplexFields({ settings, set }: { settings: Record<string, unknown>;
       <div className="switch-row-item">
         <label className="switch-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={Boolean(multiplex.enabled)}
             onChange={(event) => update("enabled", event.target.checked)}
           />
-          <span>多路复用</span>
-        </label>
+          <span>{translateAdmin("多路复用 (Multiplex)")}</span>
+        </label><small className="field-hint">{translateAdmin("通过单条 TCP 连接传输多个流，降低握手延迟")}</small>
       </div>
       {Boolean(multiplex.enabled) && (
         <div className="multiplex-inner-fields">
           <label className="field-label">
-            <span>复用协议</span>
+            <span>{translateAdmin("复用协议")}</span>
             <select
               value={stringValue(multiplex.protocol, "smux")}
               onChange={(event) => update("protocol", event.target.value)}
@@ -1598,7 +1591,7 @@ function MultiplexFields({ settings, set }: { settings: Record<string, unknown>;
             </select>
           </label>
           <label className="field-label">
-            <span>最大连接数</span>
+            <span>{translateAdmin("最大连接数")}</span>
             <input
               type="number"
               min="1"
@@ -1610,7 +1603,7 @@ function MultiplexFields({ settings, set }: { settings: Record<string, unknown>;
           <div className="switch-row-item">
             <label className="switch-label">
               <input
-                type="checkbox"
+                type="checkbox" role="switch"
                 checked={Boolean(multiplex.padding)}
                 onChange={(event) => update("padding", event.target.checked)}
               />
@@ -1620,7 +1613,7 @@ function MultiplexFields({ settings, set }: { settings: Record<string, unknown>;
           <div className="switch-row-item">
             <label className="switch-label">
               <input
-                type="checkbox"
+                type="checkbox" role="switch"
                 checked={Boolean(asRecord(multiplex.brutal).enabled)}
                 onChange={(event) => update("brutal", { ...asRecord(multiplex.brutal), enabled: event.target.checked })}
               />
@@ -1666,8 +1659,8 @@ function newNodeInput(initialMachineID?: number): AdminNodeDefinitionInput {
     rate: 1,
     tags: [],
     host: "",
-    port: "443",
-    server_port: 443,
+    port: "",
+    server_port: 0,
     listen_address: "0.0.0.0",
     protocol_settings: {},
     show: false,
@@ -1743,7 +1736,7 @@ function stringValue(value: unknown, fallback = ""): string { return typeof valu
 function asStringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []; }
 function formatJSON(value: unknown): string { return JSON.stringify(value, null, 2); }
 function parseJSONObject(value: string, label: string): Record<string, unknown> { const parsed: unknown = JSON.parse(value); if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 对象`); return parsed as Record<string, unknown>; }
-function parseJSONArray(value: string, label: string): unknown[] { const parsed: unknown = JSON.parse(value); if (!Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 数组`); return parsed; }
+function parseJSONArray(value: string, label: string): unknown[] { const parsed: unknown = JSON.parse(value.trim() || "[]"); if (!Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 数组`); return parsed; }
 function parseDNSEnv(value: string): Record<string, string> { const result: Record<string, string> = {}; for (const line of value.split(/\r?\n/)) { const index = line.indexOf("="); if (index > 0) result[line.slice(0, index).trim()] = line.slice(index + 1).trim(); } return result; }
 function formatDNSEnv(value: Record<string, unknown>): string { return Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string").map(([key, entry]) => `${key}=${entry}`).join("\n"); }
 function emptyToNull(value: string | null): string | null { const normalized = value?.trim() ?? ""; return normalized === "" ? null : normalized; }

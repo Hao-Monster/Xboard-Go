@@ -1,5 +1,7 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { NodeFilter } from "../nodes/NodeFilter";
 import { Drawer, Modal } from "../../components/Overlay";
 import type { ActivationSchedule, AdminAPI, DailyScheduleInput, LoadHistory, Machine, MachineEnrollment, Node } from "../../lib/api";
 
@@ -20,8 +22,8 @@ export function ServerManagementPage({ api, onNavigateNodes }: Props) {
   const [createdEnrollment, setCreatedEnrollment] = useState<MachineEnrollment | null>(null);
   const [observedAt, setObservedAt] = useState(() => Date.now());
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [linkedFilter, setLinkedFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [linkedFilter, setLinkedFilter] = useState<string[]>([]);
 
   const [sortBy, setSortBy] = useState("id");
   const [descending, setDescending] = useState(false);
@@ -65,8 +67,8 @@ export function ServerManagementPage({ api, onNavigateNodes }: Props) {
     const matchesQuery = normalizedQuery === "" || machine.name.toLocaleLowerCase().includes(normalizedQuery) ||
       machine.notes.toLocaleLowerCase().includes(normalizedQuery) || String(machine.id).includes(normalizedQuery);
     const status = machineStatus(machine, observedAt);
-    const matchesStatus = statusFilter === "all" || statusFilter === status;
-    const matchesLinked = linkedFilter === "all" || (linkedFilter === "yes" ? machine.servers_count > 0 : machine.servers_count === 0);
+    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(status);
+    const matchesLinked = linkedFilter.length === 0 || linkedFilter.includes(machine.servers_count > 0 ? "yes" : "no");
 
     return matchesQuery && matchesStatus && matchesLinked;
   }).sort((left, right) => {
@@ -86,36 +88,36 @@ export function ServerManagementPage({ api, onNavigateNodes }: Props) {
   const currentPage = Math.min(page, pageCount);
   return (
     <main className="page-shell machine-page">
-      <header className="page-header"><div><h1>服务器管理</h1><p className="muted">用于查看服务器健康、负载与承载节点，并从运维视角快捷发起节点操作。</p></div></header>
+      <header className="page-header"><div><h1>{translateAdmin("服务器管理")}</h1><p className="muted">{translateAdmin("用于查看服务器健康、负载与承载节点，并从运维视角快捷发起节点操作。")}</p></div></header>
       <section className="machine-overview" aria-label="服务器概览">
-        <OverviewMetric label="服务器总数" value={machines.length} />
-        <OverviewMetric label="在线服务器" value={onlineCount} tone="good" />
-        <OverviewMetric label="离线/失联" value={machines.length - onlineCount} tone="warning" />
-        <OverviewMetric label="高负载" value={highLoadCount} />
-        <OverviewMetric label="节点数" value={nodeCount} />
+        <OverviewMetric label={translateAdmin("服务器总数")} value={machines.length} />
+        <OverviewMetric label={translateAdmin("在线服务器")} value={onlineCount} tone="good" />
+        <OverviewMetric label={translateAdmin("离线/失联")} value={machines.length - onlineCount} tone="warning" />
+        <OverviewMetric label={translateAdmin("高负载")} value={highLoadCount} />
+        <OverviewMetric label={translateAdmin("节点数")} value={nodeCount} />
       </section>
       <section className="machine-toolbar" aria-label="服务器筛选">
         <button className="button secondary compact" onClick={() => setCreating(true)}>＋ 添加服务器</button>
-        <input type="search" aria-label="搜索" placeholder="搜索服务器名称、备注或 SID..." value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
-        <select aria-label="状态" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}><option value="all">⊕ 状态</option><option value="online">在线</option><option value="offline">离线</option><option value="inactive">已停用</option></select>
-        <select aria-label="节点" value={linkedFilter} onChange={e => { setLinkedFilter(e.target.value); setPage(1); }}><option value="all">⊕ 节点</option><option value="yes">有节点</option><option value="no">无节点</option></select>
+        <input type="search" aria-label={translateAdmin("搜索")} placeholder={translateAdmin("搜索服务器名称、备注或 SID...")} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
+        <NodeFilter label={translateAdmin("状态")} value={statusFilter} options={[{value: "online", label: "在线"}, {value: "offline", label: "离线"}, {value: "inactive", label: "已停用"}]} onChange={values => { setStatusFilter(values); setPage(1); }} />
+        <NodeFilter label={translateAdmin("节点")} value={linkedFilter} options={[{value: "yes", label: "有节点"}, {value: "no", label: "无节点"}]} onChange={values => { setLinkedFilter(values); setPage(1); }} />
         <div className="machine-summary"><span>在线：{onlineCount}/{machines.length}</span><span>高负载：{highLoadCount}</span></div>
       </section>
-      <p className="muted machine-hint">适合集中查看服务器在线情况、承载节点数量与资源压力。</p>
+      <p className="muted machine-hint">{translateAdmin("适合集中查看服务器在线情况、承载节点数量与资源压力。")}</p>
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="machine-table-scroll"><table className="machine-table" aria-label="服务器列表">
-        <thead><tr><th><button onClick={() => sort("name")}>服务器名称 ↕</button></th><th><button onClick={() => sort("status")}>状态 ↕</button></th><th>负载</th><th>节点数</th><th><button onClick={() => sort("heartbeat")}>最后心跳 ↕</button></th><th>操作</th></tr></thead>
+        <thead><tr><th><button onClick={() => sort("name")}>服务器名称 ↕</button></th><th><button onClick={() => sort("status")}>状态 ↕</button></th><th>{translateAdmin("负载")}</th><th>{translateAdmin("节点数")}</th><th><button onClick={() => sort("heartbeat")}>最后心跳 ↕</button></th><th>{translateAdmin("操作")}</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={6}>正在加载服务器…</td></tr> : filteredMachines.length === 0 ? <tr><td colSpan={6}>暂无服务器</td></tr> : filteredMachines.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(machine => <tr className="machine-row" key={machine.id}>
           <td><div className="machine-name"><MachineIcon kind="server" /><strong>{machine.name}</strong><span className="badge">SID: {machine.id}</span></div><div className="machine-subline"><StatusBadge machine={machine} observedAt={observedAt} /> • 最后心跳：{relativeTime(machine.last_seen_at, observedAt)} • 节点数：{machine.servers_count}</div></td>
           <td><StatusBadge machine={machine} observedAt={observedAt} /></td>
           <td><MachineLoad machine={machine} /></td>
-          <td><strong>{machine.servers_count}</strong> <span className="muted">已承载节点</span><div><button className="button compact secondary" onClick={() => setDetailMachine(machine)}>服务器详情</button></div></td>
+          <td><strong>{machine.servers_count}</strong> <span className="muted">{translateAdmin("已承载节点")}</span><div><button className="button compact secondary" onClick={() => setDetailMachine(machine)}>{translateAdmin("服务器详情")}</button></div></td>
           <td>{relativeTime(machine.last_seen_at, observedAt)}<small className="muted">负载上报: {relativeTime(machine.load_status ? new Date(machine.load_status.updated_at * 1000).toISOString() : null, observedAt)}</small></td>
           <td><div className="action-group"><button className="icon-button" aria-label={`打开服务器详情：${machine.name}`} onClick={() => setDetailMachine(machine)}><MachineIcon kind="detail" /></button><button className="icon-button" aria-label={`编辑服务器：${machine.name}`} onClick={() => setEditTarget(machine)}><MachineIcon kind="edit" /></button><button className="icon-button danger-text" aria-label={`删除服务器：${machine.name}`} onClick={() => setDeleteTarget(machine)}><MachineIcon kind="delete" /></button></div></td>
         </tr>)}</tbody>
       </table></div>
-      <footer className="machine-pagination"><span>已选择 0 项，共 {filteredMachines.length} 项</span><div>每页显示 <select aria-label="每页显示" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>{[10,20,30,40,50].map(n => <option key={n}>{n}</option>)}</select> 第 <input aria-label="页码" type="number" min={1} max={pageCount} value={currentPage} onChange={e => setPage(Math.min(pageCount, Math.max(1, Number(e.target.value) || 1)))} /> 页，共 {pageCount} 页
-        <button aria-label="跳转到第一页" disabled={currentPage === 1} onClick={() => setPage(1)}>«</button><button aria-label="上一页" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>‹</button><button aria-label="下一页" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>›</button><button aria-label="跳转到最后一页" disabled={currentPage === pageCount} onClick={() => setPage(pageCount)}>»</button></div></footer>
+      <footer className="machine-pagination"><span>已选择 0 项，共 {filteredMachines.length} 项</span><div>{translateAdmin("每页显示")}<select aria-label={translateAdmin("每页显示")} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>{[10,20,30,40,50].map(n => <option key={n}>{n}</option>)}</select>{translateAdmin("第")}<input aria-label="页码" type="number" min={1} max={pageCount} value={currentPage} onChange={e => setPage(Math.min(pageCount, Math.max(1, Number(e.target.value) || 1)))} /> 页，共 {pageCount} 页
+        <button aria-label={translateAdmin("跳转到第一页")} disabled={currentPage === 1} onClick={() => setPage(1)}>«</button><button aria-label={translateAdmin("上一页")} disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>‹</button><button aria-label={translateAdmin("下一页")} disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>›</button><button aria-label={translateAdmin("跳转到最后一页")} disabled={currentPage === pageCount} onClick={() => setPage(pageCount)}>»</button></div></footer>
       {editTarget && <EditMachineModal api={api} machine={editTarget} onClose={() => setEditTarget(null)} onUpdated={() => { setEditTarget(null); void refresh(); }} />}
       {deleteTarget && <DeleteMachineModal api={api} machine={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => { setDeleteTarget(null); void refresh(); }} />}
       {creating && (
@@ -201,32 +203,32 @@ function CreateMachineModal({ api, onClose, onCreated }: { api: AdminAPI; onClos
   };
 
   return (
-    <Modal title="新建服务器" className="machine-create-modal" onClose={onClose}>
+    <Modal title={translateAdmin("新建服务器")} className="machine-create-modal" onClose={onClose}>
       <header className="machine-create-header">
-        <h2>新建服务器</h2>
-        <p>当你希望一台服务器承载多个节点时，再创建服务器记录。</p>
+        <h2>{translateAdmin("新建服务器")}</h2>
+        <p>{translateAdmin("当你希望一台服务器承载多个节点时，再创建服务器记录。")}</p>
         <button type="button" className="machine-create-close" aria-label="关闭新建服务器" onClick={onClose}>×</button>
       </header>
       <form onSubmit={(event) => void submit(event)}>
         <div className="machine-create-fields">
           <div className="machine-create-field">
-            <label htmlFor="machine-create-name">服务器名称</label>
-            <input autoFocus id="machine-create-name" value={name} placeholder="例如 HK-01" maxLength={255} required aria-invalid={invalidName} aria-describedby={invalidName ? "machine-create-name-error" : undefined} onBlur={() => setNameTouched(true)} onChange={(event) => setName(event.target.value)} />
-            {invalidName && <p id="machine-create-name-error" className="machine-create-error">请输入服务器名称</p>}
+            <label htmlFor="machine-create-name">{translateAdmin("服务器名称")}</label>
+            <input autoFocus id="machine-create-name" value={name} placeholder={translateAdmin("例如 HK-01")} maxLength={255} required aria-invalid={invalidName} aria-describedby={invalidName ? "machine-create-name-error" : undefined} onBlur={() => setNameTouched(true)} onChange={(event) => setName(event.target.value)} />
+            {invalidName && <p id="machine-create-name-error" className="machine-create-error">{translateAdmin("请输入服务器名称")}</p>}
           </div>
           <div className="machine-create-field">
-            <label htmlFor="machine-create-notes">备注</label>
-            <textarea id="machine-create-notes" value={notes} placeholder="关于此服务器的可选备注" maxLength={4000} onChange={(event) => setNotes(event.target.value)} />
+            <label htmlFor="machine-create-notes">{translateAdmin("备注")}</label>
+            <textarea id="machine-create-notes" value={notes} placeholder={translateAdmin("关于此服务器的可选备注")} maxLength={4000} onChange={(event) => setNotes(event.target.value)} />
           </div>
           <div className="machine-create-enabled">
-            <div><label id="machine-create-enabled-label" htmlFor="machine-create-enabled">启用服务器</label><p id="machine-create-enabled-description">禁用后 xboard-node 将不再使用此服务器。</p></div>
+            <div><label id="machine-create-enabled-label" htmlFor="machine-create-enabled">{translateAdmin("启用服务器")}</label><p id="machine-create-enabled-description">{translateAdmin("禁用后 xboard-node 将不再使用此服务器。")}</p></div>
             <button id="machine-create-enabled" type="button" role="switch" aria-checked={active} aria-labelledby="machine-create-enabled-label" aria-describedby="machine-create-enabled-description" className="machine-create-switch" onClick={() => setActive(value => !value)}><span /></button>
           </div>
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
         </div>
         <footer className="machine-create-footer">
-          <button className="button ghost" type="button" onClick={onClose}>取消</button>
-          <button className="button primary" type="submit" disabled={submitting || !name.trim()}>{submitting ? "正在提交…" : "提交"}</button>
+          <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
+          <button className="button primary" type="submit" disabled={submitting || !name.trim()}>{submitting ? "正在提交…" : translateAdmin("提交")}</button>
         </footer>
       </form>
     </Modal>
@@ -366,7 +368,7 @@ function MachineDetailDrawer({
   return (
     <>
       <Drawer
-        title="服务器详情"
+        title={translateAdmin("服务器详情")}
         className="machine-detail-drawer"
         suspended={scheduleNode !== null || assignModalOpen || tokenDialogOpen}
         onClose={onClose}
@@ -412,7 +414,7 @@ function MachineDetailDrawer({
                     className="button primary compact machine-action-add-node"
                     onClick={() => onNavigateNodes(machine.id, true)}
                   >
-                    <span>新增节点到此服务器</span>
+                    <span>{translateAdmin("新增节点到此服务器")}</span>
                     <ArrowRightIcon />
                   </button>
                   <button
@@ -420,7 +422,7 @@ function MachineDetailDrawer({
                     className="button secondary compact machine-action-goto-nodes"
                     onClick={() => onNavigateNodes(machine.id, false)}
                   >
-                    <span>前往节点管理</span>
+                    <span>{translateAdmin("前往节点管理")}</span>
                     <ExternalLinkIcon />
                   </button>
                 </>
@@ -475,6 +477,7 @@ function MachineDetailDrawer({
 
       {assignModalOpen && (
         <AssignNodeModal
+          machineName={machine.name}
           unassigned={unassigned}
           onClose={() => setAssignModalOpen(false)}
           onAssign={assignNode}
@@ -589,7 +592,7 @@ function DetailTrendPanel({
       <div className="detail-trend-header">
         <div className="detail-panel-title">
           <ActivityIcon />
-          <h3>负载趋势</h3>
+          <h3>{translateAdmin("负载趋势")}</h3>
         </div>
         <div className="trend-range-pills" aria-label="趋势时间范围">
           {[1, 6, 12, 24].map((hours) => (
@@ -833,7 +836,7 @@ function DetailLoadPanel({ machine, history }: { machine: Machine; history: Load
       <div className="detail-trend-header">
         <div className="detail-panel-title">
           <BarChartIcon />
-          <span>负载</span>
+          <span>{translateAdmin("负载")}</span>
         </div>
       </div>
       <div className="detail-load-body">
@@ -848,7 +851,7 @@ function DetailLoadPanel({ machine, history }: { machine: Machine; history: Load
         </div>
         <div className="load-bar-item">
           <div className="load-bar-header">
-            <span className="load-bar-label"><MemoryIcon /> 内存</span>
+            <span className="load-bar-label"><MemoryIcon />{translateAdmin("内存")}</span>
             <span className="load-bar-value">
               {(memoryUsed / 1024 ** 3).toFixed(2)} GB / {(memoryTotal / 1024 ** 3).toFixed(2)} GB
             </span>
@@ -859,7 +862,7 @@ function DetailLoadPanel({ machine, history }: { machine: Machine; history: Load
         </div>
         <div className="load-bar-item">
           <div className="load-bar-header">
-            <span className="load-bar-label"><DiskIcon /> 磁盘</span>
+            <span className="load-bar-label"><DiskIcon />{translateAdmin("磁盘")}</span>
             <span className="load-bar-value">
               {(diskUsed / 1024 ** 3).toFixed(2)} GB / {(diskTotal / 1024 ** 3).toFixed(2)} GB
             </span>
@@ -870,7 +873,7 @@ function DetailLoadPanel({ machine, history }: { machine: Machine; history: Load
         </div>
         <div className="load-bar-item">
           <div className="load-bar-header">
-            <span className="load-bar-label"><NetworkRateIcon /> 网络速率</span>
+            <span className="load-bar-label"><NetworkRateIcon />{translateAdmin("网络速率")}</span>
             <span className="load-bar-value">
               ↓{formatRate(networkIn)} ↑{formatRate(networkOut)}
             </span>
@@ -908,7 +911,7 @@ function DetailInstallSection({
     <section className="detail-card detail-install-card">
       <div className="detail-install-header">
         <h3 className="detail-install-title">&gt;_ 安装 xboard-node</h3>
-        <p className="detail-install-desc">在目标服务器上执行此命令，即可用 machine mode 安装 xboard-node 并接入当前服务器记录。</p>
+        <p className="detail-install-desc">{translateAdmin("在目标服务器上执行此命令，即可用 machine mode 安装 xboard-node 并接入当前服务器记录。")}</p>
       </div>
       <div className="detail-install-content">
         {loading ? (
@@ -916,7 +919,7 @@ function DetailInstallSection({
         ) : error !== "" ? (
           <div className="detail-install-status error">
             <span>生成安装命令失败: {error}</span>
-            <button type="button" className="button secondary compact" onClick={onRetry}>重试</button>
+            <button type="button" className="button secondary compact" onClick={onRetry}>{translateAdmin("重试")}</button>
           </div>
         ) : isExpired ? (
           <div className="detail-install-status warning">
@@ -931,7 +934,7 @@ function DetailInstallSection({
       </div>
       {copyError && <p role="alert">{copyError}</p>}
       <div className="detail-install-footer">
-        <span className="detail-install-hint">需要 root 或 sudo 权限，且目标服务器需为支持 systemd 的 Linux。</span>
+        <span className="detail-install-hint">{translateAdmin("需要 root 或 sudo 权限，且目标服务器需为支持 systemd 的 Linux。")}</span>
         <button
           type="button"
           className="button secondary compact detail-copy-button"
@@ -939,7 +942,7 @@ function DetailInstallSection({
           onClick={() => void copy()}
         >
           <CopyIcon />
-          <span>{copied ? "已复制" : "复制安装命令"}</span>
+          <span>{copied ? "已复制" : translateAdmin("复制安装命令")}</span>
         </button>
       </div>
     </section>
@@ -971,14 +974,14 @@ function DetailLinkedNodesSection({
     <section className="detail-card detail-nodes-card">
       <div className="detail-nodes-header">
         <div className="detail-nodes-title-group">
-          <h3>关联节点</h3>
+          <h3>{translateAdmin("关联节点")}</h3>
           <span className="badge-pill">{nodes.length} 个节点</span>
           <span className="badge-pill">{activeCount} 个已激活</span>
         </div>
         <div className="detail-nodes-actions">
           <button type="button" className="button secondary compact" onClick={onOpenAssign}>
             <LinkIcon />
-            <span>关联已有节点</span>
+            <span>{translateAdmin("关联已有节点")}</span>
           </button>
           {onNavigateNodes && (
             <button
@@ -986,7 +989,7 @@ function DetailLinkedNodesSection({
               className="button ghost compact"
               onClick={() => onNavigateNodes(machineID, false)}
             >
-              <span>前往节点管理</span>
+              <span>{translateAdmin("前往节点管理")}</span>
               <ArrowRightIcon />
             </button>
           )}
@@ -999,11 +1002,11 @@ function DetailLinkedNodesSection({
           <table className="machine-linked-table">
             <thead>
               <tr>
-                <th>名称</th>
-                <th>类型</th>
-                <th>地址</th>
-                <th>已激活</th>
-                <th>操作</th>
+                <th>{translateAdmin("名称")}</th>
+                <th>{translateAdmin("类型")}</th>
+                <th>{translateAdmin("地址")}</th>
+                <th>{translateAdmin("已激活")}</th>
+                <th>{translateAdmin("操作")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1068,8 +1071,8 @@ function DetailLinkedNodesSection({
   );
 }
 
-function AssignNodeModal({ unassigned, onClose, onAssign }: {
-  unassigned: Node[]; onClose: () => void; onAssign: (nodeID: number) => Promise<void>;
+function AssignNodeModal({ machineName, unassigned, onClose, onAssign }: {
+  machineName: string; unassigned: Node[]; onClose: () => void; onAssign: (nodeID: number) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -1088,20 +1091,20 @@ function AssignNodeModal({ unassigned, onClose, onAssign }: {
     } catch (cause) { setError(errorMessage(cause)); }
     finally { setSubmitting(false); }
   };
-  return <Modal title="关联已有节点" className="machine-create-modal" onClose={() => { if (!submitting) onClose(); }}>
-    <header className="machine-create-header"><h2>关联已有节点</h2><p>选择要关联到当前服务器的节点</p><button type="button" className="machine-create-close" disabled={submitting} aria-label="关闭关联节点" onClick={onClose}>×</button></header>
+  return <Modal title={translateAdmin("关联已有节点")} className="machine-create-modal" onClose={() => { if (!submitting) onClose(); }}>
+    <header className="machine-create-header"><h2>{translateAdmin("关联已有节点")}</h2><p>选择要关联到服务器「{machineName}」的节点</p><button type="button" className="machine-create-close" disabled={submitting} aria-label="关闭关联节点" onClick={onClose}>×</button></header>
     <form onSubmit={event => void submit(event)}>
       <div className="machine-create-fields">
-        {unassigned.length === 0 ? <p className="muted">没有未绑定的节点</p> : <>
-          <input aria-label="搜索待关联节点" placeholder="搜索节点" value={search} onChange={event => setSearch(event.target.value)} />
-          <div className="assign-node-options">{unassigned.filter(node => node.name.toLowerCase().includes(search.toLowerCase())).map(node =>
+        <input aria-label="搜索待关联节点" placeholder="搜索节点名称、地址、类型" value={search} onChange={event => setSearch(event.target.value)} />
+        {unassigned.length === 0 ? <p className="muted">{translateAdmin("没有未绑定的节点")}</p> : <>
+          <div className="assign-node-options">{unassigned.filter(node => `${node.name} ${node.host} ${node.type}`.toLowerCase().includes(search.trim().toLowerCase())).map(node =>
             <label className="switch-label" key={node.id}><input type="checkbox" disabled={submitting} checked={selected.includes(node.id)} onChange={event => setSelected(current => event.target.checked ? [...current,node.id] : current.filter(id => id !== node.id))} />{node.name} ({node.type})</label>
           )}</div>
         </>}
         <p className="muted">已选 {selected.length} 个</p>
         {error && <div className="alert error" role="alert">{error}</div>}
       </div>
-      <footer className="machine-create-footer"><button className="button ghost" type="button" disabled={submitting} onClick={onClose}>取消</button><button className="button primary" disabled={submitting || !selected.length}>{submitting ? "正在关联…" : `关联 ${selected.length} 个节点`}</button></footer>
+      <footer className="machine-create-footer"><button className="button ghost" type="button" disabled={submitting} onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" disabled={submitting || !selected.length}>{submitting ? "正在关联…" : `关联 ${selected.length} 个节点`}</button></footer>
     </form>
   </Modal>;
 }
@@ -1250,21 +1253,21 @@ function EditMachineModal({ api, machine, onClose, onUpdated }: { api: AdminAPI;
   };
 
   return (
-    <Modal title="编辑服务器" className="machine-create-modal" onClose={onClose}>
+    <Modal title={translateAdmin("编辑服务器")} className="machine-create-modal" onClose={onClose}>
       <header className="machine-create-header">
-        <h2>编辑服务器</h2>
-        <p>修改服务器名称、备注或启用状态。</p>
+        <h2>{translateAdmin("编辑服务器")}</h2>
+        <p>{translateAdmin("修改服务器名称、备注或启用状态。")}</p>
         <button type="button" className="machine-create-close" aria-label="关闭编辑服务器" onClick={onClose}>×</button>
       </header>
       <form onSubmit={(event) => void submit(event)}>
         <div className="machine-create-fields">
           <div className="machine-create-field">
-            <label htmlFor="machine-edit-name">服务器名称</label>
+            <label htmlFor="machine-edit-name">{translateAdmin("服务器名称")}</label>
             <input
               autoFocus
               id="machine-edit-name"
               value={name}
-              placeholder="例如 HK-01"
+              placeholder={translateAdmin("例如 HK-01")}
               maxLength={255}
               required
               aria-invalid={invalidName}
@@ -1272,22 +1275,22 @@ function EditMachineModal({ api, machine, onClose, onUpdated }: { api: AdminAPI;
               onBlur={() => setNameTouched(true)}
               onChange={(event) => setName(event.target.value)}
             />
-            {invalidName && <p id="machine-edit-name-error" className="machine-create-error">请输入服务器名称</p>}
+            {invalidName && <p id="machine-edit-name-error" className="machine-create-error">{translateAdmin("请输入服务器名称")}</p>}
           </div>
           <div className="machine-create-field">
-            <label htmlFor="machine-edit-notes">备注</label>
+            <label htmlFor="machine-edit-notes">{translateAdmin("备注")}</label>
             <textarea
               id="machine-edit-notes"
               value={notes}
-              placeholder="关于此服务器的可选备注"
+              placeholder={translateAdmin("关于此服务器的可选备注")}
               maxLength={4000}
               onChange={(event) => setNotes(event.target.value)}
             />
           </div>
           <div className="machine-create-enabled">
             <div>
-              <label id="machine-edit-enabled-label" htmlFor="machine-edit-enabled">启用服务器</label>
-              <p id="machine-edit-enabled-description">禁用后 xboard-node 将不再使用此服务器。</p>
+              <label id="machine-edit-enabled-label" htmlFor="machine-edit-enabled">{translateAdmin("启用服务器")}</label>
+              <p id="machine-edit-enabled-description">{translateAdmin("禁用后 xboard-node 将不再使用此服务器。")}</p>
             </div>
             <button
               id="machine-edit-enabled"
@@ -1305,9 +1308,9 @@ function EditMachineModal({ api, machine, onClose, onUpdated }: { api: AdminAPI;
           {error !== "" && <div className="alert error" role="alert">{error}</div>}
         </div>
         <footer className="machine-create-footer">
-          <button className="button ghost" type="button" onClick={onClose}>取消</button>
+          <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary" type="submit" disabled={saving || !name.trim()}>
-            {saving ? "正在更新…" : "更新"}
+            {saving ? "正在更新…" : translateAdmin("更新")}
           </button>
         </footer>
       </form>
@@ -1335,8 +1338,8 @@ function DeleteMachineModal({ api, machine, onClose, onDeleted }: { api: AdminAP
       <p>确定删除“{machine.name}”吗？关联节点会解除关联，节点本身不会被删除。</p>
       {error !== "" && <div className="alert error" role="alert">{error}</div>}
       <div className="form-actions">
-        <button className="button ghost" onClick={onClose}>取消</button>
-        <button className="button primary destructive" disabled={deleting} onClick={() => void remove()}>{deleting ? "正在删除…" : "确认删除"}</button>
+        <button className="button ghost" onClick={onClose}>{translateAdmin("取消")}</button>
+        <button className="button primary destructive" disabled={deleting} onClick={() => void remove()}>{deleting ? "正在删除…" : translateAdmin("确认删除")}</button>
       </div>
     </Modal>
   );
@@ -1420,7 +1423,7 @@ function ScheduleModal({ api, node, onClose, onSaved }: { api: AdminAPI; node: N
         <div className="form-actions split">
           <div>{existing !== null && <button className="button ghost danger-text" type="button" disabled={saving} onClick={() => void remove()}>删除计划</button>}</div>
           <div className="action-group">
-            <button className="button ghost" type="button" onClick={onClose}>取消</button>
+            <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
             <button className="button primary" type="submit" disabled={loading || saving}>{saving ? "正在保存…" : "保存计划"}</button>
           </div>
         </div>
@@ -1478,6 +1481,6 @@ function relativeTime(value: string | null, now: number): string {
 }
 function MachineLoad({ machine }: { machine: Machine }) {
   const load = machine.load_status;
-  if (!load) return <span className="muted">暂无负载数据</span>;
+  if (!load) return <span className="muted">{translateAdmin("暂无负载数据")}</span>;
   return <div className="machine-load">{[["CPU", load.cpu], ["MEM", percent(load.mem.used, load.mem.total)]].map(([label, value]) => <div key={label}><div>{label}<strong>{Number(value).toFixed(0)}%</strong></div><progress max={100} value={Number(value)} /></div>)}<small>DISK {load.disk ? `${(load.disk.used / 1024 ** 3).toFixed(2)} GB / ${(load.disk.total / 1024 ** 3).toFixed(2)} GB` : "—"}</small></div>;
 }

@@ -11,6 +11,28 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestReadPlansSnapshotPreservesDistributorHWID(t *testing.T) {
+	path := createLegacyPlansSnapshot(t)
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE v2_plan ADD COLUMN distributor_hwid_limit INTEGER DEFAULT 1; INSERT INTO v2_plan (id, transfer_enable, name, show, renew, sell, created_at, updated_at, distributor_hwid_limit) VALUES (1, 10, 'Imported', 1, 1, 1, 1700000000, 1700000000, 3)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := ReadPlansSnapshot(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Plans) != 1 || snapshot.Plans[0].DistributorHWIDLimit != 3 {
+		t.Fatalf("HWID not preserved: %+v", snapshot.Plans)
+	}
+}
+
 func TestReadPlansSnapshotPreservesLegacySemantics(t *testing.T) {
 	path := createLegacyPlansSnapshot(t)
 	database, err := sql.Open("sqlite", "file:"+path)

@@ -1,5 +1,7 @@
+import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { AdminDistributorPage, type AdminDistributorAPI } from "../distributor/AdminDistributorPage";
 import { Modal } from "../../components/Overlay";
 import type { AdminOrderDetail, AdminOrderPage, AdminOrderQuery, AssignOrderInput, Order, OrderStatus, OrderType, Plan, PlanPeriod } from "../../lib/api";
 import { formatCents, formatDate, orderStatusLabel, orderTypeLabel, periodLabel } from "./UserOrdersPage";
@@ -20,7 +22,7 @@ const statusOptions: Array<[OrderStatus, string]> = [[0, "待支付"], [1, "开�
 const typeOptions: Array<[OrderType, string]> = [[1, "新购"], [2, "续费"], [3, "升级"], [4, "流量重置"]];
 const commissionOptions: Array<[0 | 1 | 2 | 3, string]> = [[0, "待确认"], [1, "发放中"], [2, "有效"], [3, "无效"]];
 
-export function OrderManagementPage({ api }: { api: OrderManagementAPI }) {
+export function OrderManagementPage({ api, distributorAPI }: { api: OrderManagementAPI; distributorAPI?: AdminDistributorAPI }) {
   const [page, setPage] = useState<AdminOrderPage>({ items: [], total: 0, page: 1, page_size: 20 });
   const [plans, setPlans] = useState<Plan[]>([]);
   const [search, setSearch] = useState("");
@@ -101,25 +103,26 @@ export function OrderManagementPage({ api }: { api: OrderManagementAPI }) {
 	const changeOpenFilter = (label: string, open: boolean) => setOpenFilter((current) => open ? label : current === label ? null : current);
 
   return <main className="page-shell resource-page order-page">
-    <header className="page-header"><div><p className="eyebrow">Finance</p><h1>订单管理</h1><p className="muted">查询订单、为用户分配订阅，并对待支付订单执行人工开通或取消。</p></div><button className="button primary" onClick={() => setAssigning(true)}>添加订单</button></header>
+    <header className="page-header"><div><h1>{translateAdmin("订单管理")}</h1><p className="muted">{translateAdmin("在这里可以查看用户订单，包括分配、查看、删除等操作。")}</p></div><button className="button primary" onClick={() => setAssigning(true)}>{translateAdmin("添加订单")}</button></header>
     <form className="ticket-filter-bar order-filter-bar" onSubmit={submit}>
 			<label className="search-field">搜索订单<input type="search" aria-label="搜索订单" placeholder="订单号或用户邮箱" value={search} maxLength={128} onChange={(event) => setSearch(event.target.value)} /></label>
-			<MultiFilter label="订单状态" options={statusOptions} values={statuses} onChange={setStatuses} open={openFilter === "订单状态"} onOpenChange={(open) => changeOpenFilter("订单状态", open)} />
+			<MultiFilter label={translateAdmin("订单状态")} options={statusOptions} values={statuses} onChange={setStatuses} open={openFilter === "订单状态"} onOpenChange={(open) => changeOpenFilter("订单状态", open)} />
 			<MultiFilter label="订单类型" options={typeOptions} values={types} onChange={setTypes} open={openFilter === "订单类型"} onOpenChange={(open) => changeOpenFilter("订单类型", open)} />
 			<MultiFilter label="付款周期" options={periods} values={selectedPeriods} onChange={setSelectedPeriods} open={openFilter === "付款周期"} onOpenChange={(open) => changeOpenFilter("付款周期", open)} />
-			<MultiFilter label="佣金状态" options={commissionOptions} values={commissionStatuses} onChange={setCommissionStatuses} open={openFilter === "佣金状态"} onOpenChange={(open) => changeOpenFilter("佣金状态", open)} />
+			<MultiFilter label={translateAdmin("佣金状态")} options={commissionOptions} values={commissionStatuses} onChange={setCommissionStatuses} open={openFilter === "佣金状态"} onOpenChange={(open) => changeOpenFilter("佣金状态", open)} />
 			<div className="mobile-order-sort">
 				<label>排序字段<select aria-label="订单排序字段" value={applied.sort_by ?? ""} onChange={(event) => selectMobileSort(event.target.value as AdminOrderQuery["sort_by"] | "")}>
-					<option value="">默认（最新创建）</option><option value="total_amount">订单金额</option><option value="status">订单状态</option><option value="commission_balance">佣金金额</option><option value="commission_status">佣金状态</option><option value="created_at">创建时间</option>
+					<option value="">默认（最新创建）</option><option value="total_amount">{translateAdmin("订单金额")}</option><option value="status">{translateAdmin("订单状态")}</option><option value="commission_balance">{translateAdmin("佣金金额")}</option><option value="commission_status">{translateAdmin("佣金状态")}</option><option value="created_at">{translateAdmin("创建时间")}</option>
 				</select></label>
 				<button className="button secondary compact" type="button" aria-label="切换订单排序方向" disabled={applied.sort_by === undefined} onClick={() => { if (applied.sort_by !== undefined) sort(applied.sort_by); }}>{applied.sort_desc === true ? "降序" : "升序"}</button>
 			</div>
 			<button className="button secondary" type="submit" disabled={loading}>查询订单</button>
 		</form>
-    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void refreshCurrent()}>重试</button></div>}
+    {distributorAPI && <AdminDistributorPage api={distributorAPI} embedded />}
+    {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void refreshCurrent()}>{translateAdmin("重试")}</button></div>}
     {detailLoading && <div className="alert" role="status">正在读取订单详情…</div>}
-    {loading && page.items.length === 0 ? <div className="empty-card">正在加载订单…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap"><table className="resource-table order-admin-table"><thead><tr><th>订单号</th><th>用户</th><th>套餐</th><th>类型 / 周期</th><SortableHeader label="订单金额" field="total_amount" applied={applied} onSort={sort} /><SortableHeader label="订单状态" field="status" applied={applied} onSort={sort} /><SortableHeader label="佣金金额" field="commission_balance" applied={applied} onSort={sort} /><SortableHeader label="佣金状态" field="commission_status" applied={applied} onSort={sort} /><SortableHeader label="创建时间" field="created_at" applied={applied} onSort={sort} /><th>操作</th></tr></thead><tbody>{page.items.map((order) => <tr key={order.id}><td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="用户">{order.user_email}</td><td data-label="套餐">{order.plan_name}</td><td data-label="类型 / 周期">{orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="订单金额">¥{formatCents(order.total_amount)}</td><td data-label="订单状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="佣金金额">¥{formatCents(order.commission_balance)}</td><td data-label="佣金状态"><span className={`commission-status commission-${order.commission_status ?? "none"}`}>{commissionStatusLabel(order.commission_status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td></tr>)}</tbody></table>
-      {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>上一页</button><span>第 {page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>下一页</button></div>}
+    {loading && page.items.length === 0 ? <div className="empty-card">正在加载订单…</div> : page.items.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap"><table className="resource-table order-admin-table"><thead><tr><th>{translateAdmin("订单号")}</th><th>{translateAdmin("用户")}</th><th>{translateAdmin("套餐")}</th><th>类型 / 周期</th><SortableHeader label={translateAdmin("订单金额")} field="total_amount" applied={applied} onSort={sort} /><SortableHeader label={translateAdmin("订单状态")} field="status" applied={applied} onSort={sort} /><SortableHeader label={translateAdmin("佣金金额")} field="commission_balance" applied={applied} onSort={sort} /><SortableHeader label={translateAdmin("佣金状态")} field="commission_status" applied={applied} onSort={sort} /><SortableHeader label={translateAdmin("创建时间")} field="created_at" applied={applied} onSort={sort} /><th>{translateAdmin("操作")}</th></tr></thead><tbody>{page.items.map((order) => <tr key={order.id}><td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="用户">{order.user_email}</td><td data-label="套餐">{order.plan_name}</td><td data-label="类型 / 周期">{orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="订单金额">¥{formatCents(order.total_amount)}</td><td data-label="订单状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="佣金金额">¥{formatCents(order.commission_balance)}</td><td data-label="佣金状态"><span className={`commission-status commission-${order.commission_status ?? "none"}`}>{commissionStatusLabel(order.commission_status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td></tr>)}</tbody></table>
+      {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>{translateAdmin("上一页")}</button><span>{translateAdmin("第")}{page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>{translateAdmin("下一页")}</button></div>}
     </section>}
     {assigning && <AssignOrderDialog api={api} plans={plans} onClose={() => setAssigning(false)} onCreated={() => { setAssigning(false); void load({ page: 1, page_size: 20 }); }} />}
     {selected !== null && <AdminOrderDetailDialog api={api} order={selected} onClose={() => setSelected(null)} onUpdated={(order) => { setSelected(order); void refreshCurrent(); }} />}
@@ -171,20 +174,21 @@ export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onC
 	onCreated: () => void;
 }) {
   const [email, setEmail] = useState(initialEmail);
-  const [planID, setPlanID] = useState(plans[0]?.id ?? 0);
-  const [period, setPeriod] = useState<PlanPeriod>("monthly");
-  const [amount, setAmount] = useState("0.00");
+  const [planID, setPlanID] = useState(0);
+  const [period, setPeriod] = useState<PlanPeriod | "">("");
+  const [amount, setAmount] = useState("0");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const selectedPlan = plans.find((plan) => plan.id === planID);
   const availablePeriods = periods.filter(([value]) => selectedPlan?.prices[value] !== undefined);
   const selectablePeriods = availablePeriods.length === 0 ? periods : availablePeriods;
-  const effectivePeriod = selectablePeriods.some(([value]) => value === period) ? period : selectablePeriods[0]?.[0] ?? "monthly";
+  const effectivePeriod = period === "" ? "" : selectablePeriods.some(([value]) => value === period) ? period : selectablePeriods[0]?.[0] ?? "monthly";
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
+		if (!planID || !effectivePeriod) throw new Error("请选择套餐和付款周期");
 		const input = { plan_id: planID, period: effectivePeriod, total_amount: parseCNY(amount) };
 		if (onAssign === undefined) {
 			if (api === null) throw new Error("订单分配接口不可用");
@@ -203,8 +207,8 @@ export function AssignOrderDialog({ api, plans, initialEmail = "", onAssign, onC
     const first = periods.find(([value]) => next?.prices[value] !== undefined);
     if (first !== undefined) setPeriod(first[0]);
   };
-  const title = onAssign === undefined ? "添加订单" : "分配订单";
-  return <Modal title={title} onClose={onClose}><div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>用户邮箱<input type="email" required maxLength={254} readOnly={onAssign !== undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>订阅套餐<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>付款周期<select value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod)}>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>支付金额（CNY）<input inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><p className="small muted">管理员分配订单沿用旧 Xboard 规则：金额由管理员明确指定，不自动使用套餐标价或用户余额。</p>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : "创建订单"}</button></div></form></Modal>;
+  const title = onAssign === undefined ? "订单分配" : "分配订单";
+  return <Modal title={title} onClose={onClose}><div className="modal-header"><h2>{title}</h2><button className="icon-button" aria-label={`关闭${title}`} onClick={onClose}>×</button></div><form className="form-stack" onSubmit={(event) => void submit(event)}><label>{translateAdmin("用户邮箱")}<input type="email" placeholder={translateAdmin("请输入用户邮箱")} required maxLength={254} readOnly={onAssign !== undefined} value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>{translateAdmin("订阅计划")}<select required value={planID || ""} onChange={(event) => selectPlan(Number(event.target.value))}><option value="" disabled>请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>{translateAdmin("订单周期")}<select required value={effectivePeriod} onChange={(event) => setPeriod(event.target.value as PlanPeriod | "")}><option value="" disabled>{translateAdmin("请选择购买时长")}</option>{selectablePeriods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>{translateAdmin("支付金额")}<span className="order-amount-input"><input aria-label={translateAdmin("支付金额")} type="number" step="any" min={0} placeholder={translateAdmin("请输入需要支付的金额")} inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} /><span aria-hidden="true">CNY</span></span></label>{error !== "" && <div className="alert error" role="alert">{error}</div>}<div className="form-actions"><button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" type="submit" disabled={saving || planID === 0}>{saving ? "正在创建…" : translateAdmin("确认")}</button></div></form></Modal>;
 }
 
 function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: OrderManagementAPI; order: AdminOrderDetail; onClose: () => void; onUpdated: (order: AdminOrderDetail) => void }) {
@@ -232,25 +236,25 @@ function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: Order
 	return <Modal title="订单详情" onClose={onClose}>
 		<div className="modal-header"><h2>订单详情</h2><button className="icon-button" aria-label="关闭订单详情" onClick={onClose}>×</button></div>
 		<div className="detail-list order-detail-list">
-			<div><span>订单号</span><strong className="monospace">{order.trade_no}</strong></div>
-			<div><span>用户</span><strong>{order.user_email}</strong></div>
-			<div><span>套餐</span><strong>{order.plan_name}</strong></div>
+			<div><span>{translateAdmin("订单号")}</span><strong className="monospace">{order.trade_no}</strong></div>
+			<div><span>{translateAdmin("用户")}</span><strong>{order.user_email}</strong></div>
+			<div><span>{translateAdmin("套餐")}</span><strong>{order.plan_name}</strong></div>
 			<div><span>类型 / 周期</span><strong>{orderTypeLabel(order.type)} · {periodLabel(order.period)}</strong></div>
-			<div><span>订单状态</span><strong>{orderStatusLabel(order.status)}</strong></div>
+			<div><span>{translateAdmin("订单状态")}</span><strong>{orderStatusLabel(order.status)}</strong></div>
 			<div><span>套餐原价</span><strong>¥{formatCents(order.original_amount)}</strong></div>
-			<div><span>支付金额</span><strong>¥{formatCents(order.total_amount)}</strong></div>
+			<div><span>{translateAdmin("支付金额")}</span><strong>¥{formatCents(order.total_amount)}</strong></div>
 			<div><span>支付手续费</span><strong>{order.handling_amount === null ? "—" : `¥${formatCents(order.handling_amount)}`}</strong></div>
-			<div><span>余额支付</span><strong>¥{formatCents(order.balance_amount)}</strong></div>
-			<div><span>优惠金额</span><strong>¥{formatCents(order.discount_amount)}</strong></div>
+			<div><span>{translateAdmin("余额支付")}</span><strong>¥{formatCents(order.balance_amount)}</strong></div>
+			<div><span>{translateAdmin("优惠金额")}</span><strong>¥{formatCents(order.discount_amount)}</strong></div>
 			<div><span>旧订阅折抵</span><strong>¥{formatCents(order.surplus_amount)}</strong></div>
 			<div><span>折抵返还余额</span><strong>¥{formatCents(order.surplus_credit)}</strong></div>
 			<div><span>支付回调号</span><strong className="monospace">{order.callback_no ?? "—"}</strong></div>
-			<div><span>邀请人</span><strong>{order.invite_user?.email ?? "—"}</strong></div>
+			<div><span>{translateAdmin("邀请人")}</span><strong>{order.invite_user?.email ?? "—"}</strong></div>
 			<div><span>预计佣金</span><strong>¥{formatCents(order.commission_balance)}</strong></div>
-			<div><span>实际佣金</span><strong>{order.actual_commission_balance === null ? "—" : `¥${formatCents(order.actual_commission_balance)}`}</strong></div>
-			<div><span>佣金状态</span><strong>{commissionStatusLabel(order.commission_status)}</strong></div>
-			<div><span>创建时间</span><strong>{formatDate(order.created_at)}</strong></div>
-			<div><span>更新时间</span><strong>{formatDate(order.updated_at)}</strong></div>
+			<div><span>{translateAdmin("实际佣金")}</span><strong>{order.actual_commission_balance === null ? "—" : `¥${formatCents(order.actual_commission_balance)}`}</strong></div>
+			<div><span>{translateAdmin("佣金状态")}</span><strong>{commissionStatusLabel(order.commission_status)}</strong></div>
+			<div><span>{translateAdmin("创建时间")}</span><strong>{formatDate(order.created_at)}</strong></div>
+			<div><span>{translateAdmin("更新时间")}</span><strong>{formatDate(order.updated_at)}</strong></div>
 			<div><span>订阅地址</span><strong>{order.subscribe_url === null ? "—" : <a href={order.subscribe_url} target="_blank" rel="noreferrer">打开订阅链接</a>}</strong></div>
 		</div>
 		<section className="commission-log-section" aria-label="佣金发放记录">
@@ -265,7 +269,7 @@ function AdminOrderDetailDialog({ api, order, onClose, onUpdated }: { api: Order
 			<button className="button secondary compact" disabled={busy !== "" || order.commission_status === 3} onClick={() => void updateCommission(3)}>设为无效</button>
 		</div>}
 		{error !== "" && <div className="alert error" role="alert">{error}</div>}
-		<div className="form-actions"><button className="button ghost" onClick={onClose}>关闭</button>{order.status === 0 && <button className="button secondary" disabled={busy !== ""} onClick={() => void act("cancel")}>{busy === "cancel" ? "正在取消…" : "取消订单"}</button>}{order.status === 0 && <button className="button primary" disabled={busy !== ""} onClick={() => void act("paid")}>{busy === "paid" ? "正在开通…" : "标记已支付并开通"}</button>}</div>
+		<div className="form-actions"><button className="button ghost" onClick={onClose}>{translateAdmin("关闭")}</button>{order.status === 0 && <button className="button secondary" disabled={busy !== ""} onClick={() => void act("cancel")}>{busy === "cancel" ? "正在取消…" : translateAdmin("取消订单")}</button>}{order.status === 0 && <button className="button primary" disabled={busy !== ""} onClick={() => void act("paid")}>{busy === "paid" ? "正在开通…" : "标记已支付并开通"}</button>}</div>
 	</Modal>;
 }
 

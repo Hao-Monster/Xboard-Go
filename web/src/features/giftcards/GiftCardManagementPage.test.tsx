@@ -24,36 +24,109 @@ function createAPI() {
 }
 
 describe("GiftCardManagementPage", () => {
+  it("exports a batch from the toolbar dialog without adding batch filters to the list", async () => {
+    const api = createAPI(); api.exportGiftCardCodes.mockRejectedValueOnce(new Error("导出暂时失败"));
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:batch-export");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined); vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡");
+    await user.click(screen.getByRole("tab", { name: "兑换码管理" })); await screen.findByText("暂无兑换码");
+    expect(screen.queryByLabelText("批次号")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "导出" }));
+    const form = within(screen.getByRole("dialog", { name: "导出" }));
+    expect(form.getByRole("button", { name: "导出" })).toBeDisabled();
+    await user.type(form.getByLabelText("批次号"), "fixture_batch");
+    await user.click(form.getByRole("button", { name: "导出" }));
+    expect(await form.findByRole("alert")).toHaveTextContent("导出暂时失败");
+    expect(form.getByLabelText("批次号")).toHaveValue("fixture_batch");
+    await user.click(form.getByRole("button", { name: "导出" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "导出" })).not.toBeInTheDocument());
+    expect(api.exportGiftCardCodes).toHaveBeenLastCalledWith("fixture_batch");
+    expect(api.listGiftCardCodes).toHaveBeenLastCalledWith(1, 20, "", undefined, undefined, "");
+  });
+  it("keeps blind reward decimal drafts editable and validates only on submission", async () => {
+    const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡");
+    await user.click(screen.getByRole("button", { name: "添加模板" }));
+    const form = within(screen.getByRole("dialog", { name: "添加模板" }));
+    await user.type(form.getByLabelText("模板名称"), "盲盒测试");
+    await user.selectOptions(form.getByLabelText("类型", { exact: true }), "3");
+    await user.click(form.getByRole("button", { name: "添加随机奖励项" }));
+    const balance = form.getByLabelText("奖励余额 (元)");
+    await user.type(balance, "1."); expect(balance).toHaveValue("1.");
+    await user.click(form.getByRole("button", { name: "确认" }));
+    expect(await form.findByRole("alert")).toHaveTextContent("金额最多保留两位小数");
+    expect(api.createGiftCardTemplate).not.toHaveBeenCalled();
+    await user.type(balance, "25");
+    await user.type(form.getByLabelText("奖励流量 (GB)"), "0.5");
+    await user.click(form.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ rewards: { random_rewards: [{ weight: 10, rewards: { balance: 125, transfer_enable: 536870912, expire_days: 0 } }] } })));
+  });
+
+  it("searches template names and lets administrators choose visible columns", async () => {
+    const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡");
+    await user.type(screen.getByRole("textbox", { name: "搜索礼品卡" }), "新人");
+    await waitFor(() => expect(api.listGiftCardTemplates).toHaveBeenLastCalledWith(1, 20, undefined, undefined, "新人"));
+    await user.click(screen.getByText("显示列"));
+    await user.click(screen.getByRole("checkbox", { name: "创建时间" }));
+    expect(screen.queryByRole("columnheader", { name: "创建时间" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "创建时间" }));
+    expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeVisible();
+  });
+
+  it("selects eligible plans by name and submits their identifiers", async () => {
+    const api = createAPI();
+    api.listPlans.mockResolvedValue([{ id: 12, name: "可选套餐" }]);
+    const user = userEvent.setup();
+    render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡");
+    await user.click(screen.getByRole("button", { name: "添加模板" }));
+    const dialog = screen.getByRole("dialog", { name: "添加模板" });
+    await user.type(within(dialog).getByLabelText("模板名称"), "指定套餐礼品卡");
+    await user.click(within(dialog).getByRole("button", { name: "允许的套餐" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "可选套餐" }));
+    await user.click(within(dialog).getByRole("button", { name: "允许的套餐" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ conditions: expect.objectContaining({ allowed_plans: [12] }) })));
+  });
+
   it("matches the four legacy tabs and converts Yuan/GiB before creating a general template", async () => {
     const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
-    for (const tab of ["模板管理", "兑换码管理", "使用记录", "统计数据"]) expect(screen.getByRole("button", { name: tab })).toBeVisible();
+    for (const tab of ["模板管理", "兑换码管理", "使用记录", "统计数据"]) expect(screen.getByRole("tab", { name: tab })).toBeVisible();
     expect(await screen.findByText("新人礼品卡")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "添加模板" }));
-    const dialog = screen.getByRole("dialog", { name: "添加礼品卡模板" });
-    for (const field of ["模板名称", "礼品卡类型", "模板描述", "余额（元）", "流量（GB）", "有效期（天）", "设备数", "每用户最多使用次数", "冷却时间（小时）", "邀请奖励比例", "节日奖励倍率", "活动开始时间", "活动结束时间", "图标", "背景图片", "主题色"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "添加模板" });
+    for (const field of ["模板名称", "类型", "描述", "奖励余额 (元)", "奖励流量 (GB)", "延长有效期 (天)", "增加设备数", "单用户最大使用次数", "同类卡冷却时间(小时)", "邀请人奖励比例 (%)", "节日奖励乘数", "活动开始时间", "活动结束时间", "图标", "背景图片"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
+    expect(within(dialog).queryByLabelText("主题色")).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("单用户最大使用次数")).toHaveValue(null);
+    await user.type(within(dialog).getByLabelText("邀请人奖励比例 (%)"), "10");
     await user.type(within(dialog).getByLabelText("模板名称"), "精准奖励");
-    await user.clear(within(dialog).getByLabelText("余额（元）")); await user.type(within(dialog).getByLabelText("余额（元）"), "12.34");
-    await user.clear(within(dialog).getByLabelText("流量（GB）")); await user.type(within(dialog).getByLabelText("流量（GB）"), "2.5");
-    await user.click(within(dialog).getByRole("button", { name: "保存模板" }));
-    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: "精准奖励", rewards: expect.objectContaining({ balance: 1234, transfer_enable: 2_684_354_560 }) })));
+    await user.clear(within(dialog).getByLabelText("奖励余额 (元)")); await user.type(within(dialog).getByLabelText("奖励余额 (元)"), "12.34");
+    await user.clear(within(dialog).getByLabelText("奖励流量 (GB)")); await user.type(within(dialog).getByLabelText("奖励流量 (GB)"), "2.5");
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: "精准奖励", limits: expect.objectContaining({ invite_reward_basis_points: 1000 }), rewards: expect.objectContaining({ balance: 1234, transfer_enable: 2_684_354_560 }) })));
   });
 
   it("loads each management surface lazily", async () => {
     const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡");
-    await user.click(screen.getByRole("button", { name: "兑换码管理" })); await waitFor(() => expect(api.listGiftCardCodes).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "使用记录" })); await waitFor(() => expect(api.listGiftCardUsages).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "统计数据" })); await waitFor(() => expect(api.getGiftCardStatistics).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "兑换码管理" })); await waitFor(() => expect(api.listGiftCardCodes).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "使用记录" })); await waitFor(() => expect(api.listGiftCardUsages).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "统计数据" })); await waitFor(() => expect(api.getGiftCardStatistics).toHaveBeenCalled());
     expect(await screen.findByText("模板总数")).toBeVisible();
   });
 
   it("filters and paginates template records with server-side query values", async () => {
     const api = createAPI(); api.listGiftCardTemplates.mockResolvedValue({ items: [template], total: 21, page: 1, page_size: 20 });
     const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡");
-    await user.selectOptions(screen.getByLabelText("模板类型"), "1");
-    await user.selectOptions(screen.getByLabelText("模板状态"), "true");
-    await waitFor(() => expect(api.listGiftCardTemplates).toHaveBeenCalledWith(1, 20, 1, true));
+    await user.click(screen.getByRole("button", {name:"模板类型"}));
+    await user.click(screen.getByRole("checkbox", {name:"通用礼品卡"}));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", {name:"模板状态"}));
+    await user.click(screen.getByRole("checkbox", {name:"启用"}));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(api.listGiftCardTemplates).toHaveBeenCalledWith(1, 20, 1, true, ""));
     await user.click(screen.getByRole("button", { name: "下一页" }));
-    await waitFor(() => expect(api.listGiftCardTemplates).toHaveBeenCalledWith(2, 20, 1, true));
+    await waitFor(() => expect(api.listGiftCardTemplates).toHaveBeenCalledWith(2, 20, 1, true, ""));
   });
 
   it("edits codes, clears expiry, and exports the selected legacy batch", async () => {
@@ -61,7 +134,7 @@ describe("GiftCardManagementPage", () => {
     const code = { id: 9, template_id: 7, template_name: "新人礼品卡", code: "LEGACYGC00000009", batch_no: "legacy_batch_0009", status: 0 as const, user_id: null, used_at: null, expires_at: null, usage_count: 0, max_usage: 2, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z" };
     api.listGiftCardCodes.mockResolvedValue({ items: [code], total: 1, page: 1, page_size: 20 }); api.updateGiftCardCode.mockResolvedValue(code);
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:gift-codes"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined); vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "兑换码管理" })); await screen.findByText("LEGACYGC00000009");
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("tab", { name: "兑换码管理" })); await screen.findByText("LEGACYGC00000009");
     await user.click(screen.getByRole("button", { name: "编辑" })); const dialog = screen.getByRole("dialog", { name: "编辑兑换码" }); await user.click(within(dialog).getByRole("button", { name: "保存兑换码" }));
     await waitFor(() => expect(api.updateGiftCardCode).toHaveBeenCalledWith(9, expect.objectContaining({ expires_at: null, max_usage: 2 })));
     await user.click(screen.getByRole("button", { name: "导出批次" })); await waitFor(() => expect(api.exportGiftCardCodes).toHaveBeenCalledWith("legacy_batch_0009")); expect(createObjectURL).toHaveBeenCalled();
@@ -69,13 +142,13 @@ describe("GiftCardManagementPage", () => {
 
   it("exposes activity window and mystery reward expiry fields", async () => {
     const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "添加模板" }));
-    const dialog = screen.getByRole("dialog", { name: "添加礼品卡模板" }); await user.selectOptions(within(dialog).getByLabelText("礼品卡类型"), "3"); await user.click(within(dialog).getByRole("button", { name: "添加随机奖励" }));
-    expect(within(dialog).getByLabelText("有效期（天）")).toBeVisible(); expect(within(dialog).getByLabelText("活动开始时间")).toBeVisible(); expect(within(dialog).getByLabelText("活动结束时间")).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "添加模板" }); await user.selectOptions(within(dialog).getByLabelText("类型"), "3"); await user.click(within(dialog).getByRole("button", { name: "添加随机奖励项" }));
+    expect(within(dialog).getByLabelText("延长有效期 (天)")).toBeVisible(); expect(within(dialog).getByLabelText("活动开始时间")).toBeVisible(); expect(within(dialog).getByLabelText("活动结束时间")).toBeVisible();
   });
 
   it("reloads the current code page immediately after generating a code", async () => {
     const api = createAPI(); const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡");
-    await user.click(screen.getByRole("button", { name: "兑换码管理" })); await screen.findByText("暂无兑换码");
+    await user.click(screen.getByRole("tab", { name: "兑换码管理" })); await screen.findByText("暂无兑换码");
     await user.click(screen.getByRole("button", { name: "生成兑换码" })); const dialog = screen.getByRole("dialog", { name: "生成兑换码" });
     await user.click(within(dialog).getByRole("button", { name: "生成兑换码" }));
     await waitFor(() => expect(api.generateGiftCardCodes).toHaveBeenCalled());
@@ -87,7 +160,7 @@ describe("GiftCardManagementPage", () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:generated-gift-cards");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined); vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     render(<GiftCardManagementPage api={api} />); await screen.findByText("新人礼品卡");
-    await user.click(screen.getByRole("button", { name: "兑换码管理" })); await screen.findByText("暂无兑换码");
+    await user.click(screen.getByRole("tab", { name: "兑换码管理" })); await screen.findByText("暂无兑换码");
     await user.click(screen.getByRole("button", { name: "生成兑换码" })); const dialog = screen.getByRole("dialog", { name: "生成兑换码" });
     await user.click(within(dialog).getByLabelText("导出CSV")); await user.click(within(dialog).getByRole("button", { name: "生成兑换码" }));
     await waitFor(() => expect(api.generateGiftCardCodesCSV).toHaveBeenCalledWith(7, 1, "GC", null, 1));

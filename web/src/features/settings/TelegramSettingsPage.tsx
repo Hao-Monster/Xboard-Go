@@ -1,3 +1,5 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { TelegramProvisionResult, TelegramSettings, TelegramSettingsInput } from "../../lib/api";
@@ -112,19 +114,19 @@ export function TelegramSettingsPage({ api }: { api: TelegramSettingsAPI }) {
     draft.telegram_webhook_url === current.telegram_webhook_url && draft.telegram_discuss_link === current.telegram_discuss_link;
 
   return <main className="page-shell telegram-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Telegram</p><h1>Telegram 设置</h1><p className="muted">配置机器人绑定入口、群组链接和经过官方 Secret Token 验证的 Webhook。</p></div></header>
+    <header className="page-header"><div><h1>Telegram 设置</h1><p className="muted">配置机器人绑定入口、群组链接和经过官方 Secret Token 验证的 Webhook。</p></div></header>
     {loading && absent && <div className="empty-card">正在加载 Telegram 设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {absent && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载 Telegram 设置</button>}
-    {!absent && <form className="mail-settings-form" onSubmit={(event) => void save(event)}>
+    {!absent && <AutoSaveForm saving={saving} className="mail-settings-form" onSubmit={(event) => void save(event)}>
       <section className="site-settings-card" aria-labelledby="telegram-bot-heading">
-        <div className="section-heading"><div><h2 id="telegram-bot-heading">Bot 与绑定引导</h2><p className="muted">令牌只写入加密存储，管理接口和页面均不会读取明文或密文。</p></div><span className="count-pill">Revision {current.revision}</span></div>
+        <div className="section-heading"><div><h2 id="telegram-bot-heading">Bot 与绑定引导</h2><p className="muted">令牌只写入加密存储，管理接口和页面均不会读取明文或密文。</p></div></div>
         <div className="form-stack">
-          <label className="switch-label"><input type="checkbox" checked={draft.telegram_bot_enable} disabled={draft.clear_telegram_bot_token} onChange={(event) => update("telegram_bot_enable", event.target.checked)} />启用 Telegram 绑定引导</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.telegram_bot_enable} disabled={draft.clear_telegram_bot_token} onChange={(event) => update("telegram_bot_enable", event.target.checked)} />启用 Telegram 绑定引导</label>
           <div className="mail-settings-grid">
-            <label>机器人令牌<input type="password" maxLength={160} autoComplete="new-password" value={draft.telegram_bot_token} disabled={draft.clear_telegram_bot_token} placeholder={current.telegram_bot_token_set ? "已安全保存" : "请输入 Telegram Bot Token（如 123456789:BotToken）"} onChange={(event) => update("telegram_bot_token", event.target.value)} /></label>
+            <label>{translateAdmin("机器人令牌")}<input type="password" maxLength={160} autoComplete="new-password" value={draft.telegram_bot_token} disabled={draft.clear_telegram_bot_token} placeholder={current.telegram_bot_token_set ? "已安全保存" : "请输入 Telegram Bot Token（如 123456789:BotToken）"} onChange={(event) => update("telegram_bot_token", event.target.value)} /></label>
             <label>Webhook Base URL<input type="url" maxLength={2048} placeholder="https://panel.example.com" value={draft.telegram_webhook_url} onChange={(event) => update("telegram_webhook_url", event.target.value)} /></label>
-            <label>群组链接<input type="url" maxLength={2048} placeholder="https://t.me/example_group" value={draft.telegram_discuss_link} onChange={(event) => update("telegram_discuss_link", event.target.value)} /></label>
+            <label>{translateAdmin("群组链接")}<input type="url" maxLength={2048} placeholder="https://t.me/example_group" value={draft.telegram_discuss_link} onChange={(event) => update("telegram_discuss_link", event.target.value)} /></label>
           </div>
           <p className="small muted">{current.telegram_bot_token_set ? "令牌已安全配置，留空保存将保持不变。" : "尚未配置机器人令牌。"}</p>
           {current.telegram_bot_token_set && <button className="button secondary compact" type="button" disabled={saving || provisioning} onClick={() => {
@@ -143,7 +145,7 @@ export function TelegramSettingsPage({ api }: { api: TelegramSettingsAPI }) {
       </section>
       {success !== "" && <div className="alert success" role="status">{success}</div>}
       <div className="form-actions"><button className="button primary" type="submit" disabled={saving || provisioning}>{saving ? "正在保存…" : "保存 Telegram 设置"}</button></div>
-    </form>}
+    </AutoSaveForm>}
     {error !== "" && !absent && <div className="form-actions"><button className="button secondary" type="button" disabled={saving || provisioning} onClick={() => void load()}>刷新最新设置</button></div>}
   </main>;
 }

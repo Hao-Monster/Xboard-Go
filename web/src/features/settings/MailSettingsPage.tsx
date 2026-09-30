@@ -1,3 +1,5 @@
+import { translateAdmin } from "../../lib/adminLocale";
+import { AutoSaveForm } from "../../components/AutoSaveForm";
 import { useEffect, useState, type FormEvent } from "react";
 
 import type { MailSettings, MailSettingsInput, MailSettingsTestResult, SMTPEncryption } from "../../lib/api";
@@ -124,15 +126,15 @@ export function MailSettingsPage({ api }: { api: MailSettingsAPI }) {
 
   const absent = current === null || draft === null;
   return <main className="page-shell mail-settings-page">
-    <header className="page-header"><div><p className="eyebrow">Email</p><h1>邮件设置</h1><p className="muted">配置全局 SMTP、测试真实投递，并控制订阅到期和流量提醒。</p></div></header>
+    <header className="page-header"><div><h1>{translateAdmin("邮件设置")}</h1><p className="muted">配置全局 SMTP、测试真实投递，并控制订阅到期和流量提醒。</p></div></header>
     {loading && absent && <div className="empty-card">正在加载邮件设置…</div>}
     {error !== "" && <div className="alert error global-alert" role="alert">{error}</div>}
     {absent && !loading && <button className="button secondary" type="button" onClick={() => void load()}>重新加载邮件设置</button>}
-    {!absent && <form className="mail-settings-form" onSubmit={(event) => void save(event)}>
+    {!absent && <AutoSaveForm saving={saving} className="mail-settings-form" onSubmit={(event) => void save(event)}>
       <section className="site-settings-card" aria-labelledby="smtp-settings-heading">
-        <div className="section-heading"><div><h2 id="smtp-settings-heading">SMTP 服务</h2><p className="muted">密码只写入加密存储，读取时不会返回明文或密文。</p></div><span className="count-pill">Revision {current.revision}</span></div>
+        <div className="section-heading"><div><h2 id="smtp-settings-heading">SMTP 服务</h2><p className="muted">密码只写入加密存储，读取时不会返回明文或密文。</p></div></div>
         <div className="form-stack">
-          <label className="switch-label"><input type="checkbox" checked={draft.smtp_enabled} onChange={(event) => setSMTPEnabled(event.target.checked)} />启用 SMTP 邮件服务</label>
+          <label className="switch-label"><input type="checkbox" role="switch" checked={draft.smtp_enabled} onChange={(event) => setSMTPEnabled(event.target.checked)} />启用 SMTP 邮件服务</label>
           <div className="mail-settings-grid">
             <label>SMTP 主机<input required={draft.smtp_enabled} maxLength={253} value={draft.smtp_host} onChange={(event) => update("smtp_host", event.target.value)} /></label>
             <label>SMTP 端口<input required={draft.smtp_enabled} type="number" min={1} max={65535} value={draft.smtp_port} onChange={(event) => update("smtp_port", Number(event.target.value))} /></label>
@@ -142,12 +144,12 @@ export function MailSettingsPage({ api }: { api: MailSettingsAPI }) {
               setDraft({ ...draft, smtp_password: event.target.value, clear_password: false });
               setError(""); setSuccess("");
             }} /></label>
-            <label>加密方式<select aria-label="加密方式" value={draft.smtp_encryption} onChange={(event) => update("smtp_encryption", event.target.value as SMTPEncryption)}>
+            <label>{translateAdmin("加密方式")}<select aria-label={translateAdmin("加密方式")} value={draft.smtp_encryption} onChange={(event) => update("smtp_encryption", event.target.value as SMTPEncryption)}>
               <option value="none">无加密</option><option value="tls">SSL/TLS</option><option value="starttls">STARTTLS</option>
             </select></label>
-            <label>发件人地址<input required={draft.smtp_enabled} type="email" maxLength={320} value={draft.smtp_from_address} onChange={(event) => update("smtp_from_address", event.target.value)} /></label>
+            <label>{translateAdmin("发件人地址")}<input required={draft.smtp_enabled} type="email" maxLength={320} value={draft.smtp_from_address} onChange={(event) => update("smtp_from_address", event.target.value)} /></label>
           </div>
-          {current.smtp_password_set && <label className="switch-label"><input type="checkbox" checked={draft.clear_password} onChange={(event) => {
+          {current.smtp_password_set && <label className="switch-label"><input type="checkbox" role="switch" checked={draft.clear_password} onChange={(event) => {
             if (draft === null) return;
             setDraft({ ...draft, clear_password: event.target.checked, smtp_password: "" });
             setError(""); setSuccess("");
@@ -156,12 +158,12 @@ export function MailSettingsPage({ api }: { api: MailSettingsAPI }) {
         </div>
       </section>
       <section className="site-settings-card" aria-labelledby="mail-reminder-heading">
-        <div className="section-heading"><div><h2 id="mail-reminder-heading">邮件提醒</h2><p className="muted">每天 11:30（UTC+8）为未来 24 小时内到期或流量达到 80% 的用户安排提醒。</p></div></div>
-        <label className="switch-label"><input type="checkbox" disabled={!draft.smtp_enabled} checked={draft.remind_mail_enable} onChange={(event) => update("remind_mail_enable", event.target.checked)} />启用订阅到期和流量提醒</label>
+        <div className="section-heading"><div><h2 id="mail-reminder-heading">{translateAdmin("邮件提醒")}</h2><p className="muted">每天 11:30（UTC+8）为未来 24 小时内到期或流量达到 80% 的用户安排提醒。</p></div></div>
+        <label className="switch-label"><input type="checkbox" role="switch" disabled={!draft.smtp_enabled} checked={draft.remind_mail_enable} onChange={(event) => update("remind_mail_enable", event.target.checked)} />启用订阅到期和流量提醒</label>
       </section>
       {success !== "" && <div className="alert success" role="status">{success}</div>}
-      <div className="form-actions split"><button className="button secondary" type="button" disabled={saving || testing} onClick={() => void sendTest()}>{testing ? "正在发送…" : "发送测试邮件"}</button><button className="button primary" type="submit" disabled={saving || testing}>{saving ? "正在保存…" : "保存邮件设置"}</button></div>
-    </form>}
+      <div className="form-actions split"><button className="button secondary" type="button" disabled={saving || testing} onClick={() => void sendTest()}>{testing ? "正在发送…" : translateAdmin("发送测试邮件")}</button><button className="button primary" type="submit" disabled={saving || testing}>{saving ? "正在保存…" : "保存邮件设置"}</button></div>
+    </AutoSaveForm>}
     {error !== "" && !absent && <div className="form-actions"><button className="button secondary" type="button" disabled={saving || testing} onClick={() => void load()}>刷新最新设置</button></div>}
   </main>;
 }

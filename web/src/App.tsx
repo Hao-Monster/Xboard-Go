@@ -1,3 +1,7 @@
+import { translateAdmin, applyAdminLocale, loadAdminLocale, savedAdminLocale, type AdminLocale } from "./lib/adminLocale";
+import { AdminNavIcon } from "./components/AdminNavIcon";
+import { ThemeFooter } from "./components/ThemeFooter";
+import { Modal } from "./components/Overlay";
 import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { APIClient, type AdminAPI, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
@@ -207,6 +211,46 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   );
   const [clientAppSettingsDirty, setClientAppSettingsDirty] = useState(false);
   const [themeSettingsDirty, setThemeSettingsDirty] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [adminLocale, setAdminLocale] = useState<AdminLocale>("zh-CN");
+  const [localeBusy, setLocaleBusy] = useState(false);
+  const [localeError, setLocaleError] = useState("");
+  const localeSequence = useRef(0);
+  useEffect(() => {
+    const sequence = ++localeSequence.current;
+    const locale = surface.kind === "admin" ? savedAdminLocale() : "zh-CN";
+    void loadAdminLocale(locale).then(copy => {
+      if (sequence !== localeSequence.current) return;
+      applyAdminLocale(copy); setAdminLocale(locale);
+    }).catch(() => { if (sequence === localeSequence.current) setLocaleError("语言加载失败，请重试。"); });
+    return () => { localeSequence.current = -1; applyAdminLocale({}); };
+  }, [surface.kind]);
+  useEffect(() => { document.documentElement.lang = adminLocale; }, [adminLocale]);
+  const changeAdminLocale = async (locale: AdminLocale) => {
+    const sequence = ++localeSequence.current; setLocaleBusy(true); setLocaleError("");
+    try {
+      const copy = await loadAdminLocale(locale);
+      if (sequence !== localeSequence.current) return;
+      applyAdminLocale(copy); setAdminLocale(locale);
+      try { localStorage.setItem("xboard-admin-locale", locale); } catch { /* Session language still works without storage. */ }
+    } catch { if (sequence === localeSequence.current) setLocaleError("语言加载失败，请重试。"); }
+    finally { if (sequence === localeSequence.current) setLocaleBusy(false); }
+  };
+  const [adminColorMode, setAdminColorMode] = useState<"light" | "dark" | null>(() => {
+    try { const value = localStorage.getItem("xboard-admin-color-mode"); return value === "light" || value === "dark" ? value : null; } catch { return null; }
+  });
+  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
+  useEffect(() => {
+    if (surface.kind !== "admin" || !session?.is_admin) return;
+    const searchShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault(); setMenuSearchOpen(current => !current);
+      }
+    };
+    window.addEventListener("keydown", searchShortcut);
+    return () => window.removeEventListener("keydown", searchShortcut);
+  }, [surface.kind, session?.is_admin]);
   const authenticationSequence = useRef(0);
   const adminNavigationSequence = useRef(0);
 
@@ -303,7 +347,11 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   }, [authMode, guestConfig, session]);
 
   useEffect(() => {
-    const current = guestConfig.theme ?? defaultThemeAppearance;
+    const configured = guestConfig.theme ?? defaultThemeAppearance;
+    const mode = surface.kind === "admin" ? adminColorMode : null;
+    const current = mode === null ? configured : { ...configured, palette: mode === "light"
+      ? { background: "#ffffff", surface: "#ffffff", text: "#09090b", muted: "#71717a", primary: "#18181b", primary_text: "#fafafa", border: "#e4e4e7" }
+      : { background: "#09090b", surface: "#18181b", text: "#fafafa", muted: "#a1a1aa", primary: "#fafafa", primary_text: "#18181b", border: "#27272a" } };
     const root = document.documentElement;
     root.style.setProperty("--theme-background", current.palette.background);
     root.style.setProperty("--theme-surface", current.palette.surface);
@@ -317,8 +365,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
     root.dataset.themeRadius = current.config.radius;
     root.dataset.themeName = current.name;
     root.dataset.themeSidebarStyle = current.sidebar_style;
-    root.dataset.themeHeaderStyle = current.header_style;
-  }, [guestConfig.theme]);
+    root.dataset.themeHeaderStyle = mode ?? current.header_style;
+    if (mode === null) delete root.dataset.adminColorMode;
+    else root.dataset.adminColorMode = mode;
+  }, [guestConfig.theme, surface.kind, adminColorMode]);
 
   useEffect(() => {
     let active = true;
@@ -432,16 +482,16 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
     return <div className="app-loading">正在加载 {guestConfig.app_name}…</div>;
   }
   if (session === null) {
-    return <AuthPage api={api} config={guestConfig} mode={authMode} allowRegistration={surface.kind === "public"} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} />;
+    return <><AuthPage api={api} config={guestConfig} mode={authMode} allowRegistration={surface.kind === "public"} initialError={bootstrapAuthError} onAuthenticated={authenticated} onModeChange={switchAuthMode} /><ThemeFooter html={guestConfig.theme?.config.custom_html} /></>;
   }
   if (surface.kind === "public") {
     if (session.is_distributor) {
-      return <Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+      return <><Suspense fallback={<div className="app-loading">正在加载分销面板…</div>}><DistributorPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense><ThemeFooter html={guestConfig.theme?.config.custom_html} /></>;
     }
-    return <Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense>;
+    return <><Suspense fallback={<div className="app-loading">正在加载用户面板…</div>}><UserPortal api={api} session={session} siteName={guestConfig.app_name} siteLogo={guestConfig.logo} couponEnabled={guestConfig.enable_coupon_system === 1} initialPage={userLanding} onSignedOut={() => setSession(null)} /></Suspense><ThemeFooter html={guestConfig.theme?.config.custom_html} /></>;
   }
   if (!session.is_admin) {
-    return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>退出登录</button></section></main>;
+    return <main className="login-shell"><section className="login-card"><h1>无权访问管理面板</h1><p className="muted">当前账号不具备管理员权限。</p><button className="button primary full" type="button" onClick={signOut}>{translateAdmin("退出登录")}</button></section></main>;
   }
   const configPages: Partial<Record<AdminPage, SystemConfigTab>> = {
     settings: "site", security: "security", subscriptions: "subscriptions", commissions: "commissions",
@@ -454,51 +504,64 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
 
   return (
-    <div className="app-frame">
+    <div className={`app-frame admin-frame${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">X</span><span>{guestConfig.app_name}</span></div>
+        <button type="button" className="admin-menu-search" onClick={() => setMenuSearchOpen(true)}>{translateAdmin("搜索菜单和功能...")}<kbd>⌘K</kbd></button>
         <div className="account">
-          <details className="admin-account-menu"><summary>{session.email}</summary><button type="button" className="button secondary compact" onPointerEnter={() => preloadAdminPage("account")} onFocus={() => preloadAdminPage("account")} onClick={() => navigateAdminPage("account")}>账号安全</button></details>
-          <button className="button ghost compact" onClick={signOut}>退出</button>
+          <button type="button" className="admin-theme-toggle" aria-label="切换明暗主题" onClick={() => {
+            const background = (guestConfig.theme ?? defaultThemeAppearance).palette.background;
+            const channels = background.slice(1).match(/.{2}/g)?.map(channel => parseInt(channel, 16)) ?? [0, 0, 0];
+            const configuredDark = (channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722) < 128;
+            const next = (adminColorMode === "dark" || (adminColorMode === null && configuredDark)) ? "light" : "dark";
+            setAdminColorMode(next);
+            try { localStorage.setItem("xboard-admin-color-mode", next); } catch { /* The toggle still works when browser storage is unavailable. */ }
+          }}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="4" /><path d="M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2" /></svg></button>
+          <details className="admin-language-menu"><summary aria-label="语言">{adminLocale === "zh-CN" ? "CN" : adminLocale === "en-US" ? "EN" : "RU"}</summary><div className="admin-account-dropdown" role="menu" aria-label="语言">{([["en-US", "English"], ["zh-CN", "中文"], ["ru-RU", "Русский"]] as const).map(([locale, label]) => <button type="button" role="menuitemradio" aria-checked={adminLocale === locale} disabled={localeBusy} key={locale} onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void changeAdminLocale(locale); }}>{label}</button>)}</div></details>
+          {localeError && <span role="alert">{localeError}</span>}
+          <details className="admin-account-menu"><summary aria-label="账号菜单" title={session.email}><span className="admin-avatar" aria-hidden="true">{session.email.slice(0, 1).toUpperCase()}</span></summary><div className="admin-account-dropdown"><span className="admin-account-identity">{session.email}</span><button type="button" className="button secondary compact" onPointerEnter={() => preloadAdminPage("account")} onFocus={() => preloadAdminPage("account")} onClick={() => navigateAdminPage("account")}>账号安全</button><button className="button ghost compact" onClick={signOut}>退出</button></div></details>
         </div>
       </header>
       <div className="admin-layout">
         <nav className="admin-sidebar" aria-label="管理端导航">
+          <div className="brand admin-sidebar-brand"><BrandMark appName={guestConfig.app_name} logo={guestConfig.logo} /><span>{guestConfig.app_name}</span></div>
+          <button type="button" className="sidebar-collapse" aria-label={translateAdmin("切换侧边栏")} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(current => !current)}>{sidebarCollapsed ? "»" : "«"}</button>
           <div className="admin-nav">
-            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onPointerEnter={() => preloadAdminPage("system")} onFocus={() => preloadAdminPage("system")} onClick={() => navigateAdminPage("system")}>仪表盘</button>
+            <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onPointerEnter={() => preloadAdminPage("system")} onFocus={() => preloadAdminPage("system")} onClick={() => navigateAdminPage("system")} title={translateAdmin("仪表盘")} aria-label={translateAdmin("仪表盘")}><AdminNavIcon page="system" /><span className="admin-nav-label">{translateAdmin("仪表盘")}</span></button>
             {adminNavGroups.map((group) => {
               const isExpanded = expandedAdminGroups[group.id] ?? true;
               return (
-                <div key={group.id} className="nav-group" role="group" aria-label={group.title}>
+                <div key={group.id} className="nav-group" role="group" aria-label={translateAdmin(group.title)}>
                   <button
                     type="button"
                     className="nav-group-header"
-                    aria-label={`${group.title} 菜单`}
+                    aria-label={`${translateAdmin(group.title)} 菜单`}
                     onClick={() => toggleGroup(group.id)}
                     aria-expanded={isExpanded}
                     aria-controls={`admin-group-${group.id}`}
                   >
-                    <span className="nav-group-title">{group.title}</span>
+                    <span className="nav-group-title">{translateAdmin(group.title)}</span>
                     <span className={`nav-group-chevron ${isExpanded ? "open" : ""}`} aria-hidden="true">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
                       </svg>
                     </span>
                   </button>
-                  {isExpanded && (
+                  {(isExpanded || sidebarCollapsed) && (
                     <div className="nav-group-items" id={`admin-group-${group.id}`}>
                       {group.items.map((item) => {
                         const isActive = page === item.page || (item.page === "settings" && activeConfigTab !== undefined);
                         return (
                           <button
                             key={item.page}
+                            title={translateAdmin(item.label)}
+                            aria-label={translateAdmin(item.label)}
                             className={`nav-link ${isActive ? "active" : ""}`}
                             aria-current={isActive ? "page" : undefined}
                             onPointerEnter={() => prefetchPageData(item.page, api)}
                             onFocus={() => prefetchPageData(item.page, api)}
                             onClick={() => navigateAdminPage(item.page)}
                           >
-                            {item.label}
+                            <AdminNavIcon page={item.page} /><span className="admin-nav-label">{translateAdmin(item.label)}</span>
                           </button>
                         );
                       })}
@@ -533,7 +596,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             }} />}
             {page === "nodes" && <NodeManagementPage api={api} initialMachineID={machineNodeTarget?.id} initiallyCreating={machineNodeTarget?.create} />}
             {page === "plans" && <PlanManagementPage api={api} />}
-            {page === "orders" && <OrderManagementPage api={api} />}
+            {page === "orders" && <OrderManagementPage api={api} distributorAPI={api} />}
             {page === "distributors" && <AdminDistributorPage api={api} />}
             {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
             {page === "payments" && <PaymentManagementPage api={api} />}
@@ -550,6 +613,13 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
           </Suspense>
         </div>
       </div>
+      <button type="button" className="distributor-floating-entry" aria-label="分销管理快捷入口" onClick={() => navigateAdminPage("distributors")}><span aria-hidden="true">分</span>分销管理</button>
+      {menuSearchOpen && <Modal title="搜索菜单和功能" onClose={() => setMenuSearchOpen(false)} className="admin-search-dialog">
+        <input autoFocus type="search" aria-label="搜索菜单和功能" placeholder={translateAdmin("搜索菜单和功能...")} value={menuSearch} onChange={event => setMenuSearch(event.target.value)} />
+        <div className="admin-search-results">
+          {[{ page: "system" as AdminPage, label: "仪表盘" }, ...adminNavGroups.flatMap(group => group.items)].filter(item => translateAdmin(item.label).toLowerCase().includes(menuSearch.trim().toLowerCase())).map(item => <button type="button" key={item.page} onClick={() => { setMenuSearchOpen(false); setMenuSearch(""); navigateAdminPage(item.page); }}>{translateAdmin(item.label)}</button>)}
+        </div>
+      </Modal>}
     </div>
   );
 }
@@ -686,19 +756,19 @@ function AuthPage({ api, config, mode, allowRegistration, initialError, onAuthen
     <main className="login-shell">
       <section className="login-card">
         <div className="brand large"><BrandMark appName={config.app_name} logo={config.logo} /><span>{config.app_name}</span></div>
-        <h1>{mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录"} {config.app_name}</h1>
+        <h1>{mode === "register" ? "注册" : mode === "recover" ? translateAdmin("重置密码") : translateAdmin("登录")} {config.app_name}</h1>
         <p className="muted">{config.app_description ?? (mode === "register" ? "创建账号进入用户面板。" : mode === "recover" ? "使用邮箱验证码重置账号密码。" : "使用账号进入控制面板。")}</p>
         <form className="form-stack" onSubmit={(event) => void submit(event)}>
-          <label>邮箱<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>{translateAdmin("邮箱")}<input type="email" autoComplete="email" maxLength={320} value={email} required onChange={(event) => setEmail(event.target.value)} /></label>
           {mode === "register" && Array.isArray(config.email_whitelist_suffix) && config.email_whitelist_suffix.length > 0 &&
             <p className="small muted registration-domain-hint">允许邮箱后缀：{config.email_whitelist_suffix.join("、")}</p>}
-          {(mode === "recover" || (mode === "register" && config.is_email_verify === 1)) && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendEmailCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : "发送"}</button></div>}
+          {(mode === "recover" || (mode === "register" && config.is_email_verify === 1)) && <div className="verification-field-row"><label>邮箱验证码<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={emailCode} required onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label><button className="button secondary" type="button" disabled={sendingCode || cooldown > 0 || resetComplete} onClick={() => void sendEmailCode()}>{sendingCode ? "正在发送…" : cooldown > 0 ? `${cooldown} 秒` : translateAdmin("发送")}</button></div>}
           {mode === "register" && <label>邀请码<input aria-label="邀请码" placeholder={config.is_invite_force === 1 ? "邀请码,（必填）" : "邀请码,（选填）"} autoComplete="off" maxLength={20} value={effectiveInvitationCode} required={config.is_invite_force === 1} disabled={linkedInvitationCode !== null} onChange={(event) => setInvitationCode(event.target.value)} /></label>}
-          <label>密码<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
+          <label>{translateAdmin("密码")}<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? undefined : 8} maxLength={1024} value={password} required onChange={(event) => setPassword(event.target.value)} /></label>
           {(mode === "register" || mode === "recover") && <label>再次输入密码<input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={confirmation} required onChange={(event) => setConfirmation(event.target.value)} /></label>}
           {visibleError !== "" && <div className="alert error" role="alert">{visibleError}</div>}
           {message !== "" && <div className="alert success" role="status">{message}</div>}
-          <button className="button primary full" type="submit" disabled={submitting || sendingCode || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? "重置密码" : "登录")}</button>
+          <button className="button primary full" type="submit" disabled={submitting || sendingCode || resetComplete}>{submitting ? (mode === "register" ? "正在注册…" : mode === "recover" ? "正在重置…" : "正在登录…") : (mode === "register" ? "注册" : mode === "recover" ? translateAdmin("重置密码") : translateAdmin("登录"))}</button>
         </form>
         {mode === "login" && <button className="button ghost full auth-mode-switch" type="button" disabled={submitting} onClick={() => {
           setError(""); setMessage(""); setEmailCode(""); setInvitationCode(""); setCooldown(0); setResetComplete(false); onModeChange("recover");

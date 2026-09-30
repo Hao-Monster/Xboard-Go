@@ -86,11 +86,16 @@ describe("UsersPage", () => {
     expect(api.listAdminUsers).toHaveBeenNthCalledWith(2, { page: 2, page_size: 20, sort_by: "id", sort_desc: true });
 
     await user.type(screen.getByRole("searchbox", { name: "邮箱前缀" }), "beta");
-    await user.selectOptions(screen.getByLabelText("用户状态"), "banned");
-    await user.selectOptions(screen.getByLabelText("权限组筛选"), "7");
-    await user.click(screen.getByRole("button", { name: "查询用户" }));
+    await user.click(screen.getByRole("button", { name: "高级筛选" }));
+    await user.click(screen.getByRole("button", { name: "添加条件" }));
+    await user.selectOptions(screen.getByLabelText("筛选字段 1"), "banned");
+    await user.type(screen.getByLabelText("筛选值 1"), "1");
+    await user.click(screen.getByRole("button", { name: "添加条件" }));
+    await user.selectOptions(screen.getByLabelText("筛选字段 2"), "group_id");
+    await user.type(screen.getByLabelText("筛选值 2"), "7");
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
     await waitFor(() => expect(api.listAdminUsers).toHaveBeenLastCalledWith({
-      page: 1, page_size: 20, sort_by: "id", sort_desc: true, email_prefix: "beta", banned: true, group_id: 7
+      page: 1, page_size: 20, sort_by: "id", sort_desc: true, email_prefix: "beta", filters: [{field: "banned", operator: "eq", value: "1"}, {field: "group_id", operator: "eq", value: "7"}]
     }));
   });
 
@@ -107,14 +112,14 @@ describe("UsersPage", () => {
     expect(within(table).getByText("1 / 3", { exact: false })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "高级筛选" }));
-    await user.click(screen.getByRole("button", { name: "添加筛选条件" }));
+    await user.click(screen.getByRole("button", { name: "添加条件" }));
     await user.selectOptions(screen.getByLabelText("筛选字段 1"), "plan_id");
     expect(screen.queryByRole("option", { name: "包含" })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("筛选值 1"), "3");
-    await user.click(screen.getByRole("button", { name: "添加筛选条件" }));
+    await user.click(screen.getByRole("button", { name: "添加条件" }));
     await user.selectOptions(screen.getByLabelText("筛选字段 2"), "remarks");
     await user.type(screen.getByLabelText("筛选值 2"), "重点");
-    await user.click(screen.getByRole("button", { name: "查询用户" }));
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
     await waitFor(() => expect(api.listAdminUsers).toHaveBeenLastCalledWith(expect.objectContaining({
       filters: [{ field: "plan_id", operator: "eq", value: "3" }, { field: "remarks", operator: "contains", value: "重点" }], page: 1
     })));
@@ -161,12 +166,13 @@ describe("UsersPage", () => {
     render(<UsersPage api={api} currentUserID={1} />);
     expect(await screen.findByText("alpha@example.test")).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "新增用户" }));
-    let dialog = screen.getByRole("dialog", { name: "新增用户" });
-    await user.type(within(dialog).getByLabelText("邮箱"), "new@example.test");
+    await user.click(screen.getByRole("button", { name: "创建用户" }));
+    let dialog = screen.getByRole("dialog", { name: "创建用户" });
+    await user.type(within(dialog).getByLabelText("邮箱账号"), "new");
+    await user.type(within(dialog).getByLabelText("邮箱域"), "example.test");
     await user.type(within(dialog).getByLabelText(/初始密码/), "secure-password-123");
     await user.selectOptions(within(dialog).getByLabelText("订阅计划"), "3");
-    await user.click(within(dialog).getByRole("button", { name: "创建" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith({
       mode: "single", email: "new@example.test", password: "secure-password-123", plan_id: 3,
       expired_at: null, is_distributor: false, distributor_name: null
@@ -374,8 +380,7 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage api={api} currentUserID={1} />);
     expect(await screen.findByText(account.email)).toBeVisible();
-    await user.type(screen.getByRole("searchbox", { name: "邮箱前缀" }), "ticket-");
-    await user.click(screen.getByRole("button", { name: "查询用户" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "邮箱前缀" }), { target: { value: "ticket-" } });
     expect(await screen.findByText("已选择 0 项，共 3 项")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "批量操作" }));
     await user.click(screen.getByRole("menuitem", { name: "导出 CSV(筛选)" }));
@@ -454,15 +459,15 @@ describe("UsersPage", () => {
     })) });
     const user = userEvent.setup();
     render(<UsersPage api={api} currentUserID={1} />);
-    await user.click(await screen.findByRole("button", { name: "新增用户" }));
-    const dialog = screen.getByRole("dialog", { name: "新增用户" });
-    await user.selectOptions(within(dialog).getByLabelText("生成方式"), "prefixed_batch");
-    expect(within(dialog).queryByLabelText(/初始密码/)).not.toBeInTheDocument();
-    await user.type(within(dialog).getByLabelText("账号前缀"), "team");
+    await user.click(await screen.findByRole("button", { name: "创建用户" }));
+    const dialog = screen.getByRole("dialog", { name: "创建用户" });
+    expect(within(dialog).queryByLabelText("生成方式")).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("邮箱账号"), "team");
     await user.type(within(dialog).getByLabelText("邮箱域"), "example.test");
     await user.clear(within(dialog).getByLabelText(/生成数量/));
     await user.type(within(dialog).getByLabelText(/生成数量/), "2");
-    await user.click(within(dialog).getByRole("button", { name: "生成账号" }));
+    expect(within(dialog).getByLabelText(/初始密码/)).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith({
       mode: "prefixed_batch", email_prefix: "team", email_domain: "example.test", count: 2,
       plan_id: null, expired_at: null, is_distributor: false, distributor_name: null
@@ -482,16 +487,17 @@ describe("UsersPage", () => {
     }] });
     const user = userEvent.setup();
     render(<UsersPage api={api} currentUserID={1} />);
-    await user.click(await screen.findByRole("button", { name: "新增用户" }));
-    const dialog = screen.getByRole("dialog", { name: "新增用户" });
-    await user.type(within(dialog).getByLabelText("邮箱"), "seller@example.test");
+    await user.click(await screen.findByRole("button", { name: "创建用户" }));
+    const dialog = screen.getByRole("dialog", { name: "创建用户" });
+    await user.type(within(dialog).getByLabelText("邮箱账号"), "seller");
+    await user.type(within(dialog).getByLabelText("邮箱域"), "example.test");
     await user.selectOptions(within(dialog).getByLabelText("订阅计划"), "3");
     await user.click(within(dialog).getByLabelText("分销商"));
     expect(within(dialog).getByLabelText("订阅计划")).toBeDisabled();
     expect(within(dialog).getByLabelText("订阅计划")).toHaveValue("");
     expect(within(dialog).getByText(/分销商账号仅用于下单/)).toBeVisible();
     await user.type(within(dialog).getByLabelText("分销商名称"), "星河分销");
-    await user.click(within(dialog).getByRole("button", { name: "创建" }));
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.generateAdminUsers).toHaveBeenCalledWith(expect.objectContaining({
       mode: "single", email: "seller@example.test", plan_id: null,
       is_distributor: true, distributor_name: "星河分销"

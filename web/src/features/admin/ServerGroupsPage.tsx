@@ -1,3 +1,4 @@
+import { translateAdmin } from "../../lib/adminLocale";
 // Responsive full-width server groups management
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -90,21 +91,19 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
       {/* Header */}
       <header className="sg-header">
         <div className="sg-header-text">
-          <h1 className="sg-title">权限组管理</h1>
-          <p className="sg-subtitle">管理所有权限组，包括添加、删除、编辑等操作。</p>
+          <h1 className="sg-title">{translateAdmin("权限组管理")}</h1>
+          <p className="sg-subtitle">{translateAdmin("管理所有权限组，包括添加、删除、编辑等操作。")}</p>
         </div>
       </header>
 
       {/* Toolbar */}
       <div className="sg-toolbar">
         <button className="button secondary compact sg-add-btn" onClick={() => setEditing(null)}>
-          <span className="sg-plus" aria-hidden="true">+</span>
-          添加权限组
-        </button>
+          <span className="sg-plus" aria-hidden="true">+</span>{translateAdmin("添加权限组")}</button>
         <input
           className="sg-search"
           type="search"
-          placeholder="搜索权限组..."
+          placeholder={translateAdmin("搜索权限组...")}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           aria-label="搜索权限组"
@@ -115,7 +114,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
       {error !== "" && (
         <div className="alert error resource-alert" role="alert">
           {error}
-          <button className="button ghost compact" onClick={() => void refresh()}>重试</button>
+          <button className="button ghost compact" onClick={() => void refresh()}>{translateAdmin("重试")}</button>
         </div>
       )}
 
@@ -128,32 +127,28 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
             <thead>
               <tr>
                 <th className="sg-th-id">
-                  <button className="sg-sort-btn" onClick={() => toggleSort("id")}>
-                    组ID {sortIcon("id")}
+                  <button className="sg-sort-btn" onClick={() => toggleSort("id")}>{translateAdmin("组ID")}{sortIcon("id")}
                   </button>
                 </th>
                 <th className="sg-th-name">
-                  <button className="sg-sort-btn" onClick={() => toggleSort("name")}>
-                    组名称 {sortIcon("name")}
+                  <button className="sg-sort-btn" onClick={() => toggleSort("name")}>{translateAdmin("组名称")}{sortIcon("name")}
                   </button>
                 </th>
                 <th className="sg-th-count">
-                  <button className="sg-sort-btn" onClick={() => toggleSort("users_count")}>
-                    用户数量 {sortIcon("users_count")}
+                  <button className="sg-sort-btn" onClick={() => toggleSort("users_count")}>{translateAdmin("用户数量")}{sortIcon("users_count")}
                   </button>
                 </th>
                 <th className="sg-th-count">
-                  <button className="sg-sort-btn" onClick={() => toggleSort("server_count")}>
-                    节点数量 {sortIcon("server_count")}
+                  <button className="sg-sort-btn" onClick={() => toggleSort("server_count")}>{translateAdmin("节点数量")}{sortIcon("server_count")}
                   </button>
                 </th>
-                <th className="sg-th-actions">操作</th>
+                <th className="sg-th-actions">{translateAdmin("操作")}</th>
               </tr>
             </thead>
             <tbody>
               {paged.length === 0 ? (
                 <tr className="sg-empty-row">
-                  <td colSpan={5} className="sg-empty-cell">{search ? "没有匹配的权限组。" : "暂无数据"}</td>
+                  <td colSpan={5} className="sg-empty-cell">{search ? "没有匹配的权限组。" : translateAdmin("暂无数据")}</td>
                 </tr>
               ) : paged.map((group) => (
                 <tr key={group.id}>
@@ -184,7 +179,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
                       <button
                         className="sg-icon-btn"
                         aria-label={`编辑权限组：${group.name}`}
-                        title="编辑权限组"
+                        title={translateAdmin("编辑权限组")}
                         onClick={() => setEditing(group)}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -219,9 +214,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
         <div className="sg-footer">
           <span className="sg-footer-status">已选择 0 项，共 {sorted.length} 项</span>
           <div className="sg-pagination">
-            <label className="sg-page-size-label">
-              每页显示
-              <select
+            <label className="sg-page-size-label">{translateAdmin("每页显示")}<select
                 className="sg-page-size-select"
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
@@ -230,9 +223,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
                 {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </label>
-            <span className="sg-page-info">
-              第
-              <input
+            <span className="sg-page-info">{translateAdmin("第")}<input
                 className="sg-page-input"
                 type="number"
                 min={1}
@@ -245,8 +236,8 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
             </span>
             <div className="sg-page-btns">
               <button className="sg-page-btn" onClick={() => goPage(1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="首页">«</button>
-              <button className="sg-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label="上一页">‹</button>
-              <button className="sg-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="下一页">›</button>
+              <button className="sg-page-btn" onClick={() => goPage(currentPage - 1)} disabled={currentPage === 1 || sorted.length === 0} aria-label={translateAdmin("上一页")}>‹</button>
+              <button className="sg-page-btn" onClick={() => goPage(currentPage + 1)} disabled={currentPage === totalPages || sorted.length === 0} aria-label={translateAdmin("下一页")}>›</button>
               <button className="sg-page-btn" onClick={() => goPage(totalPages)} disabled={currentPage === totalPages || sorted.length === 0} aria-label="末页">»</button>
             </div>
           </div>
@@ -306,6 +297,7 @@ function GroupEditor({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving || !name.trim()) return;
     setSaving(true);
     setError("");
     try {
@@ -336,23 +328,24 @@ function GroupEditor({
       </div>
       <form className="sg-modal-body" onSubmit={(event) => void submit(event)}>
         <div className="sg-form-field">
-          <label className="sg-field-label" htmlFor="sg-group-name">组名称</label>
+          <label className="sg-field-label" htmlFor="sg-group-name">{translateAdmin("组名称")}</label>
           <input
             id="sg-group-name"
+            autoFocus
             className="sg-field-input"
             value={name}
             maxLength={255}
             required
-            placeholder="请输入权限组名称"
+            placeholder={translateAdmin("请输入权限组名称")}
             onChange={(event) => setName(event.target.value)}
           />
-          <p className="sg-field-hint">权限组名称用于标识不同的用户组，建议使用有意义的名称。</p>
+          <p className="sg-field-hint">{translateAdmin("权限组名称用于标识不同的用户组，建议使用有意义的名称。")}</p>
         </div>
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
         <div className="sg-modal-footer">
-          <button className="button ghost" type="button" onClick={onClose}>取消</button>
-          <button className="button primary" disabled={saving} type="submit">
-            {saving ? "正在保存…" : isCreate ? "创建权限组" : "更新"}
+          <button className="button ghost" type="button" onClick={onClose}>{translateAdmin("取消")}</button>
+          <button className="button primary" disabled={saving || !name.trim()} type="submit">
+            {saving ? "正在保存…" : isCreate ? translateAdmin("创建权限组") : translateAdmin("更新")}
           </button>
         </div>
       </form>
@@ -401,9 +394,9 @@ function GroupDelete({
         <p className="sg-delete-confirm-text">确定删除权限组 <strong>"{group.name}"</strong> 吗？</p>
         {error !== "" && <div className="alert error" role="alert">{error}</div>}
         <div className="sg-modal-footer">
-          <button className="button ghost" onClick={onClose}>取消</button>
+          <button className="button ghost" onClick={onClose}>{translateAdmin("取消")}</button>
           <button className="button primary destructive" disabled={busy} onClick={() => void remove()}>
-            {busy ? "正在删除…" : "确认删除"}
+            {busy ? "正在删除…" : translateAdmin("确认删除")}
           </button>
         </div>
       </div>

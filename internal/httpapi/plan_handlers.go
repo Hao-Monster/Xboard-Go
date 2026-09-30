@@ -148,18 +148,19 @@ func (s *server) deletePlan(w http.ResponseWriter, r *http.Request) {
 
 func decodePlanInput(w http.ResponseWriter, r *http.Request, requireRevision bool) (store.SavePlanInput, int64, bool, bool) {
 	var input struct {
-		Revision           int64            `json:"revision,omitempty"`
-		GroupID            *int64           `json:"group_id"`
-		TransferEnableGiB  int64            `json:"transfer_enable"`
-		Name               string           `json:"name"`
-		SpeedLimit         *int             `json:"speed_limit"`
-		Content            string           `json:"content"`
-		ResetTrafficMethod *int             `json:"reset_traffic_method"`
-		CapacityLimit      *int             `json:"capacity_limit"`
-		Prices             store.PlanPrices `json:"prices"`
-		DeviceLimit        *int             `json:"device_limit"`
-		Tags               []string         `json:"tags"`
-		ForceUpdate        bool             `json:"force_update,omitempty"`
+		DistributorHWIDLimit *int             `json:"distributor_hwid_limit"`
+		Revision             int64            `json:"revision,omitempty"`
+		GroupID              *int64           `json:"group_id"`
+		TransferEnableGiB    int64            `json:"transfer_enable"`
+		Name                 string           `json:"name"`
+		SpeedLimit           *int             `json:"speed_limit"`
+		Content              string           `json:"content"`
+		ResetTrafficMethod   *int             `json:"reset_traffic_method"`
+		CapacityLimit        *int             `json:"capacity_limit"`
+		Prices               store.PlanPrices `json:"prices"`
+		DeviceLimit          *int             `json:"device_limit"`
+		Tags                 []string         `json:"tags"`
+		ForceUpdate          bool             `json:"force_update,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return store.SavePlanInput{}, 0, false, false
@@ -169,7 +170,8 @@ func decodePlanInput(w http.ResponseWriter, r *http.Request, requireRevision boo
 		return store.SavePlanInput{}, 0, false, false
 	}
 	return store.SavePlanInput{
-		GroupID: input.GroupID, TransferEnableGiB: input.TransferEnableGiB, Name: input.Name,
+		DistributorHWIDLimit: input.DistributorHWIDLimit,
+		GroupID:              input.GroupID, TransferEnableGiB: input.TransferEnableGiB, Name: input.Name,
 		SpeedLimit: input.SpeedLimit, Content: input.Content, ResetTrafficMethod: input.ResetTrafficMethod,
 		CapacityLimit: input.CapacityLimit, Prices: input.Prices, DeviceLimit: input.DeviceLimit, Tags: input.Tags,
 	}, input.Revision, input.ForceUpdate, true

@@ -113,11 +113,19 @@ func readLegacyTrafficResetMethod(ctx context.Context, database *sql.DB) (int, e
 }
 
 func readLegacyPlans(ctx context.Context, database *sql.DB) ([]store.LegacyPlan, error) {
+	var hwidColumnCount int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('v2_plan') WHERE name = 'distributor_hwid_limit'`).Scan(&hwidColumnCount); err != nil {
+		return nil, fmt.Errorf("inspect legacy plan HWID column: %w", err)
+	}
+	hwidExpression := "0"
+	if hwidColumnCount > 0 {
+		hwidExpression = "COALESCE(distributor_hwid_limit, 1)"
+	}
 	query := `
 		SELECT id, group_id, transfer_enable, name, speed_limit, show, COALESCE(sort, 0), renew,
 		       COALESCE(content, ''), reset_traffic_method, capacity_limit,
 		       ` + legacyUnixExpression("created_at") + `, ` + legacyUnixExpression("updated_at") + `,
-		       COALESCE(prices, '{}'), sell, device_limit, COALESCE(tags, '[]')
+		       COALESCE(prices, '{}'), sell, device_limit, COALESCE(tags, '[]'), ` + hwidExpression + `
 		FROM v2_plan ORDER BY id
 	`
 	rows, err := database.QueryContext(ctx, query)
@@ -136,7 +144,7 @@ func readLegacyPlans(ctx context.Context, database *sql.DB) ([]store.LegacyPlan,
 		var pricesJSON, tagsJSON string
 		if err := rows.Scan(&plan.ID, &groupID, &plan.TransferEnableGiB, &plan.Name, &speedLimit, &visible,
 			&plan.SortPosition, &renewable, &plan.Content, &resetMethod, &capacityLimit, &plan.CreatedAt,
-			&plan.UpdatedAt, &pricesJSON, &sellable, &deviceLimit, &tagsJSON); err != nil {
+			&plan.UpdatedAt, &pricesJSON, &sellable, &deviceLimit, &tagsJSON, &plan.DistributorHWIDLimit); err != nil {
 			return nil, fmt.Errorf("scan legacy plan: %w", err)
 		}
 		if visible < 0 || visible > 1 || renewable < 0 || renewable > 1 || sellable < 0 || sellable > 1 {

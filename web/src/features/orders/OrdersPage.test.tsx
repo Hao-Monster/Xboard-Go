@@ -109,11 +109,14 @@ describe("OrderManagementPage", () => {
 		await waitFor(() => expect(api.listAdminOrders).toHaveBeenLastCalledWith(expect.objectContaining({ query: "buyer", statuses: [0] })));
 
     await user.click(screen.getByRole("button", { name: "添加订单" }));
-    const addDialog = screen.getByRole("dialog", { name: "添加订单" });
+    const addDialog = screen.getByRole("dialog", { name: "订单分配" });
+    expect(within(addDialog).getByLabelText("订阅计划")).toHaveValue("");
+    expect(within(addDialog).getByLabelText("订单周期")).toHaveValue("");
+    await user.selectOptions(within(addDialog).getByLabelText("订阅计划"), String(plan.id));
     await user.type(within(addDialog).getByLabelText("用户邮箱"), "new@example.test");
-    await user.clear(within(addDialog).getByLabelText("支付金额（CNY）"));
-    await user.type(within(addDialog).getByLabelText("支付金额（CNY）"), "12.34");
-    await user.click(within(addDialog).getByRole("button", { name: "创建订单" }));
+    await user.clear(within(addDialog).getByLabelText("支付金额"));
+    await user.type(within(addDialog).getByLabelText("支付金额"), "12.34");
+    await user.click(within(addDialog).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.assignOrder).toHaveBeenCalledWith({ email: "new@example.test", plan_id: plan.id, period: "monthly", total_amount: 1234 }));
 
     await user.click(screen.getByRole("button", { name: `查看订单：${pending.trade_no}` }));
@@ -137,11 +140,14 @@ describe("OrderManagementPage", () => {
 
     await screen.findByText("没有符合条件的订单。");
     await user.click(screen.getByRole("button", { name: "添加订单" }));
-    const dialog = screen.getByRole("dialog", { name: "添加订单" });
+    const dialog = screen.getByRole("dialog", { name: "订单分配" });
+    expect(within(dialog).getByLabelText("订阅计划")).toHaveValue("");
+    expect(within(dialog).getByLabelText("订单周期")).toHaveValue("");
+    await user.selectOptions(within(dialog).getByLabelText("订阅计划"), String(plan.id));
     await user.type(within(dialog).getByLabelText("用户邮箱"), "buyer@example.test");
-    await user.clear(within(dialog).getByLabelText("支付金额（CNY）"));
-    await user.type(within(dialog).getByLabelText("支付金额（CNY）"), "12.345");
-    await user.click(within(dialog).getByRole("button", { name: "创建订单" }));
+    await user.clear(within(dialog).getByLabelText("支付金额"));
+    await user.type(within(dialog).getByLabelText("支付金额"), "12.345");
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("支付金额格式无效");
     expect(api.assignOrder).not.toHaveBeenCalled();

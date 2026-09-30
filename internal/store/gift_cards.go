@@ -178,6 +178,7 @@ type GiftCardUsage struct {
 }
 
 type GiftCardTemplateFilter struct {
+	Search   string
 	Page     int
 	PageSize int
 	Type     *GiftCardType
@@ -405,6 +406,12 @@ func (s *Store) ListGiftCardTemplates(ctx context.Context, filter GiftCardTempla
 	}
 	if filter.Status != nil {
 		where, arguments = append(where, "status = ?"), append(arguments, *filter.Status)
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		if len(search) > 255 {
+			return GiftCardTemplatePage{}, ErrInvalidInput
+		}
+		where, arguments = append(where, "instr(lower(name), lower(?)) > 0"), append(arguments, search)
 	}
 	whereSQL := giftCardWhere(where)
 	var total int64
