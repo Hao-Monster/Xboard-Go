@@ -260,6 +260,7 @@ func main() {
 		PanelURL:                   settings.PanelURL,
 		LegacyAdminPath:            settings.LegacyAdminPath,
 		NodeRelease:                settings.NodeRelease,
+		NodeReleaseSource:          settings.NodeReleaseSource,
 		NodeReleaseRoot:            settings.NodeReleaseRoot,
 		CookieSecure:               settings.CookieSecure,
 		AllowedOrigins:             settings.AllowedOrigins,

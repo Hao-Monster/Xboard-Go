@@ -21,6 +21,7 @@
     {"id":"REL-001","title":"完成生产切换、回滚和事故响应运行手册","status":"blocked","milestone":"M4","issue_number":131,"requirement_ids":[],"decision_ids":["D-016","D-018"]},
     {"id":"ARCH-001","title":"按 Issue #148 已确认边界拆分网关、前端与后端独立部署单元","status":"done","milestone":"M4","issue_number":148,"requirement_ids":[],"decision_ids":[]},
     {"id":"OBS-001","title":"内部测试集中日志、面板节点诊断与私有采集链路","status":"in_progress","milestone":"M3","issue_number":299,"requirement_ids":[],"decision_ids":[]},
-    {"id":"OBS-002","title":"保留 WebSocket 生命周期数值诊断并验证集中采集","status":"in_progress","milestone":"M3","issue_number":301,"requirement_ids":[],"decision_ids":[]}
+    {"id":"OBS-002","title":"保留 WebSocket 生命周期数值诊断并验证集中采集","status":"in_progress","milestone":"M3","issue_number":301,"requirement_ids":[],"decision_ids":[]},
+    {"id":"NDL-001","title":"节点公开 GitHub 固定版本下载与有限重试","status":"in_progress","milestone":"M3","issue_number":121,"requirement_ids":["MACH-002"],"decision_ids":[]}
   ]
 }

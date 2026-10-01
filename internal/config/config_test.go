@@ -427,6 +427,29 @@ func TestLoadRequiresImmutableNodeRelease(t *testing.T) {
 	}
 }
 
+func TestLoadNodeReleaseSource(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	for _, source := range []string{"", "panel", "github"} {
+		t.Setenv("XBOARD_NODE_RELEASE_SOURCE", source)
+		settings, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := source
+		if want == "" {
+			want = "panel"
+		}
+		if settings.NodeReleaseSource != want {
+			t.Fatalf("source = %q, want %q", settings.NodeReleaseSource, want)
+		}
+	}
+	t.Setenv("XBOARD_NODE_RELEASE_SOURCE", "unknown")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted an unknown release source")
+	}
+}
+
 func TestLoadValidatesNodeReleaseRoot(t *testing.T) {
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
 	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")

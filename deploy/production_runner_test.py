@@ -4,6 +4,7 @@ import unittest
 import subprocess
 import sys
 import tempfile
+import json
 
 spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('production-runner.py'))
 runner = importlib.util.module_from_spec(spec)
@@ -53,6 +54,36 @@ class RetainedConfigurationTests(unittest.TestCase):
                 if success: self.assertEqual(path.with_name('.env.before-8443').read_text(),original)
 
 class UpdateConfigurationTests(unittest.TestCase):
+    def test_selected_release_rejects_wrong_version_missing_and_foreign_assets(self):
+        script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PYNODE'\n",1)[1].split('\nPYNODE',1)[0]
+        base='https://github.com/Hao-Monster/Xboard-Go/releases/download/node-v1.14.5'
+        names=['install.sh','SHA256SUMS','xboard-node-linux-amd64','xboard-node-linux-arm64','xbctl-linux-amd64','xbctl-linux-arm64']
+        valid={'tag_name':'v1.14.5','assets':[{'name':n,'url':base+'/'+n,'size':1,'state':'uploaded'} for n in names]}
+        wrong_host=json.loads(json.dumps(valid));wrong_host['assets'][0]['url']='https://example.test/install.sh'
+        for release,ok in [(valid,True),({**valid,'tag_name':'v99.99.99'},False),({**valid,'assets':valid['assets'][1:]},False),(wrong_host,False),({**valid,'draft':True},False)]:
+            with self.subTest(ok=ok), tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'release.json';path.write_text(json.dumps(release))
+                result=subprocess.run([sys.executable,'-',str(path),'v1.14.5',base],input=script,text=True,capture_output=True)
+                self.assertEqual(result.returncode==0,ok)
+
+    def test_node_selection_is_explicit_and_validated(self):
+        runner.validate_node_selection('update', 'v1.14.5', 'github')
+        runner.validate_node_selection('update', '', 'preserve')
+        for mode, version, source in [('install','v1.14.5','github'), ('update','','github'), ('update','v1.14.5','preserve'), ('update','v1.14.5;id','github')]:
+            with self.subTest(version=version, source=source), self.assertRaises(ValueError):
+                runner.validate_node_selection(mode,version,source)
+
+    def test_node_update_preserves_secrets_and_replaces_existing_selection(self):
+        script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PY'\n",1)[1].split('\nPY',1)[0]
+        original='XBOARD_IMAGE=xboard-go:'+'a'*40+'\nXBOARD_PANEL_URL=https://fast.hjy.ca:8443\nXBOARD_ADMIN_PATH=preserved\nCOMPOSE_PROJECT_NAME=xboard-production-internal\nXBOARD_PORT=7080\nXBOARD_BIND_ADDRESS=127.0.0.1\nXBOARD_NODE_RELEASE=v1.14.4\nXBOARD_NODE_RELEASE_SOURCE=panel\n'
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'.env';path.write_text(original)
+            output=path.with_name('next.env')
+            result=subprocess.run([sys.executable,'-',str(path),'a'*40,'b'*40,'https://fast.hjy.ca:8443',str(output),'v1.14.5','github'],input=script,text=True,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(path.read_text(),original)
+            self.assertEqual(output.read_text(),original.replace('a'*40,'b'*40).replace('v1.14.4','v1.14.5').replace('SOURCE=panel','SOURCE=github'))
+
     def test_image_update_preserves_other_configuration_and_rejects_mismatch(self):
         script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PY'\n",1)[1].split('\nPY',1)[0]
         original='XBOARD_IMAGE=xboard-go:'+'a'*40+'\nXBOARD_PANEL_URL=https://fast.hjy.ca:8443\nXBOARD_ADMIN_PATH=preserved\nCOMPOSE_PROJECT_NAME=xboard-production-internal\nXBOARD_PORT=7080\nXBOARD_BIND_ADDRESS=127.0.0.1\n'

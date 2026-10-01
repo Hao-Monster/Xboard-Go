@@ -1228,7 +1228,9 @@ roots, including through symbolic links. Mount it read-only in production.
 
 The panel serves release metadata and allowlisted files under
 `/api/v2/node/releases/{version}` without exposing GitHub credentials. Machine
-installation commands download and verify the installer from the panel's HTTPS
-origin, then pass `--release-api-base` to it; target machines do not need `gh` or a
-GitHub token. The bundled node installer must support that option. When no release
-root is configured, download endpoints return 404.
+installation commands use the panel source by default. After publishing new
+public assets, set `XBOARD_NODE_RELEASE_SOURCE=github` and the exact published
+`XBOARD_NODE_RELEASE` to download directly from GitHub without sending large
+files through the panel. Target machines need no `gh` or GitHub token. Old panel
+endpoints remain available; without a populated release root they return 404.
+See [Direct GitHub Node downloads](docs/operations/node-github-releases.md).
