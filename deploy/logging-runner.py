@@ -38,9 +38,9 @@ def validate(environment):
 def archive():
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode='w:gz') as output:
-        files = [Path('deploy/logging-remote.py'), *Path('deploy/observability').glob('*')]
+        files = [Path('deploy/logging-remote.py'), Path('deploy/logging-probe.py'), *Path('deploy/observability').glob('*')]
         for path in files:
-            if path.is_file() and path.suffix in ('.py', '.yaml', '.json', '.sh'):
+            if path.is_file() and (path.suffix in ('.py', '.yaml', '.json', '.sh') or path.name == 'Dockerfile.collector'):
                 output.add(path, arcname=str(path).replace('\\', '/'), recursive=False)
     return buffer.getvalue()
 

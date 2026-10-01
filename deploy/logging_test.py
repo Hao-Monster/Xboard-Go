@@ -12,6 +12,7 @@ def module(name):
 
 runner = module('logging-runner')
 remote = module('logging-remote')
+probe = module('logging-probe')
 
 
 class BoundaryTests(unittest.TestCase):
@@ -47,6 +48,22 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as context:
             runner.execute([sys.executable, '-c', 'import sys; print("synthetic-sensitive-output"); sys.exit(2)'])
         self.assertNotIn('synthetic-sensitive-output', str(context.exception))
+
+    def test_runtime_probe_drops_raw_health_and_error_payload(self):
+        record = probe.runtime_record({'Status': 'exited', 'OOMKilled': True, 'ExitCode': 137,
+                                       'Error': 'private-error', 'Health': {'Status': 'unhealthy', 'Log': ['private-health']}})
+        self.assertEqual(record['exit_code'], 137)
+        self.assertTrue(record['oom_killed'])
+        self.assertNotIn('private', str(record))
+        self.assertFalse(record['healthy'])
+
+    def test_probe_metrics_aggregate_only_numeric_counters(self):
+        record = probe.counters('vector_component_errors_total{component_id="private-fixture"} 4\n'
+                                'vector_component_errors_total{component_id="another"} 2\n'
+                                'vector_buffer_byte_size{component_id="logs"} 12345\n')
+        self.assertEqual(record['collector_errors'], 6)
+        self.assertEqual(record['buffer_bytes'], 12345)
+        self.assertNotIn('private', str(record))
 
 
 if __name__ == '__main__':

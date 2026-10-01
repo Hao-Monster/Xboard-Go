@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 VL = 'victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d'
 AUTH = 'victoriametrics/vmauth:v1.153.0@sha256:4ebf2f21490df3e8837302b85d9db6ac45765442dfa28db77ffacd3577035a74'
-VECTOR = 'timberio/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9'
+VECTOR = os.environ.get('XBOARD_LOG_COLLECTOR_IMAGE', 'xboard-log-collector:local')
 
 
 def identifier(value):
@@ -94,13 +94,14 @@ def remap(source):
               'limit', 'expire', 'traffic', 'checked', 'paid', 'remaining', 'cancelled', 'completed', 'processed',
               'runtime_id', 'component', 'instance', 'report_correlation', 'retry', 'users_count',
               'added_count', 'removed_count', 'traffic_users_count', 'instances', 'version',
-              'error_class', 'error_code', 'network_op']
+              'error_class', 'error_code', 'network_op', 'container_state', 'oom_killed', 'exit_code',
+              'healthy', 'restart_count', 'disk_free_bytes', 'buffer_bytes', 'discarded_events', 'collector_errors']
     lines = ['record, err = parse_json(.message)', 'record = object(record) ?? {}',
              'attributes = object(record.attributes) ?? {}',
              'cursor = string(.__CURSOR) ?? ""', 'stamp = now()',
              'if exists(.timestamp) { stamp = .timestamp }',
              '. = {"source": ' + json.dumps(source) + ', "timestamp": stamp, "event": "unstructured_log_suppressed"}',
-             'if cursor != "" { .event_id = sha256(cursor) }',
+             'if cursor != "" { .event_id = sha2(cursor, variant: "SHA-256") }',
              'event = string(record.event) ?? string(attributes.event) ?? string(record.msg) ?? ""',
              'if match(event, r\'^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$\') { .event = event }',
              'literal = string(record.msg) ?? string(record.message) ?? ""',

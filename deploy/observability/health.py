@@ -31,18 +31,24 @@ def inspect(directory, endpoint):
     if usage.free < 5 * 1024**3:
         warnings.append('disk_free_below_5_gib')
     canaries = {}
+    application_events = {}
     for source in sorted(secrets['writers']):
         try:
             rows = query(endpoint, secrets['viewer'], '_time:3m source:' + json.dumps(source) + ' event:collector.canary | sort by (_time) desc')
             canaries[source] = rows[0].get('_time') if rows else None
             if not rows:
                 warnings.append('canary_missing:' + source)
+            if source in ('development', 'production'):
+                rows = query(endpoint, secrets['viewer'], '_time:3m source:' + json.dumps(source) + ' event:http.request | sort by (_time) desc')
+                application_events[source] = rows[0].get('_time') if rows else None
+                if not rows:
+                    warnings.append('panel_journal_events_missing:' + source)
         except Exception as error:
             canaries[source] = None
             warnings.append('query_failed:' + source + ':' + type(error).__name__)
     return {'event': 'logging.health', 'time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'healthy': not warnings, 'storage_bytes': size, 'disk_free_bytes': usage.free,
-            'last_canary': canaries, 'warnings': warnings}
+            'last_canary': canaries, 'last_panel_event': application_events, 'warnings': warnings}
 
 
 if __name__ == '__main__':

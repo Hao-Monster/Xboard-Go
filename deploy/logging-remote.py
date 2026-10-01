@@ -52,7 +52,14 @@ def compose(directory, filename, *args):
 
 
 def configure(*args):
-    return run(['python3', str(ASSETS / 'configure.py'), *map(str, args)])
+    return run(['python3', str(ASSETS / 'configure.py'), *map(str, args)], env={**os.environ, 'XBOARD_LOG_COLLECTOR_IMAGE': collector_image()})
+
+
+def collector_image():
+    revision = ASSETS.parents[1].name
+    if not re.fullmatch('[a-f0-9]{40}', revision):
+        raise ValueError('Collector build must use an exact-SHA release directory')
+    return 'xboard-log-collector:' + revision
 
 
 def central_init():
@@ -149,6 +156,7 @@ def panel(source):
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     collector = directory / ('collector-' + source)
     collector.mkdir(mode=0o700, exist_ok=True)
+    run(['docker', 'build', '-t', collector_image(), '-f', str(ASSETS / 'Dockerfile.collector'), str(ASSETS)])
     credential = sys.stdin.read().strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{32,}', credential):
         raise ValueError('Invalid collector credential')
@@ -193,6 +201,15 @@ def panel(source):
                  'up', '-d', '--no-build', '--no-deps', '--wait', '--wait-timeout', '180', 'app'])
         raise
     print('Collector and scoped Xboard journal logging active: ' + source)
+    units = Path('/etc/systemd/system') if production else Path.home() / '.config/systemd/user'
+    units.mkdir(parents=True, exist_ok=True)
+    private_write(units / 'xboard-logs-probe.service', '[Unit]\nDescription=Scoped Xboard runtime and collector diagnostics\n[Service]\nType=oneshot\nTimeoutStartSec=40\nExecStart=/usr/bin/python3 ' +
+                  str(Path(__file__).with_name('logging-probe.py')) + ' --source ' + source + '\nNoNewPrivileges=yes\n')
+    private_write(units / 'xboard-logs-probe.timer', '[Unit]\nDescription=Collect Xboard runtime counters each minute\n[Timer]\nOnBootSec=60\nOnUnitActiveSec=60\n[Install]\nWantedBy=' + ('timers.target' if production else 'default.target') + '\n')
+    systemctl = ['systemctl'] + ([] if production else ['--user'])
+    run([*systemctl, 'daemon-reload'])
+    run([*systemctl, 'enable', '--now', 'xboard-logs-probe.timer'])
+    run([*systemctl, 'start', 'xboard-logs-probe.service'])
 
 
 def probe(source):

@@ -54,6 +54,7 @@ def eventually(check, seconds=45):
 
 def main():
     name = 'xboard-logs-smoke-' + uuid.uuid4().hex[:8]
+    run('docker', 'build', '-t', configure.VECTOR, '-f', str(Path(__file__).with_name('Dockerfile.collector')), str(Path(__file__).parent))
     with tempfile.TemporaryDirectory(prefix=name) as temp:
         root = Path(temp)
         configure.central(root, ['smoke'])

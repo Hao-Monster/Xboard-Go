@@ -22,6 +22,8 @@ class ConfigurationTests(unittest.TestCase):
             compose = json.loads((Path(d) / 'compose.yaml').read_text())
             self.assertNotIn('ports', compose['services']['victoria-logs'])
             self.assertEqual(['127.0.0.1:19428:8427'], compose['services']['auth']['ports'])
+            self.assertIn('-httpInternalListenAddr=127.0.0.1:8426', compose['services']['auth']['command'])
+            self.assertEqual(configure.runtime_user(), compose['services']['auth']['user'])
             self.assertIn('-retentionPeriod=30d', compose['services']['victoria-logs']['command'])
             self.assertFalse(any('maxDiskSpaceUsage' in v for v in compose['services']['victoria-logs']['command']))
             users = json.loads((Path(d) / 'auth.json').read_text())['users']
@@ -38,6 +40,8 @@ class ConfigurationTests(unittest.TestCase):
             self.assertEqual('block', config['sinks']['logs']['buffer']['when_full'])
             self.assertEqual(2147483648, config['sinks']['logs']['buffer']['max_size'])
             self.assertTrue(config['sinks']['logs']['acknowledgements']['enabled'])
+            names = list(config['sources']) + list(config['transforms']) + list(config['sinks'])
+            self.assertEqual(len(names), len(set(names)))
             compose = json.loads((Path(d) / 'collector-compose.yaml').read_text())
             self.assertNotIn('docker.sock', json.dumps(compose))
 

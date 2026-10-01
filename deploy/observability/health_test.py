@@ -10,11 +10,19 @@ class HealthTests(unittest.TestCase):
     def test_all_sources_must_have_recent_canary(self):
         with tempfile.TemporaryDirectory() as d:
             configure.central(d, ['development', 'production'])
-            with patch.object(health, 'query', side_effect=[[{'_time': datetime.datetime.now(datetime.timezone.utc).isoformat()}], []]):
+            with patch.object(health, 'query', side_effect=[[{'_time': datetime.datetime.now(datetime.timezone.utc).isoformat()}], [{'_time': 'recent'}], [], []]):
                 result = health.inspect(d, 'http://127.0.0.1:19428')
             self.assertFalse(result['healthy'])
             self.assertIn('canary_missing:production', result['warnings'])
             self.assertIsNone(result['last_canary']['production'])
+
+    def test_canary_cannot_hide_broken_journal_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            configure.central(d, ['development'])
+            with patch.object(health, 'query', side_effect=[[{'_time': 'recent'}], []]):
+                result = health.inspect(d, 'http://127.0.0.1:19428')
+            self.assertFalse(result['healthy'])
+            self.assertIn('panel_journal_events_missing:development', result['warnings'])
 
     def test_failure_does_not_leak_exception_payload(self):
         with tempfile.TemporaryDirectory() as d:
