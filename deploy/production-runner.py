@@ -25,7 +25,7 @@ def api(path):
 
 
 def validate(config, mode, revision, email):
-    if mode not in ('inspect', 'install') or not re.fullmatch(r'[0-9a-f]{40}', revision):
+    if mode not in ('inspect', 'install', 'resume') or not re.fullmatch(r'[0-9a-f]{40}', revision):
         raise ValueError('Invalid deployment mode or release SHA')
     if not re.fullmatch(r'[a-zA-Z0-9.-]+', config['DEPLOY_HOST']):
         raise ValueError('Invalid SSH host')
@@ -39,8 +39,8 @@ def validate(config, mode, revision, email):
     if '://' not in origin:
         origin = 'https://' + origin
     parsed = urllib.parse.urlsplit(origin)
-    if not re.fullmatch(r'https://[a-zA-Z0-9.-]+', origin) or not parsed.hostname:
-        raise ValueError('Expected an HTTPS origin without a subpath or custom port')
+    if not re.fullmatch(r'https://[a-zA-Z0-9.-]+(?::8443)?', origin) or not parsed.hostname:
+        raise ValueError('Expected an HTTPS origin without a subpath (only port 8443 is supported)')
     if not re.fullmatch(r'[a-zA-Z0-9._+%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', email):
         raise ValueError('Invalid administrator email')
     return origin
@@ -51,7 +51,7 @@ def main():
     if repository != 'Hao-Monster/Xboard-Go':
         raise ValueError('Unexpected repository')
     mode, revision, email = (os.environ[name] for name in ('DEPLOY_MODE', 'RELEASE_SHA', 'ADMINISTRATOR_EMAIL'))
-    if mode == 'install' and (os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch'):
+    if mode in ('install', 'resume') and (os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch'):
         raise ValueError('Installation requires a manual run on protected main')
     config = {name: os.environ.get(name, '') for name in ('DEPLOY_SSH_KEY', 'DEPLOY_KNOWN_HOSTS', 'DEPLOY_HOST', 'DEPLOY_PORT', 'DEPLOY_USER', 'DEPLOY_DIR', 'PANEL_URL')}
     if not config['DEPLOY_SSH_KEY'] or not config['DEPLOY_KNOWN_HOSTS']:
@@ -71,6 +71,10 @@ def main():
     digest = installer.get('digest', '')
     if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
         raise ValueError('Release installer has no immutable digest')
+    compose_asset = next(item for item in release['assets'] if item['name'] == 'compose.yaml')
+    compose_digest = compose_asset.get('digest', '')
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}', compose_digest):
+        raise ValueError('Release Compose file has no immutable digest')
     with tempfile.TemporaryDirectory(prefix='xboard-production-') as temporary:
         directory = Path(temporary)
         os.chmod(directory, 0o700)
@@ -84,7 +88,7 @@ def main():
                    '-o', 'UserKnownHostsFile=' + str(hosts), '-o', 'ConnectTimeout=15',
                    '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
                    config['DEPLOY_USER'] + '@' + config['DEPLOY_HOST'],
-                   'bash -s -- ' + ' '.join(shlex.quote(value) for value in (mode, revision, origin, email, digest[7:]))]
+                   'bash -s -- ' + ' '.join(shlex.quote(value) for value in (mode, revision, origin, email, digest[7:], compose_digest[7:]))]
         subprocess.run(command, input=Path('deploy/production-server.sh').read_text(), text=True, check=True)
 
 

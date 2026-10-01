@@ -17,7 +17,7 @@
     "hostname": "vmi3574179",
     "deploy_dir": "/opt/xboard-go",
     "environment": "production-internal-test",
-    "panel_url": "https://fast.hjy.ca",
+    "panel_url": "https://fast.hjy.ca:8443",
     "application_revision": "d435262417fbe442b5d03fcd721a989ae80b3e06"
   },
   "findings": [
@@ -36,7 +36,7 @@
     {
       "id": "PROD-02",
       "title": "实现受保护 main 手动首次部署流水线，严格主机校验和日志脱敏",
-      "status": "implemented_pending_preflight"
+      "status": "implemented_preflight_passed"
     },
     {
       "id": "PROD-03",
@@ -55,13 +55,19 @@
     "不迁移旧数据",
     "不通过本地 SSH 上传代码或执行部署"
   ],
-  "route_plan": "App binds 127.0.0.1:7080 on its own Compose network. Existing Caddy joins only this new network and gets one marked fast.hjy.ca site; validate and reload without restarting existing containers. Existing Remnawave sites and network remain intact.",
+  "route_plan": "App binds 127.0.0.1:7080 on its own Compose network. Existing Caddy joins only this new network and gets one marked fast.hjy.ca site; validate and reload without restarting existing containers. Existing Remnawave sites and network remain intact. Public origin uses port 8443; Caddy site listens on its existing container 443 mapped to host 8443.",
   "rollback": "On failed installation/public health, remove only the marked Xboard Caddy block, detach its new Caddy network connection and stop only the Xboard app; retain its data/credentials. Never delete existing data or restart Remnawave.",
   "checks": [
     "Python input validation: 3 tests passed including subcases rejecting shell injection, wrong directory and subpath",
     "bash -n and projectctl check passed",
     "Branch push performs read-only preflight only; installation requires manual protected-main dispatch"
   ],
-  "credential_configuration": "Both existing SSH values transferred to Environment Secrets; corresponding plaintext Variables deleted and metadata verified.",
-  "authorization": "User approved credential transfer and CI/CD deployment on 2026-10-02."
+  "credential_configuration": "Both existing SSH values transferred to Environment Secrets; corresponding plaintext Variables deleted and metadata verified. CI preflight 36890027422 passed after normalizing credential bytes to LF.",
+  "authorization": "User approved credential transfer and CI/CD deployment on 2026-10-02. User approved port 8443 after standard 443 was found owned by the existing node.",
+  "deployment_attempt": {
+    "run": 36890243330,
+    "result": "rolled_back",
+    "reason": "Existing node on 443 serves a different certificate. Dedicated Caddy port 8443 returned valid HTTPS health.",
+    "recovery": "Reviewed resume mode only accepts the exact stopped Xboard installation, verified release Compose digest, and expected configuration; updates only public origin and starts Xboard."
+  }
 }
