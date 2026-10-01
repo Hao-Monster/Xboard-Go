@@ -426,3 +426,51 @@ func TestLoadRequiresImmutableNodeRelease(t *testing.T) {
 		t.Fatalf("Load() rejected immutable node release: %v", err)
 	}
 }
+
+func TestLoadValidatesNodeReleaseRoot(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", "relative/releases")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a relative node release root")
+	}
+
+	webRoot := filepath.Join(t.TempDir(), "web")
+	t.Setenv("XBOARD_WEB_ROOT", webRoot)
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", filepath.Join(webRoot, "releases"))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a node release root below the public web root")
+	}
+
+	releaseRoot := filepath.Join(t.TempDir(), "releases")
+	t.Setenv("XBOARD_WEB_ROOT", "")
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", releaseRoot)
+	settings, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.NodeReleaseRoot != releaseRoot {
+		t.Fatalf("node release root = %q, want %q", settings.NodeReleaseRoot, releaseRoot)
+	}
+}
+
+func TestLoadRejectsNodeReleaseRootSymlinkOverlap(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	root := t.TempDir()
+	web := filepath.Join(root, "web")
+	link := filepath.Join(root, "alias")
+	if err := os.Mkdir(web, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(web, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	t.Setenv("XBOARD_WEB_ROOT", web)
+	t.Setenv("XBOARD_NODE_RELEASE_ROOT", filepath.Join(link, "releases"))
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted symlink overlap")
+	}
+}

@@ -41,6 +41,7 @@ type Config struct {
 	TrustedProxyPrefixes       []netip.Prefix
 	CookieSecure               bool
 	NodeRelease                string
+	NodeReleaseRoot            string
 	BootstrapAdminEmail        string
 	BootstrapAdminPassword     string
 	SchedulerInterval          time.Duration
@@ -188,6 +189,7 @@ func Load() (Config, error) {
 		TrustedProxyPrefixes:       trustedProxyPrefixes,
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
+		NodeReleaseRoot:            strings.TrimSpace(os.Getenv("XBOARD_NODE_RELEASE_ROOT")),
 		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword:     bootstrapPassword,
 		SchedulerInterval:          interval,
@@ -248,6 +250,30 @@ func Load() (Config, error) {
 			(parsedFrontendOrigin.Scheme != "http" && parsedFrontendOrigin.Scheme != "https") || parsedFrontendOrigin.User != nil ||
 			parsedFrontendOrigin.Path != "" || parsedFrontendOrigin.RawPath != "" || parsedFrontendOrigin.RawQuery != "" || parsedFrontendOrigin.Fragment != "" {
 			return Config{}, errors.New("XBOARD_FRONTEND_ORIGIN must be an absolute http or https origin without credentials, path, query, or fragment")
+		}
+	}
+	if config.NodeReleaseRoot != "" {
+		if !filepath.IsAbs(config.NodeReleaseRoot) {
+			return Config{}, errors.New("XBOARD_NODE_RELEASE_ROOT must be an absolute path")
+		}
+		cleanReleaseRoot, err := resolveReleasePath(config.NodeReleaseRoot)
+		if err != nil {
+			return Config{}, fmt.Errorf("XBOARD_NODE_RELEASE_ROOT: %w", err)
+		}
+		for _, other := range []string{config.WebRoot, config.AttachmentRoot, config.AdminExportRoot} {
+			if other == "" {
+				continue
+			}
+			resolved, err := resolveReleasePath(other)
+			if err != nil {
+				return Config{}, err
+			}
+			if pathsOverlap(cleanReleaseRoot, resolved) {
+				return Config{}, errors.New("XBOARD_NODE_RELEASE_ROOT must be a dedicated immutable directory")
+			}
+		}
+		if cleanReleaseRoot == filepath.VolumeName(cleanReleaseRoot)+string(filepath.Separator) {
+			return Config{}, errors.New("XBOARD_NODE_RELEASE_ROOT must be a dedicated immutable directory")
 		}
 	}
 	if config.LegacyAppClashTemplateFile != "" && !filepath.IsAbs(config.LegacyAppClashTemplateFile) {
@@ -475,4 +501,33 @@ func parseInt64Env(name string, fallback int64) (int64, error) {
 		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
 	}
 	return parsed, nil
+}
+
+// Resolve existing ancestors too, so a not-yet-created release directory cannot
+// hide an overlap through a symlink in its parent path.
+func resolveReleasePath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	candidate := absolute
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return resolved, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return "", err
+		}
+		suffix = append(suffix, filepath.Base(candidate))
+		candidate = parent
+	}
 }

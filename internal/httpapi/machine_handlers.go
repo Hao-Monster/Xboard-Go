@@ -324,8 +324,8 @@ func machineEnrollmentResponse(machine store.Machine, enrollment store.Enrollmen
 
 func (s *server) installCommand(machineID int64, enrollmentCode string) string {
 	return fmt.Sprintf(
-		`(set -Eeuo pipefail; XBOARD_NODE_VERSION=%s; XBOARD_NODE_RELEASE_DIR="$(mktemp -d)"; trap 'unset XBOARD_NODE_RELEASE_TOKEN; rm -rf "$XBOARD_NODE_RELEASE_DIR"' EXIT; gh release download "$XBOARD_NODE_VERSION" -R Hao-Monster/Xboard-Node --pattern install.sh --pattern SHA256SUMS --dir "$XBOARD_NODE_RELEASE_DIR"; (cd "$XBOARD_NODE_RELEASE_DIR" && grep " install.sh$" SHA256SUMS | sha256sum -c -); XBOARD_NODE_RELEASE_TOKEN="$(gh auth token)"; export XBOARD_NODE_RELEASE_TOKEN; sudo --preserve-env=XBOARD_NODE_RELEASE_TOKEN bash "$XBOARD_NODE_RELEASE_DIR/install.sh" --version "$XBOARD_NODE_VERSION" --mode machine --panel %s --enrollment-code %s --machine-id %d)`,
-		shellQuote(s.nodeRelease), shellQuote(s.panelURL), shellQuote(enrollmentCode), machineID,
+		`(set -Eeuo pipefail; XBOARD_NODE_VERSION=%s; XBOARD_NODE_RELEASE_DIR="$(mktemp -d)"; trap 'rm -rf "$XBOARD_NODE_RELEASE_DIR"' EXIT; XBOARD_NODE_RELEASE_BASE=%s; curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 "$XBOARD_NODE_RELEASE_BASE/$XBOARD_NODE_VERSION/install.sh" -o "$XBOARD_NODE_RELEASE_DIR/install.sh"; curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 "$XBOARD_NODE_RELEASE_BASE/$XBOARD_NODE_VERSION/SHA256SUMS" -o "$XBOARD_NODE_RELEASE_DIR/SHA256SUMS"; (cd "$XBOARD_NODE_RELEASE_DIR" && grep " install.sh$" SHA256SUMS | sha256sum -c -); chmod 700 "$XBOARD_NODE_RELEASE_DIR/install.sh"; sudo bash "$XBOARD_NODE_RELEASE_DIR/install.sh" --version "$XBOARD_NODE_VERSION" --release-api-base "$XBOARD_NODE_RELEASE_BASE" --mode machine --panel %s --enrollment-code %s --machine-id %d)`,
+		shellQuote(s.nodeRelease), shellQuote(s.panelURL+"/api/v2/node/releases"), shellQuote(s.panelURL), shellQuote(enrollmentCode), machineID,
 	)
 }
 
