@@ -34,12 +34,12 @@
     {
       "id": "NREL-05",
       "task": "Merge the Go changes, build exact image and update internal-test panel by CI with backup and scoped rollback",
-      "status": "in_progress"
+      "status": "production_internal_deployed_development_retry_pending"
     },
     {
       "id": "NREL-06",
       "task": "Verify public metadata, installer checksum, generated command and preserved Remnawave services; leave node installation to user",
-      "status": "pending"
+      "status": "implemented_verified"
     }
   ],
   "non_goals": [
@@ -50,6 +50,18 @@
   ],
   "delivery_design": "Node private source remains in Node repository. Only verified CI release binaries and installer are mirrored to a public Go release for checksum-pinned Docker builds. The runtime serves its immutable bundled release; no GitHub token is injected into the panel or nodes.",
   "production_update": "CI-only image replacement of the existing Xboard container. Preserve Compose, volumes, credentials, Caddy route and other containers. Create and verify a database backup first; restore previous image/configuration on failed health or release probes.",
+  "runtime_delivery": {
+    "panel_pr": "https://github.com/Hao-Monster/Xboard-Go/pull/296",
+    "panel_commit": "664450ca8ca21d34df0bffa9192dab0221943aac",
+    "image_ci": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36900794128",
+    "image_ci_result": "success: fresh install, real installer download/checksum, failed candidate recovery, restart and non-overwrite",
+    "production_update": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36901124076",
+    "production_result": "success: backup verified, exact image running, public HTTPS health and all five artifact checksums verified; protected Remnawave containers unchanged",
+    "development_run": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36900814542",
+    "development_result": "failed before deployment: urllib connection closed then connection timeout; old deployment retained",
+    "development_fix": "CI-001 / issue 127: use bounded curl transport already working on the runner, retaining SHA256 and archive checks; rerun through protected main",
+    "node_installation": "not performed; user-owned"
+  },
   "node_delivery": {
     "pull_request": "https://github.com/Hao-Monster/Xboard-Node/pull/7",
     "merged_commit": "1812b91d2a36e91a5aca1cbf3466cfe578e90ad7",
