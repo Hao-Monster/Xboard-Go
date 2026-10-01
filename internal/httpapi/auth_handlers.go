@@ -521,6 +521,7 @@ func (s *server) exchangeEnrollment(w http.ResponseWriter, r *http.Request) {
 	}
 	credential, err := s.store.ExchangeEnrollmentWithCipher(r.Context(), input.MachineID, input.EnrollmentCode, s.now(), s.settingsCipher)
 	if errors.Is(err, store.ErrInvalidEnrollment) {
+		s.logger.WarnContext(r.Context(), "node.enrollment", "machine_id", input.MachineID, "outcome", "rejected")
 		s.enrollAttempts.failed(attemptKey, s.now())
 		writeAPIError(w, http.StatusUnauthorized, "invalid_enrollment", "接入码无效或已过期", nil)
 		return
@@ -529,6 +530,7 @@ func (s *server) exchangeEnrollment(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.InfoContext(r.Context(), "node.enrollment", "machine_id", input.MachineID, "outcome", "accepted")
 	s.enrollAttempts.reset(attemptKey)
 	if s.hub != nil {
 		s.hub.DisconnectMachine(input.MachineID, "machine credential changed")

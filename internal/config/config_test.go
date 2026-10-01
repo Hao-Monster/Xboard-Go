@@ -474,3 +474,27 @@ func TestLoadRejectsNodeReleaseRootSymlinkOverlap(t *testing.T) {
 		t.Fatal("accepted symlink overlap")
 	}
 }
+
+func TestLoadValidatesDiagnosticSettings(t *testing.T) {
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD", "")
+	t.Setenv("XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE", "")
+	t.Setenv("XBOARD_LOG_LEVEL", "debug")
+	t.Setenv("XBOARD_LOG_ENVIRONMENT", "production-internal-test")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != "debug" || cfg.Environment != "production-internal-test" {
+		t.Fatalf("invalid diagnostics settings")
+	}
+	t.Setenv("XBOARD_LOG_LEVEL", "verbose")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted invalid log level")
+	}
+	t.Setenv("XBOARD_LOG_LEVEL", "info")
+	t.Setenv("XBOARD_LOG_ENVIRONMENT", "https://SECRET-url")
+	if _, err := Load(); err == nil {
+		t.Fatal("accepted environment URL")
+	}
+}

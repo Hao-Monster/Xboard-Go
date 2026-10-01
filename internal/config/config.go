@@ -33,6 +33,8 @@ func generatedLegacyAdminPath() (string, error) {
 }
 
 type Config struct {
+	LogLevel                   string
+	Environment                string
 	Address                    string
 	DatabaseDSN                string
 	PanelURL                   string
@@ -182,6 +184,8 @@ func Load() (Config, error) {
 	}
 
 	config := Config{
+		LogLevel:                   strings.ToLower(envOrDefault("XBOARD_LOG_LEVEL", "info")),
+		Environment:                envOrDefault("XBOARD_LOG_ENVIRONMENT", "unspecified"),
 		Address:                    envOrDefault("XBOARD_ADDRESS", "127.0.0.1:8080"),
 		DatabaseDSN:                DatabaseDSN(),
 		PanelURL:                   panelURL,
@@ -251,6 +255,14 @@ func Load() (Config, error) {
 			parsedFrontendOrigin.Path != "" || parsedFrontendOrigin.RawPath != "" || parsedFrontendOrigin.RawQuery != "" || parsedFrontendOrigin.Fragment != "" {
 			return Config{}, errors.New("XBOARD_FRONTEND_ORIGIN must be an absolute http or https origin without credentials, path, query, or fragment")
 		}
+	}
+	switch config.LogLevel {
+	case "debug", "info", "warn", "error":
+	default:
+		return Config{}, errors.New("XBOARD_LOG_LEVEL must be debug, info, warn or error")
+	}
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`).MatchString(config.Environment) {
+		return Config{}, errors.New("XBOARD_LOG_ENVIRONMENT must be a short environment identifier")
 	}
 	if config.NodeReleaseRoot != "" {
 		if !filepath.IsAbs(config.NodeReleaseRoot) {

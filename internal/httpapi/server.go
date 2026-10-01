@@ -22,6 +22,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
+	"github.com/Hao-Monster/Xboard-Go/internal/observability"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/security"
@@ -127,6 +128,7 @@ type server struct {
 	allowedOrigins             map[string]struct{}
 	trustedProxyPrefixes       []netip.Prefix
 	logger                     *slog.Logger
+	diagnosticAdminPath        string
 	loginAttempts              *attemptLimiter
 	registrationRequests       *requestLimiter
 	passwordResetRequests      *requestLimiter
@@ -243,6 +245,7 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()
 	}
+	dependencies.Logger = slog.New(observability.SafeHandler(dependencies.Logger.Handler()))
 	if dependencies.RuntimeTracker == nil {
 		dependencies.RuntimeTracker = operations.NewTracker(dependencies.Now())
 	}
@@ -297,7 +300,8 @@ func New(dependencies Dependencies) http.Handler {
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,
 		trustedProxyPrefixes:       trustedProxyPrefixes,
-		logger:                     dependencies.Logger,
+		logger:                     slog.New(observability.SafeHandler(dependencies.Logger.Handler())),
+		diagnosticAdminPath:        dependencies.LegacyAdminPath,
 		loginAttempts:              newAttemptLimiter(100, time.Minute),
 		registrationRequests:       newRequestLimiter(20, 15*time.Minute),
 		passwordResetRequests:      newRequestLimiter(10, 15*time.Minute),
@@ -815,7 +819,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
-	handler := api.securityHeaders(api.recoverPanic(root))
+	handler := api.requestDiagnostics(api.securityHeaders(api.recoverPanic(root)))
 	if !dependencies.WebSocketEnabled && authTelemetryDone == nil {
 		return handler
 	}
@@ -1161,6 +1165,7 @@ func (s *server) auditLegacyAdminMailTemplateMutations(next http.Handler) http.H
 }
 
 func (s *server) recordAdminAudit(parent context.Context, session store.SessionUser, method, route string, statusCode int) {
+	s.logger.InfoContext(parent, "admin.mutation", "administrator_id", session.UserID, "method", safeMethod(method), "route", route, "status", statusCode)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 2*time.Second)
 	defer cancel()
 	if err := s.store.RecordAdminAudit(ctx, store.AdminAuditInput{
@@ -1358,7 +1363,7 @@ func (s *server) recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.logger.Error("panic serving request", "method", r.Method, "path", r.URL.Path)
+				recordDiagnosticError(w, recovered)
 				writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 			}
 		}()
@@ -1399,6 +1404,7 @@ func handleStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrInvalidInput):
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", err.Error(), nil)
 	default:
+		recordDiagnosticError(w, err)
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 	}
 }
@@ -1408,6 +1414,9 @@ func writeSuccess(w http.ResponseWriter, status int, data any) {
 }
 
 func writeAPIError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	if status >= 500 {
+		recordDiagnosticError(w, nil)
+	}
 	payload := map[string]any{"code": code, "message": message}
 	if len(fields) > 0 {
 		payload["fields"] = fields

@@ -330,10 +330,11 @@ func (s *server) webSocket(w http.ResponseWriter, r *http.Request) {
 		WriteBufferSize:  4 << 10,
 		CheckOrigin:      s.hub.originAllowed,
 	}
-	connection, err := upgrader.Upgrade(w, r, nil)
+	connection, err := upgrader.Upgrade(w, r, http.Header{"X-Request-ID": w.Header().Values("X-Request-ID")})
 	if err != nil {
 		return
 	}
+	s.logger.InfoContext(r.Context(), "node.websocket", "machine_id", machineID, "revision_number", settings.Revision, "outcome", "connected")
 	nodeIDs := make(map[int64]struct{}, len(snapshots))
 	for _, snapshot := range snapshots {
 		nodeIDs[snapshot.summary.ID] = struct{}{}
