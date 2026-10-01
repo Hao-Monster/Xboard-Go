@@ -95,7 +95,7 @@ func safeAttr(a slog.Attr) (slog.Attr, bool) {
 		}
 	}
 	switch a.Key {
-	case "status", "duration_ms", "bytes", "machine_id", "node_id", "administrator_id", "user_id", "job_id", "route_id", "knowledge_id", "payment_id", "revision_number", "count", "expired_uploads", "deleted_objects", "failed_objects", "limit", "expire", "traffic", "checked", "paid", "remaining", "cancelled", "completed", "processed":
+	case "status", "duration_ms", "bytes", "machine_id", "node_id", "administrator_id", "user_id", "job_id", "route_id", "knowledge_id", "payment_id", "revision_number", "count", "expired_uploads", "deleted_objects", "failed_objects", "limit", "expire", "traffic", "checked", "paid", "remaining", "cancelled", "completed", "processed", "connections", "active_connections", "peak_connections", "replacements":
 		switch a.Value.Kind() {
 		case slog.KindInt64, slog.KindUint64, slog.KindFloat64, slog.KindBool, slog.KindDuration:
 			return a, true

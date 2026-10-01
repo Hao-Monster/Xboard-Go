@@ -37,3 +37,23 @@ func TestLogLevelFiltersDebugEvents(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
+
+func TestWebSocketNumericDiagnosticsSurviveFiltering(t *testing.T) {
+	var out bytes.Buffer
+	logger := New(&out, slog.LevelInfo, "test", "fixture")
+	logger.Info("draining node websockets", "connections", 1, "active_connections", int64(1), "peak_connections", uint64(2), "replacements", int64(1))
+	var record map[string]any
+	if err := json.Unmarshal(out.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]float64{"connections": 1, "active_connections": 1, "peak_connections": 2, "replacements": 1} {
+		if record[key] != want {
+			t.Errorf("%s = %v, want %v", key, record[key], want)
+		}
+	}
+	out.Reset()
+	logger.Info("draining node websockets", "connections", "secret", "active_connections", "secret", "peak_connections", "secret", "replacements", "secret")
+	if strings.Contains(out.String(), "secret") {
+		t.Fatal("non-numeric diagnostics leaked")
+	}
+}

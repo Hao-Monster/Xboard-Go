@@ -91,6 +91,7 @@ def remap(source):
               'status', 'duration_ms', 'bytes', 'error_type', 'stack', 'machine_id', 'node_id',
               'administrator_id', 'user_id', 'job_id', 'route_id', 'knowledge_id', 'payment_id',
               'revision_number', 'count', 'outcome', 'config_revision', 'users_revision',
+              'connections', 'active_connections', 'peak_connections', 'replacements',
               'limit', 'expire', 'traffic', 'checked', 'paid', 'remaining', 'cancelled', 'completed', 'processed',
               'runtime_id', 'component', 'instance', 'report_correlation', 'retry', 'users_count',
               'added_count', 'removed_count', 'traffic_users_count', 'instances', 'version',
