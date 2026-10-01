@@ -41,7 +41,7 @@
     {
       "id": "IT-05",
       "title": "Targeted checks, local browser and Docker smoke, publish exact artifacts and existing-branch PR",
-      "status": "local_checks_passed_publication_pending"
+      "status": "completed"
     }
   ],
   "non_goals": [
@@ -56,7 +56,16 @@
     "Desktop and mobile Playwright control flows passed against real Go API",
     "Go endpoint and background-URL regression checks passed",
     "projectctl check and bash -n passed",
-    "Docker installation smoke runs in publisher CI before release publication"
+    "Docker installation smoke runs in publisher CI before release publication",
+    "Full store/httpapi packages: 1097 passed, 0 failed, 9 existing opt-in Redis/capacity tests skipped; exit 0",
+    "Publisher CI fresh installation, healthy startup, restart and non-overwrite checks passed; downloaded release checksums verified"
   ],
-  "deployment_policy": "CI publishes immutable internal-test Docker bundles. User runs one command on a fresh Linux amd64 server. Existing directories and volumes are never overwritten. No legacy data import."
+  "deployment_policy": "CI publishes immutable internal-test Docker bundles. User runs one command on a fresh Linux amd64 server. Existing directories and volumes are never overwritten. No legacy data import.",
+  "publication": {
+    "revision": "8544a12d6e6962d3165da999eb92cdd81ea350cf",
+    "workflow_run": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36824519773",
+    "release": "https://github.com/Hao-Monster/Xboard-Go/releases/tag/internal-8544a12d6e6962d3165da999eb92cdd81ea350cf",
+    "pull_request": "https://github.com/Hao-Monster/Xboard-Go/pull/291",
+    "business_acceptance": "user_owned_not_run"
+  }
 }
