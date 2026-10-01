@@ -44,6 +44,10 @@ func (h *safeHandler) Enabled(ctx context.Context, l slog.Level) bool { return h
 func (h *safeHandler) Handle(ctx context.Context, r slog.Record) error {
 	clean := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "error" {
+			clean.AddAttrs(ErrorAttrs(a.Value.Any())...)
+			return true
+		}
 		if a, ok := safeAttr(a); ok {
 			clean.AddAttrs(a)
 		}
@@ -62,6 +66,10 @@ func (h *safeHandler) Handle(ctx context.Context, r slog.Record) error {
 func (h *safeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	var safe []slog.Attr
 	for _, a := range attrs {
+		if a.Key == "error" {
+			safe = append(safe, ErrorAttrs(a.Value.Any())...)
+			continue
+		}
 		if a, ok := safeAttr(a); ok {
 			safe = append(safe, a)
 		}
@@ -81,7 +89,7 @@ func safeAttr(a slog.Attr) (slog.Attr, bool) {
 	// Allowlist metadata, never request/response content, addresses or arbitrary
 	// custom objects. Dropping unknown attributes makes new call sites fail closed.
 	switch a.Key {
-	case "service", "environment", "revision", "request_id", "method", "route", "error_type", "event", "outcome", "stack":
+	case "service", "environment", "revision", "request_id", "method", "route", "error_type", "error_class", "error_code", "network_op", "event", "outcome", "stack":
 		if a.Value.Kind() == slog.KindString {
 			return a, true
 		}

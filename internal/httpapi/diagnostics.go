@@ -77,7 +77,9 @@ func diagnosticFor(w http.ResponseWriter) *diagnosticWriter {
 func recordDiagnosticError(w http.ResponseWriter, err any) {
 	if d := diagnosticFor(w); d != nil && !d.errorLogged {
 		d.errorLogged = true
-		d.logger.ErrorContext(d.request.Context(), "http.error", "error_type", observability.ErrorType(err), "stack", safeStack(3))
+		attrs := observability.ErrorAttrs(err)
+		attrs = append(attrs, slog.String("stack", safeStack(3)))
+		d.logger.LogAttrs(d.request.Context(), slog.LevelError, "http.error", attrs...)
 	}
 }
 func safeStack(skip int) string {
