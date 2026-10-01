@@ -10,8 +10,8 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | --- | --- | ---: |
 | Scope | `decided` | 80 |
 | Scope | `blocked` | 0 |
-| Implementation | `implemented` | 77 |
-| Implementation | `partial` | 3 |
+| Implementation | `implemented` | 80 |
+| Implementation | `partial` | 0 |
 | Implementation | `blocked` | 0 |
 | Implementation | `not_started` | 0 |
 | Verification | `current` | 0 |
@@ -48,7 +48,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `AUTH-007` | M3 | decided | implemented | partial | — | `VER-001` |
 | `AUTH-008` | M3 | decided | implemented | partial | — | `VER-001` |
 | `AUTH-009` | M3 | decided | implemented | partial | — | `VER-001` |
-| `USER-001` | M1 | decided | partial | partial | `D-012` | `FUNC-002` |
+| `USER-001` | M1 | decided | implemented | partial | `D-012` | `FUNC-002` |
 | `USER-002` | M3 | decided | implemented | partial | — | `VER-001` |
 | `USER-003` | M1 | decided | implemented | historical | `D-012` | `FUNC-002` |
 | `PLAN-001` | M3 | decided | implemented | partial | — | `VER-001` |
@@ -69,7 +69,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `GIFT-001` | M3 | decided | implemented | partial | — | `VER-002` |
 | `GIFT-002` | M3 | decided | implemented | partial | — | `VER-002` |
 | `INV-001` | M3 | decided | implemented | partial | — | `VER-002` |
-| `FIN-001` | M1 | decided | partial | partial | `D-011` | `FUNC-001` |
+| `FIN-001` | M1 | decided | implemented | partial | `D-011` | `FUNC-001` |
 | `DIST-001` | M3 | decided | implemented | partial | — | `VER-002` |
 | `DIST-002` | M3 | decided | implemented | partial | — | `VER-002` |
 | `DIST-003` | M3 | decided | implemented | partial | — | `VER-002` |
@@ -117,7 +117,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `PLUG-002` | M3 | decided | implemented | partial | — | `VER-005` |
 | `THEME-001` | M3 | decided | implemented | partial | — | `VER-005` |
 | `OPS-001` | M3 | decided | implemented | partial | — | `VER-005` |
-| `OPS-002` | M2 | decided | partial | partial | `D-012`, `D-013` | `OPS-001`, `OPS-002`, `MIG-001` |
+| `OPS-002` | M2 | decided | implemented | partial | `D-012`, `D-013` | `OPS-001`, `OPS-002`, `MIG-001` |
 | `OPS-003` | M3 | decided | implemented | partial | — | `VER-005` |
 
 ## Work items
