@@ -36,17 +36,17 @@
     {
       "id": "PROD-02",
       "title": "实现受保护 main 手动首次部署流水线，严格主机校验和日志脱敏",
-      "status": "implemented_preflight_passed"
+      "status": "completed"
     },
     {
       "id": "PROD-03",
       "title": "在独立目录/Compose 项目/端口启动 CI 验证镜像，拒绝覆盖和冲突",
-      "status": "implemented_pending_execution"
+      "status": "completed"
     },
     {
       "id": "PROD-04",
       "title": "验证精确版本、访问入口与 Remnawave 容器未被重建重启",
-      "status": "implemented_pending_execution"
+      "status": "completed"
     }
   ],
   "pending_user_decision": null,
@@ -60,7 +60,8 @@
   "checks": [
     "Python input validation: 3 tests passed including subcases rejecting shell injection, wrong directory and subpath",
     "bash -n and projectctl check passed",
-    "Branch push performs read-only preflight only; installation requires manual protected-main dispatch"
+    "Branch push performs read-only preflight only; installation requires manual protected-main dispatch",
+    "5 Python tests passed including retained-config preservation/rejection; Bash syntax and projectctl passed; branch preflight 36890630623 and deployment 36890719306 succeeded."
   ],
   "credential_configuration": "Both existing SSH values transferred to Environment Secrets; corresponding plaintext Variables deleted and metadata verified. CI preflight 36890027422 passed after normalizing credential bytes to LF.",
   "authorization": "User approved credential transfer and CI/CD deployment on 2026-10-02. User approved port 8443 after standard 443 was found owned by the existing node.",
@@ -69,5 +70,16 @@
     "result": "rolled_back",
     "reason": "Existing node on 443 serves a different certificate. Dedicated Caddy port 8443 returned valid HTTPS health.",
     "recovery": "Reviewed resume mode only accepts the exact stopped Xboard installation, verified release Compose digest, and expected configuration; updates only public origin and starts Xboard."
+  },
+  "deployment_result": {
+    "status": "deployed_engineering_verified",
+    "run_url": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36890719306",
+    "workflow_revision": "ae664de7e7b02e3ffabd254ccb6fa898901babd2",
+    "application_revision": "d435262417fbe442b5d03fcd721a989ae80b3e06",
+    "public_origin": "https://fast.hjy.ca:8443",
+    "health": "healthy; HTTPS /healthz data.status=ok; homepage and JS/CSS assets returned 200",
+    "protected_services": "All five original container identities and start times unchanged across recovery, as asserted by CI",
+    "business_acceptance": "user_owned_not_run",
+    "rollback_evidence": "Initial 443 failure removed the marked route, detached only the Xboard network and stopped only Xboard. The approved 8443 recovery retained its data and credentials."
   }
 }
