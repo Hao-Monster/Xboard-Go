@@ -12,9 +12,16 @@ import urllib.request
 import uuid
 import configure
 
+MASKS = []
 
 def run(*args):
-    subprocess.run(args, check=True, stdout=subprocess.DEVNULL)
+    result = subprocess.run(args, capture_output=True, text=True)
+    if result.returncode:
+        output = result.stdout + result.stderr
+        for value in MASKS:
+            output = output.replace(value, '[REDACTED]')
+        print(output)
+        raise RuntimeError('Isolated container command failed with exit ' + str(result.returncode))
 
 
 def vector_options():
@@ -51,6 +58,7 @@ def main():
         root = Path(temp)
         configure.central(root, ['smoke'])
         state = json.loads((root / 'secrets.json').read_text())
+        MASKS.extend([state['viewer']['password'], *state['writers'].values()])
         writer = 'Bearer ' + state['writers']['smoke']
         viewer = 'Basic ' + base64.b64encode(('viewer:' + state['viewer']['password']).encode()).decode()
         compose = json.loads((root / 'compose.yaml').read_text())
