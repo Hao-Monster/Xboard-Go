@@ -18,6 +18,7 @@ func TestImportLegacyPlansIsVerifiedIdempotentAndPreservesRelations(t *testing.T
 	}
 	method, speed, capacity, devices := int64(1), int64(200), int64(0), int64(3)
 	plans := []LegacyPlan{{
+		CustomerVisibility: "selected", DistributorVisibility: "none", CustomerUserIDs: []int64{501, 502},
 		ID: 41, GroupID: &group.ID, TransferEnableGiB: 100, Name: "Legacy Pro", SpeedLimit: &speed,
 		Show: true, SortPosition: 7, Renew: false, Content: "legacy content", ResetTrafficMethod: &method,
 		CapacityLimit: &capacity, Prices: PlanPrices{"monthly": 123, "quarterly": 345}, Sell: true,
@@ -44,6 +45,10 @@ func TestImportLegacyPlansIsVerifiedIdempotentAndPreservesRelations(t *testing.T
 	imported, err := database.GetPlan(ctx, 41, now)
 	if err != nil || imported.Name != "Legacy Pro" || imported.DistributorHWIDLimit != 3 || imported.Prices["monthly"] != 123 || imported.GroupID == nil || *imported.GroupID != group.ID {
 		t.Fatalf("imported plan = %#v, err=%v", imported, err)
+	}
+	var recipients int
+	if err := database.db.QueryRowContext(ctx, `SELECT count(*) FROM plan_visibility_users WHERE plan_id=41 AND audience='customer' AND user_id IN (501,502)`).Scan(&recipients); err != nil || recipients != 2 || imported.CustomerVisibility != "selected" || imported.DistributorVisibility != "none" {
+		t.Fatalf("audience import incomplete: count=%d err=%v", recipients, err)
 	}
 	second, err := database.ImportLegacyPlans(ctx, input, now.Add(time.Minute))
 	if err != nil || !second.AlreadyApplied || second.AppliedAt != report.AppliedAt {

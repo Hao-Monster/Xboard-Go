@@ -54,6 +54,9 @@ func TestDistributorLegacyPurchaseRenewDeliveryAndAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := database.SavePlanVisibility(ctx, store.SavePlanVisibilityInput{PlanID: plan.ID, CustomerVisibility: "all", DistributorVisibility: "all", CustomerUserIDs: []int64{}, DistributorUserIDs: []int64{}}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	dealer := loginLegacyBearer(t, api, "dealer-api@example.test", "dealer-password-123")
 	created := bearerRequest(api, http.MethodPost, "/api/v1/user/order/save", dealer.Authorization,
 		fmt.Sprintf(`{"plan_id":%d,"period":"month_price"}`, plan.ID))
@@ -374,6 +377,9 @@ func TestLegacyAdministratorDistributorManagementRoutes(t *testing.T) {
 func TestModernDistributorPortalOrderLifecycle(t *testing.T) {
 	api, database := newTestAPI(t)
 	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 5_000, "quarterly": 14_000})
+	if err := database.SavePlanVisibility(t.Context(), store.SavePlanVisibilityInput{PlanID: plan.ID, CustomerVisibility: "all", DistributorVisibility: "all", CustomerUserIDs: []int64{}, DistributorUserIDs: []int64{}}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
 	admin := loginAdmin(t, api)
 	createdUser := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/users", `{
 		"email":"portal-dealer@example.test","password":"portal-dealer-password-123","group_id":null,
@@ -640,6 +646,13 @@ func createHTTPDistributorFixture(t *testing.T, database *store.Store) (store.Pl
 		t.Fatal(err)
 	}
 	distributor, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{Email: "direct-dealer@example.test", PasswordHash: "hash", IsDistributor: true, DistributorName: "直连渠道"}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SavePlanVisibility(ctx, store.SavePlanVisibilityInput{PlanID: plan.ID, CustomerVisibility: "all", DistributorVisibility: "all", CustomerUserIDs: []int64{}, DistributorUserIDs: []int64{}}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = database.GetPlan(ctx, plan.ID, fixedNow())
 	if err != nil {
 		t.Fatal(err)
 	}

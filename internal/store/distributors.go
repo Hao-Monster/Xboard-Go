@@ -61,6 +61,9 @@ func (s *Store) CreateDistributorOrder(ctx context.Context, input CreateDistribu
 	if err != nil {
 		return DistributorOrder{}, err
 	}
+	if err := requirePlanAudience(ctx, tx, plan.ID, input.DistributorUserID); err != nil {
+		return DistributorOrder{}, err
+	}
 	price, exists := plan.Prices[period]
 	if !exists || price <= 0 || !plan.Show || !plan.Sell {
 		return DistributorOrder{}, ErrPlanUnavailable

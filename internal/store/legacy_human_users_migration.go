@@ -29,41 +29,42 @@ const (
 )
 
 type LegacyHumanUser struct {
-	ID                int64   `json:"id"`
-	InviteUserID      *int64  `json:"invite_user_id"`
-	Email             string  `json:"email"`
-	PasswordHash      string  `json:"password_hash"`
-	Balance           int64   `json:"balance"`
-	Discount          *int    `json:"discount"`
-	CommissionType    int     `json:"commission_type"`
-	CommissionRate    *int    `json:"commission_rate"`
-	CommissionBalance int64   `json:"commission_balance"`
-	TransferEnable    int64   `json:"transfer_enable"`
-	TrafficUpload     int64   `json:"traffic_upload"`
-	TrafficDownload   int64   `json:"traffic_download"`
-	Banned            bool    `json:"banned"`
-	IsAdmin           bool    `json:"is_admin"`
-	IsStaff           bool    `json:"is_staff"`
-	IsDistributor     bool    `json:"is_distributor"`
-	DistributorName   *string `json:"distributor_name"`
-	LastLoginAt       *int64  `json:"last_login_at"`
-	UUID              string  `json:"uuid"`
-	GroupID           *int64  `json:"group_id"`
-	PlanID            *int64  `json:"plan_id"`
-	SpeedLimit        int     `json:"speed_limit"`
-	ExpiredAt         *int64  `json:"expired_at"`
-	DeviceLimit       int     `json:"device_limit"`
-	LastOnlineAt      *int64  `json:"last_online_at"`
-	NextResetAt       *int64  `json:"next_reset_at"`
-	LastResetAt       *int64  `json:"last_reset_at"`
-	ResetCount        int64   `json:"reset_count"`
-	TelegramID        *int64  `json:"telegram_id"`
-	RemindExpire      *bool   `json:"remind_expire"`
-	RemindTraffic     *bool   `json:"remind_traffic"`
-	Remarks           *string `json:"remarks"`
-	SubscriptionToken string  `json:"subscription_token"`
-	CreatedAt         int64   `json:"created_at"`
-	UpdatedAt         int64   `json:"updated_at"`
+	History           LegacyUserHistory `json:"history,omitempty"`
+	ID                int64             `json:"id"`
+	InviteUserID      *int64            `json:"invite_user_id"`
+	Email             string            `json:"email"`
+	PasswordHash      string            `json:"password_hash"`
+	Balance           int64             `json:"balance"`
+	Discount          *int              `json:"discount"`
+	CommissionType    int               `json:"commission_type"`
+	CommissionRate    *int              `json:"commission_rate"`
+	CommissionBalance int64             `json:"commission_balance"`
+	TransferEnable    int64             `json:"transfer_enable"`
+	TrafficUpload     int64             `json:"traffic_upload"`
+	TrafficDownload   int64             `json:"traffic_download"`
+	Banned            bool              `json:"banned"`
+	IsAdmin           bool              `json:"is_admin"`
+	IsStaff           bool              `json:"is_staff"`
+	IsDistributor     bool              `json:"is_distributor"`
+	DistributorName   *string           `json:"distributor_name"`
+	LastLoginAt       *int64            `json:"last_login_at"`
+	UUID              string            `json:"uuid"`
+	GroupID           *int64            `json:"group_id"`
+	PlanID            *int64            `json:"plan_id"`
+	SpeedLimit        int               `json:"speed_limit"`
+	ExpiredAt         *int64            `json:"expired_at"`
+	DeviceLimit       int               `json:"device_limit"`
+	LastOnlineAt      *int64            `json:"last_online_at"`
+	NextResetAt       *int64            `json:"next_reset_at"`
+	LastResetAt       *int64            `json:"last_reset_at"`
+	ResetCount        int64             `json:"reset_count"`
+	TelegramID        *int64            `json:"telegram_id"`
+	RemindExpire      *bool             `json:"remind_expire"`
+	RemindTraffic     *bool             `json:"remind_traffic"`
+	Remarks           *string           `json:"remarks"`
+	SubscriptionToken string            `json:"subscription_token"`
+	CreatedAt         int64             `json:"created_at"`
+	UpdatedAt         int64             `json:"updated_at"`
 }
 
 type LegacyHumanUsersImport struct {
@@ -162,6 +163,22 @@ func LegacyHumanUsersChecksum(users []LegacyHumanUser) string {
 			canonical.writeLegacyReminder(user.RemindExpire)
 			canonical.writeLegacyReminder(user.RemindTraffic)
 			canonical.writeStringPointer(user.Remarks)
+		}
+	}
+	historyExtended := false
+	for _, user := range ordered {
+		if !user.History.Empty() {
+			historyExtended = true
+			break
+		}
+	}
+	if historyExtended {
+		canonical.writeString("history-v1")
+		for _, user := range ordered {
+			canonical.writeInt64(user.ID)
+			canonical.writeInt64(user.History.LegacyTime)
+			canonical.writeString(user.History.LastLoginIP)
+			canonical.writeInt64(user.History.OnlineCount)
 		}
 	}
 	return canonical.sum()
@@ -288,7 +305,7 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		address, emailErr := mail.ParseAddress(user.Email)
 		if user.ID < 1 || user.Email == "" || len(user.Email) > 320 || normalizeEmail(user.Email) != user.Email ||
 			!utf8.ValidString(user.Email) || emailErr != nil || address.Address != user.Email ||
-			!security.IsLegacyBcryptHash(user.PasswordHash) || user.TransferEnable < 0 ||
+			!security.IsImportedPasswordHash(user.PasswordHash) || !user.History.Valid() || user.TransferEnable < 0 ||
 			user.Balance < 0 || user.Balance > maxOrderMoneyCents || user.CommissionBalance < 0 || user.CommissionBalance > maxOrderMoneyCents ||
 			user.Discount != nil && (*user.Discount < 0 || *user.Discount > 100) ||
 			user.CommissionType < 0 || user.CommissionType > 2 || user.CommissionRate != nil && (*user.CommissionRate < 0 || *user.CommissionRate > 100) ||
@@ -337,7 +354,7 @@ func ValidateLegacyHumanUsersData(users []LegacyHumanUser) error {
 		if user.IsAdmin && !user.Banned {
 			activeAdmins++
 		}
-		totalBytes += int64(len(user.Email) + len(user.PasswordHash) + len(user.UUID) + len(user.SubscriptionToken))
+		totalBytes += int64(len(user.Email) + len(user.PasswordHash) + len(user.UUID) + len(user.SubscriptionToken) + len(user.History.LastLoginIP))
 		if user.DistributorName != nil {
 			totalBytes += int64(len(*user.DistributorName))
 		}
@@ -492,6 +509,9 @@ func (s *Store) ImportLegacyHumanUsers(ctx context.Context, input LegacyHumanUse
 			user.ResetCount, nullableInt64Value(user.TelegramID), legacyReminderValue(user.RemindExpire), legacyReminderValue(user.RemindTraffic),
 			nullableStringValue(user.Remarks), user.SubscriptionToken, user.CreatedAt, user.UpdatedAt); err != nil {
 			return LegacyHumanUsersImportReport{}, fmt.Errorf("import legacy human user id %d: %w", user.ID, err)
+		}
+		if err := importLegacyUserHistory(ctx, tx, user); err != nil {
+			return LegacyHumanUsersImportReport{}, err
 		}
 	}
 	for _, user := range input.Users {
@@ -751,6 +771,12 @@ func readLegacyTargetHumanUsers(ctx context.Context, database queryer) (int, str
 	}
 	if err := rows.Err(); err != nil {
 		return 0, "", fmt.Errorf("iterate imported legacy human users: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, "", err
+	}
+	if err := readLegacyUserHistory(ctx, database, users); err != nil {
+		return 0, "", err
 	}
 	return count, LegacyHumanUsersChecksum(users), nil
 }

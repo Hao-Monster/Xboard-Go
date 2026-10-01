@@ -133,7 +133,7 @@ func (s *server) completePasswordLogin(w http.ResponseWriter, r *http.Request, a
 	user := attempt.user
 	for retry := 0; retry < 2; retry++ {
 		replacementHash := user.PasswordHash
-		if security.IsLegacyBcryptHash(user.PasswordHash) {
+		if security.NeedsPasswordUpgrade(user.PasswordHash) {
 			var err error
 			replacementHash, err = s.passwordHasher.Hash(attempt.password)
 			if err != nil {

@@ -1,0 +1,204 @@
+{
+  "as_of": "2026-10-01",
+  "branch": "codex/ci-001-tiered-gates",
+  "baseline_commit": "3af4a76cf37063b716c643918e1b7a94669dc197",
+  "scope": "补齐后端盘点B01-B04代码缺口；业务验收及验收证据由用户负责",
+  "tasks": [
+    {
+      "id": "BACK-B01",
+      "finding": "B01",
+      "requirement_ids": [
+        "PLAN-001",
+        "ORD-001",
+        "DIST-001"
+      ],
+      "work_item_ids": [
+        "VER-001",
+        "VER-002",
+        "MIG-001"
+      ],
+      "issues": [
+        119,
+        120,
+        118
+      ],
+      "milestones": [
+        "M3",
+        "M2"
+      ],
+      "status": "implemented",
+      "deliverables": [
+        "受众权限schema与管理员配置/搜索接口",
+        "游客/普通用户/分销列表及新购授权；保留PHP续费例外",
+        "旧套餐权限与指定用户迁移",
+        "针对性授权与迁移测试"
+      ],
+      "business_acceptance": "user_owned_not_run",
+      "code_review": "completed"
+    },
+    {
+      "id": "BACK-B02",
+      "finding": "B02",
+      "requirement_ids": [
+        "USER-002",
+        "OPS-003"
+      ],
+      "work_item_ids": [
+        "VER-001",
+        "VER-005"
+      ],
+      "issues": [
+        119,
+        123
+      ],
+      "milestones": [
+        "M3"
+      ],
+      "status": "implemented",
+      "deliverables": [
+        "全局流量重置日志、类型/来源/用户/日期过滤",
+        "统计与旧接口响应兼容",
+        "管理员权限和边界检查"
+      ],
+      "business_acceptance": "user_owned_not_run",
+      "code_review": "completed"
+    },
+    {
+      "id": "BACK-B03",
+      "finding": "B03",
+      "requirement_ids": [
+        "AUTH-001",
+        "OPS-002"
+      ],
+      "work_item_ids": [
+        "MIG-001"
+      ],
+      "issues": [
+        118
+      ],
+      "milestones": [
+        "M2"
+      ],
+      "status": "implemented",
+      "deliverables": [
+        "按PHP支持范围适配旧密码并在成功登录时升级",
+        "保存旧用户历史字段而不恢复陈旧在线状态",
+        "迁移校验、重放/对账兼容与针对性测试"
+      ],
+      "business_acceptance": "user_owned_not_run",
+      "code_review": "completed"
+    },
+    {
+      "id": "BACK-B04",
+      "finding": "B04",
+      "requirement_ids": [
+        "CFG-001",
+        "PLUG-002"
+      ],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "issues": [
+        123
+      ],
+      "milestones": [
+        "M3"
+      ],
+      "status": "classified_no_additional_implementation",
+      "deliverables": [
+        "核对Stripe历史入口、Horizon替代、批准插件例外",
+        "将确需补齐的代码纳入任务；说明已替代或明确不支持的接口"
+      ],
+      "business_acceptance": "user_owned_not_run",
+      "classifications": [
+        {
+          "surface": "POST user/comm/getStripePublicKey",
+          "decision": "legacy_unused_in_current_supported_payment_scope",
+          "evidence": [
+            "PHP app/Http/Controllers/V1/User/CommController.php queries StripeCredit only",
+            "PHP plugins-core has no StripeCredit implementation",
+            "Go internal/payment supports six current built-in payment providers",
+            "web/src has no getStripePublicKey call"
+          ],
+          "boundary": "No Stripe provider is added. Migrating a custom external Stripe plugin remains outside this audit."
+        },
+        {
+          "surface": "Laravel Horizon queue and failed-job endpoints",
+          "decision": "replaced",
+          "evidence": [
+            "internal/httpapi/system_operations_handlers.go",
+            "internal/httpapi/server.go GET /api/v1/admin/system/status and /system/mail-failures",
+            "web/src/lib/api.ts",
+            "web/src/features/system/SystemOperationsPage.tsx"
+          ],
+          "boundary": "Go scheduler, mail and Telegram queues use Go status endpoints. PHP serialized failed jobs are not executable Go inputs."
+        },
+        {
+          "surface": "Arbitrary PHP plugins, failed job payloads, deletion and withdrawals",
+          "decision": "preserve_approved_exceptions",
+          "evidence": [
+            "docs/project/compatibility-exceptions.json CE-002 CE-003 CE-008 CE-009"
+          ],
+          "boundary": "Do not restore PHP execution, replay raw payloads, or undo approved lifecycle/accounting semantics."
+        }
+      ]
+    }
+  ],
+  "non_goals": [
+    "不新增开发分支",
+    "不修改已一致的前端页面",
+    "不开发未经确认的税费等新业务规则",
+    "不替用户执行业务验收或真实数据迁移",
+    "不修改PHP项目",
+    "不混入Dependabot更新"
+  ],
+  "schema_version": 66,
+  "implementation_notes": [
+    "Existing plans upgrade with all/all visibility; new plans use all/none; normal and distributor existing renewals preserve PHP exceptions.",
+    "Legacy audience membership imports before users; current authenticated role is enforced on purchase.",
+    "Imported t, last_login_ip and online_count are separate historical metadata; anonymization removes it.",
+    "Only recognized bounded password formats are imported; imported digest and bcrypt credentials upgrade to Argon2id after successful authentication. Unknown/malformed hashes fail explicitly.",
+    "New traffic reset records snapshot reset_method. Older records without a snapshot retain the existing plan/system fallback; their original method cannot be reconstructed exactly.",
+    "This ledger closes the confirmed B01-B04 audit scope, not an exhaustive certification of every PHP business behavior.",
+    "Audience migration enforces a total cap of 1,000,000 membership rows, in addition to 5,000 per audience per plan, to bound memory."
+  ],
+  "code_checks": {
+    "environment": "Windows / Go / disposable SQLite fixtures; no production or business acceptance",
+    "targeted_tests": {
+      "result": "PASS",
+      "command": "go test -json -p 1 ./internal/store ./internal/legacymigration ./internal/security ./internal/backup -run 'Test(SchemaV66|PlanAudience|AnonymizationClears|GlobalTrafficReset|ImportLegacy|ReadPlans|ReadHumanUsers|ResetAdminUserTraffic|.*TrafficReset|.*LegacyPassword|.*ImportedPassword|.*Backup)' -count=1",
+      "passed_including_subtests": 153,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0
+    },
+    "httpapi_suite": {
+      "result": "PASS",
+      "command": "go test -json -p 1 ./internal/httpapi",
+      "passed_including_subtests": 346,
+      "failed": 0,
+      "skipped": 9,
+      "exit_code": 0,
+      "seconds": 36.1
+    },
+    "existing_failure": {
+      "test": "TestLegacyConfigurationCompatibilityPartialWritesAreAtomic",
+      "reason": "Test expects external background URL rejection, but baseline allows it. Reproduced from git archive of baseline_commit; unchanged by backend reconstruction.",
+      "baseline_exit_code": 1,
+      "not_fixed": "Unrelated frontend configuration contract; preserve current frontend scope."
+    },
+    "scope_limits": [
+      "No race, external service, browser, production migration or business acceptance run.",
+      "Coverage percentages not collected.",
+      "Environment-dependent existing skipped tests are not counted as passes."
+    ],
+    "review": [
+      "Server-side audience enforcement and renewal exceptions",
+      "Atomic audience saves and rollback on invalid role",
+      "Migration checksum/replay compatibility and bounded recipient count",
+      "No imported historical IP exposed through public APIs; anonymization deletes history",
+      "Credential upgrade only after authenticated login; malformed hashes rejected",
+      "Only task-related code; existing docs/HANDOVER.md preserved"
+    ]
+  }
+}

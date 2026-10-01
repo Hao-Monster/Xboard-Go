@@ -118,10 +118,10 @@ func (s *Store) ResetAdminUserTraffic(ctx context.Context, input AdminUserTraffi
 		INSERT INTO traffic_reset_logs (
 			user_id, plan_id, scheduled_for, reset_at, upload_before, download_before,
 			upload_after, download_after, reset_count, trigger_source, reason,
-			administrator_id, administrator_email, idempotency_key
-		) VALUES (?, ?, NULL, ?, ?, ?, 0, 0, ?, 'manual', ?, ?, ?, ?)
+			administrator_id, administrator_email, idempotency_key, reset_method
+		) VALUES (?, ?, NULL, ?, ?, ?, 0, 0, ?, 'manual', ?, ?, ?, ?, ?)
 	`, normalized.UserID, planID.Int64, now.Unix(), result.UploadBefore, result.DownloadBefore,
-		result.ResetCount, reason, normalized.AdministratorID, administratorEmail, normalized.IdempotencyKey); err != nil {
+		result.ResetCount, reason, normalized.AdministratorID, administratorEmail, normalized.IdempotencyKey, result.ResetMethod); err != nil {
 		return AdminUserTrafficResetResult{}, fmt.Errorf("record administrator user traffic reset: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

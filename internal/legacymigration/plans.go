@@ -171,6 +171,12 @@ func readLegacyPlans(ctx context.Context, database *sql.DB) ([]store.LegacyPlan,
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate legacy plans: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := readPlanAudienceSnapshot(ctx, database, result); err != nil {
+		return nil, err
+	}
 	if err := store.ValidateLegacyPlansData(result); err != nil {
 		return nil, fmt.Errorf("validate legacy plans: %w", err)
 	}

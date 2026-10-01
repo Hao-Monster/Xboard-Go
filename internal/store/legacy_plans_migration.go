@@ -16,27 +16,33 @@ import (
 const (
 	LegacyPlansSlice = "plans-v1"
 	maxLegacyPlans   = 10_000
+	// Bound migration memory independently of the number of plans.
+	MaxLegacyPlanAudienceMembers = 1_000_000
 )
 
 type LegacyPlan struct {
-	ID                   int64      `json:"id"`
-	GroupID              *int64     `json:"group_id"`
-	TransferEnableGiB    int64      `json:"transfer_enable"`
-	Name                 string     `json:"name"`
-	SpeedLimit           *int64     `json:"speed_limit"`
-	Show                 bool       `json:"show"`
-	SortPosition         int        `json:"sort"`
-	Renew                bool       `json:"renew"`
-	Content              string     `json:"content"`
-	ResetTrafficMethod   *int64     `json:"reset_traffic_method"`
-	CapacityLimit        *int64     `json:"capacity_limit"`
-	Prices               PlanPrices `json:"prices"`
-	Sell                 bool       `json:"sell"`
-	DeviceLimit          *int64     `json:"device_limit"`
-	Tags                 []string   `json:"tags"`
-	CreatedAt            int64      `json:"created_at"`
-	UpdatedAt            int64      `json:"updated_at"`
-	DistributorHWIDLimit int        `json:"distributor_hwid_limit,omitempty"`
+	CustomerVisibility    string     `json:"customer_visibility,omitempty"`
+	DistributorVisibility string     `json:"distributor_visibility,omitempty"`
+	CustomerUserIDs       []int64    `json:"customer_user_ids,omitempty"`
+	DistributorUserIDs    []int64    `json:"distributor_user_ids,omitempty"`
+	ID                    int64      `json:"id"`
+	GroupID               *int64     `json:"group_id"`
+	TransferEnableGiB     int64      `json:"transfer_enable"`
+	Name                  string     `json:"name"`
+	SpeedLimit            *int64     `json:"speed_limit"`
+	Show                  bool       `json:"show"`
+	SortPosition          int        `json:"sort"`
+	Renew                 bool       `json:"renew"`
+	Content               string     `json:"content"`
+	ResetTrafficMethod    *int64     `json:"reset_traffic_method"`
+	CapacityLimit         *int64     `json:"capacity_limit"`
+	Prices                PlanPrices `json:"prices"`
+	Sell                  bool       `json:"sell"`
+	DeviceLimit           *int64     `json:"device_limit"`
+	Tags                  []string   `json:"tags"`
+	CreatedAt             int64      `json:"created_at"`
+	UpdatedAt             int64      `json:"updated_at"`
+	DistributorHWIDLimit  int        `json:"distributor_hwid_limit,omitempty"`
 }
 
 type LegacyPlansImport struct {
@@ -67,6 +73,18 @@ func LegacyPlansChecksum(plans []LegacyPlan) string {
 	ordered := append([]LegacyPlan(nil), plans...)
 	// Omitted/default-one values retain the historical plans-v1 checksum.
 	for index := range ordered {
+		if ordered[index].CustomerVisibility == "all" {
+			ordered[index].CustomerVisibility = ""
+		}
+		if ordered[index].DistributorVisibility == "all" {
+			ordered[index].DistributorVisibility = ""
+		}
+		ordered[index].CustomerUserIDs = append([]int64(nil), ordered[index].CustomerUserIDs...)
+		ordered[index].DistributorUserIDs = append([]int64(nil), ordered[index].DistributorUserIDs...)
+		sort.Slice(ordered[index].CustomerUserIDs, func(i, j int) bool { return ordered[index].CustomerUserIDs[i] < ordered[index].CustomerUserIDs[j] })
+		sort.Slice(ordered[index].DistributorUserIDs, func(i, j int) bool {
+			return ordered[index].DistributorUserIDs[i] < ordered[index].DistributorUserIDs[j]
+		})
 		if ordered[index].DistributorHWIDLimit == 1 {
 			ordered[index].DistributorHWIDLimit = 0
 		}
@@ -88,8 +106,16 @@ func ValidateLegacyPlansData(plans []LegacyPlan) error {
 	if len(plans) > maxLegacyPlans {
 		return fmt.Errorf("%w: legacy plans exceed the %d-row migration limit", ErrInvalidInput, maxLegacyPlans)
 	}
+	members := 0
 	ids := make(map[int64]struct{}, len(plans))
 	for _, plan := range plans {
+		members += len(plan.CustomerUserIDs) + len(plan.DistributorUserIDs)
+		if members > MaxLegacyPlanAudienceMembers {
+			return fmt.Errorf("%w: legacy plan recipient total exceeds migration limit", ErrInvalidInput)
+		}
+		if err := validatePlanVisibilityInput(legacyPlanVisibilityInput(plan)); err != nil {
+			return fmt.Errorf("invalid legacy plan visibility: %w", err)
+		}
 		if plan.ID < 1 || plan.TransferEnableGiB < 1 || plan.TransferEnableGiB > maxPlanTransferGiB ||
 			plan.Name == "" || !utf8.ValidString(plan.Name) || utf8.RuneCountInString(plan.Name) > maxPlanNameRunes ||
 			strings.IndexFunc(plan.Name, unicode.IsControl) >= 0 || !utf8.ValidString(plan.Content) ||
@@ -224,6 +250,9 @@ func (s *Store) ImportLegacyPlans(ctx context.Context, input LegacyPlansImport, 
 			nullableInt64Value(plan.DeviceLimit), string(tags), plan.CreatedAt, plan.UpdatedAt, max(1, plan.DistributorHWIDLimit)); err != nil {
 			return LegacyPlansImportReport{}, fmt.Errorf("import legacy plan id %d: %w", plan.ID, err)
 		}
+		if err := importLegacyPlanVisibility(ctx, tx, plan); err != nil {
+			return LegacyPlansImportReport{}, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE app_settings SET traffic_reset_method = ?, revision = revision + 1, updated_at = ? WHERE id = 1
@@ -337,6 +366,12 @@ func readLegacyTargetPlans(ctx context.Context, database queryer) ([]LegacyPlan,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate imported legacy plans: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := readTargetPlanAudience(ctx, database, plans); err != nil {
+		return nil, err
 	}
 	return plans, nil
 }
