@@ -62,13 +62,15 @@ func (s *server) nodeReleaseMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	checksumInfo, err := release.Lstat("SHA256SUMS")
-	if err != nil || !checksumInfo.Mode().IsRegular() || checksumInfo.Mode()&os.ModeSymlink != 0 {
+	if err != nil || !checksumInfo.Mode().IsRegular() || checksumInfo.Mode()&os.ModeSymlink != 0 || checksumInfo.Size() <= 0 {
 		http.Error(w, "invalid release checksums", http.StatusInternalServerError)
 		return
 	}
 	type asset struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
+		Name  string `json:"name"`
+		URL   string `json:"url"`
+		Size  int64  `json:"size"`
+		State string `json:"state"`
 	}
 	assets := make([]asset, 0, len(source.Artifacts)+1)
 	for _, item := range source.Artifacts {
@@ -76,9 +78,14 @@ func (s *server) nodeReleaseMetadata(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid release artifact", http.StatusInternalServerError)
 			return
 		}
-		assets = append(assets, asset{Name: item.Name, URL: s.panelURL + "/api/v2/node/releases/" + version + "/" + item.Name})
+		info, err := release.Lstat(item.Name)
+		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+			http.Error(w, "invalid release artifact", http.StatusInternalServerError)
+			return
+		}
+		assets = append(assets, asset{Name: item.Name, Size: info.Size(), State: "uploaded", URL: s.panelURL + "/api/v2/node/releases/" + version + "/" + item.Name})
 	}
-	assets = append(assets, asset{Name: "SHA256SUMS", URL: s.panelURL + "/api/v2/node/releases/" + version + "/SHA256SUMS"})
+	assets = append(assets, asset{Name: "SHA256SUMS", Size: checksumInfo.Size(), State: "uploaded", URL: s.panelURL + "/api/v2/node/releases/" + version + "/SHA256SUMS"})
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": version, "draft": false, "assets": assets})

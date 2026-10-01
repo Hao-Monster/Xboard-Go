@@ -79,8 +79,10 @@ func TestNodeReleaseManifestAndArtifactAreServedFromConfiguredRoot(t *testing.T)
 	var metadata struct {
 		TagName string `json:"tag_name"`
 		Assets  []struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
+			Name  string `json:"name"`
+			URL   string `json:"url"`
+			Size  int64  `json:"size"`
+			State string `json:"state"`
 		} `json:"assets"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &metadata); err != nil {
@@ -88,6 +90,15 @@ func TestNodeReleaseManifestAndArtifactAreServedFromConfiguredRoot(t *testing.T)
 	}
 	if metadata.TagName != "v1.14.3-test" || len(metadata.Assets) != 2 || metadata.Assets[0].URL != "https://panel.example.test/api/v2/node/releases/v1.14.3-test/install.sh" || metadata.Assets[1].Name != "SHA256SUMS" {
 		t.Fatalf("unexpected metadata: %+v", metadata)
+	}
+	for _, asset := range metadata.Assets {
+		info, err := os.Stat(filepath.Join(versionDir, asset.Name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if asset.Size != info.Size() || asset.State != "uploaded" {
+			t.Fatalf("incomplete asset metadata: %+v", asset)
+		}
 	}
 	if response.Header().Get("Cache-Control") != "public, max-age=60" {
 		t.Fatalf("metadata cache-control = %q", response.Header().Get("Cache-Control"))
@@ -244,6 +255,56 @@ func TestMachineInstallCommandUsesPanelReleaseSource(t *testing.T) {
 	for _, required := range []string{"https://panel.example.test:8443/api/v2/node/releases", "--release-api-base", "sha256sum -c -", "--machine-id 42", shellQuote("fixture'enrollment"), "--proto '=https'"} {
 		if !strings.Contains(command, required) {
 			t.Fatalf("missing %s", required)
+		}
+	}
+}
+
+func TestNodeReleaseMetadataRejectsUnavailableArtifacts(t *testing.T) {
+	for _, filename := range []string{"install.sh", "SHA256SUMS"} {
+		for _, kind := range []string{"missing", "empty", "directory", "symlink"} {
+			t.Run(filename+"/"+kind, func(t *testing.T) {
+				root := t.TempDir()
+				dir := filepath.Join(root, "v1")
+				if err := os.Mkdir(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				for name, data := range map[string]string{"manifest.json": `{"version":"v1","artifacts":[{"name":"install.sh"}]}`, "install.sh": "installer", "SHA256SUMS": "checksum"} {
+					if name == filename {
+						continue
+					}
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				path := filepath.Join(dir, filename)
+				switch kind {
+				case "empty":
+					if err := os.WriteFile(path, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "directory":
+					if err := os.Mkdir(path, 0700); err != nil {
+						t.Fatal(err)
+					}
+				case "symlink":
+					target := filepath.Join(root, "outside")
+					if err := os.WriteFile(target, []byte("outside"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(target, path); err != nil {
+						t.Skipf("symlinks unavailable: %v", err)
+					}
+				}
+				api, _ := newTestAPIWithAllOptionsAndModifier(t, nil, true, nil, nil, false, nil, nil, func(d *Dependencies) { d.NodeReleaseRoot = root })
+				w := httptest.NewRecorder()
+				api.ServeHTTP(w, httptest.NewRequest("GET", "/api/v2/node/releases/v1", nil))
+				if w.Code != http.StatusInternalServerError {
+					t.Fatalf("incomplete release status = %d, body = %s", w.Code, w.Body)
+				}
+				if strings.Contains(w.Body.String(), `"assets"`) {
+					t.Fatal("partially available release advertised")
+				}
+			})
 		}
 	}
 }
