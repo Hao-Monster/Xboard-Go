@@ -22,9 +22,9 @@
   },
   "findings": [
     "Docker 29.8.0 / Compose v5.5.1 / Linux amd64 可用，部署目录不存在",
-    "my2.thinderbox.uk 已是 Remnawave 反向代理域名，等待用户选择独立入口",
+    "用户确认独立入口 fast.hjy.ca，保留 Remnawave 的 my2.thinderbox.uk",
     "80/8443 由现有 Caddy 占用，443 由 rw-core 占用；不接管这些监听",
-    "凭据按用户现有 Variables 存储使用，禁止在 workflow env/with/run 插值中展开私钥，避免步骤日志泄漏",
+    "SSH credentials are consumed exclusively through masked Environment Secrets.",
     "独立后台管理路径不等于完整子路径部署；当前安装器不接受带路径的 PANEL_URL，同域名需要先完成完整子路径兼容，不能覆盖现有 Remnawave 路由。"
   ],
   "tasks": [
@@ -36,7 +36,7 @@
     {
       "id": "PROD-02",
       "title": "实现受保护 main 手动首次部署流水线，严格主机校验和日志脱敏",
-      "status": "implemented_waiting_credential_configuration"
+      "status": "implemented_pending_preflight"
     },
     {
       "id": "PROD-03",
@@ -49,7 +49,7 @@
       "status": "implemented_pending_execution"
     }
   ],
-  "pending_user_decision": "是否允许自动将现有两个 SSH Variables 转存为 Secrets",
+  "pending_user_decision": null,
   "non_goals": [
     "不修改 Remnawave 数据、容器、网络和现有路由",
     "不迁移旧数据",
@@ -62,5 +62,6 @@
     "bash -n and projectctl check passed",
     "Branch push performs read-only preflight only; installation requires manual protected-main dispatch"
   ],
-  "credential_configuration": "Variables API read failed with HTTP 403 in run 36887590467. Prepared Environment Secrets support; transferring existing SSH values requires the user response to the pending question. No private key was printed."
+  "credential_configuration": "Both existing SSH values transferred to Environment Secrets; corresponding plaintext Variables deleted and metadata verified.",
+  "authorization": "User approved credential transfer and CI/CD deployment on 2026-10-02."
 }
