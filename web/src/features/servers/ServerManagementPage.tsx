@@ -13,6 +13,10 @@ interface Props {
   onNavigateNodes?: (id: number, create: boolean) => void;
 }
 
+function MachineSortIcon() {
+  return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m3 7 4-4 4 4M7 3v18m6-4 4 4 4-4M17 21V3" /></svg>;
+}
+
 export function ServerManagementPage({ api, onNavigateNodes }: Props) {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +110,7 @@ export function ServerManagementPage({ api, onNavigateNodes }: Props) {
       <p className="muted machine-hint">{translateAdmin("适合集中查看服务器在线情况、承载节点数量与资源压力。")}</p>
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="machine-table-scroll"><table className="machine-table" aria-label="服务器列表">
-        <thead><tr><th><button onClick={() => sort("name")}>服务器名称 ↕</button></th><th><button onClick={() => sort("status")}>状态 ↕</button></th><th>{translateAdmin("负载")}</th><th>{translateAdmin("节点数")}</th><th><button onClick={() => sort("heartbeat")}>最后心跳 ↕</button></th><th>{translateAdmin("操作")}</th></tr></thead>
+        <thead><tr><th aria-sort={sortBy === "name" ? descending ? "descending" : "ascending" : "none"}><button onClick={() => sort("name")}>{translateAdmin("服务器名称")}<MachineSortIcon /></button></th><th aria-sort={sortBy === "status" ? descending ? "descending" : "ascending" : "none"}><button onClick={() => sort("status")}>{translateAdmin("状态")}<MachineSortIcon /></button></th><th>{translateAdmin("负载")}</th><th>{translateAdmin("节点数")}</th><th aria-sort={sortBy === "heartbeat" ? descending ? "descending" : "ascending" : "none"}><button onClick={() => sort("heartbeat")}>{translateAdmin("最后心跳")}<MachineSortIcon /></button></th><th>{translateAdmin("操作")}</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={6}>正在加载服务器…</td></tr> : filteredMachines.length === 0 ? <tr><td colSpan={6}>暂无服务器</td></tr> : filteredMachines.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(machine => <tr className="machine-row" key={machine.id}>
           <td><div className="machine-name"><MachineIcon kind="server" /><strong>{machine.name}</strong><span className="badge">SID: {machine.id}</span></div><div className="machine-subline"><StatusBadge machine={machine} observedAt={observedAt} /> • 最后心跳：{relativeTime(machine.last_seen_at, observedAt)} • 节点数：{machine.servers_count}</div></td>
           <td><StatusBadge machine={machine} observedAt={observedAt} /></td>
