@@ -43,19 +43,20 @@ rollback() {
   install -m 600 "$work/update.log" "$directory/update.failure.log" 2>/dev/null || true
   exit 1
 }
-trap rollback ERR
-python3 - "$directory/.env" "$old_revision" "$revision" "$origin" <<'PY'
+python3 - "$directory/.env" "$old_revision" "$revision" "$origin" "$work/env.next" <<'PY'
 from pathlib import Path
 import sys
-p=Path(sys.argv[1]); old,new,origin=sys.argv[2:]; s=p.read_text(); lines=s.splitlines()
+p=Path(sys.argv[1]); old,new,origin,output=sys.argv[2:]; s=p.read_text(); lines=s.splitlines()
 assert lines.count('XBOARD_IMAGE=xboard-go:'+old)==1, 'Unexpected previous image configuration'
 assert lines.count('XBOARD_PANEL_URL='+origin)==1, 'Unexpected origin configuration'
 for expected in ('COMPOSE_PROJECT_NAME=xboard-production-internal','XBOARD_PORT=7080','XBOARD_BIND_ADDRESS=127.0.0.1'):
     assert lines.count(expected)==1, 'Unexpected project or port configuration'
 keys=[line.split('=',1)[0] for line in lines]
 assert len(keys)==len(set(keys)), 'Duplicate configuration key'
-p.write_text('\n'.join('XBOARD_IMAGE=xboard-go:'+new if line=='XBOARD_IMAGE=xboard-go:'+old else line for line in lines)+'\n')
+Path(output).write_text('\n'.join('XBOARD_IMAGE=xboard-go:'+new if line=='XBOARD_IMAGE=xboard-go:'+old else line for line in lines)+'\n')
 PY
+trap rollback ERR
+install -m 600 "$work/env.next" "$directory/.env"
 "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/update.log" 2>&1
 curl -fsS --retry 6 --retry-all-errors --retry-delay 3 --max-time 15 "$origin/healthz" > "$work/health.json"
 curl -fsS --max-time 30 "$origin/api/v2/node/releases/v1.14.4" > "$work/release.json"

@@ -59,9 +59,11 @@ class UpdateConfigurationTests(unittest.TestCase):
         for content,ok in [(original,True),(original.replace('xboard-go:','other:'),False),(original+original,False)]:
             with self.subTest(ok=ok), tempfile.TemporaryDirectory() as directory:
                 path=Path(directory)/'.env';path.write_text(content)
-                result=subprocess.run([sys.executable,'-',str(path),'a'*40,'b'*40,'https://fast.hjy.ca:8443'],input=script,text=True,capture_output=True)
+                result=subprocess.run([sys.executable,'-',str(path),'a'*40,'b'*40,'https://fast.hjy.ca:8443',str(path.with_name('next.env'))],input=script,text=True,capture_output=True)
                 self.assertEqual(result.returncode==0,ok)
-                self.assertEqual(path.read_text(),content.replace('xboard-go:'+'a'*40,'xboard-go:'+'b'*40) if ok else content)
+                self.assertEqual(path.read_text(),content)
+                if ok: self.assertEqual(path.with_name('next.env').read_text(),content.replace('xboard-go:'+'a'*40,'xboard-go:'+'b'*40))
+                else: self.assertFalse(path.with_name('next.env').exists())
 
 if __name__ == '__main__':
     unittest.main()
