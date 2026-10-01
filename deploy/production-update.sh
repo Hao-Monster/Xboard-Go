@@ -8,6 +8,7 @@ directory=/opt/xboard-go
 project=xboard-production-internal
 container="${project}-app-1"
 fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
+[[ ( "$node_source" == preserve && -z "$node_version" ) || ( "$node_source" =~ ^(github|panel)$ && "$node_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ) ]] || fail 'Invalid Node selection'
 [[ "$mode" == update && "$revision" =~ ^[a-f0-9]{40}$ && "$archive_digest" =~ ^[a-f0-9]{64}$ ]] || fail 'Invalid update identity'
 [[ "$(hostname)" == vmi3574179 && "$origin" == https://fast.hjy.ca:8443 ]] || fail 'Unexpected target'
 [[ "$compose_digest" =~ ^[a-f0-9]{64}$ ]] || fail 'Invalid Compose digest'
@@ -28,6 +29,28 @@ if [[ -f "$directory/compose.observability.yaml" ]]; then
 fi
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
+if [[ "$node_source" != preserve ]]; then
+  selected_base="$origin/api/v2/node/releases/$node_version"
+  selected_metadata="$selected_base"
+  if [[ "$node_source" == github ]]; then
+    selected_base="https://github.com/Hao-Monster/Xboard-Go/releases/download/node-$node_version"
+    selected_metadata="$selected_base/release.json"
+  fi
+  mkdir "$work/selected-node"
+  curl --http1.1 -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 --retry 2 "$selected_metadata" -o "$work/selected-node/release.json"
+  python3 - "$work/selected-node/release.json" "$node_version" "$selected_base" <<'PYNODE'
+import json,sys
+r=json.load(open(sys.argv[1])); assert r['tag_name']==sys.argv[2] and not r.get('draft',False)
+required={'install.sh','SHA256SUMS','xboard-node-linux-amd64','xboard-node-linux-arm64','xbctl-linux-amd64','xbctl-linux-arm64'}
+assets={a['name']:a for a in r['assets']}
+assert required <= assets.keys()
+assert all(assets[n]['url']==sys.argv[3]+'/'+n and assets[n]['size']>0 and assets[n]['state']=='uploaded' for n in required)
+PYNODE
+  for file in install.sh SHA256SUMS; do
+    curl --http1.1 -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 --retry 2 "$selected_base/$file" -o "$work/selected-node/$file"
+  done
+  (cd "$work/selected-node" && grep ' install.sh$' SHA256SUMS | sha256sum -c -)
+fi
 base="https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$revision"
 curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$old_revision/compose.yaml" -o "$work/compose.previous"
 cmp "$work/compose.previous" "$directory/compose.yaml" || fail 'Existing Compose differs from its published release'
@@ -96,3 +119,4 @@ trap - ERR
 install -m 600 "$work/env.before" "$directory/.env.before-$revision"
 install -m 600 "$work/compose.previous" "$directory/compose.before-$revision.yaml"
 printf 'Updated Xboard to %s. HTTPS and node release v1.14.4 verified; protected containers unchanged. Previous revision: %s; backup: %s\n' "$revision" "$old_revision" "$backup"
+printf 'Node source selection: %s; version: %s (empty means preserved).\n' "$node_source" "$node_version"

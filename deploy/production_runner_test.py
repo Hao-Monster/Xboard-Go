@@ -4,6 +4,7 @@ import unittest
 import subprocess
 import sys
 import tempfile
+import json
 
 spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('production-runner.py'))
 runner = importlib.util.module_from_spec(spec)
@@ -53,6 +54,18 @@ class RetainedConfigurationTests(unittest.TestCase):
                 if success: self.assertEqual(path.with_name('.env.before-8443').read_text(),original)
 
 class UpdateConfigurationTests(unittest.TestCase):
+    def test_selected_release_rejects_wrong_version_missing_and_foreign_assets(self):
+        script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PYNODE'\n",1)[1].split('\nPYNODE',1)[0]
+        base='https://github.com/Hao-Monster/Xboard-Go/releases/download/node-v1.14.5'
+        names=['install.sh','SHA256SUMS','xboard-node-linux-amd64','xboard-node-linux-arm64','xbctl-linux-amd64','xbctl-linux-arm64']
+        valid={'tag_name':'v1.14.5','assets':[{'name':n,'url':base+'/'+n,'size':1,'state':'uploaded'} for n in names]}
+        wrong_host=json.loads(json.dumps(valid));wrong_host['assets'][0]['url']='https://example.test/install.sh'
+        for release,ok in [(valid,True),({**valid,'tag_name':'v99.99.99'},False),({**valid,'assets':valid['assets'][1:]},False),(wrong_host,False),({**valid,'draft':True},False)]:
+            with self.subTest(ok=ok), tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'release.json';path.write_text(json.dumps(release))
+                result=subprocess.run([sys.executable,'-',str(path),'v1.14.5',base],input=script,text=True,capture_output=True)
+                self.assertEqual(result.returncode==0,ok)
+
     def test_node_selection_is_explicit_and_validated(self):
         runner.validate_node_selection('update', 'v1.14.5', 'github')
         runner.validate_node_selection('update', '', 'preserve')
