@@ -1,0 +1,49 @@
+name: Internal-test environment checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  redis-websocket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      XBOARD_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      XBOARD_TEST_REDIS_FAILURES: 'true'
+      XBOARD_WS_CAPACITY_CONNECTIONS: '200'
+      XBOARD_WS_CAPACITY_WORKERS: '16'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run the nine previously skipped environment cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Isolated fixtures only. This manual job is not a deployment gate or a production SLO claim.
+          go test -json -count=1 -timeout=8m ./internal/httpapi \
+            -run '^(TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush|TestTIMENODE006RedisGenerationFencesCrossInstanceReconnectAndDisconnect|TestCAPR014WebSocketConnectionDrain|TestINTR014GracefulDrainReleasesRedisOwnershipBeforeReconnect|TestINTR014DrainWaitsForInFlightClaimAndReleasesOwnership|TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications|TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances|TestINTNODE007TrafficExceededRefreshesRemoteReplicaAndReplays|TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers)$' \
+            | tee environment-tests.jsonl
+          python3 - <<'PY'
+          import json
+          events = [json.loads(line) for line in open('environment-tests.jsonl')]
+          tests = [e for e in events if e.get('Test') and '/' not in e['Test']]
+          passed = {e['Test'] for e in tests if e['Action'] == 'pass'}
+          skipped = {e['Test'] for e in tests if e['Action'] == 'skip'}
+          assert len(passed) == 9 and not skipped, (passed, skipped)
+          print('Environment checks: 9 passed, 0 skipped')
+          PY
+      - name: Verify backup and restore including Linux permissions
+        run: go test -count=1 -timeout=3m ./internal/backup
