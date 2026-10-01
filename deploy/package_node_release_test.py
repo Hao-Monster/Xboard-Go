@@ -31,7 +31,10 @@ class BundleTests(unittest.TestCase):
                         (output / 'install.sh').write_bytes(b'changed after publication')
                 return b''
 
-            with patch.object(bundle, 'gh', side_effect=fake_gh):
+            def fake_download(metadata, output):
+                fake_gh('release', 'download')
+
+            with patch.object(bundle, 'gh', side_effect=fake_gh), patch.object(bundle, 'download_assets', side_effect=fake_download):
                 if corrupt:
                     with self.assertRaisesRegex(ValueError, 'digest mismatch'):
                         bundle.package('v1.14.4', output)

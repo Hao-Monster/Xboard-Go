@@ -29,7 +29,7 @@
     {
       "id": "NREL-04",
       "task": "Publish CI-verified v1.14.4 Node binaries and embed a checksum-pinned release bundle in the panel image",
-      "status": "pending"
+      "status": "implemented_verified"
     },
     {
       "id": "NREL-05",
@@ -58,7 +58,9 @@
     "pr_ci": "https://github.com/Hao-Monster/Xboard-Node/actions/runs/36895745129",
     "pr_ci_result": "success: Linux race, installer tests, reachable vulnerability scan, amd64/arm64 binaries and Docker build",
     "release_ci": "https://github.com/Hao-Monster/Xboard-Node/actions/runs/36897493969",
-    "release_ci_status": "pending",
+    "release_ci_status": "success",
+    "bundle_sha256": "bc962c72f2b360447dc9bbb843fa60869b57303ef00d2a819e205bd878afc580",
+    "bundle_release": "https://github.com/Hao-Monster/Xboard-Go/releases/tag/node-v1.14.4",
     "security_fix": "Go 1.26.8, grpc 1.83.2, x/crypto 0.56.0 with required module dependencies; no kernel business logic change"
   }
 }

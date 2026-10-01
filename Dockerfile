@@ -18,6 +18,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && mkdir -p /out/data/admin-exports /out/backups /out/tmp \
     && chmod 0700 /out/data /out/data/admin-exports /out/backups /out/tmp
 
+FROM go-build AS node-releases
+ADD --checksum=sha256:bc962c72f2b360447dc9bbb843fa60869b57303ef00d2a819e205bd878afc580 \
+    https://github.com/Hao-Monster/Xboard-Go/releases/download/node-v1.14.4/node-release.tar.gz \
+    /tmp/node-release.tar.gz
+RUN mkdir -p /out/node-releases \
+    && tar -xzf /tmp/node-release.tar.gz -C /out/node-releases \
+    && rm /tmp/node-release.tar.gz
+
 FROM node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573 AS web-build
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml ./
@@ -37,6 +45,7 @@ COPY --chown=65532:65532 --from=go-build /out/data /var/lib/xboard
 COPY --chown=65532:65532 --from=go-build /out/backups /var/lib/xboard-backups
 COPY --chown=65532:65532 --from=go-build /out/tmp /tmp
 COPY --chown=65532:65532 --from=go-build /out/ip2region.xdb /usr/share/xboard/ip2region.xdb
+COPY --chown=65532:65532 --from=node-releases /out/node-releases /usr/share/xboard/node-releases
 COPY --chown=65532:65532 LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/xboard-go/
 USER 65532:65532
 EXPOSE 8080
@@ -47,7 +56,9 @@ ENV XBOARD_ADDRESS=0.0.0.0:8080 \
     XBOARD_COOKIE_SECURE=false \
     XBOARD_BACKUP_DIRECTORY=/var/lib/xboard-backups \
     XBOARD_ADMIN_EXPORT_ROOT=/var/lib/xboard/admin-exports \
-    XBOARD_IP2REGION_XDB_FILE=/usr/share/xboard/ip2region.xdb
+    XBOARD_IP2REGION_XDB_FILE=/usr/share/xboard/ip2region.xdb \
+    XBOARD_NODE_RELEASE=v1.14.4 \
+    XBOARD_NODE_RELEASE_ROOT=/usr/share/xboard/node-releases
 VOLUME ["/var/lib/xboard"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 CMD ["/xboard", "healthcheck"]
 ENTRYPOINT ["/xboard"]

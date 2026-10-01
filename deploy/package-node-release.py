@@ -4,6 +4,7 @@ Maintainer-only: gh authenticates to the private source repository. No token or
 private source code is included in the bundle, and nodes never run this tool.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import gzip
 import hashlib
 import io
@@ -20,7 +21,31 @@ SOURCE = 'Hao-Monster/Xboard-Node'
 
 
 def gh(*args):
-    return subprocess.check_output(['gh', *args])
+    return subprocess.check_output(['gh', *args], timeout=120)
+
+
+def download_assets(metadata, output):
+    token = gh('auth', 'token').decode().strip()
+    if not re.fullmatch(r'[A-Za-z0-9_]+', token):
+        raise ValueError('Expected a GitHub authentication token')
+    assets = {item['name']: item for item in metadata['assets']}
+    def download(name):
+        asset_id = assets[name]['id']
+        if not isinstance(asset_id, int):
+            raise ValueError('Invalid release asset identity')
+        # Pass credentials through stdin, never process arguments or files. Curl
+        # strips Authorization on cross-host redirects; do not use --location-trusted.
+        config = ('header = "Authorization: Bearer '+token+'"\n'
+                  'header = "Accept: application/octet-stream"\n')
+        result = subprocess.run(['curl', '--http1.1', '--fail', '--location', '--silent', '--show-error',
+                                 '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '15',
+                                 '--max-time', '180', '--retry', '2', '--retry-max-time', '240',
+                                 '--config', '-', f'https://api.github.com/repos/{SOURCE}/releases/assets/{asset_id}',
+                                 '--output', str(output/name)], input=config.encode(), capture_output=True, timeout=300)
+        if result.returncode:
+            raise RuntimeError('Asset download failed: '+name+'; no credentials printed')
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(download, FILES))
 
 
 def package(version, output):
@@ -32,8 +57,7 @@ def package(version, output):
         raise ValueError('Expected a published release')
     # GitHub's immutable-release attestation binds the published assets.
     gh('release', 'verify', version, '--repo', SOURCE)
-    gh('release', 'download', version, '--repo', SOURCE, '--dir', str(output),
-       *[arg for name in FILES for arg in ('--pattern', name)])
+    download_assets(metadata, output)
     assets = {item['name']: item for item in metadata['assets']}
     for name in FILES:
         digest = hashlib.sha256((output / name).read_bytes()).hexdigest()
