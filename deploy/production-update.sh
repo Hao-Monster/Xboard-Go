@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode="$1"; revision="$2"; origin="$3"; archive_digest="$7"; compose_digest="$6"
+node_version="${8:-}"; node_source="${9:-preserve}"
 directory=/opt/xboard-go
 project=xboard-production-internal
 container="${project}-app-1"
@@ -11,7 +12,6 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 [[ "$(hostname)" == vmi3574179 && "$origin" == https://fast.hjy.ca:8443 ]] || fail 'Unexpected target'
 [[ "$compose_digest" =~ ^[a-f0-9]{64}$ ]] || fail 'Invalid Compose digest'
 [[ -f "$directory/compose.yaml" && ! -L "$directory/compose.yaml" ]] || fail 'Unexpected Compose path'
-printf '%s  %s\n' "$compose_digest" "$directory/compose.yaml" | sha256sum --check --status
 [[ -d "$directory" && ! -L "$directory" && -f "$directory/.env" && ! -L "$directory/.env" ]] || fail 'Expected installation missing'
 exec 9>"$directory/.deployment.lock"
 flock -x 9
@@ -29,6 +29,10 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 base="https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$revision"
+curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$old_revision/compose.yaml" -o "$work/compose.previous"
+cmp "$work/compose.previous" "$directory/compose.yaml" || fail 'Existing Compose differs from its published release'
+curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "$base/compose.yaml" -o "$work/compose.next"
+printf '%s  %s\n' "$compose_digest" "$work/compose.next" | sha256sum --check --status
 curl -fLsS --retry 3 "$base/xboard-go-linux-amd64.tar.gz" -o "$work/image.tar.gz"
 printf '%s  %s\n' "$archive_digest" "$work/image.tar.gz" | sha256sum --check --status
 docker load -i "$work/image.tar.gz" > "$work/load.log"
@@ -40,6 +44,7 @@ cp -p "$directory/.env" "$work/env.before"
 rollback() {
   trap - ERR
   install -m 600 "$work/env.before" "$directory/.env"
+  install -m 600 "$work/compose.previous" "$directory/compose.yaml"
   if "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/rollback.log" 2>&1; then
     printf 'Update failed; previous Xboard image restored. Backup: %s\n' "$backup" >&2
   else
@@ -49,20 +54,27 @@ rollback() {
   install -m 600 "$work/update.log" "$directory/update.failure.log" 2>/dev/null || true
   exit 1
 }
-python3 - "$directory/.env" "$old_revision" "$revision" "$origin" "$work/env.next" <<'PY'
+python3 - "$directory/.env" "$old_revision" "$revision" "$origin" "$work/env.next" "$node_version" "$node_source" <<'PY'
 from pathlib import Path
-import sys
-p=Path(sys.argv[1]); old,new,origin,output=sys.argv[2:]; s=p.read_text(); lines=s.splitlines()
+import re,sys
+p=Path(sys.argv[1]); old,new,origin,output=sys.argv[2:6]; s=p.read_text(); lines=s.splitlines()
+version,source = sys.argv[6:8] if len(sys.argv) > 6 else ('','preserve')
 assert lines.count('XBOARD_IMAGE=xboard-go:'+old)==1, 'Unexpected previous image configuration'
 assert lines.count('XBOARD_PANEL_URL='+origin)==1, 'Unexpected origin configuration'
 for expected in ('COMPOSE_PROJECT_NAME=xboard-production-internal','XBOARD_PORT=7080','XBOARD_BIND_ADDRESS=127.0.0.1'):
     assert lines.count(expected)==1, 'Unexpected project or port configuration'
 keys=[line.split('=',1)[0] for line in lines]
 assert len(keys)==len(set(keys)), 'Duplicate configuration key'
-Path(output).write_text('\n'.join('XBOARD_IMAGE=xboard-go:'+new if line=='XBOARD_IMAGE=xboard-go:'+old else line for line in lines)+'\n')
+lines=['XBOARD_IMAGE=xboard-go:'+new if line=='XBOARD_IMAGE=xboard-go:'+old else line for line in lines]
+if source != 'preserve' or version:
+    assert source in ('github','panel') and re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',version), 'Invalid Node selection'
+    lines=[line for line in lines if line.split('=',1)[0] not in ('XBOARD_NODE_RELEASE','XBOARD_NODE_RELEASE_SOURCE')]
+    lines += ['XBOARD_NODE_RELEASE='+version,'XBOARD_NODE_RELEASE_SOURCE='+source]
+Path(output).write_text('\n'.join(lines)+'\n')
 PY
 trap rollback ERR
 install -m 600 "$work/env.next" "$directory/.env"
+install -m 600 "$work/compose.next" "$directory/compose.yaml"
 "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/update.log" 2>&1
 curl -fsS --retry 6 --retry-all-errors --retry-delay 3 --max-time 15 "$origin/healthz" > "$work/health.json"
 curl -fsS --max-time 30 "$origin/api/v2/node/releases/v1.14.4" > "$work/release.json"
@@ -76,7 +88,11 @@ PY
 for file in install.sh SHA256SUMS; do curl -fsS --max-time 30 "$origin/api/v2/node/releases/v1.14.4/$file" -o "$work/$file"; done
 (cd "$work" && grep ' install.sh$' SHA256SUMS | sha256sum -c -)
 [[ "$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$revision" ]] || fail 'Running image mismatch'
+if [[ "$node_source" != preserve ]]; then
+  docker inspect "$container" --format '{{json .Config.Env}}' | python3 -c 'import json,sys; e=json.load(sys.stdin); assert "XBOARD_NODE_RELEASE="+sys.argv[1] in e; assert "XBOARD_NODE_RELEASE_SOURCE="+sys.argv[2] in e' "$node_version" "$node_source"
+fi
 [[ "$(snapshot)" == "$baseline" ]] || fail 'Protected service changed'
 trap - ERR
 install -m 600 "$work/env.before" "$directory/.env.before-$revision"
+install -m 600 "$work/compose.previous" "$directory/compose.before-$revision.yaml"
 printf 'Updated Xboard to %s. HTTPS and node release v1.14.4 verified; protected containers unchanged. Previous revision: %s; backup: %s\n' "$revision" "$old_revision" "$backup"

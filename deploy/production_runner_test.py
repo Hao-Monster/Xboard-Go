@@ -53,6 +53,24 @@ class RetainedConfigurationTests(unittest.TestCase):
                 if success: self.assertEqual(path.with_name('.env.before-8443').read_text(),original)
 
 class UpdateConfigurationTests(unittest.TestCase):
+    def test_node_selection_is_explicit_and_validated(self):
+        runner.validate_node_selection('update', 'v1.14.5', 'github')
+        runner.validate_node_selection('update', '', 'preserve')
+        for mode, version, source in [('install','v1.14.5','github'), ('update','','github'), ('update','v1.14.5','preserve'), ('update','v1.14.5;id','github')]:
+            with self.subTest(version=version, source=source), self.assertRaises(ValueError):
+                runner.validate_node_selection(mode,version,source)
+
+    def test_node_update_preserves_secrets_and_replaces_existing_selection(self):
+        script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PY'\n",1)[1].split('\nPY',1)[0]
+        original='XBOARD_IMAGE=xboard-go:'+'a'*40+'\nXBOARD_PANEL_URL=https://fast.hjy.ca:8443\nXBOARD_ADMIN_PATH=preserved\nCOMPOSE_PROJECT_NAME=xboard-production-internal\nXBOARD_PORT=7080\nXBOARD_BIND_ADDRESS=127.0.0.1\nXBOARD_NODE_RELEASE=v1.14.4\nXBOARD_NODE_RELEASE_SOURCE=panel\n'
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'.env';path.write_text(original)
+            output=path.with_name('next.env')
+            result=subprocess.run([sys.executable,'-',str(path),'a'*40,'b'*40,'https://fast.hjy.ca:8443',str(output),'v1.14.5','github'],input=script,text=True,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(path.read_text(),original)
+            self.assertEqual(output.read_text(),original.replace('a'*40,'b'*40).replace('v1.14.4','v1.14.5').replace('SOURCE=panel','SOURCE=github'))
+
     def test_image_update_preserves_other_configuration_and_rejects_mismatch(self):
         script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PY'\n",1)[1].split('\nPY',1)[0]
         original='XBOARD_IMAGE=xboard-go:'+'a'*40+'\nXBOARD_PANEL_URL=https://fast.hjy.ca:8443\nXBOARD_ADMIN_PATH=preserved\nCOMPOSE_PROJECT_NAME=xboard-production-internal\nXBOARD_PORT=7080\nXBOARD_BIND_ADDRESS=127.0.0.1\n'

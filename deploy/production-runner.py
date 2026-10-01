@@ -51,6 +51,8 @@ def main():
     if repository != 'Hao-Monster/Xboard-Go':
         raise ValueError('Unexpected repository')
     mode, revision, email = (os.environ[name] for name in ('DEPLOY_MODE', 'RELEASE_SHA', 'ADMINISTRATOR_EMAIL'))
+    node_version, node_source = os.environ.get('NODE_VERSION', ''), os.environ.get('NODE_SOURCE', 'preserve')
+    validate_node_selection(mode, node_version, node_source)
     if mode in ('install', 'resume', 'update') and (os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch'):
         raise ValueError('Installation requires a manual run on protected main')
     config = {name: os.environ.get(name, '') for name in ('DEPLOY_SSH_KEY', 'DEPLOY_KNOWN_HOSTS', 'DEPLOY_HOST', 'DEPLOY_PORT', 'DEPLOY_USER', 'DEPLOY_DIR', 'PANEL_URL')}
@@ -92,8 +94,15 @@ def main():
                    '-o', 'UserKnownHostsFile=' + str(hosts), '-o', 'ConnectTimeout=15',
                    '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
                    config['DEPLOY_USER'] + '@' + config['DEPLOY_HOST'],
-                   'bash -s -- ' + ' '.join(shlex.quote(value) for value in (mode, revision, origin, email, digest[7:], compose_digest[7:], archive_digest[7:]))]
+                   'bash -s -- ' + ' '.join(shlex.quote(value) for value in (mode, revision, origin, email, digest[7:], compose_digest[7:], archive_digest[7:], node_version, node_source))]
         subprocess.run(command, input=Path('deploy/production-update.sh' if mode == 'update' else 'deploy/production-server.sh').read_text(), text=True, check=True)
+
+
+def validate_node_selection(mode, version, source):
+    if source == 'preserve' and version == '':
+        return
+    if mode != 'update' or source not in ('github', 'panel') or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', version):
+        raise ValueError('Node selection requires update, an exact version and github/panel source')
 
 
 if __name__ == '__main__':
