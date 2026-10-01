@@ -33,6 +33,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/maintenance"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
+	"github.com/Hao-Monster/Xboard-Go/internal/observability"
 	"github.com/Hao-Monster/Xboard-Go/internal/operations"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
 	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
@@ -57,12 +58,15 @@ func main() {
 		}
 		return
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := observability.New(os.Stdout, slog.LevelInfo, "unspecified", buildRevision)
 	settings, err := config.Load()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
+	var logLevel slog.Level
+	_ = logLevel.UnmarshalText([]byte(settings.LogLevel))
+	logger = observability.New(os.Stdout, logLevel, settings.Environment, buildRevision)
 	var ticketRegionResolver *geoip.Resolver
 	if settings.IP2RegionXDBFile != "" {
 		ticketRegionResolver, err = geoip.OpenLegacy(settings.IP2RegionXDBFile)
@@ -305,6 +309,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	handler = httpapi.RequestDiagnostics(logger, settings.LegacyAdminPath, handler)
 	server := &http.Server{
 		Addr:              settings.Address,
 		Handler:           handler,

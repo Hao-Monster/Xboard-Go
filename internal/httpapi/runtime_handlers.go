@@ -130,6 +130,7 @@ func (s *server) xboardNodeConfig(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return
 	}
+	s.logger.DebugContext(r.Context(), "node.config", "node_id", nodeID, "revision_number", settings.Revision, "outcome", "served")
 	writeETagJSON(w, r, encoded)
 }
 
@@ -220,6 +221,7 @@ func (s *server) xboardNodeReport(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.DebugContext(r.Context(), "node.report", "machine_id", report.MachineID, "node_id", report.NodeID, "outcome", "accepted")
 	s.notifyNodeReportResult(r.Context(), result)
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }

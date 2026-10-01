@@ -312,6 +312,7 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 		handleStoreError(w, err)
 		return
 	}
+	s.logger.DebugContext(r.Context(), "node.machine_status", "machine_id", machineID, "outcome", "accepted")
 	if enveloped {
 		writeSuccess(w, http.StatusOK, true)
 		return
@@ -319,7 +320,15 @@ func (s *server) recordMachineStatus(w http.ResponseWriter, r *http.Request, mac
 	writeJSON(w, http.StatusOK, map[string]bool{"data": true})
 }
 
-func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, machineID int64) bool {
+func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, machineID int64) (authenticated bool) {
+	defer func() {
+		if authenticated {
+			s.logger.DebugContext(r.Context(), "node.authentication", "machine_id", machineID, "outcome", "accepted")
+		} else {
+			s.logger.WarnContext(r.Context(), "node.authentication", "machine_id", machineID, "outcome", "rejected")
+		}
+	}()
+
 	client, peer := nodeRequestAddresses(r, s.trustedProxyPrefixes)
 	clientAllowed := s.machineAuthFailures.allowed(client, s.now())
 	peerAllowed := s.machineAuthPeerFailures.allowed(peer, s.now())
@@ -343,6 +352,7 @@ func (s *server) authenticateMachine(w http.ResponseWriter, r *http.Request, mac
 		writeAPIError(w, http.StatusUnauthorized, "invalid_machine_credential", "机器凭据无效或机器已停用", nil)
 		return false
 	} else if err != nil {
+		recordDiagnosticError(w, err)
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
 		return false
 	}
