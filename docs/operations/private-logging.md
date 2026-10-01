@@ -81,6 +81,13 @@ events, journal/source errors and buffer pressure as well.
 
 ## Release and rollback
 
+The logging deployment job uses the `production-internal-test` GitHub environment.
+It requires `BINGO_DEV_SSH_KEY`, `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` there
+(or as explicitly approved repository secrets), plus the existing `DEPLOY_HOST`,
+`DEPLOY_PORT` and `DEPLOY_USER` variables. A secret stored only in the `development`
+environment is not visible to this job. Configure credentials privately; do not
+copy secrets into workflow text or artifacts to bypass environment isolation.
+
 Logging is released by `.github/workflows/legacy-parity.yml` after successful CI
 on protected main. The existing runner authorization hook is preserved: manual
 workflows cannot run on this privileged runner. A separate hosted validation job
