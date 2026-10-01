@@ -37,9 +37,20 @@ def write(path, value):
 
 
 def service(image, memory):
-    return dict(image=image, restart='unless-stopped', mem_limit=memory,
+    return dict(image=image, user=runtime_user(), restart='unless-stopped', mem_limit=memory,
                 cpus='1.0', security_opt=['no-new-privileges:true'],
                 cap_drop=['ALL'], logging={'driver': 'local', 'options': {'max-size': '10m', 'max-file': '3'}})
+
+
+def runtime_user():
+    return str(os.getuid() if hasattr(os, 'getuid') else 0) + ':' + str(os.getgid() if hasattr(os, 'getgid') else 0)
+
+
+def journal_groups():
+    if os.name != 'posix':
+        return []
+    import grp
+    return [str(grp.getgrnam('systemd-journal').gr_gid)]
 
 
 def central(directory, sources):
@@ -142,7 +153,7 @@ def collector(directory, source, token, tag, endpoint, unit=None):
     write(directory / 'collector.yaml', config)
     (directory / 'vector-data').mkdir(exist_ok=True, mode=0o700)
     vector = service(VECTOR, '384m')
-    vector.update(command=['--config', '/etc/vector/collector.yaml'], network_mode='host', user='0:0',
+    vector.update(command=['--config', '/etc/vector/collector.yaml'], network_mode='host', group_add=journal_groups(),
                   volumes=['./collector.yaml:/etc/vector/collector.yaml:ro', './vector-data:/var/lib/vector',
                            '/var/log/journal:/var/log/journal:ro', '/run/log/journal:/run/log/journal:ro',
                            '/etc/machine-id:/etc/machine-id:ro'])

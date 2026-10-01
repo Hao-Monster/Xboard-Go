@@ -17,6 +17,10 @@ def run(*args):
     subprocess.run(args, check=True, stdout=subprocess.DEVNULL)
 
 
+def vector_options():
+    return ['--user', configure.runtime_user(), *[arg for group in configure.journal_groups() for arg in ['--group-add', group]]]
+
+
 def request(url, authorization=None, body=None):
     headers = {'Authorization': authorization} if authorization else {}
     if body is not None:
@@ -71,7 +75,7 @@ def main():
 
             collector = root / 'collector'
             configure.collector(collector, 'smoke', state['writers']['smoke'], 'xboard-panel-smoke', endpoint)
-            journal_mounts = ['--mount', f'type=bind,src={collector},dst=/config',
+            journal_mounts = [*vector_options(), '--mount', f'type=bind,src={collector},dst=/config',
                               '--mount', f'type=bind,src={collector / "vector-data"},dst=/var/lib/vector',
                               '-v', '/var/log/journal:/var/log/journal:ro',
                               '-v', '/run/log/journal:/run/log/journal:ro',
@@ -121,7 +125,7 @@ def main():
             fixtures.mkdir()
             events = fixtures / 'events.jsonl'
             events.write_text('', encoding='utf-8')
-            mount = ['--mount', f'type=bind,src={collector},dst=/config', '--mount', f'type=bind,src={fixtures},dst=/fixtures',
+            mount = [*vector_options(), '--mount', f'type=bind,src={collector},dst=/config', '--mount', f'type=bind,src={fixtures},dst=/fixtures',
                      '--mount', f'type=bind,src={collector / "vector-data"},dst=/var/lib/vector']
             run('docker', 'run', '--rm', *mount, configure.VECTOR, 'test', '/config/collector.yaml')
             run('docker', 'run', '--rm', '--entrypoint', '/bin/sh', configure.VECTOR, '-c', 'command -v journalctl')
@@ -141,6 +145,15 @@ def main():
             finally:
                 subprocess.run(['docker', 'rm', '-f', cname], stdout=subprocess.DEVNULL, check=False)
             print('PASS auth roles, persistence, real journald cursor/restart, panel/node diagnostics, Vector redaction, buffered outage recovery')
+        except Exception:
+            # Only synthetic credentials/events exist in this isolated job.
+            # Still mask generated secrets before showing startup diagnostics.
+            logs = subprocess.run([*cmd, 'logs', '--no-color', '--tail', '30'], capture_output=True, text=True)
+            output = logs.stdout + logs.stderr
+            for value in [state['viewer']['password'], *state['writers'].values()]:
+                output = output.replace(value, '[REDACTED]')
+            print(output)
+            raise
         finally:
             subprocess.run([*cmd, 'down', '--volumes'], check=False)
 
