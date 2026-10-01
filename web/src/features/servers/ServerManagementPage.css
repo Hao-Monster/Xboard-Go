@@ -627,3 +627,7 @@
 .machine-panels-row > .detail-card { min-height:330px; }
 .trend-chart-container { height:184px; position:relative; }
 .trend-tooltip { position:absolute; top:0; right:40px; z-index:2; display:grid; gap:5px; max-width:90%; padding:8px; border:1px solid var(--theme-border); background:var(--theme-background); color:var(--theme-text); font-size:11px; pointer-events:none; }
+
+.machine-table th button { display: inline-flex; align-items: center; gap: 6px; padding: 0; font: inherit; }
+.machine-pagination :is(input, select, button) { min-height: 32px; height: 32px; padding: 0 8px; font-size: 12px; }
+.machine-pagination button { min-width: 32px; }
