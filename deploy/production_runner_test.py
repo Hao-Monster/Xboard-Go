@@ -28,8 +28,11 @@ class ValidationTests(unittest.TestCase):
     def test_explicit_caddy_port_and_resume(self):
         self.assertEqual(runner.validate({**self.config, 'PANEL_URL':'https://fast.hjy.ca:8443'}, 'resume', 'a'*40, 'admin@example.test'), 'https://fast.hjy.ca:8443')
 
+    def test_update_accepts_exact_release(self):
+        self.assertEqual(runner.validate(self.config, 'update', 'a'*40, 'admin@example.test'), 'https://panel.example.test')
+
     def test_exact_release_and_valid_mode(self):
-        for mode, revision in [('upgrade','a'*40), ('install','main')]:
+        for mode, revision in [('unknown','a'*40), ('install','main')]:
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 runner.validate(self.config, mode, revision, 'admin@example.test')
 
@@ -48,6 +51,19 @@ class RetainedConfigurationTests(unittest.TestCase):
                 self.assertEqual(result.returncode==0,success)
                 self.assertEqual(path.read_text(),content.replace('XBOARD_PANEL_URL=https://fast.hjy.ca\n','XBOARD_PANEL_URL=https://fast.hjy.ca:8443\n') if success else content)
                 if success: self.assertEqual(path.with_name('.env.before-8443').read_text(),original)
+
+class UpdateConfigurationTests(unittest.TestCase):
+    def test_image_update_preserves_other_configuration_and_rejects_mismatch(self):
+        script=Path(__file__).with_name('production-update.sh').read_text().split("<<'PY'\n",1)[1].split('\nPY',1)[0]
+        original='XBOARD_IMAGE=xboard-go:'+'a'*40+'\nXBOARD_PANEL_URL=https://fast.hjy.ca:8443\nXBOARD_ADMIN_PATH=preserved\nCOMPOSE_PROJECT_NAME=xboard-production-internal\nXBOARD_PORT=7080\nXBOARD_BIND_ADDRESS=127.0.0.1\n'
+        for content,ok in [(original,True),(original.replace('xboard-go:','other:'),False),(original+original,False)]:
+            with self.subTest(ok=ok), tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'.env';path.write_text(content)
+                result=subprocess.run([sys.executable,'-',str(path),'a'*40,'b'*40,'https://fast.hjy.ca:8443',str(path.with_name('next.env'))],input=script,text=True,capture_output=True)
+                self.assertEqual(result.returncode==0,ok)
+                self.assertEqual(path.read_text(),content)
+                if ok: self.assertEqual(path.with_name('next.env').read_text(),content.replace('xboard-go:'+'a'*40,'xboard-go:'+'b'*40))
+                else: self.assertFalse(path.with_name('next.env').exists())
 
 if __name__ == '__main__':
     unittest.main()

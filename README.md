@@ -1217,3 +1217,18 @@ window. Another snapshot or a conflicting boundary is rejected.
 ## Development deployment trigger
 
 The development server is deployed only by the `Legacy parity` workflow after a successful `main` CI completion. That workflow builds the exact main commit, runs the parity suite, deploys through the existing runner, verifies `https://freedom.openal.uk`, and restores the previous image and configuration if health checks fail.
+
+### Panel-managed node installer
+
+Set `XBOARD_NODE_RELEASE_ROOT` to a dedicated immutable release directory and
+`XBOARD_NODE_RELEASE` to the bundled node version. Each version subdirectory must
+contain `manifest.json`, `SHA256SUMS`, and the artifacts named in the manifest.
+The release root must not overlap the web, attachment, or administrator export
+roots, including through symbolic links. Mount it read-only in production.
+
+The panel serves release metadata and allowlisted files under
+`/api/v2/node/releases/{version}` without exposing GitHub credentials. Machine
+installation commands download and verify the installer from the panel's HTTPS
+origin, then pass `--release-api-base` to it; target machines do not need `gh` or a
+GitHub token. The bundled node installer must support that option. When no release
+root is configured, download endpoints return 404.
