@@ -160,6 +160,8 @@ jobs:
           trap 'rollback' ERR
 
           sed -i "s/^XBOARD_GO_REVISION=.*/XBOARD_GO_REVISION=${REVISION}/" .env
+          # Existing release volume is retained; serve the verified bundle from this image.
+          sed -i 's#^\([[:space:]]*XBOARD_NODE_RELEASE_ROOT:\).*#\1 /usr/share/xboard/node-releases#' compose.yaml
           docker compose up -d --no-build app
 
           echo "Waiting for container healthcheck..."

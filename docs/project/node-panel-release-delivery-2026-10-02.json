@@ -14,17 +14,17 @@
     {
       "id": "NREL-01",
       "task": "Review and merge the five existing Node installer commits; exclude unrelated diagnostics",
-      "status": "in_progress"
+      "status": "implemented_verified"
     },
     {
       "id": "NREL-02",
       "task": "Close installer and xbctl upgrade panel-provider gaps; test no-token metadata/download and secure endpoints",
-      "status": "in_progress"
+      "status": "implemented_verified"
     },
     {
       "id": "NREL-03",
       "task": "Restore panel immutable release routes, isolated release-root configuration and no-gh enrollment command with security regression tests",
-      "status": "in_progress"
+      "status": "implemented_verified"
     },
     {
       "id": "NREL-04",
@@ -49,5 +49,16 @@
     "No GitHub credentials on node servers"
   ],
   "delivery_design": "Node private source remains in Node repository. Only verified CI release binaries and installer are mirrored to a public Go release for checksum-pinned Docker builds. The runtime serves its immutable bundled release; no GitHub token is injected into the panel or nodes.",
-  "production_update": "CI-only image replacement of the existing Xboard container. Preserve Compose, volumes, credentials, Caddy route and other containers. Create and verify a database backup first; restore previous image/configuration on failed health or release probes."
+  "production_update": "CI-only image replacement of the existing Xboard container. Preserve Compose, volumes, credentials, Caddy route and other containers. Create and verify a database backup first; restore previous image/configuration on failed health or release probes.",
+  "node_delivery": {
+    "pull_request": "https://github.com/Hao-Monster/Xboard-Node/pull/7",
+    "merged_commit": "1812b91d2a36e91a5aca1cbf3466cfe578e90ad7",
+    "verified_source_commit": "d76b7f4b4d2da8a249671c820ea625617d791f5e",
+    "version": "v1.14.4",
+    "pr_ci": "https://github.com/Hao-Monster/Xboard-Node/actions/runs/36895745129",
+    "pr_ci_result": "success: Linux race, installer tests, reachable vulnerability scan, amd64/arm64 binaries and Docker build",
+    "release_ci": "https://github.com/Hao-Monster/Xboard-Node/actions/runs/36897493969",
+    "release_ci_status": "pending",
+    "security_fix": "Go 1.26.8, grpc 1.83.2, x/crypto 0.56.0 with required module dependencies; no kernel business logic change"
+  }
 }

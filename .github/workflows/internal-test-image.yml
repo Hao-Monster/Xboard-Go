@@ -51,6 +51,19 @@ jobs:
           curl --fail --silent http://127.0.0.1:18083/ > /dev/null
           bash deploy/node-release-smoke.sh http://127.0.0.1:18083 v1.14.4
           before="$(sha256sum "$install_dir/secrets/settings-key")"
+          # Exercise an actual failed candidate and recovery with retained volumes.
+          cp "$install_dir/.env" "$install_dir/.env.rollback-smoke"
+          mkdir "$RUNNER_TEMP/rollback-probe-context"
+          printf 'FROM xboard-go:%s\nENTRYPOINT ["/xboard", "invalid-smoke-command"]\n' "$REVISION" > "$RUNNER_TEMP/rollback-probe-context/Dockerfile"
+          docker build -f "$RUNNER_TEMP/rollback-probe-context/Dockerfile" -t xboard-go:rollback-smoke "$RUNNER_TEMP/rollback-probe-context"
+          sed -i 's/^XBOARD_IMAGE=.*/XBOARD_IMAGE=xboard-go:rollback-smoke/' "$install_dir/.env"
+          if docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --no-build --no-deps --wait --wait-timeout 15 app; then
+            echo 'Broken candidate unexpectedly started'; exit 1
+          fi
+          cp "$install_dir/.env.rollback-smoke" "$install_dir/.env"
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --no-build --no-deps --wait --wait-timeout 90 app
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          test "$before" = "$(sha256sum "$install_dir/secrets/settings-key")"
           if XBOARD_INSTALL_DIR="$install_dir" XBOARD_PANEL_URL=http://127.0.0.1:18083 \
              XBOARD_ADMIN_EMAIL=smoke@example.test bash deploy/install.sh; then
             echo 'Installer unexpectedly overwrote an existing installation'; exit 1
