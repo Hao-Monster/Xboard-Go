@@ -15,7 +15,7 @@ assert re.fullmatch(r'[a-f0-9]{64}', digest)
 assert url == f'https://github.com/Hao-Monster/Xboard-Go/releases/download/node-{version}/node-release.tar.gz'
 destination = Path(sys.argv[1])
 destination.mkdir(parents=True, exist_ok=False)
-with tempfile.TemporaryFile() as temporary:
+with tempfile.TemporaryDirectory() as work:
     # Use the same curl transport as the runner's source download. urllib's
     # connection path timed out on this runner while curl reached the asset.
     # Bound network retries and retain checksum verification before extraction.
@@ -23,19 +23,21 @@ with tempfile.TemporaryFile() as temporary:
                     '--proto', '=https', '--proto-redir', '=https',
                     '--connect-timeout', '15', '--max-time', '180',
                     '--retry', '2', '--retry-max-time', '240',
-                    '--max-filesize', str(512*1024*1024), url],
-                   stdout=temporary, check=True, timeout=300)
-    temporary.seek(0)
+                    '--max-filesize', str(512*1024*1024),
+                    '--output', str(Path(work)/'bundle.tar.gz'), url],
+                   check=True, timeout=300)
+    # curl owns the output path so a retry truncates a partial previous attempt.
+    temporary = Path(work)/'bundle.tar.gz'
     calculated = hashlib.sha256()
     total = 0
-    while chunk := temporary.read(1024*1024):
-        total += len(chunk)
-        if total > 512*1024*1024:
-            raise ValueError('Bundle exceeds size limit')
-        calculated.update(chunk)
+    with temporary.open('rb') as downloaded:
+        while chunk := downloaded.read(1024*1024):
+            total += len(chunk)
+            if total > 512*1024*1024:
+                raise ValueError('Bundle exceeds size limit')
+            calculated.update(chunk)
     assert calculated.hexdigest() == digest, 'Bundle SHA256 mismatch'
-    temporary.seek(0)
-    with tarfile.open(fileobj=temporary, mode='r:gz') as archive:
+    with tarfile.open(temporary, mode='r:gz') as archive:
         expected = {version+'/'+name for name in ('manifest.json','SHA256SUMS','install.sh','xboard-node-linux-amd64','xboard-node-linux-arm64','xbctl-linux-amd64','xbctl-linux-arm64')}
         members = archive.getmembers()
         assert len(members) == len(expected) and {m.name for m in members} == expected
