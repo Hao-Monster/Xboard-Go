@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.title="Xboard journal collector" \
 # Minimal Ubuntu has no CA bundle yet. Bootstrap HTTPS trust from the pinned
 # upstream image, then install Ubuntu's pinned ca-certificates package below.
 COPY --from=vector /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN printf '%s\n' 'Acquire::https::CaInfo "/etc/ssl/certs/ca-certificates.crt";' > /etc/apt/apt.conf.d/99-bootstrap-ca
 
 # A signed, dated Ubuntu snapshot also fixes transitive package resolution.
 # Archived Release metadata may expire; disable only that freshness check,
@@ -21,7 +22,7 @@ RUN printf '%s\n' \
       'Components: main' \
       'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
       > /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get -o APT::Update::Error-Mode=any -o Acquire::Check-Valid-Until=false update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       systemd=259.5-0ubuntu3.4 \
       libsystemd0=259.5-0ubuntu3.4 \
