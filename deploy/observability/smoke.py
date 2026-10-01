@@ -67,7 +67,10 @@ def main():
             assert request(query)[0] == 401
             assert request(query, writer)[0] >= 400
             assert request(endpoint + '/insert/jsonline', viewer, b'{}\n')[0] >= 400
-            assert request(endpoint + '/debug/pprof/', viewer)[0] >= 400
+            for internal in ['/debug/pprof/', '/metrics', '/flags', '/-/reload']:
+                assert request(endpoint + internal, viewer)[0] >= 400
+                assert request(endpoint + internal, writer)[0] >= 400
+                assert request(endpoint + internal)[0] >= 400
             assert request(endpoint + '/insert/jsonline', writer, b'{"message":"smoke.persisted","source":"smoke"}\n')[0] == 200
             eventually(lambda: 'smoke.persisted' in request(query, viewer)[1])
             run(*cmd, 'restart', 'victoria-logs')

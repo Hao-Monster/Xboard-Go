@@ -76,7 +76,8 @@ def central(directory, sources):
                        '-storage.minFreeDiskSpaceBytes=5368709120', '-memory.allowedPercent=70'],
               volumes=['./data:/storage'])
     auth = service(AUTH, '128m')
-    auth.update(command=['-auth.config=/config/auth.json', '-httpListenAddr=:8427'],
+    auth.update(command=['-auth.config=/config/auth.json', '-httpListenAddr=:8427',
+                         '-httpInternalListenAddr=127.0.0.1:8426'],
                 volumes=['./auth.json:/config/auth.json:ro'], ports=['127.0.0.1:19428:8427'],
                 depends_on=['victoria-logs'])
     (directory / 'data').mkdir(exist_ok=True, mode=0o700)
