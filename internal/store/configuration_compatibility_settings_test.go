@@ -151,8 +151,13 @@ func TestLegacyConfigurationCompatibilityPartialWritesAreAtomic(t *testing.T) {
 	if frontend.Theme != "Xboard" || frontend.SidebarStyle != "dark" || frontend.HeaderStyle != "light" || frontend.ThemeColor != "blue" {
 		t.Fatalf("legacy frontend partial update = %#v", frontend)
 	}
-	externalBackground := "https://untrusted.example.test/background.png"
-	if _, err := database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &externalBackground}, now.Add(6*time.Minute)); !errors.Is(err, ErrInvalidInput) {
+	externalBackground := "https://images.example.test/background.png"
+	frontend, err = database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &externalBackground}, now.Add(6*time.Minute))
+	if err != nil || frontend.BackgroundURL != externalBackground {
+		t.Fatalf("valid HTTPS background rejected: %v", err)
+	}
+	unsafeBackground := "javascript:alert(1)"
+	if _, err := database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &unsafeBackground}, now.Add(7*time.Minute)); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("unsafe legacy background update error = %v, want ErrInvalidInput", err)
 	}
 	preservedFrontend, err := database.GetLegacyFrontendSettings(ctx)

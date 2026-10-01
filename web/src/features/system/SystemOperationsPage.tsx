@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { TrafficResetModal } from "./TrafficResetModal";
+import type { TrafficResetAPI } from "../../lib/api";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type {
   AdminAuditPage, AuditMethod, SystemOperationsAPI, SystemStatus, TicketMailFailure, TicketMailFailurePage, WorkerStatus
@@ -8,7 +10,9 @@ import { adminDataCache } from "../../lib/dataPrefetchCache";
 const pageSize = 20;
 const emptySubscriptionLoad = { in_flight: 0, peak_in_flight: 0, rate_limited: 0, busy: 0 } as const;
 
-export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
+export function SystemOperationsPage({ api }: { api: SystemOperationsAPI & Partial<TrafficResetAPI> }) {
+  const [showResets,setShowResets] = useState(false);
+  const resetAPI = useMemo(() => api.listGlobalTrafficResets && api.getTrafficResetStats ? {listGlobalTrafficResets:api.listGlobalTrafficResets.bind(api),getTrafficResetStats:api.getTrafficResetStats.bind(api)} : null,[api]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [audit, setAudit] = useState<AdminAuditPage | null>(null);
   const [failures, setFailures] = useState<TicketMailFailurePage | null>(null);
@@ -100,6 +104,8 @@ export function SystemOperationsPage({ api }: { api: SystemOperationsAPI }) {
   };
 
   return <main className="page-shell system-operations-page">
+    {showResets && resetAPI && <TrafficResetModal api={resetAPI} onClose={() => setShowResets(false)} />}
+    {resetAPI && <button className="button secondary" onClick={() => setShowResets(true)}>流量重置记录</button>}
     <header className="page-header"><div><p className="eyebrow">Operations</p><h1>系统状态</h1><p className="muted">查看调度器、邮件与 Telegram 队列、失败任务和管理员操作审计。</p></div>
       <button className="button secondary" disabled={loading} onClick={() => void loadAll()}>{loading ? "正在刷新…" : "刷新系统状态"}</button>
     </header>

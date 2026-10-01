@@ -1,0 +1,41 @@
+services:
+  app:
+    image: ${XBOARD_IMAGE:?immutable image required}
+    ports:
+      - "${XBOARD_BIND_ADDRESS:-0.0.0.0}:${XBOARD_PORT:-7080}:8080"
+    environment:
+      XBOARD_PANEL_URL: ${XBOARD_PANEL_URL:?panel URL required}
+      XBOARD_ALLOWED_ORIGINS: ${XBOARD_PANEL_URL}
+      XBOARD_COOKIE_SECURE: ${XBOARD_COOKIE_SECURE:-false}
+      XBOARD_DATABASE_DSN: file:/var/lib/xboard/xboard.db
+      XBOARD_BOOTSTRAP_ADMIN_EMAIL: ${XBOARD_ADMIN_EMAIL:?administrator email required}
+      XBOARD_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      XBOARD_SETTINGS_ENCRYPTION_KEY_FILE: /run/secrets/settings_key
+      XBOARD_LEGACY_ADMIN_PATH: ${XBOARD_ADMIN_PATH:?administrator path required}
+      XBOARD_ATTACHMENT_ROOT: /var/lib/xboard/knowledge-attachments
+      XBOARD_BACKUP_DIRECTORY: /var/lib/xboard-backups
+      XBOARD_SMTP_ALLOW_INSECURE: "false"
+      XBOARD_NODE_COORDINATION_MODE: local
+      XBOARD_TRUSTED_PROXY_CIDRS: ${XBOARD_TRUSTED_PROXY_CIDRS:-}
+    secrets:
+      - admin_password
+      - settings_key
+    volumes:
+      - data:/var/lib/xboard
+      - backups:/var/lib/xboard-backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 30s
+secrets:
+  admin_password:
+    file: ./secrets/admin-password
+  settings_key:
+    file: ./secrets/settings-key
+volumes:
+  data:
+  backups:

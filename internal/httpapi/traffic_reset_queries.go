@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
@@ -60,7 +61,12 @@ func (s *server) listTrafficResetLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		data = append(data, map[string]any{"id": e.ID, "user_id": e.UserID, "user_email": e.Email, "reset_type": e.ResetType, "reset_type_name": names[e.ResetType], "reset_time": e.ResetAt, "created_at": e.ResetAt, "old_traffic": map[string]any{"upload": e.UploadBefore, "download": e.DownloadBefore, "total": before, "formatted": legacyFormattedTraffic(before)}, "new_traffic": map[string]any{"upload": e.UploadAfter, "download": e.DownloadAfter, "total": after, "formatted": legacyFormattedTraffic(after)}, "trigger_source": e.Source, "trigger_source_name": sourceName, "metadata": metadata})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": data, "pagination": map[string]any{"current_page": page, "last_page": max(int64(1), (result.Total+int64(size)-1)/int64(size)), "per_page": size, "total": result.Total}})
+	payload := map[string]any{"data": data, "pagination": map[string]any{"current_page": page, "last_page": max(int64(1), (result.Total+int64(size)-1)/int64(size)), "per_page": size, "total": result.Total}}
+	if strings.HasPrefix(r.URL.Path, "/api/v2/") {
+		writeJSON(w, http.StatusOK, payload)
+	} else {
+		writeSuccess(w, http.StatusOK, payload)
+	}
 }
 func (s *server) trafficResetStats(w http.ResponseWriter, r *http.Request) {
 	days, ok := orderQueryInt(w, r, "days", 30, 365)
