@@ -138,6 +138,13 @@ def main():
                     'error_type': '*net.OpError', 'error_class': 'network', 'error_code': 'operation_failed', 'network_op': 'dial'})}}],
                 'outputs': [{'extract_from': 'safe', 'conditions': [{'type': 'vrl', 'source':
                     'assert_eq!(.message, "deliver queued email")\nassert_eq!(.event, "panel.deliver_queued_email")\nassert_eq!(.code_source, "mailer.worker.Run worker.go:80")\nassert_eq!(.error_class, "network")\nassert_eq!(.network_op, "dial")'}]}]}]
+            config['tests'].append({
+                'name': 'retains websocket drain diagnostics',
+                'inputs': [{'insert_at': 'safe', 'type': 'log', 'log_fields': {'message': json.dumps({
+                    'msg': 'draining node websockets', 'connections': 1, 'active_connections': 1,
+                    'peak_connections': 2, 'replacements': 1, 'token': 'never-forward'})}}],
+                'outputs': [{'extract_from': 'safe', 'conditions': [{'type': 'vrl', 'source':
+                    'assert_eq!(.connections, 1)\nassert_eq!(.active_connections, 1)\nassert_eq!(.peak_connections, 2)\nassert_eq!(.replacements, 1)\nassert!(!exists(.token))'}]}]})
             configure.write(collector / 'collector.yaml', config)
             fixtures = root / 'fixtures'
             fixtures.mkdir()
