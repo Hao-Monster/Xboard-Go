@@ -36,7 +36,13 @@ persistent and retain enough data for the outage window.
 
 Raw lines, arbitrary messages, request bodies, credentials and SQL errors are
 not forwarded. Structured diagnostic fields and namespaced event names are
-retained; other lines become `unstructured_log_suppressed` events. The application
+retained. The checked-in `message-catalog.json` maps literal logger messages from
+the panel and Node source to stable classifications, preserving their exact safe
+description. Update this catalog when adding a non-namespaced static log message.
+Node's approved nested `attributes` are flattened; report/config correlation,
+retry state and process identity survive ingestion. Panel callsites are stored as
+`code_source` so they cannot overwrite the collector's `source` identity.
+Other lines become `unstructured_log_suppressed` events. The application
 logger must still redact its allowed structured fields before writing locally.
 The collector is defense in depth, not a sanitizer for arbitrary hostile values
 placed inside those trusted fields. Journal cursor hashes provide stable event
@@ -68,8 +74,11 @@ python3 deploy/observability/smoke.py
 The second command requires Linux Docker and creates/removes only an isolated,
 randomly named Compose project. It exercises auth boundaries, persisted query
 results, Vector redaction and restart recovery after an ingestion outage.
-It also asserts the collector image includes `journalctl`; actual systemd journal
-integration must be verified on the development server after CI deployment.
+It also validates the actual journald configuration, asserts the image includes
+`journalctl`, and creates an isolated fixture container with the exact journal tag
+to check journal ingestion and collector restart recovery. The Linux CI host must
+have systemd journald; this verification fails rather than silently skipping it.
+Production source presence still requires verification after deployment.
 
 Upstream references: [VictoriaLogs](https://github.com/VictoriaMetrics/VictoriaLogs),
 [Vector](https://github.com/vectordotdev/vector),

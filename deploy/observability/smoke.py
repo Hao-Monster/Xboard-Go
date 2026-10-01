@@ -71,6 +71,28 @@ def main():
 
             collector = root / 'collector'
             configure.collector(collector, 'smoke', state['writers']['smoke'], 'xboard-panel-smoke', endpoint)
+            journal_mounts = ['--mount', f'type=bind,src={collector},dst=/config',
+                              '--mount', f'type=bind,src={collector / "vector-data"},dst=/var/lib/vector',
+                              '-v', '/var/log/journal:/var/log/journal:ro',
+                              '-v', '/run/log/journal:/run/log/journal:ro',
+                              '-v', '/etc/machine-id:/etc/machine-id:ro']
+            run('docker', 'run', '--rm', '--network', 'host', *journal_mounts,
+                configure.VECTOR, 'validate', '--skip-healthchecks', '/config/collector.yaml')
+            journal_name = name + '-journal'
+            try:
+                run('docker', 'run', '-d', '--name', journal_name, '--network', 'host',
+                    *journal_mounts, configure.VECTOR, '--config', '/config/collector.yaml')
+                for event in ['smoke.journal_before_restart', 'smoke.journal_after_restart']:
+                    run('docker', 'run', '--rm', '--log-driver', 'journald', '--log-opt', 'tag=xboard-panel-smoke',
+                        '--entrypoint', '/bin/sh', configure.VECTOR, '-c',
+                        'printf \'%s\\n\' \'{"msg":"' + event + '","status":200}\'')
+                    eventually(lambda: event in request(query, viewer)[1])
+                    run('docker', 'restart', journal_name)
+                assert any(p.is_file() for p in (collector / 'vector-data').rglob('*'))
+            finally:
+                subprocess.run(['docker', 'rm', '-f', journal_name], check=False, stdout=subprocess.DEVNULL)
+            collector = root / 'collector-file'
+            configure.collector(collector, 'smoke', state['writers']['smoke'], 'xboard-panel-smoke', endpoint)
             config = json.loads((collector / 'collector.yaml').read_text())
             config['sources']['journal'] = {'type': 'file', 'include': ['/fixtures/events.jsonl'], 'read_from': 'beginning'}
             config['sources'].pop('metrics')
@@ -80,7 +102,20 @@ def main():
                 'inputs': [{'insert_at': 'safe', 'type': 'log', 'log_fields': {
                     'message': '{"msg":"http.error","status":500,"password":"fixture-secret","body":"fixture-body","error":"fixture-error"}'}}],
                 'outputs': [{'extract_from': 'safe', 'conditions': [{'type': 'vrl', 'source':
-                    'assert_eq!(.event, "http.error")\nassert_eq!(.status, 500)\nassert!(!exists(.password))\nassert!(!exists(.body))\nassert!(!exists(.error))'}]}]}]
+                    'assert_eq!(.event, "http.error")\nassert_eq!(.status, 500)\nassert!(!exists(.password))\nassert!(!exists(.body))\nassert!(!exists(.error))'}]}]}, {
+                'name': 'retains nested node report correlation without payload',
+                'inputs': [{'insert_at': 'safe', 'type': 'log', 'log_fields': {'message': json.dumps({
+                    'service': 'xboard-node', 'runtime_id': 'fixture-runtime', 'component': 'core', 'message': 'control plane event',
+                    'attributes': {'event': 'report.failed', 'node_id': 5, 'machine_id': 6,
+                                   'report_correlation': 'fixture-correlation', 'retry': True, 'error': '*url.Error', 'payload': 'never-forward'}})}}],
+                'outputs': [{'extract_from': 'safe', 'conditions': [{'type': 'vrl', 'source':
+                    'assert_eq!(.event, "report.failed")\nassert_eq!(.node_id, 5)\nassert_eq!(.machine_id, 6)\nassert_eq!(.runtime_id, "fixture-runtime")\nassert_eq!(.report_correlation, "fixture-correlation")\nassert_eq!(.error_type, "*url.Error")\nassert_eq!(.retry, true)\nassert!(!exists(.payload))'}]}]}, {
+                'name': 'preserves approved worker failure message and callsite',
+                'inputs': [{'insert_at': 'safe', 'type': 'log', 'log_fields': {'message': json.dumps({
+                    'msg': 'deliver queued email', 'source': 'mailer.worker.Run worker.go:80',
+                    'error_type': '*net.OpError', 'error_class': 'network', 'error_code': 'operation_failed', 'network_op': 'dial'})}}],
+                'outputs': [{'extract_from': 'safe', 'conditions': [{'type': 'vrl', 'source':
+                    'assert_eq!(.message, "deliver queued email")\nassert_eq!(.event, "panel.deliver_queued_email")\nassert_eq!(.code_source, "mailer.worker.Run worker.go:80")\nassert_eq!(.error_class, "network")\nassert_eq!(.network_op, "dial")'}]}]}]
             configure.write(collector / 'collector.yaml', config)
             fixtures = root / 'fixtures'
             fixtures.mkdir()
@@ -105,7 +140,7 @@ def main():
                 assert 'never-forward-fixture' not in request(query, viewer)[1]
             finally:
                 subprocess.run(['docker', 'rm', '-f', cname], stdout=subprocess.DEVNULL, check=False)
-            print('PASS auth roles, persistence, Vector redaction, buffered outage recovery')
+            print('PASS auth roles, persistence, real journald cursor/restart, panel/node diagnostics, Vector redaction, buffered outage recovery')
         finally:
             subprocess.run([*cmd, 'down', '--volumes'], check=False)
 

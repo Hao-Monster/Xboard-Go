@@ -79,21 +79,32 @@ def remap(source):
               'status', 'duration_ms', 'bytes', 'error_type', 'stack', 'machine_id', 'node_id',
               'administrator_id', 'user_id', 'job_id', 'route_id', 'knowledge_id', 'payment_id',
               'revision_number', 'count', 'outcome', 'config_revision', 'users_revision',
-              'limit', 'expire', 'traffic', 'checked', 'paid', 'remaining', 'cancelled', 'completed', 'processed']
+              'limit', 'expire', 'traffic', 'checked', 'paid', 'remaining', 'cancelled', 'completed', 'processed',
+              'runtime_id', 'component', 'instance', 'report_correlation', 'retry', 'users_count',
+              'added_count', 'removed_count', 'traffic_users_count', 'instances', 'version',
+              'error_class', 'error_code', 'network_op']
     lines = ['record, err = parse_json(.message)', 'record = object(record) ?? {}',
+             'attributes = object(record.attributes) ?? {}',
              'cursor = string(.__CURSOR) ?? ""', 'stamp = now()',
              'if exists(.timestamp) { stamp = .timestamp }',
              '. = {"source": ' + json.dumps(source) + ', "timestamp": stamp, "event": "unstructured_log_suppressed"}',
              'if cursor != "" { .event_id = sha256(cursor) }',
-             'event = string(record.event) ?? string(record.msg) ?? ""',
-             'if match(event, r\'^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$\') { .event = event }']
+             'event = string(record.event) ?? string(attributes.event) ?? string(record.msg) ?? ""',
+             'if match(event, r\'^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$\') { .event = event }',
+             'literal = string(record.msg) ?? string(record.message) ?? ""',
+             'catalog = ' + json.dumps(json.loads(Path(__file__).with_name('message-catalog.json').read_text(encoding='utf-8')), ensure_ascii=False),
+             'classified = get(catalog, [literal]) ?? null',
+             'if .event == "unstructured_log_suppressed" && is_string(classified) { .event = classified }']
     for field in fields:
+        lines.append(f'if !exists(record.{field}) && exists(attributes.{field}) {{ record.{field} = attributes.{field} }}')
         if field in ['stack', 'route']:
             # App logger is responsible for trusted route templates and argument-free stacks.
             lines.append(f'if is_string(record.{field}) {{ .{field} = truncate(string!(record.{field}), 4096) }}')
         else:
             lines.append(f'if is_string(record.{field}) || is_integer(record.{field}) || is_float(record.{field}) || is_boolean(record.{field}) {{ .{field} = record.{field} }}')
-    lines.append('.message = .event')
+    lines.extend(['if !exists(.error_type) && is_string(attributes.error) { .error_type = attributes.error }',
+                  'if is_string(record.source) { .code_source = truncate(string!(record.source), 4096) }',
+                  '.message = .event', 'if is_string(classified) { .message = literal }'])
     return '\n'.join(lines)
 
 
