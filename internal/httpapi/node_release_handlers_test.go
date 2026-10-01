@@ -259,6 +259,21 @@ func TestMachineInstallCommandUsesPanelReleaseSource(t *testing.T) {
 	}
 }
 
+func TestMachineInstallCommandUsesPublicGitHubRelease(t *testing.T) {
+	s := server{nodeRelease: "v1.14.5", nodeReleaseSource: "github", panelURL: "https://panel.example.test:8443"}
+	command := s.installCommand(42, "fixture'enrollment")
+	for _, required := range []string{"https://github.com/Hao-Monster/Xboard-Go/releases/download/node-v1.14.5", "--http1.1", "--retry 2", "sha256sum -c -", "--panel 'https://panel.example.test:8443'", shellQuote("fixture'enrollment")} {
+		if !strings.Contains(command, required) {
+			t.Fatalf("missing %s", required)
+		}
+	}
+	for _, forbidden := range []string{"api/v2/node/releases", "api.github.com", "gh auth", "XBOARD_NODE_RELEASE_TOKEN"} {
+		if strings.Contains(command, forbidden) {
+			t.Fatalf("unexpected dependency %s", forbidden)
+		}
+	}
+}
+
 func TestNodeReleaseMetadataRejectsUnavailableArtifacts(t *testing.T) {
 	for _, filename := range []string{"install.sh", "SHA256SUMS"} {
 		for _, kind := range []string{"missing", "empty", "directory", "symlink"} {

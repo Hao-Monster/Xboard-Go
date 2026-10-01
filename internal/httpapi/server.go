@@ -47,6 +47,7 @@ type Dependencies struct {
 	LegacyAdminPath            string
 	NodeRelease                string
 	NodeReleaseRoot            string
+	NodeReleaseSource          string
 	CookieSecure               bool
 	AllowedOrigins             []string
 	TrustedProxyPrefixes       []netip.Prefix
@@ -124,6 +125,7 @@ type server struct {
 	panelHostname              string
 	nodeRelease                string
 	nodeReleaseRoot            string
+	nodeReleaseSource          string
 	cookieSecure               bool
 	allowedOrigins             map[string]struct{}
 	trustedProxyPrefixes       []netip.Prefix
@@ -296,6 +298,7 @@ func New(dependencies Dependencies) http.Handler {
 		panelURL:                   strings.TrimRight(dependencies.PanelURL, "/"),
 		panelHostname:              panelHostname,
 		nodeRelease:                dependencies.NodeRelease,
+		nodeReleaseSource:          dependencies.NodeReleaseSource,
 		nodeReleaseRoot:            strings.TrimSpace(dependencies.NodeReleaseRoot),
 		cookieSecure:               dependencies.CookieSecure,
 		allowedOrigins:             allowedOrigins,

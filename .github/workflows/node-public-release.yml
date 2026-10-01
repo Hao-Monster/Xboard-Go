@@ -1,0 +1,70 @@
+name: Publish verified public Node release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New immutable Node version (vX.Y.Z)
+        required: true
+      source_sha:
+        description: Expected full commit SHA in the private Node repository
+        required: true
+permissions:
+  contents: write
+  attestations: read
+concurrency:
+  group: node-public-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Hao-Monster/Xboard-Go' && github.ref == 'refs/heads/codex/ci-001-tiered-gates'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_VERSION: ${{ inputs.version }}
+      NODE_SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify private source and package existing CI artifacts
+        env:
+          GH_TOKEN: ${{ secrets.NODE_RELEASE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$NODE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$NODE_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test -n "$GH_TOKEN"
+          actual="$(gh api "repos/Hao-Monster/Xboard-Node/commits/$NODE_VERSION" --jq .sha)"
+          test "$actual" = "$NODE_SOURCE_SHA"
+          python3 deploy/package-node-release.py --version "$NODE_VERSION" --output "$RUNNER_TEMP/node-release"
+      - name: Publish a new release without replacing existing versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="node-$NODE_VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; inspect it instead of replacing files" >&2
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/node-release"
+          printf 'Node %s from private source commit %s. Public binaries only.\n' "$NODE_VERSION" "$NODE_SOURCE_SHA" > notes.txt
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+            --title "Node $NODE_VERSION" --notes-file notes.txt \
+            install.sh SHA256SUMS release.json \
+            xboard-node-linux-amd64 xboard-node-linux-arm64 \
+            xbctl-linux-amd64 xbctl-linux-arm64 node-release.tar.gz
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+      - name: Verify full public downloads without GitHub credentials
+        run: |
+          set -euo pipefail
+          original="$RUNNER_TEMP/node-release"
+          mkdir "$RUNNER_TEMP/public-verification"
+          cd "$RUNNER_TEMP/public-verification"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/node-$NODE_VERSION"
+          for file in install.sh SHA256SUMS release.json xboard-node-linux-amd64 xboard-node-linux-arm64 xbctl-linux-amd64 xbctl-linux-arm64 node-release.tar.gz; do
+            curl --http1.1 -fsSL --proto '=https' --proto-redir '=https' \
+              --connect-timeout 10 --max-time 180 --retry 2 --retry-max-time 360 "$base/$file" -o "$file"
+            cmp "$original/$file" "$file"
+          done
+          sha256sum -c SHA256SUMS

@@ -44,6 +44,7 @@ type Config struct {
 	CookieSecure               bool
 	NodeRelease                string
 	NodeReleaseRoot            string
+	NodeReleaseSource          string
 	BootstrapAdminEmail        string
 	BootstrapAdminPassword     string
 	SchedulerInterval          time.Duration
@@ -193,6 +194,7 @@ func Load() (Config, error) {
 		TrustedProxyPrefixes:       trustedProxyPrefixes,
 		CookieSecure:               cookieSecure,
 		NodeRelease:                envOrDefault("XBOARD_NODE_RELEASE", "v1.14.3"),
+		NodeReleaseSource:          envOrDefault("XBOARD_NODE_RELEASE_SOURCE", "panel"),
 		NodeReleaseRoot:            strings.TrimSpace(os.Getenv("XBOARD_NODE_RELEASE_ROOT")),
 		BootstrapAdminEmail:        strings.TrimSpace(os.Getenv("XBOARD_BOOTSTRAP_ADMIN_EMAIL")),
 		BootstrapAdminPassword:     bootstrapPassword,
@@ -337,6 +339,9 @@ func Load() (Config, error) {
 	}
 	if !immutableNodeReleaseRE.MatchString(config.NodeRelease) {
 		return Config{}, errors.New("XBOARD_NODE_RELEASE must be an immutable semantic version such as v1.14.3")
+	}
+	if config.NodeReleaseSource != "panel" && config.NodeReleaseSource != "github" {
+		return Config{}, errors.New("XBOARD_NODE_RELEASE_SOURCE must be panel or github")
 	}
 	if len(config.LegacyAdminPath) < 8 || !legacyAdminPathRE.MatchString(config.LegacyAdminPath) {
 		return Config{}, errors.New("XBOARD_LEGACY_ADMIN_PATH must be one URL-safe path segment of 8 to 64 characters")

@@ -77,6 +77,12 @@ def package(version, output):
     manifest = {'version': version, 'source': metadata['html_url'],
                 'artifacts': [{'name': name} for name in FILES if name != 'SHA256SUMS']}
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
+    # Static metadata keeps node upgrades independent of GitHub API limits/auth.
+    public_base = f'https://github.com/Hao-Monster/Xboard-Go/releases/download/node-{version}'
+    public_release = {'tag_name': version, 'draft': False, 'assets': [
+        {'name': name, 'url': f'{public_base}/{name}',
+         'size': (output / name).stat().st_size, 'state': 'uploaded'} for name in FILES]}
+    (output / 'release.json').write_text(json.dumps(public_release, indent=2)+'\n', encoding='utf-8')
     archive = output / 'node-release.tar.gz'
     with archive.open('wb') as raw, gzip.GzipFile(filename='', fileobj=raw, mode='wb', mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode='w') as bundle:

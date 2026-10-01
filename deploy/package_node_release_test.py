@@ -41,6 +41,12 @@ class BundleTests(unittest.TestCase):
                     self.assertFalse((output / 'node-release.tar.gz').exists())
                 else:
                     bundle.package('v1.14.4', output)
+                    public = json.loads((output / 'release.json').read_text())
+                    self.assertEqual(public['tag_name'], 'v1.14.4')
+                    self.assertEqual({a['name'] for a in public['assets']}, set(bundle.FILES))
+                    for asset in public['assets']:
+                        self.assertEqual(asset['url'], 'https://github.com/Hao-Monster/Xboard-Go/releases/download/node-v1.14.4/'+asset['name'])
+                        self.assertEqual(asset['size'], len(files[asset['name']]))
                     with tarfile.open(output / 'node-release.tar.gz') as archive:
                         self.assertEqual(set(archive.getnames()), {'v1.14.4/'+name for name in (*bundle.FILES, 'manifest.json')})
                         manifest = json.load(archive.extractfile('v1.14.4/manifest.json'))

@@ -1,5 +1,8 @@
 # Panel-managed Node releases
 
+This page describes the retained legacy panel provider. For new direct GitHub
+downloads, publication order and activation, see [Direct GitHub Node downloads](node-github-releases.md).
+
 The panel generates installation commands that download a fixed Node version
 from `/api/v2/node/releases`. Node servers need no `gh`, GitHub account, or
 GitHub token. Enrollment remains a short-lived, machine-bound, one-use code.
