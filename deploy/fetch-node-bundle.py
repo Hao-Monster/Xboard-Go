@@ -21,11 +21,13 @@ with tempfile.TemporaryDirectory() as work:
     # Bound network retries and retain checksum verification before extraction.
     subprocess.run(['curl', '--fail', '--location', '--silent', '--show-error',
                     '--proto', '=https', '--proto-redir', '=https',
-                    '--connect-timeout', '15', '--max-time', '180',
-                    '--retry', '2', '--retry-max-time', '240',
+                    # The development runner transferred 28 MB of this 49 MB
+                    # bundle in 180 seconds. Allow a complete slow transfer.
+                    '--connect-timeout', '15', '--max-time', '600',
+                    '--retry', '2', '--retry-max-time', '900',
                     '--max-filesize', str(512*1024*1024),
                     '--output', str(Path(work)/'bundle.tar.gz'), url],
-                   check=True, timeout=300)
+                   check=True, timeout=1500)
     # curl owns the output path so a retry truncates a partial previous attempt.
     temporary = Path(work)/'bundle.tar.gz'
     calculated = hashlib.sha256()

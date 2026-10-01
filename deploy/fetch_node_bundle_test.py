@@ -106,7 +106,7 @@ class FetchTests(unittest.TestCase):
                         self.assertIn('--fail', args)
                         self.assertIn('--proto-redir', args)
                         self.assertTrue(kwargs['check'])
-                        self.assertEqual(kwargs['timeout'], 300)
+                        self.assertEqual(kwargs['timeout'], 1500)
                         if scenario == 'download_failure':
                             raise subprocess.CalledProcessError(28, args)
                         self.assertNotIn('stdout', kwargs)
