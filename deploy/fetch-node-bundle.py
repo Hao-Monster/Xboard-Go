@@ -3,10 +3,10 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 
 lock = json.loads(Path('deploy/node-release.json').read_text())
 version, digest, url = (lock[k] for k in ('version', 'sha256', 'url'))
@@ -16,15 +16,23 @@ assert url == f'https://github.com/Hao-Monster/Xboard-Go/releases/download/node-
 destination = Path(sys.argv[1])
 destination.mkdir(parents=True, exist_ok=False)
 with tempfile.TemporaryFile() as temporary:
+    # Use the same curl transport as the runner's source download. urllib's
+    # connection path timed out on this runner while curl reached the asset.
+    # Bound network retries and retain checksum verification before extraction.
+    subprocess.run(['curl', '--fail', '--location', '--silent', '--show-error',
+                    '--proto', '=https', '--proto-redir', '=https',
+                    '--connect-timeout', '15', '--max-time', '180',
+                    '--retry', '2', '--retry-max-time', '240',
+                    '--max-filesize', str(512*1024*1024), url],
+                   stdout=temporary, check=True, timeout=300)
+    temporary.seek(0)
     calculated = hashlib.sha256()
     total = 0
-    with urllib.request.urlopen(url, timeout=180) as response:
-        while chunk := response.read(1024*1024):
-            total += len(chunk)
-            if total > 512*1024*1024:
-                raise ValueError('Bundle exceeds size limit')
-            calculated.update(chunk)
-            temporary.write(chunk)
+    while chunk := temporary.read(1024*1024):
+        total += len(chunk)
+        if total > 512*1024*1024:
+            raise ValueError('Bundle exceeds size limit')
+        calculated.update(chunk)
     assert calculated.hexdigest() == digest, 'Bundle SHA256 mismatch'
     temporary.seek(0)
     with tarfile.open(fileobj=temporary, mode='r:gz') as archive:
