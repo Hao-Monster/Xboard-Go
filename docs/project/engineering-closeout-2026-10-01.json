@@ -21,7 +21,7 @@
     {
       "id": "CLOSE-01",
       "title": "只更新 undici 和 brace-expansion 的安全锁文件版本，审计和前端回归",
-      "status": "implemented_targeted_checks_passed"
+      "status": "completed"
     },
     {
       "id": "CLOSE-02",
@@ -36,12 +36,14 @@
     {
       "id": "CLOSE-04",
       "title": "隔离 CI 补跑九项 Redis / WebSocket 环境测试，不加入部署门禁",
-      "status": "manual_ci_ready"
+      "status": "implemented",
+      "execution_source": "https://github.com/Hao-Monster/Xboard-Go/actions/workflows/internal-test-environment-checks.yml"
     },
     {
       "id": "CLOSE-05",
       "title": "同分支 PR、Docker 发布、开发站发布和精确版本核验",
-      "status": "publication_pending"
+      "status": "implemented",
+      "execution_source": "https://github.com/Hao-Monster/Xboard-Go/pull/292"
     }
   ],
   "implementation_review": {
@@ -228,6 +230,15 @@
     {
       "command": "pnpm --dir web run typecheck; pnpm --dir web run lint; pnpm --dir web run build",
       "result": "pass"
+    },
+    {
+      "command": "pnpm --dir web test",
+      "files_passed": 55,
+      "passed": 223,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 244.14
     }
-  ]
+  ],
+  "publication_policy": "Manual environment workflow becomes dispatchable after merging this PR. Runtime deployment and environment execution results are attached to PR #292; do not infer success solely from implemented task status."
 }
