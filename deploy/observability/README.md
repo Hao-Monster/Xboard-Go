@@ -11,7 +11,9 @@ python3 configure.py collector --directory /opt/xboard-observability/collector-p
 ```
 
 The central Compose file is `compose.yaml`, the collector Compose file is
-`collector-compose.yaml`. Both use immutable upstream image digests. VictoriaLogs
+`collector-compose.yaml`. Central services use immutable upstream image digests;
+the collector uses an exact source-SHA image built from pinned upstream images
+and a signed Ubuntu package snapshot (see `COLLECTOR-IMAGE.md`). VictoriaLogs
 stores data under `data/`, retains 30 days, and stops ingestion below 5 GiB free
 space. It does not silently shorten retention to keep storage under 30 GiB.
 The 30 GiB planning budget is a warning, not a deletion policy.
@@ -49,7 +51,8 @@ placed inside those trusted fields. Journal cursor hashes provide stable event
 IDs for identifying potential replay duplicates.
 
 `health.py --directory /home/bingo/apps/xboard-logs` checks authenticated queries,
-per-source canaries within three minutes, disk free space, and the storage budget.
+per-source canaries and panel HTTP events within three minutes, disk free space,
+and the storage budget.
 It emits sanitized JSON, persists `health.json`, and exits nonzero on warning.
 Run it from the workflow-managed user-systemd timer every minute. Collector
 Prometheus metrics are accessible only at `127.0.0.1:19429`; inspect buffer event

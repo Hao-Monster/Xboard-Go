@@ -20,7 +20,7 @@ def counters(text):
     names = {'buffer_byte_size': 'buffer_bytes', 'component_discarded_events_total': 'discarded_events',
              'component_errors_total': 'collector_errors'}
     for line in text.splitlines():
-        match = re.fullmatch(r'(?:vector_)?([a-z_]+)(?:\{[^\r\n]*\})? ([0-9]+(?:\.[0-9]+)?)', line)
+        match = re.fullmatch(r'(?:vector_)?([a-z_]+)(?:\{[^\r\n]*\})? ([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)', line)
         if match and match[1] in names:
             result[names[match[1]]] += float(match[2])
     return result

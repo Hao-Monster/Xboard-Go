@@ -71,8 +71,10 @@ journalctl --user -u xboard-logs-health.service --since '1 hour ago'
 docker compose -f /home/bingo/apps/xboard-logs/compose.yaml ps
 ```
 
-Health checks run every minute and report stale transport canaries, query failure,
-disk budget and free space. This is an on-host alarm/status report, not an external
+Health checks run every minute and report stale transport canaries, missing panel
+HTTP events, query failure, disk budget and free space. A separate scoped runtime
+probe records Xboard's restart count, OOM flag, exit status and collector buffer/
+error counters through the same journal pipeline. This is an on-host alarm/status report, not an external
 notification channel. Canary health alone does not prove every application event
 was emitted. Inspect collector metrics on its host at loopback 19429 for dropped
 events, journal/source errors and buffer pressure as well.
@@ -90,6 +92,10 @@ environment. Existing images and data volumes are retained. If its app restart
 fails, a newly introduced overlay is removed and the existing base Compose is
 started again. Production deployment compares Remnawave container IDs/start times
 before and after. Failure diagnostics are private host files, never raw CI output.
+
+The collector image includes journalctl 259 from a signed, fixed Ubuntu snapshot.
+This avoids journalctl 250–257's cross-boot `--follow` limitation without changing
+the host OS or weakening replay requirements.
 
 For a broader rollback, use CI with the previous reviewed logging source and
 retained credentials/data. Do not delete the data directory or journal. An explicit

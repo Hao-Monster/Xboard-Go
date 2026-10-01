@@ -4,6 +4,7 @@ import base64
 import json
 from pathlib import Path
 import subprocess
+import socket
 import tempfile
 import time
 import urllib.error
@@ -64,7 +65,12 @@ def main():
         viewer = 'Basic ' + base64.b64encode(('viewer:' + state['viewer']['password']).encode()).decode()
         compose = json.loads((root / 'compose.yaml').read_text())
         compose['name'] = name
-        compose['services']['auth']['ports'] = ['127.0.0.1::8427']
+        # Docker can reassign an automatically published port after stop/start.
+        # Keep the fixture endpoint stable during the deliberate outage.
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            fixture_port = listener.getsockname()[1]
+        compose['services']['auth']['ports'] = [f'127.0.0.1:{fixture_port}:8427']
         configure.write(root / 'compose.yaml', compose)
         cmd = ['docker', 'compose', '-f', str(root / 'compose.yaml')]
         try:
@@ -149,11 +155,24 @@ def main():
                 with events.open('a', encoding='utf-8') as stream:
                     stream.write('{"msg":"smoke.buffered","password":"never-forward-fixture"}\n')
                 # Wait for durable buffer occupancy, not an arbitrary delivery sleep.
-                eventually(lambda: any(p.stat().st_size > 0 for p in (collector / 'vector-data').rglob('*.dat')))
+                def buffered_event():
+                    for path in (collector / 'vector-data').rglob('*.dat'):
+                        with path.open('rb') as stream:
+                            if b'smoke.buffered' in stream.read(1048576):
+                                return True
+                    return False
+                eventually(buffered_event)
                 run('docker', 'restart', cname)
                 run(*cmd, 'start', 'auth')
                 eventually(lambda: 'smoke.buffered' in request(query, viewer)[1], 90)
                 assert 'never-forward-fixture' not in request(query, viewer)[1]
+            except Exception:
+                output = subprocess.run(['docker', 'logs', '--tail', '30', cname], capture_output=True, text=True)
+                diagnostic = output.stdout + output.stderr
+                for value in MASKS:
+                    diagnostic = diagnostic.replace(value, '[REDACTED]')
+                print(diagnostic)
+                raise
             finally:
                 subprocess.run(['docker', 'rm', '-f', cname], stdout=subprocess.DEVNULL, check=False)
             print('PASS auth roles, persistence, real journald cursor/restart, panel/node diagnostics, Vector redaction, buffered outage recovery')

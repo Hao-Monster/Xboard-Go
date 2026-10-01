@@ -130,12 +130,13 @@ def collector(directory, source, token, tag, endpoint, unit=None):
     if not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', token):
         raise ValueError('invalid writer token')
     sources = {'journal': {'type': 'journald', 'current_boot_only': False, 'emit_cursor': True,
-                          'include_matches': {'CONTAINER_TAG': [tag]}}}
+                          'include_matches': {'CONTAINER_TAG': [tag]},
+                          'extra_args': ['CONTAINER_TAG=' + tag]}}
     if unit:
         if not re.fullmatch(r'xboard[-a-zA-Z0-9@_.]*\.service', unit):
             raise ValueError('only exact Xboard service units are supported')
         sources['node_journal'] = {'type': 'journald', 'current_boot_only': False, 'emit_cursor': True,
-                                   'include_units': [unit]}
+                                   'include_units': [unit], 'extra_args': ['_SYSTEMD_UNIT=' + unit]}
     inputs = list(sources)
     sources['canary'] = {'type': 'demo_logs', 'format': 'shuffle', 'interval': 60,
                          'lines': ['{"event":"collector.canary"}']}
