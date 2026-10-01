@@ -145,6 +145,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `OBS-001` | M3 | in_progress | [#299](https://github.com/Hao-Monster/Xboard-Go/issues/299) | 内部测试集中日志、面板节点诊断与私有采集链路 |
 | `OBS-002` | M3 | in_progress | [#301](https://github.com/Hao-Monster/Xboard-Go/issues/301) | 保留 WebSocket 生命周期数值诊断并验证集中采集 |
 | `NDL-001` | M3 | in_progress | [#121](https://github.com/Hao-Monster/Xboard-Go/issues/121) | 节点公开 GitHub 固定版本下载与有限重试 |
+| `OBS-003` | M3 | in_progress | [#303](https://github.com/Hao-Monster/Xboard-Go/issues/303) | 通过受信 main CI 发布链路部署日志系统 |
 
 ## Release gates
 
