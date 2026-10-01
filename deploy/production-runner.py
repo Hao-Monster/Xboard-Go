@@ -1,4 +1,4 @@
-"""Read configured Variables through the API, never interpolate a key into a logged step."""
+"""Use protected Environment Secrets for SSH and public Variables for routing."""
 import json
 import os
 from pathlib import Path
@@ -53,9 +53,11 @@ def main():
     mode, revision, email = (os.environ[name] for name in ('DEPLOY_MODE', 'RELEASE_SHA', 'ADMINISTRATOR_EMAIL'))
     if mode == 'install' and (os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['GITHUB_EVENT_NAME'] != 'workflow_dispatch'):
         raise ValueError('Installation requires a manual run on protected main')
-    config = {row['name']: row['value'] for row in api(f'repos/{repository}/environments/production-internal-test/variables')['variables']}
+    config = {name: os.environ.get(name, '') for name in ('DEPLOY_SSH_KEY', 'DEPLOY_KNOWN_HOSTS', 'DEPLOY_HOST', 'DEPLOY_PORT', 'DEPLOY_USER', 'DEPLOY_DIR', 'PANEL_URL')}
+    if not config['DEPLOY_SSH_KEY'] or not config['DEPLOY_KNOWN_HOSTS']:
+        raise ValueError('SSH Environment Secrets are required; no unsafe Variables fallback is allowed')
     origin = validate(config, mode, revision, email)
-    # API failures are deliberately fatal; do not fall back to env/with interpolation of private Variables.
+    # Never fall back to env/with interpolation of private Variables.
     private_key = config['DEPLOY_SSH_KEY'].replace('\r\n', '\n').strip() + '\n'
     for line in private_key.splitlines():
         print('::add-mask::' + line.replace('%', '%25').replace('\r', '%0D'), flush=True)
