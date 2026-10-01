@@ -7,7 +7,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [inspect, install, resume]
+        options: [inspect, install, resume, update]
         default: inspect
       release_sha:
         description: Full SHA of an existing CI-tested internal Docker release

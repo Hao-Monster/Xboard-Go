@@ -49,6 +49,7 @@ jobs:
             XBOARD_IMAGE_ARCHIVE="$PWD/artifacts/xboard-go-linux-amd64.tar.gz" bash deploy/install.sh
           curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
           curl --fail --silent http://127.0.0.1:18083/ > /dev/null
+          bash deploy/node-release-smoke.sh http://127.0.0.1:18083 v1.14.4
           before="$(sha256sum "$install_dir/secrets/settings-key")"
           if XBOARD_INSTALL_DIR="$install_dir" XBOARD_PANEL_URL=http://127.0.0.1:18083 \
              XBOARD_ADMIN_EMAIL=smoke@example.test bash deploy/install.sh; then

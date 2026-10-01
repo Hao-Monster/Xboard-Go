@@ -1,0 +1,53 @@
+{
+  "scope": "Review and deliver the existing token-free Node installer through the Go panel; actual node installation remains user-owned.",
+  "requirement_ids": [
+    "MACH-001",
+    "MACH-002"
+  ],
+  "work_item_ids": [
+    "VER-003"
+  ],
+  "issue_number": 121,
+  "milestone": "M3",
+  "branch": "codex/ci-001-tiered-gates",
+  "plan": [
+    {
+      "id": "NREL-01",
+      "task": "Review and merge the five existing Node installer commits; exclude unrelated diagnostics",
+      "status": "in_progress"
+    },
+    {
+      "id": "NREL-02",
+      "task": "Close installer and xbctl upgrade panel-provider gaps; test no-token metadata/download and secure endpoints",
+      "status": "in_progress"
+    },
+    {
+      "id": "NREL-03",
+      "task": "Restore panel immutable release routes, isolated release-root configuration and no-gh enrollment command with security regression tests",
+      "status": "in_progress"
+    },
+    {
+      "id": "NREL-04",
+      "task": "Publish CI-verified v1.14.4 Node binaries and embed a checksum-pinned release bundle in the panel image",
+      "status": "pending"
+    },
+    {
+      "id": "NREL-05",
+      "task": "Merge the Go changes, build exact image and update internal-test panel by CI with backup and scoped rollback",
+      "status": "in_progress"
+    },
+    {
+      "id": "NREL-06",
+      "task": "Verify public metadata, installer checksum, generated command and preserved Remnawave services; leave node installation to user",
+      "status": "pending"
+    }
+  ],
+  "non_goals": [
+    "No user node installation",
+    "No proxy kernel or accounting protocol changes",
+    "No unrelated local Node diagnostics commit",
+    "No GitHub credentials on node servers"
+  ],
+  "delivery_design": "Node private source remains in Node repository. Only verified CI release binaries and installer are mirrored to a public Go release for checksum-pinned Docker builds. The runtime serves its immutable bundled release; no GitHub token is injected into the panel or nodes.",
+  "production_update": "CI-only image replacement of the existing Xboard container. Preserve Compose, volumes, credentials, Caddy route and other containers. Create and verify a database backup first; restore previous image/configuration on failed health or release probes."
+}

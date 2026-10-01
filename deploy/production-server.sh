@@ -15,6 +15,15 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 [[ "$(uname -m)" == x86_64 ]] || fail 'Unsupported architecture'
 for tool in docker curl python3 openssl sha256sum ss; do command -v "$tool" >/dev/null || fail "Missing prerequisite: $tool"; done
 docker compose version >/dev/null
+# A later release may be inspected while the existing instance remains healthy.
+if [[ "$mode" == inspect && -d "$directory" && ! -L "$directory" ]]; then
+  [[ "$(docker inspect "${project}-app-1" --format '{{index .Config.Labels "com.docker.compose.project"}} {{.State.Health.Status}}')" == "$project healthy" ]] || fail 'Existing installation is not the expected healthy Xboard instance'
+  existing_states="$(docker inspect remnawave remnanode remnawave-db remnawave-redis caddy --format '{{.State.Running}}')"
+  [[ "$existing_states" != *false* ]] || fail 'A protected service is not running'
+  curl -fsS --max-time 15 "$origin/healthz" >/dev/null
+  printf 'Read-only preflight passed: existing Xboard and protected services are healthy.\n'
+  exit 0
+fi
 if [[ "$mode" == resume || ( "$mode" == inspect && -d "$directory" ) ]]; then
   [[ -d "$directory" && ! -L "$directory" && -f "$directory/.env" && ! -L "$directory/.env" ]] || fail 'Expected retained Xboard installation missing'
   [[ "$(docker inspect "${project}-app-1" --format '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "org.opencontainers.image.revision"}} {{.State.Running}}')" == "$project $revision false" ]] || fail 'Resume requires the exact stopped Xboard container from the failed installation'

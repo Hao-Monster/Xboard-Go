@@ -95,11 +95,14 @@ jobs:
             -o .local/image-context/xboard ./cmd/xboard
           pnpm --dir web build
           cp -a web/dist .local/image-context/web-dist
+          python3 deploy/fetch-node-bundle.py .local/image-context/node-releases
           cat > .local/Dockerfile.legacy-parity <<'DOCKERFILE'
           FROM xboard-go:ci-base-3784c0a
           ARG APP_REVISION
           COPY --chown=65532:65532 xboard /xboard
           COPY --chown=65532:65532 web-dist /srv/xboard/web
+          COPY --chown=65532:65532 node-releases /usr/share/xboard/node-releases
+          ENV XBOARD_NODE_RELEASE=v1.14.4 XBOARD_NODE_RELEASE_ROOT=/usr/share/xboard/node-releases
           LABEL org.opencontainers.image.revision="${APP_REVISION}"
           DOCKERFILE
           docker build \
@@ -194,6 +197,7 @@ jobs:
           echo "Verifying public HTTPS endpoint..."
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/healthz >/dev/null
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
+          curl --fail --silent --show-error https://freedom.openal.uk/api/v2/node/releases/v1.14.4 >/dev/null
           echo "Public HTTPS smoke verification SUCCESS!"
       - name: Remove temporary deployment key
         if: always()
