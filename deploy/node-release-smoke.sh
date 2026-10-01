@@ -11,6 +11,9 @@ curl -fsS "$origin/api/v2/node/releases/$version/SHA256SUMS" -o "$work/SHA256SUM
 (cd "$work" && grep ' install.sh$' SHA256SUMS | sha256sum -c -)
 # Sourcing defines functions only; the installer's main guard prevents host changes.
 source "$work/install.sh"
+# This probe owns its cleanup; never invoke installation rollback handlers.
+trap - ERR
+trap 'rm -rf -- "$work"' EXIT
 TMP_DIR="$work"
 RELEASE_VERSION="$version"
 RELEASE_API_BASE="$origin/api/v2/node/releases"
