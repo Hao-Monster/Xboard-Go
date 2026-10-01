@@ -110,7 +110,7 @@ def main():
             configure.collector(collector, 'smoke', state['writers']['smoke'], 'xboard-panel-smoke', endpoint)
             config = json.loads((collector / 'collector.yaml').read_text())
             config['sources']['journal'] = {'type': 'file', 'include': ['/fixtures/events.jsonl'], 'read_from': 'beginning'}
-            config['sources'].pop('metrics')
+            config['sources'].pop('internal_metrics')
             config['sinks'].pop('metrics')
             config['tests'] = [{
                 'name': 'drops payload secrets while retaining event identity',

@@ -138,7 +138,7 @@ def collector(directory, source, token, tag, endpoint, unit=None):
     inputs = list(sources)
     sources['canary'] = {'type': 'demo_logs', 'format': 'shuffle', 'interval': 60,
                          'lines': ['{"event":"collector.canary"}']}
-    sources['metrics'] = {'type': 'internal_metrics', 'scrape_interval_secs': 30}
+    sources['internal_metrics'] = {'type': 'internal_metrics', 'scrape_interval_secs': 30}
     config = {'data_dir': '/var/lib/vector', 'sources': sources,
               'transforms': {'safe': {'type': 'remap', 'inputs': inputs + ['canary'], 'source': remap(source)}},
               'sinks': {'logs': {'type': 'http', 'inputs': ['safe'],
@@ -149,7 +149,7 @@ def collector(directory, source, token, tag, endpoint, unit=None):
                         'buffer': {'type': 'disk', 'max_size': 2147483648, 'when_full': 'block'},
                         'acknowledgements': {'enabled': True}, 'healthcheck': {'enabled': False},
                         'batch': {'timeout_secs': 2}},
-                        'metrics': {'type': 'prometheus_exporter', 'inputs': ['metrics'], 'address': '127.0.0.1:19429'}}}
+                        'metrics': {'type': 'prometheus_exporter', 'inputs': ['internal_metrics'], 'address': '127.0.0.1:19429'}}}
     directory = Path(directory).resolve()
     write(directory / 'collector.yaml', config)
     (directory / 'vector-data').mkdir(exist_ok=True, mode=0o700)
