@@ -1,0 +1,38 @@
+# Vector 0.58's Debian image contains journalctl 257, whose --follow implies
+# --boot. Vector correctly refuses current_boot_only=false on versions 250-257.
+# Keep cross-boot replay and use Ubuntu's supported journalctl 259 instead.
+FROM timberio/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9 AS vector
+FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+
+LABEL org.opencontainers.image.title="Xboard journal collector" \
+      org.opencontainers.image.source="https://github.com/Hao-Monster/Xboard-Go"
+
+# A signed, dated Ubuntu snapshot also fixes transitive package resolution.
+# Archived Release metadata may expire; disable only that freshness check,
+# retaining Ubuntu keyring signature and package-hash verification.
+RUN printf '%s\n' \
+      'Types: deb' \
+      'URIs: http://snapshot.ubuntu.com/ubuntu/20261001T000000Z/' \
+      'Suites: resolute resolute-updates resolute-security' \
+      'Components: main' \
+      'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      systemd=259.5-0ubuntu3.4 \
+      libsystemd0=259.5-0ubuntu3.4 \
+      ca-certificates=20260601~26.04.1 \
+      libsasl2-2=2.1.28+dfsg1-9ubuntu3 \
+      tzdata=2026c-0ubuntu0.26.04.1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/vector /etc/vector
+
+COPY --from=vector /usr/bin/vector /usr/bin/vector
+COPY --from=vector /usr/share/vector /usr/share/vector
+COPY --from=vector /usr/share/doc/vector /usr/share/doc/vector
+
+RUN journalctl --version \
+    && journalctl --version | awk 'NR == 1 { if ($2 + 0 < 258) exit 1 }' \
+    && vector --version | grep '^vector 0\.58\.0 '
+
+ENTRYPOINT ["/usr/bin/vector"]
