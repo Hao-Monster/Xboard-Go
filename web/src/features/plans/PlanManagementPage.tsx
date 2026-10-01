@@ -1,3 +1,5 @@
+import { PlanAudienceModal } from "./PlanAudienceModal";
+import type { PlanAudienceAPI } from "../../lib/api";
 import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { SafeMarkdown } from "../../components/SafeMarkdown";
@@ -11,7 +13,7 @@ import { invalidateAdminData } from "../../lib/useAdminData";
 import { adminDataCache } from "../../lib/dataPrefetchCache";
 import "./PlanManagementPage.css";
 
-type PlansAPI = Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups"> & Partial<Pick<AdminAPI, "createServerGroup">>;
+type PlansAPI = Partial<PlanAudienceAPI> & Pick<AdminAPI, "listPlans" | "createPlan" | "updatePlan" | "setPlanState" | "reorderPlans" | "deletePlan" | "listServerGroups"> & Partial<Pick<AdminAPI, "createServerGroup">>;
 
 const periods: Array<{ key: PlanPeriod; label: string }> = [
   { key: "monthly", label: "月付" }, { key: "quarterly", label: "季付" }, { key: "half_yearly", label: "半年付" },
@@ -24,6 +26,8 @@ const maxPlanPriceCents = 9_000_000_000_000_000n;
 const planDescriptionTemplate = `## 套餐特点\n• 高速稳定的全球网络接入\n• 支持多设备同时在线\n• 无限制的流量重置\n\n## 使用说明\n1. 支持设备：iOS、Android、Windows、macOS\n2. 24/7 技术支持\n3. 自动定期流量重置\n\n## 注意事项\n- 禁止滥用\n- 遵守当地法律法规\n- 支持随时更换套餐`;
 
 export function PlanManagementPage({ api }: { api: PlansAPI }) {
+  const [audienceID, setAudienceID] = useState<number | null>(null);
+  const audienceAPI = useMemo(() => api.getPlanVisibility && api.searchPlanAudienceUsers && api.savePlanVisibility ? {getPlanVisibility:api.getPlanVisibility.bind(api),searchPlanAudienceUsers:api.searchPlanAudienceUsers.bind(api),savePlanVisibility:api.savePlanVisibility.bind(api)} : null, [api]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [groups, setGroups] = useState<ServerGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +132,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
 
   return (
     <main className="page-shell resource-page pm-page">
+      {audienceID !== null && audienceAPI && <PlanAudienceModal id={audienceID} api={audienceAPI} onClose={() => setAudienceID(null)} onSaved={() => {setAudienceID(null); void refresh();}} />}
       {/* Header */}
       <header className="pm-header">
         <h1 className="pm-title">{translateAdmin("订阅套餐")}</h1>
@@ -222,6 +227,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
                     {/* 操作 */}
                     <td data-label="操作" className="pm-td-ops">
                       <div className="row-actions pm-row-actions">
+                        {!sorting && audienceAPI && <button className="button secondary compact" aria-label={`购买权限：${plan.name}`} onClick={() => setAudienceID(plan.id)}>购买权限</button>}
                         {sorting ? (
                           <>
                             <button

@@ -186,6 +186,12 @@ func cancelUserLifecycleNotificationsTx(ctx context.Context, tx *sql.Tx, account
 }
 
 func anonymizeUserTx(ctx context.Context, tx *sql.Tx, account AdminUser, at int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM legacy_user_history WHERE user_id=?`, account.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM plan_visibility_users WHERE user_id=?`, account.ID); err != nil {
+		return err
+	}
 	tombstone := fmt.Sprintf("anonymized-%d-%s@users.invalid", account.ID, uuid.NewString())
 	// Scrub application-managed identity copies; identifiers and monetary facts
 	// remain for reconciliation. Previously downloaded files/backups are outside

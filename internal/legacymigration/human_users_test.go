@@ -59,12 +59,12 @@ func TestReadHumanUsersSnapshotRejectsLossyOrUnsafeLegacyState(t *testing.T) {
 		{name: "invalid commission type", statement: `UPDATE v2_user SET commission_type = 3 WHERE id = 2`, contains: "commission type"},
 		{name: "invalid plan", statement: `UPDATE v2_user SET plan_id = -9 WHERE id = 2`, contains: "invalid"},
 		{name: "invalid reset state", statement: `UPDATE v2_user SET reset_count = -1 WHERE id = 2`, contains: "reset count"},
-		{name: "last login ip", statement: `UPDATE v2_user SET last_login_ip = '203.0.113.4' WHERE id = 2`, contains: "unsupported"},
+		{name: "invalid last login ip", statement: `UPDATE v2_user SET last_login_ip = 'not-an-ip' WHERE id = 2`, contains: "historical state"},
 		{name: "invalid telegram", statement: `UPDATE v2_user SET telegram_id = -1 WHERE id = 2`, contains: "telegram"},
 		{name: "oversized remarks", statement: `UPDATE v2_user SET remarks = printf('%0*d', 4097, 0) WHERE id = 2`, contains: "remarks"},
 		{name: "email normalization", statement: `UPDATE v2_user SET email = ' Upper@Example.Test ' WHERE id = 2`, contains: "invalid"},
 		{name: "missing inviter", statement: `UPDATE v2_user SET invite_user_id = 999 WHERE id = 2`, contains: "missing inviter"},
-		{name: "weak bcrypt", statement: `UPDATE v2_user SET password = '` + string(weakHash) + `' WHERE id = 2`, contains: "invalid"},
+		{name: "weak bcrypt", statement: `UPDATE v2_user SET password = '` + string(weakHash) + `' WHERE id = 2`, contains: "unsupported password encoding"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			path := createLegacyHumanUsersSnapshot(t)

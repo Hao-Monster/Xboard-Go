@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 65
+const currentSchemaVersion = 66
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -477,6 +477,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			}
 		}
 		version = 65
+	}
+	if version < 66 {
+		if err := migratePlanVisibility(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v66: %w", err)
+		}
+		version = 66
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)

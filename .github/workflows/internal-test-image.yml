@@ -1,0 +1,76 @@
+name: Publish internal-test Docker installer
+on:
+  push:
+    branches: [main, codex/ci-001-tiered-gates]
+    paths:
+      - 'Dockerfile'
+      - '.docker/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'deploy/**'
+      - '.github/workflows/internal-test-image.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: internal-test-image-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    if: github.repository == 'Hao-Monster/Xboard-Go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate shell and build exact image
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash -n deploy/install.sh
+          docker build --build-arg APP_REVISION="$REVISION" --tag "xboard-go:$REVISION" .
+          mkdir artifacts
+          docker save "xboard-go:$REVISION" | gzip -1 > artifacts/xboard-go-linux-amd64.tar.gz
+          cp deploy/compose.yaml deploy/install.sh artifacts/
+      - name: Fresh installation and restart smoke
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/xboard-go-install-smoke"
+          XBOARD_INSTALL_DIR="$install_dir" XBOARD_PROJECT=xboard-go-install-smoke \
+            XBOARD_PORT=18083 XBOARD_BIND_ADDRESS=127.0.0.1 XBOARD_PANEL_URL=http://127.0.0.1:18083 \
+            XBOARD_ADMIN_EMAIL=smoke@example.test XBOARD_REVISION="$REVISION" \
+            XBOARD_IMAGE_ARCHIVE="$PWD/artifacts/xboard-go-linux-amd64.tar.gz" bash deploy/install.sh
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          curl --fail --silent http://127.0.0.1:18083/ > /dev/null
+          before="$(sha256sum "$install_dir/secrets/settings-key")"
+          if XBOARD_INSTALL_DIR="$install_dir" XBOARD_PANEL_URL=http://127.0.0.1:18083 \
+             XBOARD_ADMIN_EMAIL=smoke@example.test bash deploy/install.sh; then
+            echo 'Installer unexpectedly overwrote an existing installation'; exit 1
+          fi
+          test "$before" = "$(sha256sum "$install_dir/secrets/settings-key")"
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" restart app
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --wait --wait-timeout 90
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" down --volumes
+      - name: Publish verified internal-test bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum compose.yaml xboard-go-linux-amd64.tar.gz > SHA256SUMS
+          tag="internal-$REVISION"
+          # A successful rerun preserves the already-published immutable bundle.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then exit 0; fi
+          printf 'Fresh-install Docker bundle for internal testing. Revision: %s\nBuilt by CI; fresh installation, restart and non-overwrite checks passed. Business acceptance remains operator-owned.\n' "$REVISION" > release-notes.txt
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$REVISION" --prerelease \
+            --title "Internal test ${REVISION:0:12}" --notes-file release-notes.txt \
+            install.sh compose.yaml SHA256SUMS xboard-go-linux-amd64.tar.gz

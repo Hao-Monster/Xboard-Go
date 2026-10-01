@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/security"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
@@ -125,10 +126,15 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 			&onlineCount, &lastOnlineAt, &nextResetAt, &lastResetAt, &resetCount, &isDistributor, &distributorName); err != nil {
 			return nil, 0, fmt.Errorf("scan legacy human user: %w", err)
 		}
-		if err := validateUnsupportedLegacyHumanUserFields(user.ID, passwordAlgorithm, passwordSalt,
-			legacyTime, lastLoginIP, onlineCount); err != nil {
-			return nil, 0, err
+		user.History = store.LegacyUserHistory{LegacyTime: legacyTime, LastLoginIP: lastLoginIP.String, OnlineCount: onlineCount.Int64}
+		if !user.History.Valid() {
+			return nil, 0, fmt.Errorf("legacy human user id %d has invalid historical state", user.ID)
 		}
+		encoded, encodeErr := security.EncodeLegacyPassword(passwordAlgorithm.String, passwordSalt.String, user.PasswordHash)
+		if encodeErr != nil {
+			return nil, 0, fmt.Errorf("legacy human user id %d has unsupported password encoding", user.ID)
+		}
+		user.PasswordHash = encoded
 		if banned != 0 && banned != 1 || isAdmin != 0 && isAdmin != 1 || isStaff != 0 && isStaff != 1 ||
 			isDistributor != 0 && isDistributor != 1 || remindExpire != 0 && remindExpire != 1 || remindTraffic != 0 && remindTraffic != 1 {
 			return nil, 0, fmt.Errorf("legacy human user id %d has an invalid boolean value", user.ID)
@@ -227,17 +233,6 @@ func readLegacyHumanUsers(ctx context.Context, database *sql.DB) ([]store.Legacy
 		return nil, 0, fmt.Errorf("iterate legacy human users: %w", err)
 	}
 	return users, bytesRead, nil
-}
-
-func validateUnsupportedLegacyHumanUserFields(id int64, passwordAlgorithm, passwordSalt sql.NullString,
-	legacyTime int64, lastLoginIP sql.NullString, onlineCount sql.NullInt64,
-) error {
-	unsupported := passwordAlgorithm.String != "" || passwordSalt.String != "" || legacyTime != 0 ||
-		lastLoginIP.String != "" || onlineCount.Valid && onlineCount.Int64 != 0
-	if unsupported {
-		return fmt.Errorf("legacy human user id %d contains unsupported account, finance, reminder, or audit state", id)
-	}
-	return nil
 }
 
 func legacyPercent(value float64) (int, bool) {

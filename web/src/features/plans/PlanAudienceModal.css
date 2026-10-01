@@ -1,0 +1,6 @@
+.plan-audience-modal fieldset { border: 0; padding: 0; margin: 0 0 16px; display: grid; gap: 16px; min-width: 0; }
+.plan-audience-modal label { display: grid; gap: 6px; min-width: 0; }
+.plan-audience-modal ul { max-height: 200px; overflow: auto; padding: 0; list-style: none; }
+.plan-audience-modal li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; overflow-wrap: anywhere; }
+.plan-audience-modal li button { margin-left: auto; }
+.plan-audience-modal section > button { margin-top: 8px; }

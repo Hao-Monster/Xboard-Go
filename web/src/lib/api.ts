@@ -1748,7 +1748,21 @@ export interface AdminUserUpdateInput extends Omit<AdminUserCreateInput, "passwo
 	remarks?: string | null;
 }
 
-export interface AdminAPI {
+export interface PlanAudienceUser { id: number; email: string; distributor_name?: string; banned?: boolean }
+export interface PlanVisibility { id: number; name: string; customer_visibility: "all" | "selected"; distributor_visibility: "all" | "selected" | "none"; customer_users: PlanAudienceUser[]; distributor_users: PlanAudienceUser[] }
+export interface PlanVisibilityInput { plan_id: number; customer_visibility: PlanVisibility["customer_visibility"]; distributor_visibility: PlanVisibility["distributor_visibility"]; customer_user_ids: number[]; distributor_user_ids: number[] }
+export interface PlanAudienceAPI {
+ getPlanVisibility: (id: number) => Promise<{plan: PlanVisibility}>;
+ searchPlanAudienceUsers: (audience: "customer" | "distributor", q: string) => Promise<PlanAudienceUser[]>;
+ savePlanVisibility: (input: PlanVisibilityInput) => Promise<boolean>;
+}
+export interface GlobalTrafficReset { id: number; user_id: number; user_email: string; reset_type_name: string; trigger_source_name: string; reset_time: string; old_traffic: { formatted: string }; new_traffic: { formatted: string }; metadata: {reason?: string; admin_email?: string} | null }
+export interface TrafficResetFilters {user_id?: string; user_email?: string; reset_type?: string; trigger_source?: string; start_date?: string; end_date?: string}
+export interface TrafficResetPage {data: GlobalTrafficReset[]; pagination: {current_page: number; last_page: number; per_page: number; total: number}}
+export interface TrafficResetStats {total_resets: number; auto_resets: number; manual_resets: number; cron_resets: number}
+export interface TrafficResetAPI {listGlobalTrafficResets: (filters: TrafficResetFilters, page: number) => Promise<TrafficResetPage>; getTrafficResetStats: (days: number) => Promise<TrafficResetStats>}
+
+export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficResetAPI> {
 
   getMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
   resetMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
@@ -2221,6 +2235,16 @@ export class APIClient implements AdminAPI {
   async deleteServerGroup(id: number): Promise<void> {
     await this.request<void>(`/api/v1/admin/server-groups/${id}`, { method: "DELETE" });
   }
+
+  async getPlanVisibility(id: number): Promise<{plan: PlanVisibility}> { return this.request(`/api/v1/admin/plans/visibility?id=${id}`); }
+  async searchPlanAudienceUsers(audience: "customer" | "distributor", q: string): Promise<PlanAudienceUser[]> { return this.request(`/api/v1/admin/plans/visibility/users?${new URLSearchParams({audience,q})}`); }
+  async savePlanVisibility(input: PlanVisibilityInput): Promise<boolean> { return this.request("/api/v1/admin/plans/visibility", {method:"POST",body:input}); }
+  async listGlobalTrafficResets(filters: TrafficResetFilters, page: number): Promise<TrafficResetPage> {
+    const query = new URLSearchParams({page:String(page),per_page:"20"});
+    for (const key of ["user_id","user_email","reset_type","trigger_source","start_date","end_date"] as const) {const value=filters[key]; if(value) query.set(key,value);}
+    return this.request(`/api/v1/admin/traffic-resets?${query}`);
+  }
+  async getTrafficResetStats(days: number): Promise<TrafficResetStats> {return this.request(`/api/v1/admin/traffic-resets/stats?days=${days}`);}
 
   async listPlans(): Promise<Plan[]> {
     return this.request<Plan[]>("/api/v1/admin/plans");

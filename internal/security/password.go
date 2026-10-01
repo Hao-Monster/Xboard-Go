@@ -75,7 +75,7 @@ func (h PasswordHasher) Verify(password, encoded string) bool {
 		return subtle.ConstantTimeCompare(actual, expected) == 1
 	}
 	if !IsLegacyBcryptHash(encoded) {
-		return false
+		return verifyImportedPassword(password, encoded)
 	}
 	return bcrypt.CompareHashAndPassword([]byte(encoded), []byte(password)) == nil
 }

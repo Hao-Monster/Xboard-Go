@@ -503,6 +503,13 @@ func createDistributorFixture(t testing.TB, database *Store, now time.Time) (Pla
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := database.SavePlanVisibility(context.Background(), SavePlanVisibilityInput{PlanID: plan.ID, CustomerVisibility: "all", DistributorVisibility: "all", CustomerUserIDs: []int64{}, DistributorUserIDs: []int64{}}, now); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = database.GetPlan(context.Background(), plan.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return plan, distributor
 }
 

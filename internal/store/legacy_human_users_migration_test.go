@@ -26,6 +26,7 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 		t.Fatal(err)
 	}
 	input := validLegacyHumanUsersImport(t)
+	input.Users[1].History = LegacyUserHistory{LegacyTime: 1700000000, LastLoginIP: "192.0.2.3", OnlineCount: 4}
 	input.Users[1].Balance = 1_234
 	input.Users[1].Discount = intPointer(15)
 	input.Users[1].CommissionType = 2
@@ -89,6 +90,10 @@ func TestImportLegacyHumanUsersComposesWithPriorSlicesAndIsIdempotent(t *testing
 	repeated, err := database.ImportLegacyHumanUsers(ctx, input, time.Unix(500, 0))
 	if err != nil || !repeated.AlreadyApplied || !repeated.AppliedAt.Equal(time.Unix(400, 0).UTC()) {
 		t.Fatalf("repeated import = (%#v, %v)", repeated, err)
+	}
+	var history LegacyUserHistory
+	if err := database.db.QueryRowContext(ctx, `SELECT legacy_time,last_login_ip,online_count FROM legacy_user_history WHERE user_id=20`).Scan(&history.LegacyTime, &history.LastLoginIP, &history.OnlineCount); err != nil || history != input.Users[1].History {
+		t.Fatalf("history did not reconcile: %v", err)
 	}
 	var runs int
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM legacy_migration_runs`).Scan(&runs); err != nil || runs != 4 {

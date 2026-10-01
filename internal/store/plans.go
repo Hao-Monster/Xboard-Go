@@ -56,8 +56,8 @@ func (s *Store) CreatePlan(ctx context.Context, input SavePlanInput, now time.Ti
 		INSERT INTO plans (
 			group_id, transfer_enable_gib, name, speed_limit, show, sort_position, renew, content,
 			reset_traffic_method, capacity_limit, prices_json, sell, device_limit, tags_json, distributor_hwid_limit,
-			revision, created_at, updated_at
-		) VALUES (?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, 0, ?, ?, COALESCE(?, 1), 1, ?, ?)
+			revision, created_at, updated_at, distributor_visibility
+		) VALUES (?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, 0, ?, ?, COALESCE(?, 1), 1, ?, ?, 'none')
 	`, normalized.GroupID, normalized.TransferEnableGiB, normalized.Name, normalized.SpeedLimit, position,
 		normalized.Content, normalized.ResetTrafficMethod, normalized.CapacityLimit, pricesJSON,
 		normalized.DeviceLimit, tagsJSON, normalized.DistributorHWIDLimit, now.Unix(), now.Unix())
@@ -271,7 +271,7 @@ func (s *Store) ListPlans(ctx context.Context, now time.Time) ([]Plan, error) {
 
 func (s *Store) ListGuestPlanOffers(ctx context.Context, now time.Time) ([]PlanOffer, error) {
 	plans, err := listPlans(ctx, s.db, now, `
-		WHERE p.show = 1 AND p.sell = 1
+		WHERE p.show = 1 AND p.sell = 1 AND p.customer_visibility = 'all'
 		  AND (p.capacity_limit IS NULL OR p.capacity_limit <= 0 OR COALESCE(uc.capacity_users, 0) < p.capacity_limit)
 	`, nil)
 	if err != nil {
@@ -289,7 +289,8 @@ func (s *Store) ListUserPlanOffers(ctx context.Context, userID int64, now time.T
 		return nil, ErrInvalidInput
 	}
 	var currentPlanID sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT plan_id FROM users WHERE id = ? AND account_kind = 'human'`, userID).Scan(&currentPlanID); errors.Is(err, sql.ErrNoRows) {
+	var distributor bool
+	if err := s.db.QueryRowContext(ctx, `SELECT plan_id,is_distributor FROM users WHERE id = ? AND account_kind = 'human'`, userID).Scan(&currentPlanID, &distributor); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("get user plan: %w", err)
@@ -300,9 +301,12 @@ func (s *Store) ListUserPlanOffers(ctx context.Context, userID int64, now time.T
 	}
 	plans, err := listPlans(ctx, s.db, now, `
 		WHERE (p.show = 1 AND p.sell = 1
+               AND ((CASE WHEN ? THEN p.distributor_visibility ELSE p.customer_visibility END)='all'
+                 OR ((CASE WHEN ? THEN p.distributor_visibility ELSE p.customer_visibility END)='selected'
+                   AND EXISTS(SELECT 1 FROM plan_visibility_users v WHERE v.plan_id=p.id AND v.user_id=? AND v.audience=CASE WHEN ? THEN 'distributor' ELSE 'customer' END)))
 		       AND (p.capacity_limit IS NULL OR p.capacity_limit <= 0 OR COALESCE(uc.capacity_users, 0) < p.capacity_limit))
-		   OR (p.id = ? AND p.renew = 1)
-	`, []any{currentPlanID})
+		   OR (?=0 AND p.id = ? AND p.renew = 1)
+	`, []any{distributor, distributor, userID, distributor, distributor, currentPlanID})
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +326,7 @@ const planSelect = `
 	SELECT p.id, p.group_id, p.transfer_enable_gib, p.name, p.speed_limit, p.show, p.sort_position,
 	       p.renew, p.content, p.reset_traffic_method, p.capacity_limit, p.prices_json, p.sell,
 	       p.device_limit, p.tags_json, p.distributor_hwid_limit, COALESCE(uc.users_count, 0), COALESCE(uc.active_users_count, 0),
-	       COALESCE(uc.capacity_users, 0), p.revision, p.created_at, p.updated_at
+	       COALESCE(uc.capacity_users, 0), p.revision, p.created_at, p.updated_at, p.customer_visibility, p.distributor_visibility
 	FROM plans p
 	LEFT JOIN (
 		SELECT plan_id,
@@ -370,7 +374,7 @@ func scanPlan(row rowScanner) (Plan, error) {
 	if err := row.Scan(&plan.ID, &groupID, &plan.TransferEnableGiB, &plan.Name, &speedLimit, &plan.Show,
 		&plan.SortPosition, &plan.Renew, &plan.Content, &resetMethod, &capacityLimit, &pricesJSON,
 		&plan.Sell, &deviceLimit, &tagsJSON, &plan.DistributorHWIDLimit, &plan.UsersCount, &plan.ActiveUsersCount, &plan.CapacityUsersCount,
-		&plan.Revision, &createdAt, &updatedAt); errors.Is(err, sql.ErrNoRows) {
+		&plan.Revision, &createdAt, &updatedAt, &plan.CustomerVisibility, &plan.DistributorVisibility); errors.Is(err, sql.ErrNoRows) {
 		return Plan{}, ErrNotFound
 	} else if err != nil {
 		return Plan{}, fmt.Errorf("scan plan: %w", err)
@@ -816,6 +820,10 @@ func (s *Store) ProcessDueTrafficResets(ctx context.Context, now time.Time, limi
 			method = &value
 		}
 		expires := time.Unix(item.expiredAt, 0)
+		resetMethod := systemMethod
+		if method != nil {
+			resetMethod = *method
+		}
 		next := CalculateNextTrafficReset(method, systemMethod, &expires, now)
 		var nextUnix any
 		if next != nil {
@@ -839,9 +847,9 @@ func (s *Store) ProcessDueTrafficResets(ctx context.Context, now time.Time, limi
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO traffic_reset_logs (
-				user_id, plan_id, scheduled_for, reset_at, upload_before, download_before, reset_count
-			) VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, item.userID, item.planID, item.scheduledFor, now.Unix(), item.upload, item.download, item.resetCount+1); err != nil {
+				user_id, plan_id, scheduled_for, reset_at, upload_before, download_before, reset_count, reset_method
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, item.userID, item.planID, item.scheduledFor, now.Unix(), item.upload, item.download, item.resetCount+1, resetMethod); err != nil {
 			return TrafficResetBatchResult{}, fmt.Errorf("record traffic reset: %w", err)
 		}
 		processed++

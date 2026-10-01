@@ -1,0 +1,71 @@
+{
+  "scope": "Complete RECHECK-01..05 and one-command Docker installation for a fresh internal-test server",
+  "branch": "codex/ci-001-tiered-gates",
+  "requirement_ids": [
+    "PLAN-001",
+    "USER-002",
+    "OPS-001",
+    "OPS-003"
+  ],
+  "work_item_ids": [
+    "VER-001",
+    "VER-005",
+    "OPS-002"
+  ],
+  "issues": [
+    119,
+    123,
+    117
+  ],
+  "tasks": [
+    {
+      "id": "IT-01",
+      "title": "Plan audience modal, user search, save and refresh",
+      "status": "implemented"
+    },
+    {
+      "id": "IT-02",
+      "title": "Global traffic reset logs, filters, pagination and stats",
+      "status": "implemented"
+    },
+    {
+      "id": "IT-03",
+      "title": "Retire unsafe manual deployment route and reuse database-aware release",
+      "status": "implemented"
+    },
+    {
+      "id": "IT-04",
+      "title": "CI-built Docker image and one-command fresh-server installer",
+      "status": "implemented"
+    },
+    {
+      "id": "IT-05",
+      "title": "Targeted checks, local browser and Docker smoke, publish exact artifacts and existing-branch PR",
+      "status": "completed"
+    }
+  ],
+  "non_goals": [
+    "No PHP data migration",
+    "No business acceptance on behalf of user",
+    "No unrelated UI changes",
+    "No deployment to an unspecified production server"
+  ],
+  "checks": [
+    "Targeted frontend suites: 24 passed",
+    "Typecheck, lint and production web build passed",
+    "Desktop and mobile Playwright control flows passed against real Go API",
+    "Go endpoint and background-URL regression checks passed",
+    "projectctl check and bash -n passed",
+    "Docker installation smoke runs in publisher CI before release publication",
+    "Full store/httpapi packages: 1097 passed, 0 failed, 9 existing opt-in Redis/capacity tests skipped; exit 0",
+    "Publisher CI fresh installation, healthy startup, restart and non-overwrite checks passed; downloaded release checksums verified"
+  ],
+  "deployment_policy": "CI publishes immutable internal-test Docker bundles. User runs one command on a fresh Linux amd64 server. Existing directories and volumes are never overwritten. No legacy data import.",
+  "publication": {
+    "revision": "8544a12d6e6962d3165da999eb92cdd81ea350cf",
+    "workflow_run": "https://github.com/Hao-Monster/Xboard-Go/actions/runs/36824519773",
+    "release": "https://github.com/Hao-Monster/Xboard-Go/releases/tag/internal-8544a12d6e6962d3165da999eb92cdd81ea350cf",
+    "pull_request": "https://github.com/Hao-Monster/Xboard-Go/pull/291",
+    "business_acceptance": "user_owned_not_run"
+  }
+}

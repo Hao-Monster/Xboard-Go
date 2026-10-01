@@ -32,7 +32,7 @@ func TestSchemaV54AddsConfigurationCompatibilityDefaultsAndConstraints(t *testin
 	`).Scan(&version, &withdrawLimit, &withdrawMethods, &sidebarStyle, &headerStyle); err != nil {
 		t.Fatal(err)
 	}
-	if version != 65 || withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
+	if version != 66 || withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
 		t.Fatalf("schema v54 defaults = version=%d limit=%d methods=%q sidebar=%q header=%q", version, withdrawLimit, withdrawMethods, sidebarStyle, headerStyle)
 	}
 
@@ -151,8 +151,13 @@ func TestLegacyConfigurationCompatibilityPartialWritesAreAtomic(t *testing.T) {
 	if frontend.Theme != "Xboard" || frontend.SidebarStyle != "dark" || frontend.HeaderStyle != "light" || frontend.ThemeColor != "blue" {
 		t.Fatalf("legacy frontend partial update = %#v", frontend)
 	}
-	externalBackground := "https://untrusted.example.test/background.png"
-	if _, err := database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &externalBackground}, now.Add(6*time.Minute)); !errors.Is(err, ErrInvalidInput) {
+	externalBackground := "https://images.example.test/background.png"
+	frontend, err = database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &externalBackground}, now.Add(6*time.Minute))
+	if err != nil || frontend.BackgroundURL != externalBackground {
+		t.Fatalf("valid HTTPS background rejected: %v", err)
+	}
+	unsafeBackground := "javascript:alert(1)"
+	if _, err := database.UpdateLegacyFrontendSettings(ctx, administrator.ID, SaveLegacyFrontendSettingsInput{BackgroundURL: &unsafeBackground}, now.Add(7*time.Minute)); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("unsafe legacy background update error = %v, want ErrInvalidInput", err)
 	}
 	preservedFrontend, err := database.GetLegacyFrontendSettings(ctx)
@@ -200,7 +205,7 @@ func TestSchemaV54UpgradePreservesV53Rows(t *testing.T) {
 	`).Scan(&version, &appName, &appRevision, &withdrawLimit, &withdrawMethods, &themeRevision, &sidebarStyle, &headerStyle); err != nil {
 		t.Fatal(err)
 	}
-	if version != 65 || appName != "Preserved V53" || appRevision != 27 || themeRevision != 9 ||
+	if version != 66 || appName != "Preserved V53" || appRevision != 27 || themeRevision != 9 ||
 		withdrawLimit != 10_000 || withdrawMethods != `["支付宝","USDT","Paypal"]` || sidebarStyle != "light" || headerStyle != "dark" {
 		t.Fatalf("v54 upgrade = version=%d app=%q/%d theme=%d limit=%d methods=%q sidebar=%q header=%q",
 			version, appName, appRevision, themeRevision, withdrawLimit, withdrawMethods, sidebarStyle, headerStyle)

@@ -10,11 +10,50 @@ The implemented vertical slices cover administrator authentication and account-s
 
 The administration interface uses accessible React portals with explicit overlay stacking and focus management for the server detail drawer and nested activation-schedule dialog. Theme management preserves the legacy upload, preview, configure, activate, and delete workflow using bounded declarative ZIP packages: raster assets and contrast-checked palettes are stored transactionally, while executable templates, scripts, custom HTML, remote backgrounds, path traversal, symlinks, and archive bombs are rejected. The active theme is shared by public, user, distributor, and administrator interfaces through immutable digest-addressed assets. The packaged Go binary can create online-consistent SQLite backup archives, verify their manifest, SHA-256, integrity, and foreign keys, and restore a verified archive to a new database path without overwriting the active database. A separate host-side lifecycle command composes those primitives into conservative local install, upgrade, failed-health recovery, and explicit rollback flows without exposing the Docker socket to the application container. Offline, source-fingerprinted migration commands import independently verified legacy slices from a standalone Xboard SQLite snapshot into a pristine Go database with a verified pre-import backup, atomic commit, per-domain checksums, and idempotent replay.
 
-The repository is under active construction. It is intended for local and isolated test environments only and is not ready for production deployment.
+The project supports local development and fresh single-instance internal testing, including on a production host. Business acceptance and opening service to real customers remain operator-controlled.
 
 Project scope, current evidence, pending decisions, risks, milestones, and release gates are tracked in the versioned [project status](docs/project/STATUS.md) and [roadmap](ROADMAP.md). Historical implementation claims are not treated as current acceptance until they are reproduced against an exact candidate commit.
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+## One-command Docker installation for internal testing
+
+On a **Linux amd64** server with Docker Engine, Docker Compose v2, curl,
+Python 3 and OpenSSL installed, run:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Hao-Monster/Xboard-Go/main/deploy/install.sh)
+```
+
+Use an account with Docker access and permission to create `/opt/xboard-go`
+(normally root). The command asks for the panel origin, for example
+`http://SERVER_IP:7080`, and your administrator email. It downloads the latest
+CI-built internal-test image, verifies its checksums and exact revision, creates
+an independent encryption key and administrator password, and starts the panel
+with persistent data and backup volumes. There is no PHP database import.
+
+The password is stored in `/opt/xboard-go/secrets/admin-password`; it is not
+printed into installation logs. The installer prints the panel's generated
+administrator URL and waits for Docker health checks. Keep the entire
+installation directory and both named volumes. Re-running the installer refuses
+to overwrite an existing installation or adopt existing project volumes.
+
+To use a different directory/port or run without prompts, prefix the same
+command with `XBOARD_INSTALL_DIR`, `XBOARD_PORT`, `XBOARD_PANEL_URL`, and
+`XBOARD_ADMIN_EMAIL` environment variables. `XBOARD_RELEASE_TAG=internal-<full SHA>`
+selects a specific CI-tested release. `XBOARD_BIND_ADDRESS=127.0.0.1` limits the
+published port to loopback when using a local reverse proxy. HTTPS origins require
+an existing TLS reverse proxy forwarding to the configured application port;
+the application correctly enables secure cookies for those origins. HTTP is
+available for a restricted internal network. No test SMTP service is deployed.
+
+Only the image publisher workflow creates downloadable bundles, after an actual
+fresh-install, restart and non-overwrite smoke test. These are **internal-test
+prereleases**, not claims of business acceptance. The installer is for fresh
+instances; it never runs an automatic upgrade or migration against an existing
+installation. Existing development deployments continue through `Legacy parity`,
+which includes database-aware rollback. The obsolete image-only manual
+`Deploy development server` workflow has been removed.
 
 ## Local container
 

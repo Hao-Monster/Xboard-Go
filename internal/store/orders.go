@@ -106,6 +106,11 @@ func (s *Store) CreateOrder(ctx context.Context, input CreateOrderInput, now tim
 	if !exists {
 		return Order{}, fmt.Errorf("%w: unavailable order period", ErrPlanUnavailable)
 	}
+	if period != "reset_traffic" && (!user.planID.Valid || user.planID.Int64 != plan.ID) {
+		if err := requirePlanAudience(ctx, tx, plan.ID, user.id); err != nil {
+			return Order{}, err
+		}
+	}
 	if err := validateOrderPurchase(user, plan, period, now); err != nil {
 		return Order{}, err
 	}
@@ -1533,7 +1538,7 @@ func getPlanForOrder(ctx context.Context, database interface {
 	return scanPlan(database.QueryRowContext(ctx, `
 		SELECT p.id, p.group_id, p.transfer_enable_gib, p.name, p.speed_limit, p.show, p.sort_position,
 		       p.renew, p.content, p.reset_traffic_method, p.capacity_limit, p.prices_json, p.sell,
-		       p.device_limit, p.tags_json, p.distributor_hwid_limit, 0, 0, 0, p.revision, p.created_at, p.updated_at
+		       p.device_limit, p.tags_json, p.distributor_hwid_limit, 0, 0, 0, p.revision, p.created_at, p.updated_at, p.customer_visibility, p.distributor_visibility
 		FROM plans p WHERE p.id = ?
 	`, planID))
 }

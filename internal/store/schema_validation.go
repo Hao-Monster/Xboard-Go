@@ -90,6 +90,8 @@ var requiredSchemaTables = []struct {
 	{"user_lifecycle_events", 62},
 	{"legacy_operational_logs", 63},
 	{"operational_daily_statistics", 63},
+	{"plan_visibility_users", 66},
+	{"legacy_user_history", 66},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -440,6 +442,11 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 		if err := validateDeclaredSchemaObjects(ctx, database, schemaV63OperationalLogs); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 66 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"traffic_reset_logs": {"reset_method"}, "plans": {"customer_visibility", "distributor_visibility"}, "plan_visibility_users": {"plan_id", "audience", "user_id"}, "legacy_user_history": {"user_id", "legacy_time", "last_login_ip", "online_count"}}); err != nil {
 			return err
 		}
 	}

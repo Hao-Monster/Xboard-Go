@@ -40,8 +40,8 @@ func TestSchemaV59GuardsCombinedUserTrafficWithoutLosingBoundaryRows(t *testing.
 	if err := database.db.QueryRowContext(ctx, `SELECT traffic_u,traffic_d FROM users WHERE id=?`, account.ID).Scan(&upload, &download); err != nil {
 		t.Fatal(err)
 	}
-	if version != 65 || upload != maximum-1 || download != 1 {
-		t.Fatalf("schema/user traffic = %d/%d/%d, want 65/%d/1", version, upload, download, maximum-1)
+	if version != 66 || upload != maximum-1 || download != 1 {
+		t.Fatalf("schema/user traffic = %d/%d/%d, want 66/%d/1", version, upload, download, maximum-1)
 	}
 	if err := database.db.QueryRowContext(ctx, `
 		SELECT upload,download FROM user_traffic_stats
