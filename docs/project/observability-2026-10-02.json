@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "work_item_id": "OBS-001",
+  "issue_number": 299,
+  "milestone": "M3",
+  "confirmed": {
+    "purpose": "Support internal-test incident investigation across panel and node operational events",
+    "storage_host": "bingo-dev",
+    "access": "loopback with authenticated SSH private access only",
+    "retention_days": 30,
+    "storage_warning_gib": 30,
+    "free_disk_stop_gib": 5,
+    "production_transport": "dedicated restricted SSH reverse tunnel approved by user",
+    "node_hosts": "user will provide later",
+    "business_acceptance_owner": "user"
+  },
+  "selection": {
+    "store": "VictoriaLogs 1.53.0, Apache-2.0; single service with LogsQL and built-in query UI",
+    "collector": "Vector 0.58.0, MPL-2.0; persistent journal cursor and disk buffer with acknowledgements",
+    "authentication": "vmauth 1.153.0; separate query and per-source ingestion credentials",
+    "alternative": "Grafana Loki and Alloy are maintained alternatives, but require more components for this server and internal-only query scope",
+    "sources": [
+      "https://github.com/VictoriaMetrics/VictoriaLogs",
+      "https://github.com/vectordotdev/vector",
+      "https://docs.victoriametrics.com/victorialogs/",
+      "https://docs.victoriametrics.com/vmauth/",
+      "https://vector.dev/docs/reference/configuration/sources/journald/",
+      "https://vector.dev/docs/architecture/buffering-model/"
+    ]
+  },
+  "tasks": [
+    {"id":"OBS-001.1","scope":"Source audit, reuse selection, private access and capacity plan","implementation":"done","verification":"current local inspection","acceptance":"confirmed by user"},
+    {"id":"OBS-001.2","scope":"Panel request IDs, HTTP status/timing, safe error classification and operational events","implementation":"done","verification":"targeted local Go tests and vet passed","acceptance":"pending user internal testing"},
+    {"id":"OBS-001.3","scope":"Node JSON logging, build/runtime identity, config/users/report correlation and redaction","implementation":"done","verification":"local targeted checks passed; Node PR #8 CI pending","acceptance":"pending actual node hosts"},
+    {"id":"OBS-001.4","scope":"Persisted central store, restricted ingestion/query auth, journal collectors and durable buffers","implementation":"in_progress","verification":"Python unit tests passed; real Docker CI pending","acceptance":"pending deployment"},
+    {"id":"OBS-001.5","scope":"CI-only deployment, restricted tunnel, Xboard-only journal overlay, startup/rollback and protected-service checks","implementation":"in_progress","verification":"deployment-boundary unit tests passed; real deployment pending","acceptance":"pending deployment"},
+    {"id":"OBS-001.6","scope":"Canary gap/capacity monitoring, outage/restart tests and operations instructions","implementation":"in_progress","verification":"CI fault exercise pending","acceptance":"pending deployment"},
+    {"id":"OBS-001.7","scope":"Enroll actual node hosts and verify node-to-center delivery","implementation":"prepared","verification":"not run: host identities pending","acceptance":"user will supply targets later"}
+  ],
+  "non_goals": [
+    "No collection of raw request/response bodies, SQL values, credentials, user UUID or device IP payloads",
+    "No Remnawave changes or collection of unrelated project logs",
+    "No public logging endpoint or DNS change",
+    "No proxy data-plane changes or packet/access-history capture",
+    "No deletion of other project data to make room for logs"
+  ],
+  "guarantee_boundary": [
+    "At-least-once delivery within available journal retention and disk buffer capacity; duplicates may occur after replay",
+    "30-day retention is time-based; 30GiB is a warning budget, not early deletion",
+    "Host disk loss, journal rate limiting, exhausted local journal/buffer capacity and upstream silent events cannot be made lossless by a collector",
+    "Logging improves diagnosis but cannot guarantee an exact root cause for every future failure",
+    "Per-source writer tokens restrict API roles; this is a trusted internal service, not hostile multi-tenant isolation"
+  ],
+  "evidence": {
+    "panel_source_commits": ["c94a74db22378c5abafccf30a8955cd83a3d42fb", "4d4408e1a74d386cd503769d2fd11694df5479e7"],
+    "node_source_commit": "7bb34e6650088b23ad8580b53085f02c219392bd",
+    "deployment": "not yet run",
+    "migration": "not applicable: new operational log store; no business data migration"
+  }
+}

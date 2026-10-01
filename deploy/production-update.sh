@@ -13,6 +13,8 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 [[ -f "$directory/compose.yaml" && ! -L "$directory/compose.yaml" ]] || fail 'Unexpected Compose path'
 printf '%s  %s\n' "$compose_digest" "$directory/compose.yaml" | sha256sum --check --status
 [[ -d "$directory" && ! -L "$directory" && -f "$directory/.env" && ! -L "$directory/.env" ]] || fail 'Expected installation missing'
+exec 9>"$directory/.deployment.lock"
+flock -x 9
 [[ "$(docker inspect "$container" --format '{{index .Config.Labels "com.docker.compose.project"}} {{.State.Health.Status}}')" == "$project healthy" ]] || fail 'Expected healthy Xboard instance missing'
 old_revision="$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
 [[ "$old_revision" =~ ^[a-f0-9]{40}$ && "$old_revision" != "$revision" ]] || fail 'Invalid or already installed revision'
@@ -20,6 +22,10 @@ snapshot() { docker inspect remnawave remnanode remnawave-db remnawave-redis cad
 baseline="$(snapshot)"
 [[ "$baseline" != *' false'* ]] || fail 'Protected service is not running'
 compose=(docker compose -p "$project" --env-file "$directory/.env" --project-directory "$directory" -f "$directory/compose.yaml")
+if [[ -f "$directory/compose.observability.yaml" ]]; then
+  [[ ! -L "$directory/compose.observability.yaml" ]] || fail 'Unexpected logging overlay path'
+  compose+=(-f "$directory/compose.observability.yaml")
+fi
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 base="https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$revision"

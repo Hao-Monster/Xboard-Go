@@ -133,6 +133,12 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "REVISION=${TARGET_SHA} bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/bingo/apps/xboard-go-freedom
+          exec 9>.deployment.lock
+          flock -x 9
+          if [[ -f compose.observability.yaml ]]; then
+            test ! -L compose.observability.yaml
+            export COMPOSE_FILE=compose.yaml:compose.observability.yaml
+          fi
           previous="$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}' 2>/dev/null || echo 'xboard-go:38a6d3f0')"
           echo "Current running image: ${previous}"
           echo "Deploying target image: xboard-go:${REVISION}"

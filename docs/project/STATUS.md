@@ -142,6 +142,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `PERF-001` | M4 | in_progress | [#130](https://github.com/Hao-Monster/Xboard-Go/issues/130) | 建立代表性容量基线并确认 SLO |
 | `REL-001` | M4 | blocked | [#131](https://github.com/Hao-Monster/Xboard-Go/issues/131) | 完成生产切换、回滚和事故响应运行手册 |
 | `ARCH-001` | M4 | done | [#148](https://github.com/Hao-Monster/Xboard-Go/issues/148) | 按 Issue #148 已确认边界拆分网关、前端与后端独立部署单元 |
+| `OBS-001` | M3 | in_progress | [#299](https://github.com/Hao-Monster/Xboard-Go/issues/299) | 内部测试集中日志、面板节点诊断与私有采集链路 |
 
 ## Release gates
 
