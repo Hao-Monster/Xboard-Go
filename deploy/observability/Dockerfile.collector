@@ -7,12 +7,16 @@ FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc8
 LABEL org.opencontainers.image.title="Xboard journal collector" \
       org.opencontainers.image.source="https://github.com/Hao-Monster/Xboard-Go"
 
+# Minimal Ubuntu has no CA bundle yet. Bootstrap HTTPS trust from the pinned
+# upstream image, then install Ubuntu's pinned ca-certificates package below.
+COPY --from=vector /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 # A signed, dated Ubuntu snapshot also fixes transitive package resolution.
 # Archived Release metadata may expire; disable only that freshness check,
 # retaining Ubuntu keyring signature and package-hash verification.
 RUN printf '%s\n' \
       'Types: deb' \
-      'URIs: http://snapshot.ubuntu.com/ubuntu/20261001T000000Z/' \
+      'URIs: https://snapshot.ubuntu.com/ubuntu/20261001T000000Z/' \
       'Suites: resolute resolute-updates resolute-security' \
       'Components: main' \
       'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
