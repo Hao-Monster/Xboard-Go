@@ -1,0 +1,67 @@
+{
+  "scope": "按现有 production-internal-test 配置以 CI/CD 首次部署 Xboard，保护同机 Remnawave",
+  "work_item_ids": [
+    "REL-001",
+    "OPS-002"
+  ],
+  "requirement_ids": [
+    "OPS-001",
+    "OPS-002"
+  ],
+  "issues": [
+    131,
+    117
+  ],
+  "branch": "codex/ci-001-tiered-gates",
+  "target": {
+    "hostname": "vmi3574179",
+    "deploy_dir": "/opt/xboard-go",
+    "environment": "production-internal-test",
+    "panel_url": "https://fast.hjy.ca",
+    "application_revision": "d435262417fbe442b5d03fcd721a989ae80b3e06"
+  },
+  "findings": [
+    "Docker 29.8.0 / Compose v5.5.1 / Linux amd64 可用，部署目录不存在",
+    "用户确认独立入口 fast.hjy.ca，保留 Remnawave 的 my2.thinderbox.uk",
+    "80/8443 由现有 Caddy 占用，443 由 rw-core 占用；不接管这些监听",
+    "SSH credentials are consumed exclusively through masked Environment Secrets.",
+    "独立后台管理路径不等于完整子路径部署；当前安装器不接受带路径的 PANEL_URL，同域名需要先完成完整子路径兼容，不能覆盖现有 Remnawave 路由。"
+  ],
+  "tasks": [
+    {
+      "id": "PROD-01",
+      "title": "只读服务器、SSH 主机身份与端口巡检",
+      "status": "completed"
+    },
+    {
+      "id": "PROD-02",
+      "title": "实现受保护 main 手动首次部署流水线，严格主机校验和日志脱敏",
+      "status": "implemented_pending_preflight"
+    },
+    {
+      "id": "PROD-03",
+      "title": "在独立目录/Compose 项目/端口启动 CI 验证镜像，拒绝覆盖和冲突",
+      "status": "implemented_pending_execution"
+    },
+    {
+      "id": "PROD-04",
+      "title": "验证精确版本、访问入口与 Remnawave 容器未被重建重启",
+      "status": "implemented_pending_execution"
+    }
+  ],
+  "pending_user_decision": null,
+  "non_goals": [
+    "不修改 Remnawave 数据、容器、网络和现有路由",
+    "不迁移旧数据",
+    "不通过本地 SSH 上传代码或执行部署"
+  ],
+  "route_plan": "App binds 127.0.0.1:7080 on its own Compose network. Existing Caddy joins only this new network and gets one marked fast.hjy.ca site; validate and reload without restarting existing containers. Existing Remnawave sites and network remain intact.",
+  "rollback": "On failed installation/public health, remove only the marked Xboard Caddy block, detach its new Caddy network connection and stop only the Xboard app; retain its data/credentials. Never delete existing data or restart Remnawave.",
+  "checks": [
+    "Python input validation: 3 tests passed including subcases rejecting shell injection, wrong directory and subpath",
+    "bash -n and projectctl check passed",
+    "Branch push performs read-only preflight only; installation requires manual protected-main dispatch"
+  ],
+  "credential_configuration": "Both existing SSH values transferred to Environment Secrets; corresponding plaintext Variables deleted and metadata verified.",
+  "authorization": "User approved credential transfer and CI/CD deployment on 2026-10-02."
+}

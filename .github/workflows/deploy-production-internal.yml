@@ -1,0 +1,47 @@
+name: Deploy production internal test
+on:
+  push:
+    branches: [codex/ci-001-tiered-gates]
+    paths: ['.github/workflows/deploy-production-internal.yml', 'deploy/production-*']
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [inspect, install]
+        default: inspect
+      release_sha:
+        description: Full SHA of an existing CI-tested internal Docker release
+        required: true
+        default: d435262417fbe442b5d03fcd721a989ae80b3e06
+      administrator_email:
+        description: Initial administrator email
+        default: admin@fast.hjy.ca
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: production-internal-test-deployment
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-internal-test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Inspect or install without exposing configuration values
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+          PANEL_URL: ${{ vars.PANEL_URL }}
+          DEPLOY_MODE: ${{ inputs.mode || 'inspect' }}
+          RELEASE_SHA: ${{ inputs.release_sha || 'd435262417fbe442b5d03fcd721a989ae80b3e06' }}
+          ADMINISTRATOR_EMAIL: ${{ inputs.administrator_email || 'admin@fast.hjy.ca' }}
+        run: python3 deploy/production-runner.py

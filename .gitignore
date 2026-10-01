@@ -38,3 +38,6 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+
+# Python deployment helper bytecode
+/deploy/__pycache__/
