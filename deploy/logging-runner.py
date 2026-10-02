@@ -1,5 +1,6 @@
 """GitHub Actions deployment of the private log center and panel collectors."""
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,9 +54,22 @@ def archive():
     return buffer.getvalue()
 
 
+def image_manifest(directory, sha):
+    manifest = json.loads((directory / 'manifest.json').read_text())
+    if manifest.get('revision') != sha or not re.fullmatch('sha256:[a-f0-9]{64}', manifest.get('image_id', '')):
+        raise ValueError('Collector artifact identity mismatch')
+    with (directory / 'collector.tar.gz').open('rb') as source:
+        digest = hashlib.file_digest(source, 'sha256').hexdigest()
+    if digest != manifest.get('sha256'):
+        raise ValueError('Collector artifact checksum mismatch')
+    return manifest
+
+
 def main():
     validate(os.environ, json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text()))
     sha = os.environ['LOGGING_SOURCE_SHA']
+    image_directory = Path(os.environ['LOGGING_IMAGE_DIRECTORY'])
+    manifest = image_manifest(image_directory, sha)
     with tempfile.TemporaryDirectory(prefix='xboard-logging-') as work:
         directory = Path(work)
         keys = {}
@@ -70,12 +84,19 @@ def main():
         hosts.write_bytes(loopback + os.environ['DEPLOY_KNOWN_HOSTS'].encode() + b'\n')
         hosts.chmod(0o600)
 
-        def ssh(kind, command, data=None):
+        def ssh(kind, command, data=None, image_file=None):
             target = 'bingo@127.0.0.1' if kind == 'central' else 'root@109.205.178.211'
-            return execute(['ssh', '-i', str(keys[kind]), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+            arguments = ['ssh', '-i', str(keys[kind]), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
                             '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(hosts),
                             '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
-                            target, command], data)
+                            target, command]
+            if image_file is not None:
+                with image_file.open('rb') as stream:
+                    result = subprocess.run(arguments, stdin=stream, capture_output=True, timeout=600)
+                if result.returncode:
+                    raise RuntimeError('Collector image transfer failed; no secret output was printed')
+                return result.stdout
+            return execute(arguments, data)
 
         directories = {'central': '/home/bingo/apps/xboard-logs/releases/' + sha,
                        'production': '/opt/xboard-observability/releases/' + sha}
@@ -86,6 +107,10 @@ def main():
             # Remnawave, global SSH daemon or Docker daemon configuration changes.
             ssh(kind, 'set -eu; test "$(hostname)" = ' + expected + '; umask 077; mkdir -p ' + shlex.quote(path) +
                 '; test ! -L ' + shlex.quote(path) + '; tar -xzf - --no-same-owner -C ' + shlex.quote(path), payload)
+            ssh(kind, 'docker load', image_file=image_directory / 'collector.tar.gz')
+            identity = ssh(kind, "docker image inspect --format '{{.Id}}' xboard-log-collector:" + sha).decode().strip()
+            if identity != manifest['image_id']:
+                raise ValueError('Loaded collector image identity mismatch')
 
         def action(kind, value, data=None):
             return ssh(kind, 'python3 ' + shlex.quote(directories[kind] + '/deploy/logging-remote.py') + ' ' + value, data)

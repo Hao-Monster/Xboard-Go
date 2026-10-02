@@ -16,6 +16,24 @@ probe = module('logging-probe')
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_collector_artifact_rejects_wrong_revision_and_corruption(self):
+        import hashlib
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as work:
+            directory = Path(work)
+            archive = directory / 'collector.tar.gz'
+            archive.write_bytes(b'fixture-image')
+            manifest = dict(revision='a' * 40, image_id='sha256:' + 'b' * 64,
+                            sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+            (directory / 'manifest.json').write_text(json.dumps(manifest))
+            self.assertEqual(runner.image_manifest(directory, 'a' * 40), manifest)
+            with self.assertRaises(ValueError):
+                runner.image_manifest(directory, 'c' * 40)
+            archive.write_bytes(b'corrupt-image')
+            with self.assertRaises(ValueError):
+                runner.image_manifest(directory, 'a' * 40)
+
     def setUp(self):
         self.environment = dict(GITHUB_REPOSITORY='Hao-Monster/Xboard-Go', GITHUB_REF='refs/heads/main',
                                 GITHUB_EVENT_NAME='workflow_run', LOGGING_SOURCE_SHA='a' * 40,

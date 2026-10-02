@@ -156,7 +156,8 @@ def panel(source):
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     collector = directory / ('collector-' + source)
     collector.mkdir(mode=0o700, exist_ok=True)
-    run(['docker', 'build', '-t', collector_image(), '-f', str(ASSETS / 'Dockerfile.collector'), str(ASSETS)])
+    # CI loads the exact image which passed the journal and recovery tests.
+    run(['docker', 'image', 'inspect', collector_image()])
     credential = sys.stdin.read().strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{32,}', credential):
         raise ValueError('Invalid collector credential')
