@@ -213,6 +213,9 @@ jobs:
 
   logging-validate:
     needs: authorize
+    permissions:
+      contents: read
+      actions: read
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -240,9 +243,17 @@ jobs:
           path: collector-artifact/
           retention-days: 3
           compression-level: 0
+      - name: Verify artifact HTTPS download round trip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOGGING_IMAGE_DIRECTORY: collector-roundtrip
+        run: python3 deploy/download-log-collector.py
 
   logging-deploy:
     needs: [authorize, logging-validate]
+    permissions:
+      contents: read
+      actions: read
     concurrency:
       group: production-internal-test-deployment
       cancel-in-progress: false
@@ -255,10 +266,6 @@ jobs:
       https_proxy: http://100.120.174.30:7890
       no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: tested-log-collector
-          path: ${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Download exact reviewed source
         env:
           TARGET_SHA: ${{ needs.authorize.outputs.sha }}
@@ -274,6 +281,13 @@ jobs:
             "https://codeload.github.com/Hao-Monster/Xboard-Go/tar.gz/$TARGET_SHA" --output "$archive"
           tar -xzf "$archive" --strip-components=1 --no-same-owner -C "$candidate"
           echo "LOGGING_CANDIDATE=$candidate" >> "$GITHUB_ENV"
+      - name: Download and verify the current-run collector artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOGGING_IMAGE_DIRECTORY: ${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          cd "$LOGGING_CANDIDATE"
+          python3 deploy/download-log-collector.py
       - name: Deploy scoped collectors and private log center
         env:
           LOGGING_SOURCE_SHA: ${{ needs.authorize.outputs.sha }}

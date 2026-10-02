@@ -13,9 +13,32 @@ def module(name):
 runner = module('logging-runner')
 remote = module('logging-remote')
 probe = module('logging-probe')
+downloader = module('download-log-collector')
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_artifact_digest_and_member_boundaries(self):
+        import hashlib
+        import tempfile
+        import zipfile
+        with tempfile.TemporaryDirectory() as work:
+            directory = Path(work)
+            archive = directory / 'artifact.zip'
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('collector.tar.gz', b'image')
+                package.writestr('manifest.json', b'{}')
+            digest = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
+            downloader.extract_verified(archive, digest, directory / 'out')
+            self.assertEqual((directory / 'out/collector.tar.gz').read_bytes(), b'image')
+            with self.assertRaises(ValueError):
+                downloader.extract_verified(archive, 'sha256:' + '0' * 64, directory / 'bad')
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('../escape', b'bad')
+                package.writestr('manifest.json', b'{}')
+            digest = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
+            with self.assertRaises(ValueError):
+                downloader.extract_verified(archive, digest, directory / 'bad')
+
     def test_portable_image_identity_rejects_content_changes(self):
         import copy
         image = dict(Id='classic-id', Architecture='amd64', Os='linux', Created='fixture-time',
