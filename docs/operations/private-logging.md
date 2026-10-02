@@ -92,7 +92,9 @@ Logging is released by `.github/workflows/legacy-parity.yml` after successful CI
 on protected main. The existing runner authorization hook is preserved: manual
 workflows cannot run on this privileged runner. A separate hosted validation job
 executes Docker auth, persistence and outage checks before the logging deployment
-job uses the authorized source SHA. `.github/workflows/observability.yml` provides
+job uses the authorized source SHA. Logging deployment is independent of application
+image rebuilds: it verifies the running panel health and actual revision, and uses
+the application deployment lock before changing the logging overlay. `.github/workflows/observability.yml` provides
 validation only for development pushes and manual checks. Application image releases remain in the
 existing development/production workflows. They preserve the separate logging
 overlay without altering the installed base Compose digest.
