@@ -3,12 +3,14 @@ import "./node-filter.css";
 
 export function NodeFilter({
   label,
+  displayLabel,
   options,
   value,
   onChange,
   disabled = false,
 }: {
   label: string;
+  displayLabel?: string;
   options: Array<{ value: string; label: string }>;
   value: string[];
   onChange: (value: string[]) => void;
@@ -86,7 +88,7 @@ export function NodeFilter({
         onClick={() => {setSearch("");setIsOpen((prev) => !prev);}}
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></svg>
-        <span className="node-filter-button-label">{label}</span>
+        <span className="node-filter-button-label">{displayLabel ?? label}</span>
         {value.length > 0 && (
           <span className="node-filter-button-count">{value.length}</span>
         )}

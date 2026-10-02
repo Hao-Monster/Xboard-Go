@@ -1,6 +1,8 @@
 import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { GiftField, GiftSection, GiftSwitch } from "./GiftTemplateFields";
+import "./GiftTemplateEditor.css";
 import { NodeFilter } from "../nodes/NodeFilter";
 import { DateTimeInput } from "../../components/DateTimeInput";
 import { Modal } from "../../components/Overlay";
@@ -176,26 +178,62 @@ function TemplateEditor({ api, template, plans, onClose, onSaved }: { api: GiftC
   const [name, setName] = useState(template?.name ?? ""); const [description, setDescription] = useState(template?.description ?? "");
   const [type, setType] = useState<GiftCardType>(template?.type ?? 1); const [status, setStatus] = useState(template?.status ?? true); const [sort, setSort] = useState(String(template?.sort ?? 0));
   const [balance, setBalance] = useState(template ? centsToYuan(template.rewards.balance ?? 0) : ""); const [traffic, setTraffic] = useState(template ? bytesToGiB(template.rewards.transfer_enable ?? 0) : ""); const [expireDays, setExpireDays] = useState(String(template?.rewards.expire_days ?? "")); const [devices, setDevices] = useState(String(template?.rewards.device_limit ?? "")); const [reset, setReset] = useState(template?.rewards.reset_package ?? false);
-  const [planID, setPlanID] = useState(String(template?.rewards.plan_id ?? plans[0]?.id ?? "")); const [validity, setValidity] = useState(String(template?.rewards.plan_validity_days ?? 30));
-  const [conditions, setConditions] = useState<GiftCardConditions>(template?.conditions ?? {}); const [limits, setLimits] = useState<GiftCardLimits>(template?.limits ?? {}); const [special, setSpecial] = useState<GiftCardSpecialConfig>(template?.special_config ?? {});
+  const [planID, setPlanID] = useState(String(template?.rewards.plan_id ?? "")); const [validity, setValidity] = useState(String(template?.rewards.plan_validity_days ?? ""));
+  const [conditions, setConditions] = useState<GiftCardConditions>(template?.conditions ?? {}); const [limits, setLimits] = useState<GiftCardLimits>(template?.limits ?? {}); const [special] = useState<GiftCardSpecialConfig>(template?.special_config ?? {});
+  const [inviteRate, setInviteRate] = useState(template?.limits.invite_reward_basis_points == null ? "" : String(template.limits.invite_reward_basis_points / 10_000));
+  const [multiplier, setMultiplier] = useState(template?.special_config.festival_multiplier_basis_points == null ? "" : String(template.special_config.festival_multiplier_basis_points / 10_000));
   const [startedAt, setStartedAt] = useState(localDateTimeInput(template?.special_config.started_at)); const [endedAt, setEndedAt] = useState(localDateTimeInput(template?.special_config.ended_at));
   const [icon, setIcon] = useState(template?.icon ?? ""); const [background, setBackground] = useState(template?.background_image ?? ""); const theme = template?.theme ?? "#1890ff";
   const [random, setRandom] = useState<RandomRewardDraft[]>((template?.rewards.random_rewards ?? []).map(item => ({ original: item.rewards, weight: String(item.weight), balance: centsToYuan(item.rewards.balance ?? 0), traffic: bytesToGiB(item.rewards.transfer_enable ?? 0), days: String(item.rewards.expire_days ?? 0) }))); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setSaving(true); setError(""); try {
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (saving) return; setSaving(true); setError(""); try {
     const rewards: GiftCardReward = type === 1 ? { balance: yuanToCents(balance || "0"), transfer_enable: gibToBytes(traffic || "0"), expire_days: numberValue(expireDays), device_limit: numberValue(devices), reset_package: reset } : type === 2 ? { plan_id: numberValue(planID), plan_validity_days: numberValue(validity) } : { random_rewards: random.map(item => ({ weight: numberValue(item.weight), rewards: { ...item.original, balance: yuanToCents(item.balance || "0"), transfer_enable: gibToBytes(item.traffic || "0"), expire_days: numberValue(item.days) } })) };
     if ((startedAt === "") !== (endedAt === "")) throw new Error("活动开始和结束时间必须同时填写");
-    const specialConfig: GiftCardSpecialConfig = { ...special, started_at: startedAt === "" ? null : new Date(startedAt).toISOString(), ended_at: endedAt === "" ? null : new Date(endedAt).toISOString() };
-    const input: GiftCardTemplateInput = { name: name.trim(), description: description.trim(), type, status, conditions, rewards, limits, special_config: specialConfig, icon: icon.trim(), background_image: background.trim(), theme: theme.trim(), sort: numberValue(sort), revision: template?.revision };
+    const specialConfig: GiftCardSpecialConfig = { ...special, festival_multiplier_basis_points: ratioBasisPoints(multiplier, "节日奖励乘数"), started_at: startedAt === "" ? null : new Date(startedAt).toISOString(), ended_at: endedAt === "" ? null : new Date(endedAt).toISOString() };
+    const input: GiftCardTemplateInput = { name: name.trim(), description: description.trim(), type, status, conditions, rewards, limits: { ...limits, invite_reward_basis_points: ratioBasisPoints(inviteRate, "邀请人奖励比例", 1) }, special_config: specialConfig, icon: icon.trim(), background_image: background.trim(), theme: theme.trim(), sort: numberValue(sort), revision: template?.revision };
     if (template === null) await api.createGiftCardTemplate(input); else await api.updateGiftCardTemplate(template.id, input); onSaved();
   } catch (cause) { setError(cause instanceof Error ? cause.message : "保存失败"); } finally { setSaving(false); } };
-  return <Modal title={template === null ? translateAdmin("添加模板") : translateAdmin("编辑模板")} className="gift-template-modal" onClose={onClose}><div className="modal-header"><h2>{template === null ? translateAdmin("添加模板") : translateAdmin("编辑模板")}</h2><button className="icon-button" aria-label="关闭模板编辑" onClick={onClose}>×</button></div><form className="form-stack gift-template-form" onSubmit={(event) => void submit(event)}><div className="gift-template-scroll">
-    <fieldset><legend>基础配置</legend><div className="form-grid gift-basic-grid"><label>{translateAdmin("模板名称")}<input value={name} maxLength={255} required onChange={(event) => setName(event.target.value)} /></label><label>{translateAdmin("类型")}<select value={type} onChange={(event) => setType(Number(event.target.value) as GiftCardType)}><option value={1}>{translateAdmin("通用礼品卡")}</option><option value={2}>{translateAdmin("套餐礼品卡")}</option><option value={3}>{translateAdmin("盲盒礼品卡")}</option></select></label><label>{translateAdmin("排序")}<input type="number" min={0} value={sort} onChange={(event) => setSort(event.target.value)} /></label><label className="switch-label"><input type="checkbox" role="switch" checked={status} onChange={(event) => setStatus(event.target.checked)} />启用模板</label><label>{translateAdmin("描述")}<textarea value={description} maxLength={4096} onChange={(event) => setDescription(event.target.value)} /></label></div></fieldset>
-    <fieldset><legend>{translateAdmin("奖励内容")}</legend>{type === 1 && <div className="form-grid"><label>{translateAdmin("奖励余额 (元)")}<input inputMode="decimal" value={balance} onChange={(event) => setBalance(event.target.value)} /></label><label>{translateAdmin("奖励流量 (GB)")}<input inputMode="decimal" value={traffic} onChange={(event) => setTraffic(event.target.value)} /></label><label>{translateAdmin("延长有效期 (天)")}<input type="number" min={0} value={expireDays} onChange={(event) => setExpireDays(event.target.value)} /></label><label>{translateAdmin("增加设备数")}<input type="number" min={0} value={devices} onChange={(event) => setDevices(event.target.value)} /></label><label className="switch-label"><input type="checkbox" role="switch" checked={reset} onChange={(event) => setReset(event.target.checked)} />{translateAdmin("重置当月流量")}</label></div>}{type === 2 && <div className="form-grid"><label>{translateAdmin("套餐")}<select value={planID} required onChange={(event) => setPlanID(event.target.value)}><option value="">请选择套餐</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><label>套餐有效期（天）<input type="number" min={0} value={validity} onChange={(event) => setValidity(event.target.value)} /></label></div>}{type === 3 && <RandomRewardEditor values={random} onChange={setRandom} />}</fieldset>
-    <fieldset><legend>{translateAdmin("使用条件")}</legend><div className="form-grid gift-conditions-grid"><label>{translateAdmin("新用户注册天数限制")}<input type="number" min={0} value={conditions.new_user_max_days ?? ""} onChange={(event) => setConditions({ ...conditions, new_user_max_days: event.target.value === "" ? null : numberValue(event.target.value) })} /></label><PlanIDs plans={plans} label={translateAdmin("允许的套餐")} value={conditions.allowed_plans ?? []} onChange={(value) => setConditions({ ...conditions, allowed_plans: value })} /><PlanIDs plans={plans} label={translateAdmin("禁止的套餐")} value={conditions.disallowed_plans ?? []} onChange={(value) => setConditions({ ...conditions, disallowed_plans: value })} /><label className="switch-label"><input type="checkbox" role="switch" checked={conditions.new_user_only ?? false} onChange={(event) => setConditions({ ...conditions, new_user_only: event.target.checked })} />{translateAdmin("仅限新用户")}</label><label className="switch-label"><input type="checkbox" role="switch" checked={conditions.paid_user_only ?? false} onChange={(event) => setConditions({ ...conditions, paid_user_only: event.target.checked })} />{translateAdmin("仅限付费用户")}</label><label className="switch-label"><input type="checkbox" role="switch" checked={conditions.require_invite ?? false} onChange={(event) => setConditions({ ...conditions, require_invite: event.target.checked })} />{translateAdmin("需要邀请关系")}</label></div></fieldset>
-    <fieldset><legend>{translateAdmin("使用限制")}</legend><div className="form-grid"><NumberField label={translateAdmin("单用户最大使用次数")} value={limits.max_use_per_user ?? ""} onChange={(value) => setLimits({ ...limits, max_use_per_user: value })} /><NumberField label={translateAdmin("同类卡冷却时间(小时)")} value={limits.cooldown_hours ?? ""} onChange={(value) => setLimits({ ...limits, cooldown_hours: value })} /><label>邀请人奖励比例 (%)<input inputMode="decimal" value={limits.invite_reward_basis_points == null ? "" : limits.invite_reward_basis_points / 100} onChange={(event) => setLimits({ ...limits, invite_reward_basis_points: Math.round(Number(event.target.value) * 100) })} /></label></div></fieldset><fieldset><legend>{translateAdmin("特殊配置")}</legend><div className="form-grid gift-special-grid"><label>{translateAdmin("节日奖励乘数")}<input inputMode="decimal" value={special.festival_multiplier_basis_points == null ? "" : special.festival_multiplier_basis_points / 10_000} onChange={(event) => setSpecial({ ...special, festival_multiplier_basis_points: Math.round(Number(event.target.value) * 10_000) })} /></label><DateTimeInput label={translateAdmin("活动开始时间")} value={startedAt} onChange={setStartedAt} placeholder={translateAdmin("请选择开始日期")} clearLabel="清空日期" /><DateTimeInput label={translateAdmin("活动结束时间")} value={endedAt} onChange={setEndedAt} placeholder={translateAdmin("请选择结束日期")} clearLabel="清空日期" /></div></fieldset>
-    <fieldset><legend>{translateAdmin("显示效果")}</legend><div className="form-grid"><label>{translateAdmin("图标")}<input maxLength={255} value={icon} onChange={(event) => setIcon(event.target.value)} /></label><label>{translateAdmin("背景图片")}<input type="url" maxLength={255} value={background} onChange={(event) => setBackground(event.target.value)} /></label></div></fieldset>
-    {error !== "" && <div className="alert error" role="alert">{error}</div>}</div><div className="form-actions"><button type="button" className="button ghost" onClick={onClose}>{translateAdmin("取消")}</button><button className="button primary" disabled={saving}>{saving ? "正在保存…" : translateAdmin("确认")}</button></div>
-  </form></Modal>;
+  return <Modal title={template === null ? translateAdmin("添加模板") : translateAdmin("编辑模板")} className="gift-template-modal" onClose={() => { if (!saving) onClose(); }}>
+    <div className="modal-header"><h2>{template === null ? translateAdmin("添加模板") : translateAdmin("编辑模板")}</h2><button className="gift-close" aria-label="关闭模板编辑" disabled={saving} onClick={onClose}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button></div>
+    <form className="gift-template-form" onSubmit={(event) => void submit(event)}><div className="gift-template-scroll">
+      <GiftSection title="基础配置"><div className="gift-grid">
+        <GiftField label="模板名称" value={name} required maxLength={255} placeholder="请输入模板名称" onChange={setName} />
+        <label className="gift-field">{translateAdmin("类型")}<select value={type} onChange={event => setType(Number(event.target.value) as GiftCardType)}>{Object.entries(typeNames).map(([value, label]) => <option key={value} value={value}>{translateAdmin(label)}</option>)}</select></label>
+        <label className="gift-field gift-wide">{translateAdmin("描述")}<textarea value={description} maxLength={4096} placeholder={translateAdmin("请输入礼品卡描述")} onChange={event => setDescription(event.target.value)} /></label>
+        <GiftField label="排序" type="number" min={0} value={sort} placeholder="0" onChange={setSort} />
+        <GiftSwitch label="状态" description="禁用后，此模板将无法生成或兑换新的礼品卡。" checked={status} onChange={setStatus} />
+      </div></GiftSection>
+      <GiftSection title="奖励内容">
+        {type === 1 && <div className="gift-grid">
+          <GiftField label="奖励余额 (元)" value={balance} placeholder="请输入奖励的金额(元)" unit="¥" onChange={setBalance} />
+          <GiftField label="奖励流量 (GB)" value={traffic} placeholder="请输入奖励的流量(GB)" unit="GB" onChange={setTraffic} />
+          <GiftField label="延长有效期 (天)" type="number" min={0} value={expireDays} placeholder="请输入延长的天数" unit="天" onChange={setExpireDays} />
+          <GiftField label="增加设备数" type="number" min={0} value={devices} placeholder="请输入增加的设备数量" onChange={setDevices} />
+          <GiftSwitch label="重置当月流量" description="开启后，兑换时会将用户当前套餐的已用流量清零。" checked={reset} onChange={setReset} wide />
+        </div>}
+        {type === 2 && <div className="gift-grid"><label className="gift-field">{translateAdmin("指定套餐")}<select value={planID} required onChange={event => setPlanID(event.target.value)}><option value="">请选择一个套餐</option>{plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label><GiftField label="套餐有效期 (天)" type="number" min={0} value={validity} placeholder="留空则保留用户当前到期时间" unit="天" onChange={setValidity} /></div>}
+        {type === 3 && <RandomRewardEditor values={random} onChange={setRandom} />}
+      </GiftSection>
+      <GiftSection title="使用条件"><div className="gift-grid">
+        <GiftField label="新用户注册天数限制" type="number" min={0} value={conditions.new_user_max_days ?? ""} placeholder="例如: 7 (仅限注册7天内的用户)" unit="天" wide onChange={value => setConditions({ ...conditions, new_user_max_days: value === "" ? null : numberValue(value) })} />
+        <div className="gift-condition-switches gift-wide"><GiftSwitch label="仅限新用户" checked={conditions.new_user_only ?? false} onChange={value => setConditions({ ...conditions, new_user_only: value })} compact /><GiftSwitch label="仅限付费用户" checked={conditions.paid_user_only ?? false} onChange={value => setConditions({ ...conditions, paid_user_only: value })} compact /><GiftSwitch label="需要邀请关系" checked={conditions.require_invite ?? false} onChange={value => setConditions({ ...conditions, require_invite: value })} compact /></div>
+        <PlanIDs plans={plans} label={translateAdmin("允许的套餐")} placeholder="选择允许兑换的套餐 (留空则不限制)" value={conditions.allowed_plans ?? []} onChange={value => setConditions({ ...conditions, allowed_plans: value })} />
+        <PlanIDs plans={plans} label={translateAdmin("禁止的套餐")} placeholder="选择禁止兑换的套餐 (留空则不限制)" value={conditions.disallowed_plans ?? []} onChange={value => setConditions({ ...conditions, disallowed_plans: value })} />
+      </div></GiftSection>
+      <GiftSection title="使用限制"><div className="gift-grid">
+        <GiftField label="单用户最大使用次数" type="number" min={0} value={limits.max_use_per_user ?? ""} placeholder="留空默认 1 次" onChange={value => setLimits({ ...limits, max_use_per_user: value === "" ? undefined : numberValue(value) })} />
+        <GiftField label="同类卡冷却时间(小时)" type="number" min={0} value={limits.cooldown_hours ?? ""} placeholder="留空则不限制" unit="h" onChange={value => setLimits({ ...limits, cooldown_hours: value === "" ? undefined : numberValue(value) })} />
+        <div className="gift-wide"><GiftField label="邀请人奖励比例" value={inviteRate} placeholder="例如: 0.2 (代表20%)" unit="%" onChange={setInviteRate} /><p className="gift-help">使用者有邀请人时，给邀请人的奖励 = 余额奖励 * 此比例</p></div>
+      </div></GiftSection>
+      <GiftSection title="特殊配置"><div className="gift-grid gift-responsive-grid">
+        <DateTimeInput label={translateAdmin("活动开始时间")} value={startedAt} onChange={setStartedAt} placeholder={translateAdmin("请选择开始日期")} clearLabel="清空日期" />
+        <DateTimeInput label={translateAdmin("活动结束时间")} value={endedAt} onChange={setEndedAt} placeholder={translateAdmin("请选择结束日期")} clearLabel="清空日期" />
+        <GiftField label="节日奖励乘数" value={multiplier} placeholder="例如: 1.5 (代表1.5倍)" unit="x" onChange={setMultiplier} wide />
+      </div></GiftSection>
+      <GiftSection title="显示效果"><div className="gift-grid gift-responsive-grid"><GiftField label="图标" value={icon} maxLength={255} placeholder="请输入图标的URL" onChange={setIcon} /><GiftField label="背景图片" type="url" value={background} maxLength={255} placeholder="请输入背景图片的URL" onChange={setBackground} /></div></GiftSection>
+      {error !== "" && <div className="alert error" role="alert">{error}</div>}
+    </div><div className="form-actions"><button type="button" className="button ghost" disabled={saving} onClick={onClose}>{translateAdmin("取消")}</button><button type="submit" className="button primary" disabled={saving}>{saving ? "正在保存…" : translateAdmin("确认")}</button></div></form>
+  </Modal>;
+
 }
 
 interface RandomRewardDraft {
@@ -209,12 +247,13 @@ interface RandomRewardDraft {
 function RandomRewardEditor({ values, onChange }: { values: RandomRewardDraft[]; onChange: (values: RandomRewardDraft[]) => void }) {
   const update = (index: number, key: "weight" | "balance" | "traffic" | "days", value: string) => onChange(values.map((item, position) => position === index ? { ...item, [key]: value } : item));
   const add = () => onChange([...values, { original: {}, weight: "10", balance: "", traffic: "", days: "" }]);
-  return <div className="form-stack"><div className="gift-reward-heading"><span>{translateAdmin("随机奖励池")}</span><button type="button" className="button secondary compact" onClick={add}>{translateAdmin("添加随机奖励项")}</button></div>{values.map((item, index) => <div className="form-grid random-reward" key={index}><small className="gift-reward-number">#{index + 1}</small>
-    <label>{translateAdmin("权重")}<input type="number" min={1} required value={item.weight} onChange={event => update(index, "weight", event.target.value)} /></label>
-    <label>{translateAdmin("奖励余额 (元)")}<input inputMode="decimal" value={item.balance} onChange={event => update(index, "balance", event.target.value)} /></label>
-    <label>{translateAdmin("奖励流量 (GB)")}<input inputMode="decimal" value={item.traffic} onChange={event => update(index, "traffic", event.target.value)} /></label>
-    <label>{translateAdmin("延长有效期 (天)")}<input type="number" min={0} value={item.days} onChange={event => update(index, "days", event.target.value)} /></label>
-    <button type="button" className="button danger compact" onClick={() => onChange(values.filter((_, position) => position !== index))}>删除奖励</button></div>)}</div>;
+  return <div className="gift-random-pool"><div className="gift-reward-heading"><span>{translateAdmin("随机奖励池")}</span><button type="button" className="button secondary compact" onClick={add}><span aria-hidden="true">＋</span>{translateAdmin("添加随机奖励项")}</button></div>{values.map((item, index) => <div className="gift-random-item" key={index}><div className="gift-random-heading"><small>#{index + 1}</small><button type="button" aria-label={`删除奖励 ${index + 1}`} onClick={() => onChange(values.filter((_, position) => position !== index))}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg></button></div><div className="gift-random-fields">
+    <GiftField label="权重" type="number" min={1} required value={item.weight} onChange={value => update(index, "weight", value)} />
+    <GiftField label="奖励余额 (元)" unit="¥" value={item.balance} onChange={value => update(index, "balance", value)} />
+    <GiftField label="奖励流量 (GB)" unit="GB" value={item.traffic} onChange={value => update(index, "traffic", value)} />
+    <GiftField label="延长有效期 (天)" type="number" min={0} unit="d" value={item.days} onChange={value => update(index, "days", value)} />
+  </div></div>)}</div>;
+
 }
 
 function CodeGenerator({ api, templates, onClose, onSaved }: { api: GiftCardManagementAPI; templates: GiftCardTemplate[]; onClose: () => void; onSaved: () => void }) {
@@ -239,12 +278,11 @@ function Pagination({ page, total, pageSize, onPage }: { page: number; total: nu
   return <div className="pagination-footer"><button className="button secondary compact" disabled={page <= 1} onClick={() => onPage(page - 1)}>{translateAdmin("上一页")}</button><span>{translateAdmin("第")}{page} / {pages} 页，共 {total} 条</span><button className="button secondary compact" disabled={page >= pages} onClick={() => onPage(page + 1)}>{translateAdmin("下一页")}</button></div>;
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number | ""; onChange: (value: number) => void }) { return <label>{label}<input type="number" min={0} value={value} onChange={(event) => onChange(numberValue(event.target.value))} /></label>; }
-function PlanIDs({ plans, label, value, onChange }: { plans: Plan[]; label: string; value: number[]; onChange: (value: number[]) => void }) {
+function PlanIDs({ plans, label, placeholder, value, onChange }: { plans: Plan[]; label: string; placeholder: string; value: number[]; onChange: (value: number[]) => void }) {
   const options = plans.map(plan => ({ value: String(plan.id), label: plan.name }));
   // Keep references to unavailable plans visible until the administrator removes them.
   for (const id of value) if (!plans.some(plan => plan.id === id)) options.push({ value: String(id), label: `套餐 #${id}` });
-  return <div className="form-stack"><span>{label}</span><NodeFilter label={label} options={options} value={value.map(String)} onChange={values => onChange(values.map(Number))} /></div>;
+  return <div className="gift-field gift-wide gift-plan-select"><span>{label}</span><NodeFilter label={label} displayLabel={value.length ? options.filter(option => value.includes(Number(option.value))).map(option => option.label).join("、") : placeholder} options={options} value={value.map(String)} onChange={values => onChange(values.map(Number))} /></div>;
 }
 function rewardSummary(value: GiftCardReward) { const parts: string[] = []; if ((value.balance ?? 0) > 0) parts.push(`余额 ¥${centsToYuan(value.balance ?? 0)}`); if ((value.transfer_enable ?? 0) > 0) parts.push(`流量 ${bytesToGiB(value.transfer_enable ?? 0)} GB`); if (value.plan_id != null) parts.push(`套餐 #${value.plan_id}`); if ((value.expire_days ?? 0) > 0) parts.push(`${value.expire_days} 天`); if ((value.random_rewards?.length ?? 0) > 0) parts.push(`${value.random_rewards?.length} 项随机奖励`); return parts.join(" · ") || "流量重置"; }
 function numberValue(value: string) { const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0; }
@@ -268,3 +306,11 @@ async function loadGiftCardTemplateOptions(api: GiftCardManagementAPI) {
   return [first, ...remaining].flatMap((page) => page.items);
 }
 function downloadBlob(blob: Blob, filename: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url); }
+
+function ratioBasisPoints(value: string, label: string, maximum = 100): number | undefined {
+  if (value.trim() === "") return undefined;
+  if (!/^\d+(?:\.\d{1,4})?$/.test(value.trim())) throw new Error(`${label}最多保留四位小数`);
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio) || ratio < 0 || ratio > maximum) throw new Error(`${label}必须在 0 到 ${maximum} 之间`);
+  return Math.round(ratio * 10_000);
+}
