@@ -210,3 +210,57 @@ jobs:
       - name: Remove temporary deployment key
         if: always()
         run: rm -f ~/.ssh/deploy_key
+
+  logging-validate:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          persist-credentials: false
+      - name: Verify private logging configuration and recovery
+        run: |
+          python3 -m unittest discover -s deploy/observability -p '*test*.py'
+          python3 -m unittest discover -s deploy -p 'logging_test.py'
+          python3 deploy/observability/smoke.py
+
+  logging-deploy:
+    needs: [authorize, legacy-parity, logging-validate]
+    concurrency:
+      group: production-internal-test-deployment
+      cancel-in-progress: false
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
+    timeout-minutes: 25
+    environment: production-internal-test
+    steps:
+      - name: Download exact reviewed source
+        env:
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          candidate="$GITHUB_WORKSPACE/logging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -m 700 "$candidate"
+          archive="$(mktemp "$RUNNER_TEMP/logging-source.XXXXXX.tar.gz")"
+          trap 'rm -f "$archive"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --noproxy codeload.github.com --connect-timeout 10 --max-time 120 --retry 2 \
+            "https://codeload.github.com/Hao-Monster/Xboard-Go/tar.gz/$TARGET_SHA" --output "$archive"
+          tar -xzf "$archive" --strip-components=1 --no-same-owner -C "$candidate"
+          echo "LOGGING_CANDIDATE=$candidate" >> "$GITHUB_ENV"
+      - name: Deploy scoped collectors and private log center
+        env:
+          LOGGING_SOURCE_SHA: ${{ needs.authorize.outputs.sha }}
+          BINGO_DEV_SSH_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          cd "$LOGGING_CANDIDATE"
+          python3 deploy/logging-runner.py

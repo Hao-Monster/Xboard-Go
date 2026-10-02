@@ -81,9 +81,19 @@ events, journal/source errors and buffer pressure as well.
 
 ## Release and rollback
 
-All changes are released through `.github/workflows/observability.yml` on protected
-main. The workflow first executes isolated Docker auth, persistence and outage
-checks, then deploys exact-SHA scripts. Application image releases remain in the
+The logging deployment job uses the `production-internal-test` GitHub environment.
+It requires `BINGO_DEV_SSH_KEY`, `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` there
+(or as explicitly approved repository secrets), plus the existing `DEPLOY_HOST`,
+`DEPLOY_PORT` and `DEPLOY_USER` variables. A secret stored only in the `development`
+environment is not visible to this job. Configure credentials privately; do not
+copy secrets into workflow text or artifacts to bypass environment isolation.
+
+Logging is released by `.github/workflows/legacy-parity.yml` after successful CI
+on protected main. The existing runner authorization hook is preserved: manual
+workflows cannot run on this privileged runner. A separate hosted validation job
+executes Docker auth, persistence and outage checks before the logging deployment
+job uses the authorized source SHA. `.github/workflows/observability.yml` provides
+validation only for development pushes and manual checks. Application image releases remain in the
 existing development/production workflows. They preserve the separate logging
 overlay without altering the installed base Compose digest.
 

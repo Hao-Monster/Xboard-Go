@@ -19,12 +19,20 @@ def execute(command, data=None):
     return result.stdout
 
 
-def validate(environment):
+def validate(environment, event):
     if (environment.get('GITHUB_REPOSITORY') != 'Hao-Monster/Xboard-Go' or
             environment.get('GITHUB_REF') != 'refs/heads/main' or
-            environment.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'):
-        raise ValueError('Deployment requires a manual workflow on protected main')
-    if not re.fullmatch('[0-9a-f]{40}', environment.get('GITHUB_SHA', '')):
+            environment.get('GITHUB_EVENT_NAME') != 'workflow_run' or
+            environment.get('GITHUB_WORKFLOW') != 'Legacy parity' or
+            environment.get('GITHUB_WORKFLOW_REF') != 'Hao-Monster/Xboard-Go/.github/workflows/legacy-parity.yml@refs/heads/main'):
+        raise ValueError('Deployment requires the trusted main CI completion workflow')
+    source = event.get('workflow_run', {})
+    if (event.get('action') != 'completed' or source.get('name') != 'CI' or
+            source.get('event') != 'push' or source.get('head_branch') != 'main' or
+            source.get('head_repository', {}).get('full_name') != 'Hao-Monster/Xboard-Go' or
+            source.get('conclusion') != 'success' or source.get('head_sha') != environment.get('LOGGING_SOURCE_SHA')):
+        raise ValueError('Untrusted or mismatched source workflow')
+    if not re.fullmatch('[0-9a-f]{40}', environment.get('LOGGING_SOURCE_SHA', '')):
         raise ValueError('An exact source SHA is required')
     if (environment.get('DEPLOY_HOST') != '109.205.178.211' or
             environment.get('DEPLOY_USER') != 'root' or
@@ -46,8 +54,8 @@ def archive():
 
 
 def main():
-    validate(os.environ)
-    sha = os.environ['GITHUB_SHA']
+    validate(os.environ, json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text()))
+    sha = os.environ['LOGGING_SOURCE_SHA']
     with tempfile.TemporaryDirectory(prefix='xboard-logging-') as work:
         directory = Path(work)
         keys = {}
