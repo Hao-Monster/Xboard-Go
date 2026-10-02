@@ -69,6 +69,12 @@ class BoundaryTests(unittest.TestCase):
                      Config=dict(Entrypoint=['vector'], Env=['fixture=value']))
         expected = runner.fingerprint(image)
         self.assertEqual(expected, runner.fingerprint({**image, 'Id': 'containerd-id'}))
+        defaults = dict(User='', WorkingDir='', Hostname='', Domainname='', Image='', Cmd=None,
+                        Volumes=None, OnBuild=None, AttachStdin=False, AttachStdout=False,
+                        AttachStderr=False, Tty=False, OpenStdin=False, StdinOnce=False)
+        self.assertEqual(expected, runner.fingerprint({**image, 'Config': {**image['Config'], **defaults}}))
+        self.assertNotEqual(expected, runner.fingerprint({**image, 'Config': {**image['Config'], 'User': '1001'}}))
+        self.assertNotEqual(expected, runner.fingerprint({**image, 'Config': {**image['Config'], 'Tty': True}}))
         changed = copy.deepcopy(image)
         changed['Config']['Entrypoint'] = ['other']
         self.assertNotEqual(expected, runner.fingerprint(changed))

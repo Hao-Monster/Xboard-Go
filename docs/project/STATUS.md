@@ -153,6 +153,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `OBS-008` | M3 | in_progress | [#314](https://github.com/Hao-Monster/Xboard-Go/issues/314) | 跨 Docker 存储后端验证采集镜像内容身份 |
 | `OBS-009` | M3 | in_progress | [#316](https://github.com/Hao-Monster/Xboard-Go/issues/316) | 通过 curl 与产物摘要验证日志镜像下载 |
 | `OBS-010` | M3 | in_progress | [#318](https://github.com/Hao-Monster/Xboard-Go/issues/318) | 慢链路产物断点续传与完整摘要验证 |
+| `OBS-011` | M3 | in_progress | [#320](https://github.com/Hao-Monster/Xboard-Go/issues/320) | 规范化 Docker 内容身份中的等价默认字段 |
 
 ## Release gates
 
