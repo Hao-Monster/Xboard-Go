@@ -250,6 +250,10 @@ jobs:
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 25
     environment: production-internal-test
+    env:
+      http_proxy: http://100.120.174.30:7890
+      https_proxy: http://100.120.174.30:7890
+      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
