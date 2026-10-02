@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
@@ -8,7 +8,7 @@ import { UserTicketsPage } from "../tickets/UserTicketsPage";
 import { BrandMark } from "../../components/BrandMark";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { PlanCatalogPage } from "../plans/PlanCatalogPage";
-import { UserSubscriptionPage } from "../subscription/UserSubscriptionPage";
+import { hasSubscription, UserSubscriptionPage } from "../subscription/UserSubscriptionPage";
 import { UserOrdersPage } from "../orders/UserOrdersPage";
 import { UserGiftCardPage } from "../giftcards/UserGiftCardPage";
 
@@ -54,7 +54,19 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
   initialPage?: LoginLinkRedirect;
   onSignedOut: () => void;
 }) {
-  const [page, setPage] = useState<"subscription" | "plans" | "orders" | "gift-cards" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => portalPage(initialPage));
+  const [page, setPage] = useState<"loading" | "subscription" | "plans" | "orders" | "gift-cards" | "notices" | "knowledge" | "tickets" | "clients" | "invitations">(() => initialPage === "dashboard" ? "loading" : portalPage(initialPage));
+  const [homeError, setHomeError] = useState("");
+  const [homeAttempt, setHomeAttempt] = useState(0);
+  useEffect(() => {
+    if (initialPage !== "dashboard") return;
+    let live = true;
+    void api.getSubscription().then(subscription => {
+      if (live) setPage(current => current === "loading" ? (hasSubscription(subscription) ? "subscription" : "plans") : current);
+    }).catch((cause: unknown) => {
+      if (live) setHomeError(cause instanceof Error ? cause.message : "订阅信息加载失败");
+    });
+    return () => { live = false; };
+  }, [api, initialPage, homeAttempt]);
   const [openOrderTradeNo, setOpenOrderTradeNo] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState("");
 
@@ -85,6 +97,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
       <div className="account"><span>{session.email}</span><button className="button ghost compact" onClick={() => void logout()}>退出</button></div>
     </nav>
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
+    {page === "loading" && <main className="page-shell">{homeError ? <><p role="alert">{homeError}</p><button className="button secondary" onClick={() => { setHomeError(""); setHomeAttempt(attempt => attempt + 1); }}>重新加载订阅信息</button></> : <p role="status">正在加载订阅信息…</p>}</main>}
     {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
     {page === "plans" && <PlanCatalogPage api={api} couponEnabled={couponEnabled} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
     {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
