@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: xboard-private-observability
   cancel-in-progress: false
@@ -32,3 +33,14 @@ jobs:
           docker tag xboard-log-collector:local "xboard-log-collector:$GITHUB_SHA"
           docker save "xboard-log-collector:$GITHUB_SHA" | gzip > collector-artifact/collector.tar.gz
           python3 deploy/package-log-collector.py collector-artifact "$GITHUB_SHA"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tested-log-collector
+          path: collector-artifact/
+          retention-days: 1
+          compression-level: 0
+      - name: Verify authenticated artifact download and digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOGGING_IMAGE_DIRECTORY: collector-roundtrip
+        run: python3 deploy/download-log-collector.py
