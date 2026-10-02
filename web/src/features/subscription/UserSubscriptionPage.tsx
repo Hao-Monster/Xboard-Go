@@ -9,6 +9,12 @@ interface UserSubscriptionAPI {
   resetSubscriptionSecurity: () => Promise<UserSubscription>;
 }
 
+// Existing subscriptions remain purchases after expiry or exhaustion. Imported
+// or manually granted traffic may exist without a catalog plan.
+export function hasSubscription(subscription: Pick<UserSubscription, "plan_id" | "transfer_enable">): boolean {
+  return subscription.plan_id !== null || subscription.transfer_enable > 0;
+}
+
 export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscriptionAPI; onOpenTutorial?: () => void }) {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +79,7 @@ export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscri
         <div><span>下次重置</span><strong>{subscription.reset_day === null ? "不重置" : `${subscription.reset_day} 天`}</strong></div>
       </div>
     </section>
-    <section className="subscription-action-card" aria-labelledby="subscription-address-heading">
+    {hasSubscription(subscription) && <section className="subscription-action-card" aria-labelledby="subscription-address-heading">
       <div className="section-heading"><div><h2 id="subscription-address-heading">订阅地址</h2><p className="muted">订阅地址属于私密凭证，请勿公开分享。</p></div></div>
       <label>订阅地址<input className="monospace" readOnly value={subscription.subscribe_url} /></label>
       <div className="subscription-actions">
@@ -81,8 +87,8 @@ export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscri
         <CopyButton value={subscription.subscribe_url} />
         <button className="button secondary danger-text" type="button" onClick={() => setResetOpen(true)}>重置订阅信息</button>
       </div>
-    </section>
-    {importOpen && <SubscriptionImportModal api={api} subscription={subscription} onOpenTutorial={onOpenTutorial} onClose={() => setImportOpen(false)} />}
+    </section>}
+    {importOpen && hasSubscription(subscription) && <SubscriptionImportModal api={api} subscription={subscription} onOpenTutorial={onOpenTutorial} onClose={() => setImportOpen(false)} />}
     {resetOpen && <Modal title="重置订阅信息" onClose={() => { if (!resetting) setResetOpen(false); }}>
       <div className="modal-header"><div><p className="eyebrow">Security</p><h2>重置订阅信息</h2></div><button className="icon-button" aria-label="关闭重置订阅信息" disabled={resetting} onClick={() => setResetOpen(false)}>×</button></div>
       <div className="alert warning">重置会同时更换 UUID 和订阅令牌，旧订阅地址会立即失效，所有设备都需要重新导入。</div>
