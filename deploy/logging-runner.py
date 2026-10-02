@@ -124,7 +124,10 @@ def main():
             # Remnawave, global SSH daemon or Docker daemon configuration changes.
             ssh(kind, 'set -eu; test "$(hostname)" = ' + expected + '; umask 077; mkdir -p ' + shlex.quote(path) +
                 '; test ! -L ' + shlex.quote(path) + '; tar -xzf - --no-same-owner -C ' + shlex.quote(path), payload)
-            ssh(kind, 'docker load', image_file=image_directory / 'collector.tar.gz')
+            # Keep Docker import diagnostics on the destination, separate from
+            # SSH stderr; never emit arbitrary remote output into CI logs.
+            ssh(kind, 'umask 077; docker load 2> ' + shlex.quote(path + '/image-load-error.log'),
+                image_file=image_directory / 'collector.tar.gz')
             identity = ssh(kind, "docker image inspect --format '{{.Id}}' xboard-log-collector:" + sha).decode().strip()
             if identity != manifest['image_id']:
                 raise ValueError('Loaded collector image identity mismatch')
