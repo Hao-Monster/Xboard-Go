@@ -149,6 +149,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `OBS-004` | M3 | in_progress | [#306](https://github.com/Hao-Monster/Xboard-Go/issues/306) | 日志发布独立于应用重新构建且保留运行版本核验 |
 | `OBS-005` | M3 | in_progress | [#308](https://github.com/Hao-Monster/Xboard-Go/issues/308) | 流水线交付已测试且校验身份的日志采集镜像 |
 | `OBS-006` | M3 | in_progress | [#310](https://github.com/Hao-Monster/Xboard-Go/issues/310) | 日志镜像传输复用运行器既有代理 |
+| `OBS-007` | M3 | in_progress | [#312](https://github.com/Hao-Monster/Xboard-Go/issues/312) | 日志镜像传输中断的有界重试与脱敏诊断 |
 
 ## Release gates
 
