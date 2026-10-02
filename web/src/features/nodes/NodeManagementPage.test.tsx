@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -31,6 +31,89 @@ const definition = {
 };
 
 describe("NodeManagementPage", () => {
+  it("keeps existing node settings when generating a replacement key pair without saving", async () => {
+    const api = nodeAPI();
+    api.getAdminNodeDefinition.mockResolvedValue({...definition, protocol_settings: {...definition.protocol_settings, tls: 2,
+      reality_settings: {...definition.protocol_settings.reality_settings, server_name: "existing.example.test", server_port: 8443, short_id: "abcd", private_key: "old-private", public_key: "old-public"}}});
+    api.generateNodeReality.mockResolvedValue({private_key: "new-private", public_key: "new-public"});
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await user.click(await screen.findByRole("button", {name: "编辑节点：SG VLESS"}));
+    const dialog = within(screen.getByRole("dialog", {name: "编辑节点"}));
+    await user.click(await dialog.findByRole("button", {name: "生成密钥对"}));
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("new-private");
+    expect(dialog.getByLabelText("Reality 公钥")).toHaveValue("new-public");
+    expect(dialog.getByLabelText("Reality SNI")).toHaveValue("existing.example.test");
+    expect(dialog.getByLabelText("Reality 端口")).toHaveValue(8443);
+    expect(dialog.getByLabelText("Reality Short ID")).toHaveValue("abcd");
+    expect(api.replaceAdminNodeDefinition).not.toHaveBeenCalled();
+    expect(api.createAdminNodeDefinition).not.toHaveBeenCalled();
+  });
+  it("discards pending Reality keys after editing or switching protocol", async () => {
+    const api = nodeAPI([]);
+    let resolve!: (pair: {private_key: string; public_key: string}) => void;
+    api.generateNodeReality.mockImplementation(() => new Promise(done => { resolve = done; }));
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByRole("table", {name: "节点列表"});
+    await user.click(screen.getByRole("button", {name: "添加节点"}));
+    const dialog = within(screen.getByRole("dialog", {name: "新建节点"}));
+    await user.selectOptions(dialog.getByLabelText("协议类型"), "vless");
+    await user.selectOptions(dialog.getByLabelText("安全性"), "2");
+    await user.click(dialog.getByRole("button", {name: "生成密钥对"}));
+    expect(dialog.getByRole("button", {name: "正在生成…"})).toBeDisabled();
+    await user.type(dialog.getByLabelText("Reality 私钥"), "manual-private");
+    resolve({private_key: "stale-private", public_key: "stale-public"});
+    expect(await dialog.findByRole("alert")).toHaveTextContent("配置已变更");
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("manual-private");
+    expect(dialog.getByLabelText("Reality 公钥")).toHaveValue("");
+    await user.click(dialog.getByRole("button", {name: "生成密钥对"}));
+    await user.selectOptions(dialog.getByLabelText("协议类型"), "trojan");
+    resolve({private_key: "stale-private", public_key: "stale-public"});
+    await user.selectOptions(dialog.getByLabelText("安全性"), "2");
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("");
+    expect(dialog.getByLabelText("Reality 公钥")).toHaveValue("");
+    await user.click(dialog.getByRole("button", {name: "生成密钥对"}));
+    await user.click(dialog.getByRole("button", {name: "关闭新建节点"}));
+    await user.click(screen.getByRole("button", {name: "添加节点"}));
+    const reopened = within(screen.getByRole("dialog", {name: "新建节点"}));
+    await user.selectOptions(reopened.getByLabelText("协议类型"), "vless");
+    await user.selectOptions(reopened.getByLabelText("安全性"), "2");
+    await act(async () => {
+      resolve({private_key: "closed-private", public_key: "closed-public"});
+      await Promise.resolve();
+    });
+    expect(reopened.getByLabelText("Reality 私钥")).toHaveValue("");
+    expect(reopened.getByLabelText("Reality 公钥")).toHaveValue("");
+    expect(api.createAdminNodeDefinition).not.toHaveBeenCalled();
+  });
+  it.each(["vless", "trojan"])("generates Reality draft credentials for %s without saving", async (protocol) => {
+    const api = nodeAPI([]);
+    api.generateNodeReality.mockResolvedValue({private_key: "private-fixture", public_key: "public-fixture"});
+    const user = userEvent.setup();
+    render(<NodeManagementPage api={api} />);
+    await screen.findByRole("table", {name: "节点列表"});
+    await user.click(screen.getByRole("button", {name: "添加节点"}));
+    const dialog = within(screen.getByRole("dialog", {name: "新建节点"}));
+    await user.selectOptions(dialog.getByLabelText("协议类型"), protocol);
+    await user.selectOptions(dialog.getByLabelText("安全性"), "2");
+    await user.type(dialog.getByLabelText("Reality SNI"), "example.test");
+    await user.click(dialog.getByRole("button", {name: "生成密钥对"}));
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("private-fixture");
+    expect(dialog.getByLabelText("Reality 公钥")).toHaveValue("public-fixture");
+    await user.click(dialog.getByRole("button", {name: "生成 Short ID"}));
+    const first = dialog.getByLabelText<HTMLInputElement>("Reality Short ID").value;
+    expect(first).toMatch(/^[a-f0-9]{16}$/);
+    await user.click(dialog.getByRole("button", {name: "生成 Short ID"}));
+    expect(dialog.getByLabelText("Reality Short ID")).not.toHaveValue(first);
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("private-fixture");
+    expect(dialog.getByLabelText("Reality SNI")).toHaveValue("example.test");
+    expect(api.createAdminNodeDefinition).not.toHaveBeenCalled();
+    api.generateNodeReality.mockRejectedValue(new Error("生成失败"));
+    await user.click(dialog.getByRole("button", {name: "生成密钥对"}));
+    expect(await dialog.findByRole("alert")).toHaveTextContent("生成失败");
+    expect(dialog.getByLabelText("Reality 私钥")).toHaveValue("private-fixture");
+  });
   it("shows TLS details only when supported and preserves the draft across the group dialog", async () => {
     const api = nodeAPI([]);
     const user = userEvent.setup();
@@ -451,7 +534,7 @@ function nodeAPI(items = [node]) {
   return {
     listAdminNodes: vi.fn().mockResolvedValue({ items, total: items.length, page: 1, page_size: 500 }),
     listAdminNodeParentOptions: vi.fn().mockResolvedValue({ items: items.map(({ id, name }) => ({ id, name })), has_more: false }),
-    createServerGroup: vi.fn(), generateNodeECH: vi.fn(),
+    createServerGroup: vi.fn(), generateNodeECH: vi.fn(), generateNodeReality: vi.fn(),
     listMachines: vi.fn().mockResolvedValue([machine]),
     listServerGroups: vi.fn().mockResolvedValue([group]),
     listRoutingRules: vi.fn().mockResolvedValue([route]),
