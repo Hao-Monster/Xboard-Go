@@ -150,8 +150,8 @@ describe("PlanCatalogPage", () => {
     render(<PlanCatalogPage api={{ listPlanOffers: vi.fn().mockResolvedValue([offer]), checkCoupon: vi.fn(), createOrder }} couponEnabled={false} onOrderCreated={onOrderCreated} />);
     expect(await screen.findByRole("heading", { name: "Pro" })).toBeVisible();
     expect(screen.getByText("不限量")).toBeVisible();
-    expect(screen.getByText("月付 ¥1.23")).toBeVisible();
-    expect(screen.getByText("重置包 ¥0.50")).toBeVisible();
+    expect(screen.getByLabelText("月付 ¥1.23")).toBeVisible();
+    expect(screen.getByLabelText("重置包 ¥0.50")).toBeVisible();
     expect(screen.getByRole("heading", { name: "稳定套餐" })).toBeVisible();
     expect(screen.getByText("可购买")).toBeVisible();
     expect(screen.queryByText(/sold out/i)).not.toBeInTheDocument();

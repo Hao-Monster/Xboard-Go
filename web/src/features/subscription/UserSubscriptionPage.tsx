@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { PortalIcon } from "../user/PortalIcon";
 import { Modal } from "../../components/Overlay";
 import type { SubscriptionQR, UserSubscription } from "../../lib/api";
 
@@ -15,7 +16,7 @@ export function hasSubscription(subscription: Pick<UserSubscription, "plan_id" |
   return subscription.plan_id !== null || subscription.transfer_enable > 0;
 }
 
-export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscriptionAPI; onOpenTutorial?: () => void }) {
+export function UserSubscriptionPage({ api, onOpenTutorial, onOpenPlans, onOpenTickets, announcement }: { api: UserSubscriptionAPI; onOpenTutorial?: () => void; onOpenPlans?: () => void; onOpenTickets?: () => void; announcement?: ReactNode }) {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,10 +66,11 @@ export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscri
   const used = Math.max(0, subscription.u + subscription.d);
   const percent = subscription.transfer_enable <= 0 ? 0 : Math.min(100, Math.round(used / subscription.transfer_enable * 100));
   return <main className="page-shell user-subscription-page">
+    {announcement}
     <header className="page-header"><div><p className="eyebrow">Dashboard</p><h1>我的订阅</h1><p className="muted">查看套餐、流量与订阅地址，并一键导入客户端。</p></div><span className={`status-badge ${subscription.subscription_valid ? "enabled" : "blocked"}`}>{subscription.subscription_valid ? "订阅可用" : "订阅不可用"}</span></header>
     {error !== "" && <div className="alert error resource-alert" role="alert">{error}</div>}
     {message !== "" && <div className="alert success resource-alert" role="status">{message}</div>}
-    <section className="subscription-overview-card" aria-label="订阅概览">
+    {!hasSubscription(subscription) && onOpenPlans ? <section className="portal-empty-subscription"><h2>当前订阅</h2><button onClick={onOpenPlans}><PortalIcon name="plus" /><span>购买订阅</span></button></section> : <section className="subscription-overview-card" aria-label="订阅概览">
       <div className="subscription-plan-heading"><div><p className="eyebrow">当前套餐</p><h2>{subscription.plan?.name ?? "暂无订阅套餐"}</h2></div><strong>{percent}%</strong></div>
       <p className="muted">{expiryText(subscription.expired_at)}{subscription.next_reset_at !== null ? `，已用流量将在 ${formatDate(subscription.next_reset_at)} 重置` : ""}</p>
       <progress max={100} value={percent} aria-label="流量使用进度" aria-valuenow={percent} aria-valuetext={`${percent}%`} />
@@ -78,15 +80,21 @@ export function UserSubscriptionPage({ api, onOpenTutorial }: { api: UserSubscri
         <div><span>速度限制</span><strong>{subscription.speed_limit > 0 ? `${subscription.speed_limit} Mbps` : "不限"}</strong></div>
         <div><span>下次重置</span><strong>{subscription.reset_day === null ? "不重置" : `${subscription.reset_day} 天`}</strong></div>
       </div>
-    </section>
+    </section>}
     {hasSubscription(subscription) && <section className="subscription-action-card" aria-labelledby="subscription-address-heading">
       <div className="section-heading"><div><h2 id="subscription-address-heading">订阅地址</h2><p className="muted">订阅地址属于私密凭证，请勿公开分享。</p></div></div>
       <label>订阅地址<input className="monospace" readOnly value={subscription.subscribe_url} /></label>
       <div className="subscription-actions">
-        <button className="button primary" type="button" onClick={() => setImportOpen(true)}>一键订阅</button>
+        <button className="button primary" type="button" onClick={() => setImportOpen(true)}><PortalIcon name="rss" />一键订阅</button>
         <CopyButton value={subscription.subscribe_url} />
-        <button className="button secondary danger-text" type="button" onClick={() => setResetOpen(true)}>重置订阅信息</button>
+        <button className="button secondary danger-text" type="button" onClick={() => setResetOpen(true)}><PortalIcon name="refresh" />重置订阅信息</button>
       </div>
+    </section>}
+    {(onOpenTutorial || onOpenPlans || onOpenTickets) && <section className="portal-shortcuts" aria-label="捷径"><h2>捷径</h2>
+      {onOpenTutorial && <button onClick={onOpenTutorial}><span>查看教程<small>学习如何使用订阅服务</small></span><PortalIcon name="book" /></button>}
+      {hasSubscription(subscription) && <button onClick={() => setImportOpen(true)}><span>导入客户端<small>快速将节点导入对应客户端进行使用</small></span><PortalIcon name="rss" /></button>}
+      {onOpenPlans && <button onClick={onOpenPlans}><span>购买订阅<small>查看可购买或可续费的套餐</small></span><PortalIcon name="bag" /></button>}
+      {onOpenTickets && <button onClick={onOpenTickets}><span>遇到问题<small>遇到问题可以通过工单与我们沟通</small></span><PortalIcon name="ticket" /></button>}
     </section>}
     {importOpen && hasSubscription(subscription) && <SubscriptionImportModal api={api} subscription={subscription} onOpenTutorial={onOpenTutorial} onClose={() => setImportOpen(false)} />}
     {resetOpen && <Modal title="重置订阅信息" onClose={() => { if (!resetting) setResetOpen(false); }}>
@@ -131,7 +139,7 @@ function CopyButton({ value }: { value: string }) {
       setError(true);
     }
   };
-  return <><button className="button secondary" type="button" onClick={() => void copy()}>复制订阅地址</button>{copied && <span className="small copy-status" role="status">订阅地址已复制</span>}{error && <span className="small danger-text" role="alert">复制失败，请手动复制</span>}</>;
+  return <><button className="button secondary" type="button" onClick={() => void copy()}><PortalIcon name="copy" />复制订阅地址</button>{copied && <span className="small copy-status" role="status">订阅地址已复制</span>}{error && <span className="small danger-text" role="alert">复制失败，请手动复制</span>}</>;
 }
 
 function formatBytes(value: number): string {
