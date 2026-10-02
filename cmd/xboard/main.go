@@ -295,9 +295,14 @@ func main() {
 			if accessErr != nil {
 				return webui.FrontendAccess{}, accessErr
 			}
+			channels, channelsErr := database.GetPurchaseChannels(request.Context())
+			if channelsErr != nil {
+				return webui.FrontendAccess{}, channelsErr
+			}
 			return webui.FrontendAccess{
-				Allowed:    !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL),
-				SecurePath: access.SecurePath,
+				Allowed:        !access.SafeModeEnabled || webui.HostMatchesURL(request.Host, access.AppURL),
+				SecurePath:     access.SecurePath,
+				ChatwootOrigin: channels.ChatwootBaseURL,
 			}, nil
 		}
 		if settings.WebRoot != "" {
