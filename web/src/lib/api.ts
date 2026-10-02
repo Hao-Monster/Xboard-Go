@@ -1762,7 +1762,19 @@ export interface TrafficResetPage {data: GlobalTrafficReset[]; pagination: {curr
 export interface TrafficResetStats {total_resets: number; auto_resets: number; manual_resets: number; cron_resets: number}
 export interface TrafficResetAPI {listGlobalTrafficResets: (filters: TrafficResetFilters, page: number) => Promise<TrafficResetPage>; getTrafficResetStats: (days: number) => Promise<TrafficResetStats>}
 
-export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficResetAPI> {
+export interface PurchaseChannels {
+  revision: number;
+  card_store_url: string;
+  chatwoot_base_url: string;
+  chatwoot_website_token: string;
+}
+
+export interface PurchaseChannelsAdminAPI {
+  getAdminPurchaseChannels: () => Promise<PurchaseChannels>;
+  updatePurchaseChannels: (input: PurchaseChannels) => Promise<PurchaseChannels>;
+}
+
+export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficResetAPI>, Partial<PurchaseChannelsAdminAPI> {
 
   getMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
   resetMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
@@ -1948,6 +1960,17 @@ export class APIError extends Error {
 }
 
 export class APIClient implements AdminAPI {
+  async getPurchaseChannels(): Promise<PurchaseChannels> {
+    return this.request<PurchaseChannels>("/api/v1/user/purchase-channels");
+  }
+
+  async getAdminPurchaseChannels(): Promise<PurchaseChannels> {
+    return this.request<PurchaseChannels>("/api/v1/admin/purchase-channels");
+  }
+
+  async updatePurchaseChannels(input: PurchaseChannels): Promise<PurchaseChannels> {
+    return this.request<PurchaseChannels>("/api/v1/admin/purchase-channels", { method: "PUT", body: input });
+  }
   private readonly adminPath?: string;
 
   constructor(adminPath?: string) {

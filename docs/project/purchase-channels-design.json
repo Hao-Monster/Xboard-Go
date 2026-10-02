@@ -1,0 +1,18 @@
+{
+  "id": "PURCHASE-CHANNELS-20261002",
+  "requirement_ids": ["PAY-001", "GIFT-001"],
+  "work_item_ids": ["VER-002"],
+  "issue_number": 120,
+  "milestone": "M3",
+  "concept": "Preserve online checkout; offer externally purchased gift codes only when a positive pending order has no enabled payment methods.",
+  "confirmed": ["Keep existing payment methods", "Add card-store and live-support purchase guidance", "Reuse freedompost Chatwoot inbox as explicitly requested", "Deploy through internal CI/CD"],
+  "scope": ["Versioned admin purchase-channel configuration under payment settings", "Authenticated user configuration endpoint", "HTTPS card-store link and on-demand isolated Chatwoot widget", "Gift redemption navigation", "Honest unavailable and request-failure states"],
+  "non_goals": ["No payment provider replacement", "No automatic order completion or cancellation", "No receipt verification, automatic code allocation or external payment webhook", "No gift reward or renewal changes", "No freedompost deployment or source changes"],
+  "interaction": ["Paid pending order loads normal payment methods first", "Only successful empty payment list loads alternate channels", "Only configured channels have working buttons", "Widget loads only after explicit click; no automatic identity or order transmission", "External purchase does not mark current order paid; explain cancellation and refund of reserved balance", "Redemption navigation uses existing user gift-card page", "Chatwoot initialization messages require exact origin and frame; session restoration is scoped to panel user and browser tab"],
+  "data": {"table": "purchase_channels", "schema_version": 67, "fields": ["revision", "card_store_url", "chatwoot_base_url", "chatwoot_website_token"], "defaults": "All channels disabled/empty; explicit administrator configuration", "concurrency": "Compare-and-swap revision", "validation": "HTTPS URL without credentials; Chatwoot origin only and public widget identifier"},
+  "tasks": ["Read existing checkout and freedompost integration", "Add isolated schema and protected API with SQLite/HTTP tests", "Add administrator channel configuration", "Add checkout guidance and on-demand customer-service view", "Run targeted tests and browser verification", "Independent scope/security review", "Single development branch PR and CI/CD deployment", "Configure authorized shared inbox and verify deployed UI"],
+  "acceptance": ["Enabled payment checkout and zero-total activation are unchanged", "Both, one, and no configured channel states are truthful", "API failures are not empty-success states", "No order or gift-code writes from channel navigation", "Administrator-only writes, CSRF and stale revisions rejected", "Mobile dialog and customer-service fallback remain usable"],
+  "rollback": "Disable alternate channels by clearing their config; previous app requires pre-update backup restore if schema version rejects version 67.",
+  "references": ["freedompost/apps/public-reader/public/chatwoot.js", "https://github.com/chatwoot/chatwoot/blob/develop/app/javascript/widget/helpers/urlParamsHelper.js"],
+  "pending_configuration": ["User-provided card-store URL"]
+}

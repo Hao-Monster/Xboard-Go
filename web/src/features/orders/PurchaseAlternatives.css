@@ -1,0 +1,11 @@
+.purchase-alternatives { padding: 16px; margin-top: 16px; border: 1px solid var(--theme-border, #334155); border-radius: 12px; }
+.purchase-alternatives h3, .purchase-alternatives h4 { margin: 0 0 8px; }
+.purchase-alternatives p { line-height: 1.6; }
+.purchase-channel-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.purchase-channel-cards article { padding: 12px; border: 1px solid var(--theme-border, #334155); border-radius: 8px; }
+.purchase-channel-cards .button { display: inline-flex; justify-content: center; width: 100%; white-space: normal; }
+.purchase-support { margin-top: 16px; }
+.purchase-support-heading { display: flex; justify-content: space-between; align-items: center; }
+.purchase-support iframe { width: 100%; height: min(560px, 65vh); min-height: 320px; border: 0; border-radius: 8px; background: #fff; }
+.purchase-channel-settings { margin-bottom: 20px; }
+@media (max-width: 600px) { .purchase-channel-cards { grid-template-columns: 1fr; } }

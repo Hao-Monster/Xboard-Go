@@ -445,6 +445,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 67 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"purchase_channels": {"revision", "card_store_url", "chatwoot_base_url", "chatwoot_website_token", "updated_by", "updated_at"}}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV67PurchaseChannels); err != nil {
+			return err
+		}
+	}
 	if schemaVersion >= 66 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"traffic_reset_logs": {"reset_method"}, "plans": {"customer_visibility", "distributor_visibility"}, "plan_visibility_users": {"plan_id", "audience", "user_id"}, "legacy_user_history": {"user_id", "legacy_time", "last_login_ip", "online_count"}}); err != nil {
 			return err

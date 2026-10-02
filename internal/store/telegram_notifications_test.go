@@ -544,8 +544,8 @@ func TestSchemaV57AddsAndValidatesTelegramNotificationRecipientIndex(t *testing.
 	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 66 {
-		t.Fatalf("schema version = %d, want 66", version)
+	if version != 67 {
+		t.Fatalf("schema version = %d, want 67", version)
 	}
 	assertQueryPlanContains(t, database, `
 		EXPLAIN QUERY PLAN SELECT telegram_id FROM users INDEXED BY idx_users_telegram_admin_notify
