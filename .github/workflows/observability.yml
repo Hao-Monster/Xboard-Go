@@ -4,6 +4,11 @@ on:
     branches: [codex/ci-001-tiered-gates]
     paths:
       - 'deploy/logging-*'
+      - 'deploy/logging_test.py'
+      - 'deploy/collector_identity.py'
+      - 'deploy/download-log-collector.py'
+      - 'deploy/package-log-collector.py'
+      - '.github/workflows/legacy-parity.yml'
       - 'deploy/observability/**'
       - '.github/workflows/observability.yml'
   workflow_dispatch:
