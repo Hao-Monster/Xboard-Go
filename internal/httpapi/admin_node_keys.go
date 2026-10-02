@@ -3,6 +3,7 @@ package httpapi
 import (
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/pem"
 	"net/http"
@@ -11,6 +12,21 @@ import (
 )
 
 var echPublicName = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+
+// REALITY uses raw URL-safe base64 X25519 keys, matching the legacy admin form.
+// This endpoint only generates draft material; it does not persist or log keys.
+func (s *server) generateAdminNodeReality(w http.ResponseWriter, r *http.Request) {
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "密钥生成失败", nil)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeSuccess(w, http.StatusOK, map[string]string{
+		"private_key": base64.RawURLEncoding.EncodeToString(key.Bytes()),
+		"public_key":  base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()),
+	})
+}
 
 // generateAdminNodeECH uses the legacy panel's ECHConfigList/keys wire format.
 // Private material is returned only to the authenticated administrator and never stored or logged.

@@ -1781,6 +1781,7 @@ export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficReset
   setNodeEnabled: (machineID: number, nodeID: number, revision: number, enabled: boolean) => Promise<void>;
   listAdminNodes: (query?: AdminNodeQuery) => Promise<AdminNodePage>;
   generateNodeECH: (publicName: string) => Promise<{ key: string; config: string }>;
+  generateNodeReality: () => Promise<{ private_key: string; public_key: string }>;
   listAdminNodeParentOptions: (query: AdminNodeParentQuery) => Promise<AdminNodeParentOptions>;
   getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
@@ -2162,6 +2163,10 @@ export class APIClient implements AdminAPI {
 
   async generateNodeECH(publicName: string): Promise<{ key: string; config: string }> {
     return this.request("/api/v1/admin/nodes/ech-key", { method: "POST", body: { public_name: publicName } });
+  }
+
+  async generateNodeReality(): Promise<{ private_key: string; public_key: string }> {
+    return this.request("/api/v1/admin/nodes/reality-key", { method: "POST", body: {} });
   }
 
   async listAdminNodeParentOptions(query: AdminNodeParentQuery): Promise<AdminNodeParentOptions> {

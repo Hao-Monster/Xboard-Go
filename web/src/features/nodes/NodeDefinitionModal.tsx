@@ -13,6 +13,7 @@ import { NodeGroupCreator } from "./NodeGroupCreator";
 export interface NodeDefinitionAPI {
   createServerGroup?: (name: string) => Promise<ServerGroup>;
   generateNodeECH?: (publicName: string) => Promise<{key: string; config: string}>;
+  generateNodeReality?: () => Promise<{private_key: string; public_key: string}>;
   listAdminNodeParentOptions: (query: { type: string; q?: string; include_id?: number; exclude_id?: number }) => Promise<{ items: AdminNodeParentOption[]; has_more: boolean }>;
   getAdminNodeDefinition: (nodeID: number) => Promise<AdminNodeDefinition>;
   createAdminNodeDefinition: (input: AdminNodeDefinitionInput) => Promise<AdminNodeDefinition>;
@@ -617,6 +618,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
               {!input.type && <p>{translateAdmin("请先选择协议类型")}</p>}
               <ProtocolFields key={input.type} onDialogChange={setTransportEditing}
                 generateECH={api.generateNodeECH ? name => api.generateNodeECH!(name) : undefined}
+                generateReality={api.generateNodeReality ? () => api.generateNodeReality!() : undefined}
                 input={input}
                 setInput={setInput}
                 networkSettingsText={networkSettingsText}
@@ -948,6 +950,7 @@ function CertificateFields({ value, onChange }: { value: Record<string, unknown>
 function ProtocolFields({
   onDialogChange,
   generateECH,
+  generateReality,
   input,
   setInput,
   networkSettingsText,
@@ -955,6 +958,7 @@ function ProtocolFields({
 }: {
   onDialogChange: (open: boolean) => void;
   generateECH?: (name: string) => Promise<{key: string; config: string}>;
+  generateReality?: NodeDefinitionAPI["generateNodeReality"];
   input: AdminNodeDefinitionInput;
   setInput: React.Dispatch<React.SetStateAction<AdminNodeDefinitionInput>>;
   networkSettingsText: string;
@@ -1110,7 +1114,7 @@ function ProtocolFields({
                 </label>
               )}
             </div>)}
-          {Number(settings.tls) === 2 && <RealityFields settings={settings} set={set} />}
+          {Number(settings.tls) === 2 && <RealityFields settings={settings} set={set} generateReality={generateReality} />}
 
           <div className="network-protocol-header-row">
             <label className="field-label network-select-label">
@@ -1498,9 +1502,37 @@ function TLSFields({ tls, setTLS, generateECH, beforeECH }: { beforeECH?: ReactN
   );
 }
 
-function RealityFields({ settings, set }: { settings: Record<string, unknown>; set: (key: string, value: unknown) => void }) {
+function RealityFields({ settings, set, generateReality }: { settings: Record<string, unknown>; set: (key: string, value: unknown) => void; generateReality?: NodeDefinitionAPI["generateNodeReality"] }) {
   const reality = asRecord(settings.reality_settings);
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState("");
+  const realityRef = useRef<Record<string, unknown> | null>(reality);
+  useEffect(() => { realityRef.current = reality; return () => { realityRef.current = null; }; }, [reality]);
   const update = (field: string, value: unknown) => set("reality_settings", { ...reality, [field]: value });
+  const generateKeys = async () => {
+    if (!generateReality || generating) return;
+    setGenerating(true);
+    setGenerationError("");
+    try {
+      const pair = await generateReality();
+      // Never overwrite edits made while the request was in flight.
+      if (realityRef.current === reality) set("reality_settings", {...reality, ...pair});
+      else if (realityRef.current) setGenerationError("配置已变更，请重新生成密钥。");
+    } catch (cause) {
+      if (realityRef.current) setGenerationError(errorMessage(cause));
+    } finally {
+      if (realityRef.current) setGenerating(false);
+    }
+  };
+  const generateShortID = () => {
+    setGenerationError("");
+    try {
+      const bytes = crypto.getRandomValues(new Uint8Array(8));
+      update("short_id", Array.from(bytes, value => value.toString(16).padStart(2, "0")).join(""));
+    } catch (cause) {
+      setGenerationError(errorMessage(cause));
+    }
+  };
   return (
     <div className="reality-fields-stack">
       <label className="field-label">
@@ -1548,6 +1580,11 @@ function RealityFields({ settings, set }: { settings: Record<string, unknown>; s
           onChange={(event) => update("short_id", event.target.value)}
         />
       </label>
+      <div className="form-actions">
+        {generateReality && <button type="button" className="button secondary compact" disabled={generating} onClick={() => void generateKeys()}>{generating ? "正在生成…" : translateAdmin("生成密钥对")}</button>}
+        <button type="button" className="button secondary compact" onClick={generateShortID}>{translateAdmin("生成 Short ID")}</button>
+      </div>
+      {generationError && <p role="alert">{generationError}</p>}
       <div className="switch-row-item">
         <label className="switch-label">
           <input

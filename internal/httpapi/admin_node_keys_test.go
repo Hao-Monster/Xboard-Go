@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
@@ -10,7 +12,70 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
+
+func TestAdminNodeRealityGeneration(t *testing.T) {
+	api, database := newTestAPI(t)
+	const path = "/api/v1/admin/admin/nodes/reality-key"
+	anonymous := httptest.NewRecorder()
+	api.ServeHTTP(anonymous, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)))
+	if anonymous.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous status=%d", anonymous.Code)
+	}
+	admin := loginAdmin(t, api)
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+	admin.addCookies(request)
+	noCSRF := httptest.NewRecorder()
+	api.ServeHTTP(noCSRF, request)
+	if noCSRF.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF status=%d", noCSRF.Code)
+	}
+	hash, err := newHTTPAPITestPasswordHasher().Hash("ordinary-password-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateAdminUser(context.Background(), store.CreateAdminUserInput{Email: "reality-user@example.test", PasswordHash: hash}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	ordinary := loginAs(t, api, "reality-user@example.test", "ordinary-password-123")
+	if response := ordinary.request(t, api, http.MethodPost, path, `{}`); response.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user status=%d", response.Code)
+	}
+	var previous string
+	for range 2 {
+		response := admin.request(t, api, http.MethodPost, path, `{}`)
+		if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("status=%d cache=%s", response.Code, response.Header().Get("Cache-Control"))
+		}
+		var result struct {
+			Data struct {
+				Private string `json:"private_key"`
+				Public  string `json:"public_key"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		private, err := base64.RawURLEncoding.DecodeString(result.Data.Private)
+		if err != nil || len(private) != 32 || len(result.Data.Private) != 43 {
+			t.Fatal("invalid private key encoding")
+		}
+		public, err := base64.RawURLEncoding.DecodeString(result.Data.Public)
+		if err != nil || len(public) != 32 || len(result.Data.Public) != 43 {
+			t.Fatal("invalid public key encoding")
+		}
+		key, err := ecdh.X25519().NewPrivateKey(private)
+		if err != nil || !bytes.Equal(key.PublicKey().Bytes(), public) {
+			t.Fatal("key pair mismatch")
+		}
+		if result.Data.Private == previous {
+			t.Fatal("key reused")
+		}
+		previous = result.Data.Private
+	}
+}
 
 func TestAdminNodeECHGenerationUsesMatchingFreshKeysAndRequiresAdmin(t *testing.T) {
 	api, _ := newTestAPI(t)
