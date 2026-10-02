@@ -228,7 +228,7 @@ jobs:
           python3 deploy/observability/smoke.py
 
   logging-deploy:
-    needs: [authorize, legacy-parity, logging-validate]
+    needs: [authorize, logging-validate]
     concurrency:
       group: production-internal-test-deployment
       cancel-in-progress: false
