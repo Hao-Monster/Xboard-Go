@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+from collector_identity import fingerprint
 
 
 def execute(command, data=None):
@@ -79,6 +80,8 @@ def image_manifest(directory, sha):
     manifest = json.loads((directory / 'manifest.json').read_text())
     if manifest.get('revision') != sha or not re.fullmatch('sha256:[a-f0-9]{64}', manifest.get('image_id', '')):
         raise ValueError('Collector artifact identity mismatch')
+    if not re.fullmatch('[a-f0-9]{64}', manifest.get('content_sha256', '')):
+        raise ValueError('Collector artifact content identity missing')
     with (directory / 'collector.tar.gz').open('rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
     if digest != manifest.get('sha256'):
@@ -128,9 +131,9 @@ def main():
             # SSH stderr; never emit arbitrary remote output into CI logs.
             ssh(kind, 'umask 077; docker load 2> ' + shlex.quote(path + '/image-load-error.log'),
                 image_file=image_directory / 'collector.tar.gz')
-            identity = ssh(kind, "docker image inspect --format '{{.Id}}' xboard-log-collector:" + sha).decode().strip()
-            if identity != manifest['image_id']:
-                raise ValueError('Loaded collector image identity mismatch')
+            image = json.loads(ssh(kind, 'docker image inspect xboard-log-collector:' + sha))[0]
+            if fingerprint(image) != manifest['content_sha256']:
+                raise ValueError('Loaded collector image content identity mismatch')
 
         def action(kind, value, data=None):
             return ssh(kind, 'python3 ' + shlex.quote(directories[kind] + '/deploy/logging-remote.py') + ' ' + value, data)

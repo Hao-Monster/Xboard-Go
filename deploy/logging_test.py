@@ -16,6 +16,22 @@ probe = module('logging-probe')
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_portable_image_identity_rejects_content_changes(self):
+        import copy
+        image = dict(Id='classic-id', Architecture='amd64', Os='linux', Created='fixture-time',
+                     RootFS=dict(Type='layers', Layers=['sha256:' + 'a' * 64]),
+                     Config=dict(Entrypoint=['vector'], Env=['fixture=value']))
+        expected = runner.fingerprint(image)
+        self.assertEqual(expected, runner.fingerprint({**image, 'Id': 'containerd-id'}))
+        changed = copy.deepcopy(image)
+        changed['Config']['Entrypoint'] = ['other']
+        self.assertNotEqual(expected, runner.fingerprint(changed))
+        changed = copy.deepcopy(image)
+        changed['RootFS']['Layers'] = ['sha256:' + 'b' * 64]
+        self.assertNotEqual(expected, runner.fingerprint(changed))
+        with self.assertRaises(ValueError):
+            runner.fingerprint({**image, 'Config': {}})
+
     def test_image_transfer_reopens_stream_and_does_not_print_stderr(self):
         import contextlib
         import io
@@ -45,7 +61,7 @@ class BoundaryTests(unittest.TestCase):
             directory = Path(work)
             archive = directory / 'collector.tar.gz'
             archive.write_bytes(b'fixture-image')
-            manifest = dict(revision='a' * 40, image_id='sha256:' + 'b' * 64,
+            manifest = dict(revision='a' * 40, image_id='sha256:' + 'b' * 64, content_sha256='c' * 64,
                             sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
             (directory / 'manifest.json').write_text(json.dumps(manifest))
             self.assertEqual(runner.image_manifest(directory, 'a' * 40), manifest)
