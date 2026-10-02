@@ -2,13 +2,14 @@ import { translateAdmin } from "../../lib/adminLocale";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Modal } from "../../components/Overlay";
+import { PurchaseChannelsSettings } from "./PurchaseChannelsSettings";
 import type {
   AdminAPI, PaymentConfigField, PaymentMethod, PaymentMethodInput, PaymentProvider, PaymentProviderDefinition
 } from "../../lib/api";
 
 type PaymentsAPI = Pick<AdminAPI,
   "listPaymentProviders" | "listAdminPayments" | "createPayment" | "updatePayment" |
-  "setPaymentEnabled" | "reorderPayments" | "deletePayment"
+  "setPaymentEnabled" | "reorderPayments" | "deletePayment" | "getAdminPurchaseChannels" | "updatePurchaseChannels"
 >;
 
 export function PaymentManagementPage({ api }: { api: PaymentsAPI }) {
@@ -77,6 +78,7 @@ export function PaymentManagementPage({ api }: { api: PaymentsAPI }) {
 
   return <main className="page-shell resource-page payment-page">
     <header className="page-header"><div><h1>{translateAdmin("支付配置")}</h1><p className="muted">在这里可以配置支付方式，包括支付宝、数字货币和聚合支付。</p></div><div className="row-actions"><button className="button primary" disabled={definitions.length === 0} onClick={() => setEditing(null)}>{translateAdmin("添加支付方式")}</button></div></header>
+    {api.getAdminPurchaseChannels && api.updatePurchaseChannels && <PurchaseChannelsSettings api={api as Required<Pick<PaymentsAPI, "getAdminPurchaseChannels" | "updatePurchaseChannels">>} />}
     <form className="system-filter-bar payment-filter-bar" onSubmit={(event) => { event.preventDefault(); void load(query); }}><label>{translateAdmin("搜索")}<input value={query} maxLength={255} placeholder="显示名称或支付接口" onChange={(event) => setQuery(event.target.value)} /></label><button className="button secondary" disabled={loading}>{loading ? "正在查询…" : "查询"}</button></form>
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void load(query)}>{translateAdmin("重试")}</button></div>}
     {loading && methods.length === 0 ? <div className="empty-card">正在加载支付方式…</div> : <section className="resource-table-wrap" aria-label="支付方式列表"><table className="resource-table"><thead><tr><th>ID</th><th>{translateAdmin("启用")}</th><th>{translateAdmin("显示名称")}</th><th>{translateAdmin("支付接口")}</th><th>{translateAdmin("通知地址")}</th><th>{translateAdmin("操作")}</th></tr></thead><tbody>{methods.length === 0 ? <tr><td colSpan={6} className="table-empty-cell">暂无数据。添加支付方式后，用户才能为付费订单结算。</td></tr> : methods.map((method) => <tr key={method.id}>

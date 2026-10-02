@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
+import type { APIClient, ClientCatalogEntry, ClientCatalogQR, CommissionLogPage, CommissionTransferResult, CouponQuote, GiftCardPreview, GiftCardRedeemResult, GiftCardUsagePage, InvitationCode, InvitationSummary, KnowledgeArticle, KnowledgeLanguage, LoginLinkRedirect, NoticePage, Order, OrderStatus, PaymentCheckout, PlanOffer, PlanPeriod, SubscriptionQR, Ticket, TicketInput, TicketPage, UserPaymentMethod, UserSession, UserSubscription } from "../../lib/api";
 import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
@@ -17,6 +17,7 @@ import { UserOrdersPage } from "../orders/UserOrdersPage";
 import { UserGiftCardPage } from "../giftcards/UserGiftCardPage";
 
 interface UserPortalAPI {
+  getPurchaseChannels?: APIClient["getPurchaseChannels"];
   listVisibleNotices: (page?: number) => Promise<NoticePage>;
   listClientCatalog: () => Promise<ClientCatalogEntry[]>;
   clientCatalogQR: (client: string, platform: string) => Promise<ClientCatalogQR>;
@@ -112,7 +113,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
     {page === "loading" && <main className="page-shell">{homeError ? <><p role="alert">{homeError}</p><button className="button secondary" onClick={() => { setHomeError(""); setHomeAttempt(attempt => attempt + 1); }}>重新加载订阅信息</button></> : <p role="status">正在加载订阅信息…</p>}</main>}
     {page === "subscription" && <UserSubscriptionPage announcement={<PortalAnnouncement api={api} onOpen={() => setPage("notices")} />} api={api} onOpenTutorial={() => setPage("knowledge")} onOpenPlans={() => setPage("plans")} onOpenTickets={() => setPage("tickets")} />}
     {page === "plans" && <PlanCatalogPage api={api} couponEnabled={couponEnabled} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
-    {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
+    {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} onRedeem={() => { setOpenOrderTradeNo(null); setPage("gift-cards"); }} />}
     {page === "gift-cards" && <UserGiftCardPage api={api} />}
     {page === "notices" && <UserNoticesPage api={api} />}
     {page === "knowledge" && <UserKnowledgePage api={api} />}

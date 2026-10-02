@@ -23,6 +23,23 @@ const pending = {
 } satisfies Order;
 
 describe("UserOrdersPage", () => {
+  it("only offers alternate purchases for a successfully loaded empty payment list without changing the order", async () => {
+    const payable = { ...pending, total_amount: 1000, original_amount: 1000 };
+    const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn().mockResolvedValue({ revision: 1, card_store_url: "https://cards.example.test", chatwoot_base_url: "", chatwoot_website_token: "" }) };
+    const redeem = vi.fn(); const user = userEvent.setup(); render(<UserOrdersPage api={api} onRedeem={redeem} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    expect(await screen.findByRole("link", { name: "前往发卡网购买" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "已有兑换码，去兑换" }));
+    expect(redeem).toHaveBeenCalledOnce(); expect(api.checkoutOrder).not.toHaveBeenCalled(); expect(api.cancelOrder).not.toHaveBeenCalled();
+  });
+  it("does not mislabel a failed payment-method request as unavailable payments", async () => {
+    const payable = { ...pending, total_amount: 1000, original_amount: 1000 };
+    const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockRejectedValue(new Error("支付方式请求失败")), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn() };
+    const user = userEvent.setup(); render(<UserOrdersPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("支付方式请求失败");
+    expect(screen.queryByRole("region", { name: "其他购买方式" })).not.toBeInTheDocument(); expect(api.getPurchaseChannels).not.toHaveBeenCalled();
+  });
   it("shows the pending order, completes a free checkout once, and removes invalid actions", async () => {
     const completed = { ...pending, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", callback_no: pending.trade_no };
     const api = {
@@ -55,7 +72,7 @@ describe("UserOrdersPage", () => {
 
     await user.click(await screen.findByRole("button", { name: `查看订单：${payable.trade_no}` }));
     const dialog = await screen.findByRole("dialog", { name: "订单详情" });
-    expect(await within(dialog).findByText("当前没有可用支付方式。你可以关闭订单，待支付方式配置后重新下单。")).toBeVisible();
+    expect(await within(dialog).findByText("当前暂未开放购买渠道。如已持有兑换码，可以直接前往兑换。")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
     await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith(payable.trade_no));
