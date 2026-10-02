@@ -26,3 +26,9 @@ jobs:
           python3 -m unittest discover -s deploy -p 'logging_test.py'
       - name: Real isolated log ingestion and recovery
         run: python3 deploy/observability/smoke.py
+      - name: Verify collector artifact packaging
+        run: |
+          mkdir collector-artifact
+          docker tag xboard-log-collector:local "xboard-log-collector:$GITHUB_SHA"
+          docker save "xboard-log-collector:$GITHUB_SHA" | gzip > collector-artifact/collector.tar.gz
+          python3 deploy/package-log-collector.py collector-artifact "$GITHUB_SHA"

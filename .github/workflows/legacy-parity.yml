@@ -226,6 +226,20 @@ jobs:
           python3 -m unittest discover -s deploy/observability -p '*test*.py'
           python3 -m unittest discover -s deploy -p 'logging_test.py'
           python3 deploy/observability/smoke.py
+      - name: Package the tested collector image
+        env:
+          SOURCE_SHA: ${{ needs.authorize.outputs.sha }}
+        run: |
+          mkdir collector-artifact
+          docker tag xboard-log-collector:local "xboard-log-collector:$SOURCE_SHA"
+          docker save "xboard-log-collector:$SOURCE_SHA" | gzip > collector-artifact/collector.tar.gz
+          python3 deploy/package-log-collector.py collector-artifact "$SOURCE_SHA"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tested-log-collector
+          path: collector-artifact/
+          retention-days: 3
+          compression-level: 0
 
   logging-deploy:
     needs: [authorize, logging-validate]
@@ -237,6 +251,10 @@ jobs:
     timeout-minutes: 25
     environment: production-internal-test
     steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: tested-log-collector
+          path: ${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Download exact reviewed source
         env:
           TARGET_SHA: ${{ needs.authorize.outputs.sha }}
@@ -255,6 +273,7 @@ jobs:
       - name: Deploy scoped collectors and private log center
         env:
           LOGGING_SOURCE_SHA: ${{ needs.authorize.outputs.sha }}
+          LOGGING_IMAGE_DIRECTORY: ${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}
           BINGO_DEV_SSH_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
