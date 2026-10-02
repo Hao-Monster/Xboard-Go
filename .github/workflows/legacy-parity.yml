@@ -248,7 +248,7 @@ jobs:
       cancel-in-progress: false
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
-    timeout-minutes: 25
+    timeout-minutes: 45
     environment: production-internal-test
     env:
       http_proxy: http://100.120.174.30:7890

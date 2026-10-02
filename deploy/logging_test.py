@@ -16,6 +16,27 @@ probe = module('logging-probe')
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_image_transfer_reopens_stream_and_does_not_print_stderr(self):
+        import contextlib
+        import io
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as work:
+            path = Path(work) / 'image'
+            path.write_bytes(b'image fixture')
+            attempts = []
+            def send(arguments, **options):
+                attempts.append(options['stdin'].read())
+                if len(attempts) == 1:
+                    return subprocess.CompletedProcess(arguments, 255, b'', b'connection reset SECRET')
+                return subprocess.CompletedProcess(arguments, 0, b'loaded', b'')
+            output = io.StringIO()
+            with patch.object(runner.subprocess, 'run', side_effect=send), patch.object(runner.time, 'sleep'), contextlib.redirect_stdout(output):
+                self.assertEqual(runner.transfer_image(['fixture'], path, 'production'), b'loaded')
+            self.assertEqual(attempts, [b'image fixture', b'image fixture'])
+            self.assertNotIn('SECRET', output.getvalue())
+
     def test_collector_artifact_rejects_wrong_revision_and_corruption(self):
         import hashlib
         import json

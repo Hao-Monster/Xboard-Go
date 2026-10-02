@@ -26,6 +26,7 @@
     {"id":"OBS-003","title":"通过受信 main CI 发布链路部署日志系统","status":"in_progress","milestone":"M3","issue_number":303,"requirement_ids":[],"decision_ids":[]},
     {"id":"OBS-004","title":"日志发布独立于应用重新构建且保留运行版本核验","status":"in_progress","milestone":"M3","issue_number":306,"requirement_ids":[],"decision_ids":[]},
     {"id":"OBS-005","title":"流水线交付已测试且校验身份的日志采集镜像","status":"in_progress","milestone":"M3","issue_number":308,"requirement_ids":[],"decision_ids":[]},
-    {"id":"OBS-006","title":"日志镜像传输复用运行器既有代理","status":"in_progress","milestone":"M3","issue_number":310,"requirement_ids":[],"decision_ids":[]}
+    {"id":"OBS-006","title":"日志镜像传输复用运行器既有代理","status":"in_progress","milestone":"M3","issue_number":310,"requirement_ids":[],"decision_ids":[]},
+    {"id":"OBS-007","title":"日志镜像传输中断的有界重试与脱敏诊断","status":"in_progress","milestone":"M3","issue_number":312,"requirement_ids":[],"decision_ids":[]}
   ]
 }

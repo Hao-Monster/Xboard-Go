@@ -20,6 +20,27 @@ def execute(command, data=None):
     return result.stdout
 
 
+def transfer_image(arguments, image_file, kind):
+    # A broken stream can leave incomplete layers, but Docker only publishes the
+    # image after complete import; the caller checks its exact identity as well.
+    for attempt in range(3):
+        try:
+            with image_file.open('rb') as stream:
+                result = subprocess.run(arguments, stdin=stream, capture_output=True, timeout=600)
+            if result.returncode == 0:
+                return result.stdout
+            diagnostic = result.stderr.decode(errors='replace').lower()
+            reason = next((name for name in ('connection reset', 'broken pipe', 'unexpected eof',
+                           'no space left', 'permission denied', 'connection closed', 'timed out')
+                           if name in diagnostic), 'unclassified')
+            print(f'Collector transfer {kind}: exit={result.returncode} reason={reason} attempt={attempt + 1}', flush=True)
+        except subprocess.TimeoutExpired:
+            print(f'Collector transfer {kind}: timeout attempt={attempt + 1}', flush=True)
+        if attempt < 2:
+            time.sleep(5)
+    raise RuntimeError('Collector image transfer exhausted bounded retries')
+
+
 def validate(environment, event):
     if (environment.get('GITHUB_REPOSITORY') != 'Hao-Monster/Xboard-Go' or
             environment.get('GITHUB_REF') != 'refs/heads/main' or
@@ -91,11 +112,7 @@ def main():
                             '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
                             target, command]
             if image_file is not None:
-                with image_file.open('rb') as stream:
-                    result = subprocess.run(arguments, stdin=stream, capture_output=True, timeout=600)
-                if result.returncode:
-                    raise RuntimeError('Collector image transfer failed; no secret output was printed')
-                return result.stdout
+                return transfer_image(arguments, image_file, kind)
             return execute(arguments, data)
 
         directories = {'central': '/home/bingo/apps/xboard-logs/releases/' + sha,
