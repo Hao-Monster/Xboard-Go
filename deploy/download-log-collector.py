@@ -87,13 +87,14 @@ def main():
         headers.write_text('Authorization: Bearer ' + token + '\nAccept: application/vnd.github+json\n')
         headers.chmod(0o600)
 
-        def download(url, target):
+        def download(url, target, byte_range=None):
             result = subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--http1.1',
                                      '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2',
                                      '--connect-timeout', '15', '--max-time', '900', '--retry', '2',
                                      '--retry-all-errors', '--retry-delay', '3', '--retry-max-time', '1800',
                                      '--max-filesize', str(512 * 1024 * 1024), '--header', '@' + str(headers),
-                                     '--output', str(target), url], capture_output=True, timeout=1850)
+                                     '--output', str(target), *(['--range', byte_range] if byte_range else []), url],
+                                    capture_output=True, timeout=1850)
             if result.returncode:
                 raise RuntimeError('Artifact HTTPS transfer failed (curl exit %d)' % result.returncode)
 
@@ -106,6 +107,10 @@ def main():
             raise ValueError('Expected one current-run collector artifact')
         item = matches[0]
         archive = directory / 'artifact.zip'
+        if os.environ.get('LOGGING_VERIFY_RESUME') == '1':
+            download(base + '/artifacts/' + str(item['id']) + '/zip', archive, '0-1048575')
+            if archive.stat().st_size != 1048576:
+                raise ValueError('Artifact server did not honor bounded range probe')
         download_resumable(base + '/artifacts/' + str(item['id']) + '/zip', archive, headers,
                            item.get('size_in_bytes'), item.get('digest', ''))
         extract_verified(archive, item.get('digest', ''), Path(os.environ['LOGGING_IMAGE_DIRECTORY']))
