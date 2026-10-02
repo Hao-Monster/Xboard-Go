@@ -24,6 +24,54 @@ function createAPI() {
 }
 
 describe("GiftCardManagementPage", () => {
+  it("keeps legacy plan defaults empty and submits zero validity only after choosing a plan", async () => {
+    const api = createAPI(); api.listPlans.mockResolvedValue([{ id: 12, name: "测试套餐" }]);
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "添加模板" }));
+    const form = within(screen.getByRole("dialog", { name: "添加模板" }));
+    for (const name of ["基础配置", "奖励内容", "使用条件", "使用限制", "特殊配置", "显示效果"]) expect(form.getByRole("group", { name })).toBeVisible();
+    expect(form.getByRole("switch", { name: "状态" })).toBeChecked();
+    await user.type(form.getByLabelText("模板名称"), "套餐测试");
+    await user.selectOptions(form.getByLabelText("类型", { exact: true }), "2");
+    expect(form.getByLabelText("指定套餐")).toHaveValue("");
+    expect(form.getByLabelText("套餐有效期 (天)")).toHaveValue(null);
+    await user.click(form.getByRole("button", { name: "确认" }));
+    expect(api.createGiftCardTemplate).not.toHaveBeenCalled();
+    await user.selectOptions(form.getByLabelText("指定套餐"), "12");
+    await user.click(form.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ rewards: { plan_id: 12, plan_validity_days: 0 }, limits: { invite_reward_basis_points: undefined }, special_config: expect.objectContaining({ festival_multiplier_basis_points: undefined }) })));
+  });
+
+  it("validates fractional invitation rewards and retains inputs after save failure", async () => {
+    const api = createAPI(); api.createGiftCardTemplate.mockRejectedValueOnce(new Error("保存暂时失败"));
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "添加模板" }));
+    const form = within(screen.getByRole("dialog", { name: "添加模板" }));
+    await user.type(form.getByLabelText("模板名称"), "比例测试");
+    const ratio = form.getByLabelText("邀请人奖励比例");
+    await user.type(ratio, "1.1"); await user.click(form.getByRole("button", { name: "确认" }));
+    expect(await form.findByRole("alert")).toHaveTextContent("必须在 0 到 1 之间");
+    expect(api.createGiftCardTemplate).not.toHaveBeenCalled();
+    await user.clear(ratio); await user.type(ratio, "0.2");
+    await user.type(form.getByLabelText("节日奖励乘数"), "1.5");
+    await user.click(form.getByRole("button", { name: "确认" }));
+    expect(await form.findByRole("alert")).toHaveTextContent("保存暂时失败");
+    expect(ratio).toHaveValue("0.2");
+    expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ limits: expect.objectContaining({ invite_reward_basis_points: 2000 }), special_config: expect.objectContaining({ festival_multiplier_basis_points: 15000 }) }));
+  });
+
+  it("round trips existing basis points and allows clearing optional multipliers", async () => {
+    const api = createAPI(); api.listGiftCardTemplates.mockResolvedValue({ items: [{ ...template, limits: { invite_reward_basis_points: 2000 } }], total: 1, page: 1, page_size: 20 });
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "编辑" }));
+    const form = within(screen.getByRole("dialog", { name: "编辑模板" }));
+    expect(form.getByLabelText("邀请人奖励比例")).toHaveValue("0.2");
+    expect(form.getByLabelText("节日奖励乘数")).toHaveValue("1");
+    await user.clear(form.getByLabelText("节日奖励乘数"));
+    await user.click(form.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.updateGiftCardTemplate).toHaveBeenCalledWith(7, expect.objectContaining({ limits: { invite_reward_basis_points: 2000 }, special_config: expect.objectContaining({ festival_multiplier_basis_points: undefined }) })));
+  });
+
   it("exports a batch from the toolbar dialog without adding batch filters to the list", async () => {
     const api = createAPI(); api.exportGiftCardCodes.mockRejectedValueOnce(new Error("导出暂时失败"));
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:batch-export");
@@ -96,10 +144,10 @@ describe("GiftCardManagementPage", () => {
     expect(await screen.findByText("新人礼品卡")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "添加模板" }));
     const dialog = screen.getByRole("dialog", { name: "添加模板" });
-    for (const field of ["模板名称", "类型", "描述", "奖励余额 (元)", "奖励流量 (GB)", "延长有效期 (天)", "增加设备数", "单用户最大使用次数", "同类卡冷却时间(小时)", "邀请人奖励比例 (%)", "节日奖励乘数", "活动开始时间", "活动结束时间", "图标", "背景图片"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
+    for (const field of ["模板名称", "类型", "描述", "奖励余额 (元)", "奖励流量 (GB)", "延长有效期 (天)", "增加设备数", "单用户最大使用次数", "同类卡冷却时间(小时)", "邀请人奖励比例", "节日奖励乘数", "活动开始时间", "活动结束时间", "图标", "背景图片"]) expect(within(dialog).getByLabelText(field)).toBeVisible();
     expect(within(dialog).queryByLabelText("主题色")).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText("单用户最大使用次数")).toHaveValue(null);
-    await user.type(within(dialog).getByLabelText("邀请人奖励比例 (%)"), "10");
+    await user.type(within(dialog).getByLabelText("邀请人奖励比例"), "0.1");
     await user.type(within(dialog).getByLabelText("模板名称"), "精准奖励");
     await user.clear(within(dialog).getByLabelText("奖励余额 (元)")); await user.type(within(dialog).getByLabelText("奖励余额 (元)"), "12.34");
     await user.clear(within(dialog).getByLabelText("奖励流量 (GB)")); await user.type(within(dialog).getByLabelText("奖励流量 (GB)"), "2.5");
