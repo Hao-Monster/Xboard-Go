@@ -395,10 +395,11 @@
 }
 
 /* Audited legacy plan dialog: two-column details and a stationary footer. */
-.pm-editor-modal { width: min(576px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
-.pm-editor-modal .pm-modal-header { padding: 24px; margin: 0; }
-.pm-editor-modal .pm-modal-body { display: flex; flex-direction: column; padding: 0; gap: 0; overflow: hidden; max-height: calc(90vh - 72px); }
-.pm-form-scroll { overflow-y: auto; padding: 24px; display: grid; gap: 24px; }
+.pm-editor-modal { width: min(576px, calc(100vw - 32px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.pm-editor-modal .pm-modal-header { padding: 24px; margin: 0; flex-shrink: 0; }
+/* Size the form within the actual dialog cap, leaving its actions outside the scroll area. */
+.pm-editor-modal .pm-modal-body { display: flex; flex-direction: column; padding: 0; gap: 0; overflow: hidden; flex: 1 1 auto; min-height: 0; max-height: none; }
+.pm-form-scroll { overflow-y: auto; min-height: 0; padding: 24px; display: grid; gap: 24px; }
 .pm-details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; }
 .pm-details-grid > .pm-form-section, .pm-details-grid .pm-form-grid { display: contents; }
 .pm-details-grid .pm-form-field:has(#pm-hwid), .pm-details-grid .pm-form-field:has(#pm-capacity) { grid-column: 1; }
