@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 
 
@@ -34,6 +35,43 @@ def extract_verified(archive, digest, destination):
             target.chmod(0o600)
 
 
+def download_resumable(url, target, headers, expected_size, digest):
+    if not isinstance(expected_size, int) or not 0 < expected_size <= 512 * 1024 * 1024:
+        raise ValueError('Invalid artifact size')
+    if not re.fullmatch('sha256:[a-f0-9]{64}', digest):
+        raise ValueError('Artifact digest missing')
+
+    def complete():
+        size = target.stat().st_size if target.exists() else 0
+        if size > expected_size:
+            raise ValueError('Artifact exceeds expected size')
+        if size != expected_size:
+            return False
+        with target.open('rb') as stream:
+            actual = 'sha256:' + hashlib.file_digest(stream, 'sha256').hexdigest()
+        if actual != digest:
+            raise ValueError('Resumed artifact digest mismatch')
+        return True
+
+    for attempt in range(6):
+        if complete():
+            return
+        result = subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--http1.1',
+                                 '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2',
+                                 '--connect-timeout', '15', '--max-time', '300', '--continue-at', '-',
+                                 '--max-filesize', str(512 * 1024 * 1024), '--header', '@' + str(headers),
+                                 '--output', str(target), url], capture_output=True, timeout=320)
+        size = target.stat().st_size if target.exists() else 0
+        print(f'Collector artifact transfer attempt={attempt + 1} bytes={size} curl_exit={result.returncode}', flush=True)
+        # Even a transport close error cannot bypass size and authenticated
+        # GitHub digest verification. Partial bytes resume on the next attempt.
+        if complete():
+            return
+        if attempt < 5:
+            time.sleep(3)
+    raise RuntimeError('Collector artifact transfer exhausted bounded resume attempts')
+
+
 def main():
     if os.environ.get('GITHUB_REPOSITORY') != 'Hao-Monster/Xboard-Go':
         raise ValueError('Unexpected repository')
@@ -49,13 +87,14 @@ def main():
         headers.write_text('Authorization: Bearer ' + token + '\nAccept: application/vnd.github+json\n')
         headers.chmod(0o600)
 
-        def download(url, target):
+        def download(url, target, byte_range=None):
             result = subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--http1.1',
                                      '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2',
                                      '--connect-timeout', '15', '--max-time', '900', '--retry', '2',
                                      '--retry-all-errors', '--retry-delay', '3', '--retry-max-time', '1800',
                                      '--max-filesize', str(512 * 1024 * 1024), '--header', '@' + str(headers),
-                                     '--output', str(target), url], capture_output=True, timeout=1850)
+                                     '--output', str(target), *(['--range', byte_range] if byte_range else []), url],
+                                    capture_output=True, timeout=1850)
             if result.returncode:
                 raise RuntimeError('Artifact HTTPS transfer failed (curl exit %d)' % result.returncode)
 
@@ -68,7 +107,12 @@ def main():
             raise ValueError('Expected one current-run collector artifact')
         item = matches[0]
         archive = directory / 'artifact.zip'
-        download(base + '/artifacts/' + str(item['id']) + '/zip', archive)
+        if os.environ.get('LOGGING_VERIFY_RESUME') == '1':
+            download(base + '/artifacts/' + str(item['id']) + '/zip', archive, '0-1048575')
+            if archive.stat().st_size != 1048576:
+                raise ValueError('Artifact server did not honor bounded range probe')
+        download_resumable(base + '/artifacts/' + str(item['id']) + '/zip', archive, headers,
+                           item.get('size_in_bytes'), item.get('digest', ''))
         extract_verified(archive, item.get('digest', ''), Path(os.environ['LOGGING_IMAGE_DIRECTORY']))
     print('Current-run collector artifact digest and archive contents verified')
 

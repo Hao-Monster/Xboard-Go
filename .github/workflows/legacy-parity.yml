@@ -247,6 +247,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LOGGING_IMAGE_DIRECTORY: collector-roundtrip
+          LOGGING_VERIFY_RESUME: "1"
         run: python3 deploy/download-log-collector.py
 
   logging-deploy:

@@ -17,6 +17,29 @@ downloader = module('download-log-collector')
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_artifact_resume_preserves_partial_bytes_and_checks_final_digest(self):
+        import hashlib
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as work:
+            target = Path(work) / 'artifact.zip'
+            observations = []
+            def download(arguments, **options):
+                self.assertIn('--continue-at', arguments)
+                observations.append(target.read_bytes() if target.exists() else b'')
+                with target.open('ab') as stream:
+                    stream.write(b'abc' if len(observations) == 1 else b'def')
+                return subprocess.CompletedProcess(arguments, 28 if len(observations) == 1 else 0)
+            digest = 'sha256:' + hashlib.sha256(b'abcdef').hexdigest()
+            with patch.object(downloader.subprocess, 'run', side_effect=download), patch.object(downloader.time, 'sleep'):
+                downloader.download_resumable('https://fixture', target, Path(work) / 'headers', 6, digest)
+            self.assertEqual(observations, [b'', b'abc'])
+            self.assertEqual(target.read_bytes(), b'abcdef')
+            target.write_bytes(b'badbad')
+            with self.assertRaises(ValueError):
+                downloader.download_resumable('https://fixture', target, Path(work) / 'headers', 6, digest)
+
     def test_artifact_digest_and_member_boundaries(self):
         import hashlib
         import tempfile
