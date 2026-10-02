@@ -22,8 +22,9 @@ type staticFile struct {
 }
 
 type FrontendAccess struct {
-	Allowed    bool
-	SecurePath string
+	Allowed        bool
+	SecurePath     string
+	ChatwootOrigin string
 }
 
 type FrontendAccessResolver func(*http.Request) (FrontendAccess, error)
@@ -134,7 +135,24 @@ func resolveFrontendAccess(w http.ResponseWriter, r *http.Request, resolve Front
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return FrontendAccess{}, false
 	}
+	if origin := safeFrameOrigin(access.ChatwootOrigin); origin != "" {
+		w.Header().Set("Content-Security-Policy", strings.Replace(contentSecurityPolicy, "; style-src", " "+origin+"; style-src", 1))
+	}
 	return access, true
+}
+
+// Only the configured HTTPS origin may extend frame-src; never script-src.
+func safeFrameOrigin(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return ""
+	}
+	for _, char := range parsed.Host {
+		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || strings.ContainsRune(".-:[]", char)) {
+			return ""
+		}
+	}
+	return "https://" + parsed.Host
 }
 
 func validSecurePath(value string) bool {
