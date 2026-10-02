@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { PortalIcon } from "../user/PortalIcon";
 import { SafeMarkdown } from "../../components/SafeMarkdown";
 
 import { Modal } from "../../components/Overlay";
@@ -13,6 +14,7 @@ type PlanCatalogAPI = {
 const labels: Record<string, string> = { monthly: "月付", quarterly: "季付", half_yearly: "半年付", yearly: "年付", two_yearly: "两年付", three_yearly: "三年付", onetime: "流量包", reset_traffic: "重置包" };
 
 export function PlanCatalogPage({ api, couponEnabled, onOrderCreated }: { api: PlanCatalogAPI; couponEnabled: boolean; onOrderCreated?: (order: Order) => void }) {
+  const [filter, setFilter] = useState<"all" | "period" | "traffic">("all");
   const [plans, setPlans] = useState<PlanOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,10 +35,18 @@ export function PlanCatalogPage({ api, couponEnabled, onOrderCreated }: { api: P
 	});
 	return () => { active = false; };
   }, [api]);
-  return <main className="page-shell resource-page"><header className="page-header"><div><p className="eyebrow">Plans</p><h1>订阅套餐</h1><p className="muted">查看当前可购买或可续费的套餐。</p></div></header>
+  const visiblePlans = plans.filter(plan => filter === "all" || (filter === "traffic" ? plan.prices.onetime !== undefined : Object.keys(plan.prices).some(period => period !== "onetime" && period !== "reset_traffic")));
+  return <main className="page-shell resource-page portal-plan-catalog"><header className="page-header"><div><p className="eyebrow">Plans</p><h1>订阅套餐</h1><p className="portal-plan-intro">选择最适合您的计划</p></div></header>
+    <fieldset className="portal-plan-filter"><legend className="visually-hidden">套餐类型</legend>{([['all', '全部'], ['period', '按周期'], ['traffic', '按流量']] as const).map(([value, label]) => <label key={value}><input type="radio" name="plan-type" value={value} checked={filter === value} onChange={() => setFilter(value)} /><span>{label}</span></label>)}</fieldset>
     {error !== "" && <div className="alert error" role="alert">{error}<button className="button ghost compact" onClick={() => void load()}>重试</button></div>}
     {createdTradeNo !== "" && <div className="alert success" role="status">订单 {createdTradeNo} 已创建，请到“我的订单”继续处理。</div>}
-    {loading ? <div className="empty-card">正在加载套餐…</div> : plans.length === 0 ? <div className="empty-card">当前没有可用套餐。</div> : <section className="plan-card-grid" aria-label="订阅套餐列表">{plans.map((plan) => <article className="site-settings-card" key={plan.id}><div className="section-heading"><div><h2>{plan.name}</h2><p className="muted">{plan.transfer_enable} GiB · 速度 {limit(plan.speed_limit)} · 设备 {limit(plan.device_limit)}</p></div>{plan.capacity_remaining === null ? <span className="count-pill">不限量</span> : <span className="count-pill">剩余 {plan.capacity_remaining}</span>}</div>{plan.tags.length > 0 && <p>{plan.tags.join(" · ")}</p>}<div className="plan-offer-prices">{Object.entries(plan.prices).map(([period, cents]) => <span key={period}>{labels[period] ?? period} ¥{formatCents(cents ?? 0)}</span>)}</div>{plan.content !== "" && <div className="markdown-body plan-content"><SafeMarkdown>{plan.content}</SafeMarkdown></div>}<p className="small muted">{plan.can_renew ? "当前套餐可续费" : plan.can_purchase ? "可购买" : "暂不可购买"}</p><button className="button primary" disabled={(!plan.can_purchase && !plan.can_renew) || Object.keys(plan.prices).length === 0} onClick={() => setPurchasing(plan)}>立即订阅</button></article>)}</section>}
+    {loading ? <div className="empty-card">正在加载套餐…</div> : visiblePlans.length === 0 ? <div className="empty-card">当前没有可用套餐。</div> : <section className="plan-card-grid" aria-label="订阅套餐列表">{visiblePlans.map((plan) => <article className="site-settings-card portal-plan-card" key={plan.id}>
+      <div className="section-heading"><h2>{plan.name}</h2><div className="plan-offer-prices">{Object.entries(plan.prices).map(([period, cents]) => <span key={period} aria-label={`${labels[period] ?? period} ¥${formatCents(cents ?? 0)}`}><strong>¥{formatCents(cents ?? 0)}</strong> /{labels[period] ?? period}</span>)}</div></div>
+      <p className="muted">{plan.transfer_enable} GiB · 速度 {limit(plan.speed_limit)} · 设备 {limit(plan.device_limit)}</p>
+      {plan.tags.length > 0 && <p>{plan.tags.join(" · ")}</p>}
+      {plan.content !== "" && <div className="markdown-body plan-content"><SafeMarkdown>{plan.content}</SafeMarkdown></div>}
+      <div className="portal-plan-footer"><div><p className="small muted">{plan.can_renew ? "当前套餐可续费" : plan.can_purchase ? "可购买" : "暂不可购买"}</p><span className="small muted">{plan.capacity_remaining === null ? "不限量" : `剩余 ${plan.capacity_remaining}`}</span></div><button className="button primary" disabled={(!plan.can_purchase && !plan.can_renew) || Object.keys(plan.prices).length === 0} onClick={() => setPurchasing(plan)}><PortalIcon name="bag" />立即订阅</button></div>
+    </article>)}</section>}
     {purchasing !== null && <PurchaseDialog api={api} plan={purchasing} couponEnabled={couponEnabled} onClose={() => setPurchasing(null)} onCreated={(order) => {
       setPurchasing(null);
       setCreatedTradeNo(order.trade_no);

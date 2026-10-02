@@ -23,6 +23,21 @@ const quote: CouponQuote = {
 const order = { id: 11, trade_no: "202608260001" } as Order;
 
 describe("PlanCatalogPage coupons", () => {
+  it("filters recurring and traffic plans without changing purchase eligibility", async () => {
+    const api = { listPlanOffers: vi.fn().mockResolvedValue([plan, { ...plan, id: 8, name: "流量套餐", prices: { onetime: 1200 }, can_purchase: false }]), checkCoupon: vi.fn(), createOrder: vi.fn() };
+    const user = userEvent.setup();
+    render(<PlanCatalogPage api={api} couponEnabled />);
+    await screen.findByRole("heading", { name: "标准套餐" });
+    await user.click(screen.getByRole("radio", { name: "按流量" }));
+    expect(screen.queryByRole("heading", { name: "标准套餐" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "流量套餐" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "立即订阅" })).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "按周期" }));
+    expect(screen.getByRole("heading", { name: "标准套餐" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "流量套餐" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "立即订阅" })).toBeEnabled();
+  });
+
   it("verifies the coupon, shows the exact discount, and submits only the verified code", async () => {
     const api = {
       listPlanOffers: vi.fn().mockResolvedValue([plan]),

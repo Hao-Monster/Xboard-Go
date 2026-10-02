@@ -5,6 +5,10 @@ import { ClientCatalogPage } from "../clients/ClientCatalogPage";
 import { UserKnowledgePage } from "../knowledge/UserKnowledgePage";
 import { UserNoticesPage } from "../notices/UserNoticesPage";
 import { UserTicketsPage } from "../tickets/UserTicketsPage";
+import { Modal } from "../../components/Overlay";
+import { PortalIcon, type PortalIconName } from "./PortalIcon";
+import "./UserPortal.css";
+import { PortalAnnouncement } from "./PortalAnnouncement";
 import { BrandMark } from "../../components/BrandMark";
 import { InvitationPage } from "../invitations/InvitationPage";
 import { PlanCatalogPage } from "../plans/PlanCatalogPage";
@@ -80,25 +84,33 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
     }
   };
 
-  return <div className="app-frame">
-    <nav className="topbar" aria-label="用户导航">
-      <div className="brand"><BrandMark appName={siteName} logo={siteLogo} /><span>{siteName}</span></div>
-      <div className="admin-nav">
-        <button className="nav-link" aria-current={page === "subscription" ? "page" : undefined} onClick={() => setPage("subscription")}>我的订阅</button>
-        <button className="nav-link" aria-current={page === "plans" ? "page" : undefined} onClick={() => setPage("plans")}>订阅套餐</button>
-        <button className="nav-link" aria-current={page === "orders" ? "page" : undefined} onClick={() => setPage("orders")}>我的订单</button>
-        <button className="nav-link" aria-current={page === "gift-cards" ? "page" : undefined} onClick={() => setPage("gift-cards")}>礼品卡</button>
-        <button className="nav-link" aria-current={page === "notices" ? "page" : undefined} onClick={() => setPage("notices")}>公告</button>
-        <button className="nav-link" aria-current={page === "knowledge" ? "page" : undefined} onClick={() => setPage("knowledge")}>知识库</button>
-        <button className="nav-link" aria-current={page === "tickets" ? "page" : undefined} onClick={() => setPage("tickets")}>我的工单</button>
-        <button className="nav-link" aria-current={page === "clients" ? "page" : undefined} onClick={() => setPage("clients")}>客户端下载</button>
-        <button className="nav-link" aria-current={page === "invitations" ? "page" : undefined} onClick={() => setPage("invitations")}>我的邀请</button>
-      </div>
-      <div className="account"><span>{session.email}</span><button className="button ghost compact" onClick={() => void logout()}>退出</button></div>
-    </nav>
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 720);
+  useEffect(() => {
+    const resize = () => { setMobile(window.innerWidth <= 720); if (window.innerWidth > 720) setMobileMenu(false); };
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  const navigation = <nav aria-label="用户导航">{navigationGroups.map(group => <div className="portal-nav-group" key={group.title}>
+    {group.title !== "首页" && <p className="portal-group-title">{group.title}</p>}
+    {group.items.map(item => <button key={item.page} className="portal-nav-link" title={item.label} aria-current={page === item.page ? "page" : undefined} onClick={() => { setPage(item.page); setMobileMenu(false); }}><PortalIcon name={item.icon} /><span>{item.label}</span></button>)}
+  </div>)}</nav>;
+  const activeItem = navigationGroups.flatMap(group => group.items).find(item => item.page === page);
+  return <div className={`app-frame user-portal${collapsed ? " portal-collapsed" : ""}`}>
+    <aside className="portal-sidebar">
+      <div className="portal-brand"><BrandMark appName={siteName} logo={siteLogo} /><span>{siteName}</span></div>
+      {navigation}
+    </aside>
+    <div className="portal-workspace">
+    <header className="portal-topbar">
+      <div className="portal-breadcrumb"><button className="portal-tool" aria-label="切换导航" aria-expanded={mobile ? mobileMenu : !collapsed} onClick={() => { if (mobile) setMobileMenu(true); else setCollapsed(value => !value); }}><PortalIcon name="menu" /></button><PortalIcon name={activeItem?.icon ?? "home"} /><span>{activeItem?.label ?? "加载中"}</span></div>
+      <div className="portal-account"><PortalIcon name="user" /><span title={session.email}>{session.email}</span><button className="portal-tool" title="退出" aria-label="退出" onClick={() => void logout()}><PortalIcon name="logout" /></button></div>
+    </header>
+    {mobileMenu && <Modal className="portal-mobile-menu" title="用户导航" onClose={() => setMobileMenu(false)}><div className="modal-header"><h2>{siteName}</h2><button className="icon-button" aria-label="关闭导航" onClick={() => setMobileMenu(false)}>×</button></div>{navigation}</Modal>}
     {logoutError !== "" && <div className="alert error global-alert" role="alert">{logoutError}</div>}
     {page === "loading" && <main className="page-shell">{homeError ? <><p role="alert">{homeError}</p><button className="button secondary" onClick={() => { setHomeError(""); setHomeAttempt(attempt => attempt + 1); }}>重新加载订阅信息</button></> : <p role="status">正在加载订阅信息…</p>}</main>}
-    {page === "subscription" && <UserSubscriptionPage api={api} onOpenTutorial={() => setPage("knowledge")} />}
+    {page === "subscription" && <UserSubscriptionPage announcement={<PortalAnnouncement api={api} onOpen={() => setPage("notices")} />} api={api} onOpenTutorial={() => setPage("knowledge")} onOpenPlans={() => setPage("plans")} onOpenTickets={() => setPage("tickets")} />}
     {page === "plans" && <PlanCatalogPage api={api} couponEnabled={couponEnabled} onOrderCreated={(order) => { setOpenOrderTradeNo(order.trade_no); setPage("orders"); }} />}
     {page === "orders" && <UserOrdersPage api={api} initialTradeNo={openOrderTradeNo} onInitialHandled={() => setOpenOrderTradeNo(null)} />}
     {page === "gift-cards" && <UserGiftCardPage api={api} />}
@@ -107,6 +119,7 @@ export function UserPortal({ api, session, siteName, siteLogo, couponEnabled, in
     {page === "tickets" && <UserTicketsPage api={api} />}
     {page === "clients" && <ClientCatalogPage api={api} />}
     {page === "invitations" && <InvitationPage api={api} />}
+    </div>
   </div>;
 }
 
@@ -120,3 +133,11 @@ function portalPage(redirect: LoginLinkRedirect): "subscription" | "plans" | "or
     default: return "subscription";
   }
 }
+
+type PortalPage = "subscription" | "plans" | "orders" | "gift-cards" | "notices" | "knowledge" | "tickets" | "clients" | "invitations";
+const navigationGroups: { title: string; items: { page: PortalPage; label: string; icon: PortalIconName }[] }[] = [
+  { title: "首页", items: [{ page: "subscription", label: "我的订阅", icon: "home" }, { page: "knowledge", label: "知识库", icon: "book" }] },
+  { title: "财务", items: [{ page: "orders", label: "我的订单", icon: "orders" }, { page: "invitations", label: "我的邀请", icon: "invite" }] },
+  { title: "订阅", items: [{ page: "plans", label: "订阅套餐", icon: "bag" }, { page: "clients", label: "客户端下载", icon: "download" }] },
+  { title: "用户", items: [{ page: "gift-cards", label: "礼品卡", icon: "gift" }, { page: "tickets", label: "我的工单", icon: "ticket" }, { page: "notices", label: "公告", icon: "notice" }] },
+];

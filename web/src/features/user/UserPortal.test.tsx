@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,32 @@ import { UserPortal } from "./UserPortal";
 const session: UserSession = { id: 12, email: "user@example.test", is_admin: false };
 
 describe("UserPortal", () => {
+  it("opens and closes mobile navigation and routes shortcuts without exposing an unpurchased address", async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    try {
+      const user = userEvent.setup();
+      render(<UserPortal api={portalAPI()} session={session} siteName="Board" siteLogo={null} couponEnabled onSignedOut={vi.fn()} />);
+      await screen.findByRole("heading", { name: "订阅套餐" });
+      const toggle = screen.getByRole("button", { name: "切换导航" });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await user.click(toggle);
+      const dialog = screen.getByRole("dialog", { name: "用户导航" });
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await user.click(within(dialog).getByRole("button", { name: "我的订阅" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "当前订阅" })).toBeVisible();
+      expect(screen.queryByRole("region", { name: "订阅地址" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /遇到问题/ }));
+      expect(await screen.findByRole("heading", { name: "我的工单" })).toBeVisible();
+      await user.click(toggle);
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    }
+  });
+
   it.each([
     {plan_id: 7, transfer_enable: 100, subscription_valid: true},
     {plan_id: 7, transfer_enable: 0, subscription_valid: false},
