@@ -24,6 +24,33 @@ function createAPI() {
 }
 
 describe("GiftCardManagementPage", () => {
+  it("creates purchase templates without legacy conditions and fixes each code to one use", async () => {
+    const api = createAPI(); api.listPlans.mockResolvedValue([{ id: 12, name: "200GB 套餐", prices: { quarterly: 1000, onetime: 2000 } }]);
+    const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡"); await user.click(screen.getByRole("button", { name: "添加模板" }));
+    const form = within(screen.getByRole("dialog", { name: "添加模板" }));
+    await user.type(form.getByLabelText("模板名称"), "200GB 购买码");
+    await user.selectOptions(form.getByLabelText("类型", { exact: true }), "4");
+    expect(form.queryByRole("group", { name: "使用条件" })).not.toBeInTheDocument();
+    expect(form.queryByLabelText("邀请人奖励比例")).not.toBeInTheDocument();
+    await user.selectOptions(form.getByLabelText("指定套餐"), "12");
+    expect(form.getByLabelText("购买周期")).toHaveValue("quarterly");
+    expect(form.queryByRole("option", { name: "1 个月" })).not.toBeInTheDocument();
+    await user.selectOptions(form.getByLabelText("购买模式"), "traffic");
+    expect(form.queryByLabelText("购买周期")).not.toBeInTheDocument();
+    await user.click(form.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.createGiftCardTemplate).toHaveBeenCalledWith(expect.objectContaining({ type: 4, rewards: { plan_id: 12, purchase_period: "onetime" }, conditions: {}, limits: { max_use_per_user: 0, cooldown_hours: 0 }, special_config: {} })));
+    api.listGiftCardTemplates.mockResolvedValue({ items: [{ ...template, type: 4 }], total: 1, page: 1, page_size: 20 });
+    await user.click(screen.getByRole("tab", { name: "兑换码管理" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "生成兑换码" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "生成兑换码" }));
+    const generator = within(screen.getByRole("dialog", { name: "生成兑换码" }));
+    expect(generator.getByLabelText("最大使用次数")).toBeDisabled();
+    expect(generator.getByLabelText("最大使用次数")).toHaveValue(1);
+    await user.click(generator.getByRole("button", { name: "生成兑换码" }));
+    await waitFor(() => expect(api.generateGiftCardCodes).toHaveBeenCalledWith(7, 1, "GC", null, 1));
+  });
+
   it("keeps legacy plan defaults empty and submits zero validity only after choosing a plan", async () => {
     const api = createAPI(); api.listPlans.mockResolvedValue([{ id: 12, name: "测试套餐" }]);
     const user = userEvent.setup(); render(<GiftCardManagementPage api={api} />);
