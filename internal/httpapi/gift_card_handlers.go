@@ -13,9 +13,10 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
-var giftCardTypeNames = map[int]string{1: "通用礼品卡", 2: "套餐礼品卡", 3: "盲盒礼品卡"}
+var giftCardTypeNames = map[int]string{1: "通用礼品卡", 2: "套餐礼品卡", 3: "盲盒礼品卡", 4: "套餐购买兑换码"}
 
 type giftCardRewardRequest struct {
+	PurchasePeriod   string                        `json:"purchase_period"`
 	Balance          int64                         `json:"balance"`
 	TransferEnable   int64                         `json:"transfer_enable"`
 	ExpireDays       int                           `json:"expire_days"`
@@ -37,7 +38,7 @@ type giftCardRandomRewardRequest struct {
 }
 
 func (input giftCardRewardRequest) storeReward() store.GiftCardReward {
-	reward := store.GiftCardReward{Balance: input.Balance, TransferEnable: input.TransferEnable, ExpireDays: input.ExpireDays,
+	reward := store.GiftCardReward{PurchasePeriod: input.PurchasePeriod, Balance: input.Balance, TransferEnable: input.TransferEnable, ExpireDays: input.ExpireDays,
 		DeviceLimit: input.DeviceLimit, ResetTraffic: input.ResetTraffic, PlanID: input.PlanID, PlanValidityDays: input.PlanValidityDays}
 	for _, item := range input.RandomRewards {
 		value := store.GiftCardReward{Balance: item.Balance, TransferEnable: item.TransferEnable, ExpireDays: item.ExpireDays,
@@ -538,7 +539,7 @@ func (s *server) checkGiftCard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		reason = giftCardMessage(err)
 	}
-	writeSuccess(w, http.StatusOK, map[string]any{"code_info": preview.Code, "template": preview.Template, "reward_preview": preview.Rewards, "can_redeem": err == nil, "reason": reason})
+	writeSuccess(w, http.StatusOK, map[string]any{"purchase_preview": preview.PurchasePreview, "code_info": preview.Code, "template": preview.Template, "reward_preview": preview.Rewards, "can_redeem": err == nil, "reason": reason})
 }
 
 func (s *server) redeemGiftCard(w http.ResponseWriter, r *http.Request) {
@@ -934,7 +935,7 @@ func (s *server) legacyCheckGiftCard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeLegacySuccess(w, http.StatusOK, map[string]any{"code_info": codeInfo, "reward_preview": legacyGiftCardReward(preview.Rewards), "can_redeem": err == nil, "reason": nullableLegacyReason(reason)})
+	writeLegacySuccess(w, http.StatusOK, map[string]any{"purchase_preview": preview.PurchasePreview, "code_info": codeInfo, "reward_preview": legacyGiftCardReward(preview.Rewards), "can_redeem": err == nil, "reason": nullableLegacyReason(reason)})
 }
 func (s *server) legacyRedeemGiftCard(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -953,7 +954,7 @@ func (s *server) legacyRedeemGiftCard(w http.ResponseWriter, r *http.Request) {
 	if !giftCardRewardIsEmpty(usage.InviterRewards) {
 		inviterRewards = legacyGiftCardReward(usage.InviterRewards)
 	}
-	writeLegacySuccess(w, http.StatusOK, map[string]any{"message": "兑换成功！", "rewards": legacyGiftCardReward(usage.Rewards), "invite_rewards": inviterRewards, "template_name": usage.TemplateName})
+	writeLegacySuccess(w, http.StatusOK, map[string]any{"message": "兑换成功！", "rewards": legacyGiftCardReward(usage.Rewards), "invite_rewards": inviterRewards, "template_name": usage.TemplateName, "order_trade_no": usage.OrderTradeNo})
 }
 func (s *server) legacyGiftCardHistory(w http.ResponseWriter, r *http.Request) {
 	page, size, ok := giftCardPage(w, r, 15)
@@ -999,7 +1000,7 @@ func (s *server) legacyGiftCardDetail(w http.ResponseWriter, r *http.Request) {
 		"template":      map[string]any{"name": template.Name, "description": template.Description, "type": template.Type, "type_name": giftCardTypeNames[int(template.Type)], "icon": template.Icon, "theme_color": template.Theme},
 		"rewards_given": legacyGiftCardReward(value.Rewards), "invite_rewards": legacyGiftCardOptionalReward(value.InviterRewards), "invite_user": inviteUser,
 		"user_level_at_use": value.UserLevelAtUse, "plan_id_at_use": value.UserPlanID, "multiplier_applied": float64(value.Multiplier) / 10_000,
-		"notes": value.Notes, "created_at": value.UsedAt.Unix(),
+		"notes": value.Notes, "created_at": value.UsedAt.Unix(), "order_trade_no": value.OrderTradeNo,
 	})
 }
 func (s *server) legacyUserGiftCardTypes(w http.ResponseWriter, _ *http.Request) {
@@ -1019,6 +1020,12 @@ func legacyGiftCardTemplate(item store.GiftCardTemplate) map[string]any {
 
 func legacyGiftCardReward(item store.GiftCardReward) map[string]any {
 	result := map[string]any{}
+	if item.PurchaseSnapshot != nil {
+		result["purchase_snapshot"] = item.PurchaseSnapshot
+	}
+	if item.PurchasePeriod != "" {
+		result["purchase_period"] = item.PurchasePeriod
+	}
 	if item.Balance != 0 {
 		result["balance"] = item.Balance
 	}
@@ -1094,7 +1101,7 @@ func legacyGiftCardCode(item store.GiftCardCode) map[string]any {
 		expiresAt = item.ExpiresAt.Unix()
 	}
 	return map[string]any{
-		"id": item.ID, "template_id": item.TemplateID, "template_name": item.TemplateName, "code": item.Code,
+		"id": item.ID, "template_id": item.TemplateID, "template_name": item.TemplateName, "code": item.Code, "purchase_snapshot": item.PurchaseSnapshot,
 		"batch_id": item.BatchNo, "status": giftCardStatusToLegacy(item.Status), "status_name": legacyGiftCardStatusName(item.Status),
 		"user_id": item.UserID, "user_email": nil, "used_at": usedAt, "expires_at": expiresAt,
 		"usage_count": item.UsageCount, "max_usage": item.MaxUsage, "created_at": item.CreatedAt.Unix(),
@@ -1107,7 +1114,7 @@ func legacyGiftCardUsage(item store.GiftCardUsage, maskCode bool) map[string]any
 		code = maskGiftCardCode(code)
 	}
 	result := map[string]any{
-		"id": item.ID, "code": code, "template_name": item.TemplateName, "user_email": item.UserEmail,
+		"id": item.ID, "code": code, "template_name": item.TemplateName, "user_email": item.UserEmail, "order_trade_no": item.OrderTradeNo,
 		"invite_user_email": maskedLegacyEmail(item.InviterEmail), "rewards_given": legacyGiftCardReward(item.Rewards),
 		"invite_rewards": legacyGiftCardOptionalReward(item.InviterRewards), "multiplier_applied": float64(item.Multiplier) / 10_000,
 		"created_at": item.UsedAt.Unix(),
@@ -1227,10 +1234,16 @@ func lastGiftCardPage(total int64, size int) int64 {
 }
 
 func giftCardEligibilityError(err error) bool {
-	return errors.Is(err, store.ErrGiftCardUserLimit) || errors.Is(err, store.ErrGiftCardCooldown) || errors.Is(err, store.ErrGiftCardCondition) || errors.Is(err, store.ErrGiftCardActivePlan)
+	return errors.Is(err, store.ErrGiftPurchasePlan) || errors.Is(err, store.ErrGiftPurchaseMode) || errors.Is(err, store.ErrGiftPurchasePending) || errors.Is(err, store.ErrGiftCardUserLimit) || errors.Is(err, store.ErrGiftCardCooldown) || errors.Is(err, store.ErrGiftCardCondition) || errors.Is(err, store.ErrGiftCardActivePlan)
 }
 func giftCardMessage(err error) string {
 	switch {
+	case errors.Is(err, store.ErrGiftPurchasePlan):
+		return "当前套餐与购买兑换码不一致，兑换码未消耗"
+	case errors.Is(err, store.ErrGiftPurchaseMode):
+		return "当前套餐购买模式不一致，不能在按周期和按流量之间转换"
+	case errors.Is(err, store.ErrGiftPurchasePending):
+		return "请先取消待支付订单，或等待处理中订单完成后再兑换"
 	case errors.Is(err, store.ErrGiftCardUserLimit):
 		return "已达到该礼品卡的使用次数限制"
 	case errors.Is(err, store.ErrGiftCardCooldown):

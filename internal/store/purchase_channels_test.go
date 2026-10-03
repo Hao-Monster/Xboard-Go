@@ -60,7 +60,7 @@ func TestPurchaseChannelsPersistenceCASAndMigration(t *testing.T) {
 	if err := db.db.QueryRowContext(ctx, `SELECT app_name FROM app_settings WHERE id=1`).Scan(&name); err != nil {
 		t.Fatal(err)
 	}
-	if version != 67 || name != "Preserved" {
+	if version != CurrentSchemaVersion() || name != "Preserved" {
 		t.Fatalf("version=%d name=%s", version, name)
 	}
 	cleared, err := db.UpdatePurchaseChannels(ctx, admin.ID, PurchaseChannels{Revision: 1}, time.Unix(4, 0))
