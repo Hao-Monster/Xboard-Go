@@ -60,21 +60,103 @@ curl -fLsS --retry 3 "$base/xboard-go-linux-amd64.tar.gz" -o "$work/image.tar.gz
 printf '%s  %s\n' "$archive_digest" "$work/image.tar.gz" | sha256sum --check --status
 docker load -i "$work/image.tar.gz" > "$work/load.log"
 [[ "$(docker image inspect "xboard-go:$revision" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$revision" ]] || fail 'Image revision mismatch'
-backup="/var/lib/xboard-backups/pre-update-$(date -u +%Y%m%dT%H%M%SZ).xbbackup"
-docker exec "$container" /xboard backup create --output "$backup" > "$work/backup.json"
-docker exec "$container" /xboard backup verify --input "$backup" > /dev/null
+# Inspect only the dedicated Xboard resources before interrupting traffic.
+network="${project}_default"
+docker inspect "$container" caddy > "$work/containers.json"
+docker network inspect "$network" > "$work/network.json"
+docker volume inspect "${project}_data" > "$work/volume.json"
+python3 - "$work/containers.json" "$work/network.json" "$work/volume.json" "$project" "$work/data-root" "$work/proxy-aliases" <<'PYBOUNDARY'
+import json,os,stat,sys
+from pathlib import Path
+app,proxy=json.load(open(sys.argv[1])); network,=json.load(open(sys.argv[2])); volume,=json.load(open(sys.argv[3])); project=sys.argv[4]
+name=project+'_default'
+assert network['Name']==name and network['Driver']=='bridge' and network['Scope']=='local'
+assert network['Labels']['com.docker.compose.project']==project and network['Labels']['com.docker.compose.network']=='default'
+assert set(network['Containers'])=={app['Id'],proxy['Id']}, 'Shared Xboard network'
+assert set(app['NetworkSettings']['Networks'])=={name}, 'Unexpected application network'
+endpoint=proxy['NetworkSettings']['Networks'][name]
+assert not endpoint.get('IPAMConfig') and not endpoint.get('DriverOpts'), 'Unsupported proxy endpoint settings'
+assert all(p['HostIp']=='127.0.0.1' for ports in app['NetworkSettings']['Ports'].values() for p in (ports or [])), 'Public app port bypasses isolation'
+env=dict(value.split('=',1) for value in app['Config']['Env'])
+assert env['XBOARD_DATABASE_DSN']=='file:/var/lib/xboard/xboard.db' and env['XBOARD_ATTACHMENT_ROOT']=='/var/lib/xboard/knowledge-attachments'
+assert volume['Name']==project+'_data' and volume['Driver']=='local' and volume['Scope']=='local' and not volume.get('Options')
+assert volume['Labels']['com.docker.compose.project']==project and volume['Labels']['com.docker.compose.volume']=='data'
+mount,=[m for m in app['Mounts'] if m['Destination']=='/var/lib/xboard']
+assert mount['Type']=='volume' and mount['Name']==volume['Name'] and mount['RW'] and mount['Source']==volume['Mountpoint']
+root=Path(volume['Mountpoint']); assert root.is_absolute() and root.resolve()==root and root.is_dir()
+assert os.geteuid()==0 and os.access(root,os.R_OK|os.W_OK|os.X_OK), 'Root data access required'
+assert not root.stat().st_mode & stat.S_IWOTH, 'World-writable data root'
+for name in ('xboard.db','xboard.db-wal','xboard.db-shm','knowledge-attachments'):
+    path=root/name
+    assert not path.is_symlink() and path.resolve().parent==root, 'Unsafe data path'
+assert (root/'xboard.db').is_file() and (root/'knowledge-attachments').is_dir()
+Path(sys.argv[5]).write_text(str(root))
+aliases=endpoint.get('Aliases') or []
+assert all(isinstance(a,str) and a and '\n' not in a for a in aliases)
+Path(sys.argv[6]).write_text('\n'.join(aliases))
+PYBOUNDARY
+data_root="$(cat "$work/data-root")"
+[[ "$(docker ps -aq --no-trunc --filter "volume=${project}_data")" == "$(docker inspect "$container" --format '{{.Id}}')" ]] || fail 'Data volume is shared'
+backup="/var/lib/xboard-backups/pre-update-${revision}-$(date -u +%Y%m%dT%H%M%SZ).xbbackup"
+recovery="recover-${revision}-$(date -u +%Y%m%dT%H%M%SZ)"
 cp -p "$directory/.env" "$work/env.before"
+# Explicit old-image runner also works after the application container has stopped.
+old_compose=(docker compose -p "$project" --env-file "$work/env.before" --project-directory "$directory" -f "$work/compose.previous")
+isolated=0; database_changed=0; public_open=0
+reconnect_proxy() {
+  local aliases=() alias
+  while IFS= read -r alias || [[ -n "$alias" ]]; do aliases+=(--alias "$alias"); done < "$work/proxy-aliases"
+  docker network connect "${aliases[@]}" "$network" caddy
+}
+restore_data() {
+  "${compose[@]}" stop app || return 1
+  [[ ! -e "$data_root/$recovery" && ! -L "$data_root/$recovery" ]] || return 1
+  install -d -m 700 -o "$(stat -c %u "$data_root/xboard.db")" -g "$(stat -c %g "$data_root/xboard.db")" "$data_root/$recovery" || return 1
+  "${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup restore --input "$backup" --output "/var/lib/xboard/$recovery/xboard.db" --attachment-output "/var/lib/xboard/$recovery/knowledge-attachments" || return 1
+  python3 - "$data_root" "$recovery" <<'PYPROMOTE'
+import os,stat,sys
+from pathlib import Path
+root=Path(sys.argv[1]); stage=root/sys.argv[2]; failed=root/(sys.argv[2]+'-failed')
+assert root.is_absolute() and root.resolve()==root and stage.resolve().parent==root and not stage.is_symlink()
+assert not failed.exists() and not failed.is_symlink()
+for name in ('xboard.db','xboard.db-wal','xboard.db-shm','knowledge-attachments'):
+    for path in (root/name,stage/name):
+        assert not path.is_symlink() and path.resolve().parent in (root,stage), 'Unsafe promotion path'
+assert (stage/'xboard.db').is_file() and (stage/'knowledge-attachments').is_dir()
+failed.mkdir(mode=0o700)
+# Preserve the failed migrated database and all SQLite sidecars; never overwrite them.
+for name in ('xboard.db','xboard.db-wal','xboard.db-shm','knowledge-attachments'):
+    path=root/name
+    if path.exists(): path.rename(failed/name)
+for name in ('xboard.db','knowledge-attachments'):
+    (stage/name).rename(root/name)
+fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
+try: os.fsync(fd)
+finally: os.close(fd)
+PYPROMOTE
+}
 rollback() {
   trap - ERR
-  install -m 600 "$work/env.before" "$directory/.env"
-  install -m 600 "$work/compose.previous" "$directory/compose.yaml"
-  if "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/rollback.log" 2>&1; then
-    printf 'Update failed; previous Xboard image restored. Backup: %s\n' "$backup" >&2
-  else
-    install -m 600 "$work/rollback.log" "$directory/update-rollback.failure.log"
-    printf 'Update and rollback failed; inspect the private rollback log.\n' >&2
-  fi
   install -m 600 "$work/update.log" "$directory/update.failure.log" 2>/dev/null || true
+  if (( public_open )); then
+    printf 'Post-cutover verification failed; new image and data retained. No backup restoration after public traffic resumed. Manual investigation required.\n' >&2
+    exit 1
+  fi
+  if (( database_changed )) && ! restore_data > "$work/rollback.log" 2>&1; then
+    install -m 600 "$work/rollback.log" "$directory/update-rollback.failure.log"
+    printf 'Data recovery failed; Xboard remains isolated and stopped. Backup and migrated data retained; manual recovery required.\n' >&2
+    exit 1
+  fi
+  install -m 600 "$work/env.before" "$directory/.env" || exit 1
+  install -m 600 "$work/compose.previous" "$directory/compose.yaml" || exit 1
+  if ! "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/rollback-start.log" 2>&1; then
+    install -m 600 "$work/rollback-start.log" "$directory/update-rollback.failure.log"
+    printf 'Old image restart failed; Xboard remains isolated. Manual recovery required.\n' >&2
+    exit 1
+  fi
+  if (( isolated )); then reconnect_proxy || exit 1; fi
+  printf 'Update failed; previous Xboard image restored. Backup: %s\n' "$backup" >&2
+  if (( database_changed )); then printf 'Compatible data restored; failed data retained under %s/%s-failed\n' "$data_root" "$recovery" >&2; fi
   exit 1
 }
 python3 - "$directory/.env" "$old_revision" "$revision" "$origin" "$work/env.next" "$node_version" "$node_source" <<'PY'
@@ -95,10 +177,30 @@ if source != 'preserve' or version:
     lines += ['XBOARD_NODE_RELEASE='+version,'XBOARD_NODE_RELEASE_SOURCE='+source]
 Path(output).write_text('\n'.join(lines)+'\n')
 PY
+interrupted() {
+  trap - ERR INT TERM HUP
+  printf 'Deployment interrupted; no automatic data restoration. Inspect Xboard image, data and proxy isolation before recovery.\n' >&2
+  exit 1
+}
+trap interrupted INT TERM HUP
 trap rollback ERR
+: > "$work/update.log"
+docker network disconnect "$network" caddy
+isolated=1
+"${compose[@]}" stop app >> "$work/update.log" 2>&1
+"${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup create --output "$backup" > "$work/backup.json"
+"${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup verify --input "$backup" > /dev/null
 install -m 600 "$work/env.next" "$directory/.env"
 install -m 600 "$work/compose.next" "$directory/compose.yaml"
-"${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app > "$work/update.log" 2>&1
+database_changed=1
+"${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app >> "$work/update.log" 2>&1
+curl -fsS --max-time 15 http://127.0.0.1:7080/healthz > "$work/local-health.json"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["status"]=="ok"' "$work/local-health.json"
+[[ "$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$revision" ]] || fail 'Running image mismatch before cutover'
+# Mark before reconnect: even an ambiguous reconnect failure must never discard newly accepted writes.
+public_open=1
+reconnect_proxy
+isolated=0
 curl -fsS --retry 6 --retry-all-errors --retry-delay 3 --max-time 15 "$origin/healthz" > "$work/health.json"
 curl -fsS --max-time 30 "$origin/api/v2/node/releases/v1.14.4" > "$work/release.json"
 python3 - "$work/health.json" "$work/release.json" "$origin" <<'PY'
