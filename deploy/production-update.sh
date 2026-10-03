@@ -66,6 +66,13 @@ PYINTERRUPTED
   curl -fsS --max-time 15 http://127.0.0.1:7080/healthz > "$work/recovered-health.json"
   python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["status"]=="ok"' "$work/recovered-health.json"
   [[ "$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$old_revision" ]] || fail 'Recovery image revision mismatch'
+  python3 - "$work/interrupted-volume.json" <<'PYRECOVERYSCHEMA'
+import json,sqlite3,sys
+from pathlib import Path
+volume,=json.load(open(sys.argv[1]))
+with sqlite3.connect((Path(volume['Mountpoint'])/'xboard.db').as_uri()+'?mode=ro',uri=True) as db:
+    assert db.execute('PRAGMA user_version').fetchone()[0]==67, 'Unexpected recovered schema'
+PYRECOVERYSCHEMA
   docker network connect "${project}_default" caddy </dev/null
   curl -fsS --retry 3 --max-time 15 "$origin/healthz" > /dev/null
   printf 'Recovered interrupted pre-migration update to verified previous image. Continuing requested update.\n'
