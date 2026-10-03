@@ -85,7 +85,7 @@ class ResourceBoundaryTests(unittest.TestCase):
 
 
 class DeploymentFailureTests(unittest.TestCase):
-    def run_flow(self, failure=''):
+    def run_flow(self, failure='', consume_input=False):
         functions = SCRIPT[SCRIPT.index('reconnect_proxy() {'):SCRIPT.index('python3 - "$directory/.env"')]
         flow = SCRIPT[SCRIPT.index('interrupted() {'):SCRIPT.index('curl -fsS --retry 6')]
         mocks = r'''
@@ -112,6 +112,8 @@ fake_old() {
   [[ ! ( "$*" == *'backup create'* && "$FAILURE" == backup ) && ! ( "$*" == *'backup verify'* && "$FAILURE" == verify ) && ! ( "$*" == *'backup restore'* && "$FAILURE" == restore ) ]]
 }
 '''
+        if consume_input:
+            mocks = mocks.replace('fake_old() {', 'fake_old() { cat > "$work/child.stdin";')
         if failure == 'restore':
             mocks = mocks.replace('"$FAILURE" == start', '"$FAILURE" == restore')
         if failure == 'published':
@@ -123,6 +125,16 @@ fake_old() {
             result = subprocess.run([BASH, '-s'], input=mocks + functions + flow, text=True, capture_output=True, env=env)
             events = (Path(temporary) / 'events').read_text().splitlines()
             return result, events
+
+    def test_ssh_script_stdin_is_not_consumed_by_backup_children(self):
+        for failure in ('', 'health'):
+            with self.subTest(failure=failure):
+                result, events = self.run_flow(failure, consume_input=True)
+                self.assertTrue(any('network connect' in line for line in events), result.stderr)
+                self.assertTrue(any('backup verify' in line for line in events))
+                self.assertEqual(result.returncode == 0, failure == '')
+                if failure:
+                    self.assertTrue(any('backup restore' in line for line in events))
 
     def test_success_stops_then_backs_up_and_opens_only_after_local_health(self):
         result, events = self.run_flow()

@@ -161,7 +161,7 @@ restore_data() {
   "${compose[@]}" stop app || return 1
   [[ ! -e "$data_root/$recovery" && ! -L "$data_root/$recovery" ]] || return 1
   install -d -m 700 -o "$(stat -c %u "$data_root/xboard.db")" -g "$(stat -c %g "$data_root/xboard.db")" "$data_root/$recovery" || return 1
-  "${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup restore --input "$backup" --output "/var/lib/xboard/$recovery/xboard.db" --attachment-output "/var/lib/xboard/$recovery/knowledge-attachments" || return 1
+  "${old_compose[@]}" run --interactive=false --rm --no-deps --entrypoint /xboard app backup restore --input "$backup" --output "/var/lib/xboard/$recovery/xboard.db" --attachment-output "/var/lib/xboard/$recovery/knowledge-attachments" < /dev/null || return 1
   python3 - "$data_root" "$recovery" <<'PYPROMOTE'
 import os,stat,sys
 from pathlib import Path
@@ -237,8 +237,8 @@ trap rollback ERR
 docker network disconnect "$network" caddy
 isolated=1
 "${compose[@]}" stop app >> "$work/update.log" 2>&1
-"${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup create --output "$backup" > "$work/backup.json"
-"${old_compose[@]}" run --rm --no-deps --entrypoint /xboard app backup verify --input "$backup" > /dev/null
+"${old_compose[@]}" run --interactive=false --rm --no-deps --entrypoint /xboard app backup create --output "$backup" < /dev/null > "$work/backup.json"
+"${old_compose[@]}" run --interactive=false --rm --no-deps --entrypoint /xboard app backup verify --input "$backup" < /dev/null > /dev/null
 install -m 600 "$work/env.next" "$directory/.env"
 install -m 600 "$work/compose.next" "$directory/compose.yaml"
 database_changed=1
@@ -271,3 +271,5 @@ install -m 600 "$work/env.before" "$directory/.env.before-$revision"
 install -m 600 "$work/compose.previous" "$directory/compose.before-$revision.yaml"
 printf 'Updated Xboard to %s. HTTPS and node release v1.14.4 verified; protected containers unchanged. Previous revision: %s; backup: %s\n' "$revision" "$old_revision" "$backup"
 printf 'Node source selection: %s; version: %s (empty means preserved).\n' "$node_source" "$node_version"
+
+printf "XBOARD_DEPLOYMENT_COMPLETE:%s\n" "$revision"

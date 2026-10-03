@@ -95,7 +95,17 @@ def main():
                    '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
                    config['DEPLOY_USER'] + '@' + config['DEPLOY_HOST'],
                    'bash -s -- ' + ' '.join(shlex.quote(value) for value in (mode, revision, origin, email, digest[7:], compose_digest[7:], archive_digest[7:], node_version, node_source))]
-        subprocess.run(command, input=Path('deploy/production-update.sh' if mode == 'update' else 'deploy/production-server.sh').read_text(), text=True, check=True)
+        execute_remote(command, Path('deploy/production-update.sh' if mode == 'update' else 'deploy/production-server.sh').read_text(), mode, revision)
+
+
+def execute_remote(command, script, mode, revision):
+    result = subprocess.run(command, input=script, text=True, check=True, stdout=subprocess.PIPE)
+    # An interactive child can consume bash -s input and still produce exit code zero.
+    # Only the final marker emitted after all update probes proves script completion.
+    if result.stdout:
+        print(result.stdout, end='', flush=True)
+    if mode == 'update' and f'XBOARD_DEPLOYMENT_COMPLETE:{revision}' not in result.stdout.splitlines():
+        raise RuntimeError('Remote update exited without its exact completion marker; inspect application and proxy state before recovery')
 
 
 def validate_node_selection(mode, version, source):
