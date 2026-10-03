@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 import subprocess
 import sys
 import tempfile
@@ -95,6 +96,25 @@ class UpdateConfigurationTests(unittest.TestCase):
                 self.assertEqual(path.read_text(),content)
                 if ok: self.assertEqual(path.with_name('next.env').read_text(),content.replace('xboard-go:'+'a'*40,'xboard-go:'+'b'*40))
                 else: self.assertFalse(path.with_name('next.env').exists())
+
+class RemoteCompletionTests(unittest.TestCase):
+    def test_update_rejects_zero_exit_without_exact_completion(self):
+        for output in ('', 'backup done\n', 'XBOARD_DEPLOYMENT_COMPLETE:' + 'b'*40 + '\n'):
+            with self.subTest(output=output), patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=output)):
+                with self.assertRaises(RuntimeError):
+                    runner.execute_remote(['ssh'], 'script', 'update', 'a'*40)
+
+    def test_update_accepts_exact_completion_after_successful_remote_exit(self):
+        with patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='XBOARD_DEPLOYMENT_COMPLETE:' + 'a'*40 + '\n')) as run:
+            runner.execute_remote(['ssh'], 'script', 'update', 'a'*40)
+            self.assertTrue(run.call_args.kwargs['check'])
+            self.assertEqual(run.call_args.kwargs['input'], 'script')
+
+    def test_remote_failure_is_not_hidden_by_a_marker(self):
+        with patch.object(runner.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['ssh'])):
+            with self.assertRaises(subprocess.CalledProcessError):
+                runner.execute_remote(['ssh'], 'script', 'update', 'a'*40)
+
 
 if __name__ == '__main__':
     unittest.main()
