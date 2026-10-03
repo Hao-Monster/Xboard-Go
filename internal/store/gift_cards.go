@@ -330,7 +330,7 @@ func (s *Store) UpdateGiftCardTemplate(ctx context.Context, templateID, revision
 	if err := tx.QueryRowContext(ctx, `SELECT type, EXISTS(SELECT 1 FROM gift_card_codes WHERE template_id = ?) FROM gift_card_templates WHERE id = ?`, templateID, templateID).Scan(&oldType, &issued); err != nil {
 		return GiftCardTemplate{}, err
 	}
-	if issued && oldType != normalized.Type {
+	if issued && oldType != normalized.Type && (oldType == GiftCardTypePurchase || normalized.Type == GiftCardTypePurchase) {
 		return GiftCardTemplate{}, ErrInvalidInput
 	}
 	result, err := tx.ExecContext(ctx, `

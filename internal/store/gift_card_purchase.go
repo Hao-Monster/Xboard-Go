@@ -56,7 +56,7 @@ CREATE TRIGGER gift_purchase_order_guard BEFORE INSERT ON orders WHEN NEW.source
 AND (NEW.gift_card_code_id IS NULL OR NEW.purchase_snapshot_json IS NULL OR NEW.status <> 3 OR NEW.total_amount <> 0 OR NEW.original_amount <> 0 OR NEW.balance_amount <> 0 OR NEW.commission_balance <> 0 OR NEW.payment_id IS NOT NULL OR NEW.paid_at IS NOT NULL)
 BEGIN SELECT RAISE(ABORT, 'invalid gift purchase order'); END;
 CREATE TRIGGER gift_template_type_guard BEFORE UPDATE OF type ON gift_card_templates
-WHEN NEW.type <> OLD.type AND EXISTS(SELECT 1 FROM gift_card_codes WHERE template_id = OLD.id)
+WHEN NEW.type <> OLD.type AND (NEW.type = 4 OR OLD.type = 4) AND EXISTS(SELECT 1 FROM gift_card_codes WHERE template_id = OLD.id)
 BEGIN SELECT RAISE(ABORT, 'issued template type is immutable'); END;
 CREATE TRIGGER gift_purchase_snapshot_guard BEFORE UPDATE OF metadata_json, max_usage, code ON gift_card_codes
 WHEN json_extract(OLD.metadata_json, '$.purchase_snapshot') IS NOT NULL AND (NEW.metadata_json <> OLD.metadata_json OR NEW.max_usage <> 1 OR NEW.code <> OLD.code)
