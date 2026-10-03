@@ -416,3 +416,19 @@ func TestGiftPurchaseCycleRetainsOrRestoresResetSchedule(t *testing.T) {
 		})
 	}
 }
+
+func TestGiftPurchaseIssuedSnapshotProtectsReferencedPlanAndGroup(t *testing.T) {
+	db, plan, user, _, _, _ := purchaseFixture(t, "onetime", 1)
+	if err := db.DeletePlan(t.Context(), plan.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("deleted issued plan: %v", err)
+	}
+	if _, err := db.db.Exec(`UPDATE users SET group_id=NULL WHERE id=?`, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.db.Exec(`UPDATE plans SET group_id=NULL WHERE id=?`, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteServerGroup(t.Context(), *plan.GroupID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("deleted issued group: %v", err)
+	}
+}
