@@ -1,0 +1,126 @@
+{
+  "id": "GIFT-PURCHASE-20261002",
+  "requirement_ids": [
+    "GIFT-001",
+    "GIFT-002",
+    "PAY-001"
+  ],
+  "work_item_ids": [
+    "VER-002"
+  ],
+  "issue_number": 120,
+  "milestone": "M3",
+  "authorization": "User explicitly authorized implementation of a new purchase template and CI/CD internal-test deployment; business acceptance is user-owned.",
+  "scope": [
+    "Type 4 purchase codes; legacy types 1-3 unchanged",
+    "Cycle renewal extends max(now, expiry); traffic renewal adds quota and retains usage",
+    "Issue-time immutable plan/period/quota snapshot; one redemption per code",
+    "Atomic code claim, entitlement, zero-panel-receipt order, entitlement event and usage",
+    "Admin issue/export/status; user before/after preview and order history; modern and legacy APIs",
+    "Schema 68 upgrade preserving existing parent/child records; deployment backup/recovery"
+  ],
+  "rules": {
+    "cycle": "Existing same-plan cycle subscriptions retain quota and usage, extend by configured calendar months using existing Asia/Shanghai order calendar. Missing reset schedule initialized; existing schedule retained. Ongoing traffic reset scheduling remains governed by plan/system administrator settings.",
+    "traffic": "No expiry; existing same-plan unlimited-time subscription adds frozen bytes; never resets used traffic.",
+    "mismatch": "Reject other plan or cycle/traffic mode switch without consuming code, including expired different-plan subscriptions.",
+    "pending": "Require user to cancel pending order or await processing completion; never auto-pay/cancel original order.",
+    "snapshot": "Frozen at generation: plan id/name, period, quota, initial group/speed/device/reset settings. Later template edits affect only future codes; transitions involving purchase template type blocked after issuance. Renewals preserve existing subscription limits and periodic quota.",
+    "orders": "source gift_card_purchase; amount zero means no panel receipt, not free; external amount unverified; no commission/refund automation. Mixed-source entitlements cannot be automatically converted into panel upgrade credit.",
+    "retry": "Same owner receives same usage/order; other users rejected; unique code/order association."
+  },
+  "non_goals": [
+    "No changes to legacy gift rewards or normal onetime renewal semantics",
+    "No cross-plan or purchase-mode conversion",
+    "No external payment verification/webhooks, automatic refunds, inventory sales status or automatic delivery",
+    "No production rollout or real-code consumption during engineering checks"
+  ],
+  "milestones": [
+    {
+      "id": "GP-01",
+      "task": "Inspect governance, schema, gift/order API and UI call graph",
+      "status": "completed"
+    },
+    {
+      "id": "GP-02",
+      "task": "Implement schema68, frozen rights, atomic/idempotent redemption and ledger isolation",
+      "status": "implemented"
+    },
+    {
+      "id": "GP-03",
+      "task": "Implement template editor, issue/preview/history and order provenance UI",
+      "status": "implemented"
+    },
+    {
+      "id": "GP-04",
+      "task": "Targeted store/API/component/migration/concurrency/rollback checks and independent review",
+      "status": "targeted_checks_and_independent_review_passed"
+    },
+    {
+      "id": "GP-05",
+      "task": "Protected-main PR, exact-SHA image and CI internal deployment",
+      "status": "ready_for_ci_internal_deployment"
+    },
+    {
+      "id": "GP-06",
+      "task": "User business acceptance",
+      "status": "user_owned_pending"
+    }
+  ],
+  "deployment": {
+    "environment": "production-internal-test",
+    "url": "https://fast.hjy.ca:8443",
+    "method": "existing GitHub Actions only",
+    "risk": "Schema68 requires matching data backup for schema67 rollback; never restore a pre-publication backup after new user writes. Keep failure artifacts and protect unrelated containers."
+  },
+  "verification": {
+    "scope": "local_worktree_before_commit; user business acceptance pending",
+    "matrix": [
+      {
+        "risk": "legacy compatibility, schema preservation, orders/commission integration",
+        "command": "go test ./internal/store ./internal/httpapi -run 'TestGift|Test.*Order|Test.*Commission|TestPurchaseChannels|Test.*Schema' -count=1 -json",
+        "result": "PASS at 05becc28; 238 test/subtest pass events, no fail/skip; store 29.883s, API 3.514s",
+        "evidence": "docs-dev/gift-purchase-release-tests.jsonl"
+      },
+      {
+        "risk": "new purchase API, same/different user retry, two Store writers, snapshots, rollback, periodic reset and mixed credit rejection",
+        "command": "go test ./internal/store ./internal/httpapi -run TestGiftPurchase -count=1",
+        "result": "PASS; subsequent focused run after extra coverage",
+        "evidence": "docs-dev/gift-purchase-final-target.log"
+      },
+      {
+        "risk": "package compilation",
+        "command": "go test ./... -run '^$'",
+        "result": "PASS; tests deliberately not selected"
+      },
+      {
+        "risk": "static checks",
+        "command": "go vet ./internal/store ./internal/httpapi",
+        "result": "PASS"
+      },
+      {
+        "risk": "UI flow",
+        "command": "pnpm --dir web exec vitest run src/features/giftcards/GiftCardManagementPage.test.tsx src/features/giftcards/UserGiftCardPage.test.tsx src/features/orders/OrdersPage.test.tsx",
+        "result": "PASS; 30 tests plus management 15-test rerun after price-spec filtering; independent detached implementation checks"
+      },
+      {
+        "risk": "frontend consistency and bundle",
+        "command": "pnpm --dir web run typecheck; pnpm --dir web run lint; pnpm --dir web run build",
+        "result": "PASS"
+      },
+      {
+        "risk": "paired SQLite and attachment backup restoration",
+        "command": "go test ./internal/backup ./cmd/xboard -run 'Test.*Backup|Test.*Restore|TestAttachmentBundle' -count=1",
+        "result": "PASS; backup 4.842s and CLI 20.772s"
+      },
+      {
+        "risk": "isolated deployment failure recovery and public cutover",
+        "command": "python -m unittest discover -s deploy -p 'production_*test.py' -v",
+        "result": "PASS; 20 tests; Docker/network commands mocked, real temporary file promotion verified. Actual server cutover pending CI."
+      }
+    ],
+    "coverage": "No coverage percentage collected; targeted behavioral assertions and failure injection used.",
+    "red_green": "New feature tests written during implementation, no pre-implementation RED claim. Initial failures included schema declaration parser incompatibility, duplicate test fixture identity and version assertions; corrected and rerun.",
+    "business_acceptance": "NOT RUN; user-owned after internal deployment",
+    "race": "NOT RUN; per internal-delivery agreement not a release gate; real SQLite writer concurrency tested"
+  }
+}

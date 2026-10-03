@@ -361,6 +361,10 @@ export type OrderStatus = 0 | 1 | 2 | 3 | 4;
 export type OrderType = 1 | 2 | 3 | 4;
 
 export interface Order {
+  source?: "online" | "gift_card_purchase";
+  gift_card_code_id?: number | null;
+  gift_card_batch_no?: string;
+  purchase_snapshot?: GiftCardPurchaseSnapshot;
   id: number;
   user_id: number;
   plan_id: number;
@@ -690,10 +694,19 @@ export interface CouponInput {
   ended_at: number;
 }
 
-export type GiftCardType = 1 | 2 | 3;
+export type GiftCardType = 1 | 2 | 3 | 4;
+export type GiftCardPurchasePeriod = Exclude<PlanPeriod, "reset_traffic">;
+export interface GiftCardPurchaseSnapshot {
+  plan_id: number;
+  plan_name: string;
+  period: GiftCardPurchasePeriod;
+  transfer_enable: number;
+}
 export type GiftCardCodeStatus = 0 | 1 | 2 | 3;
 
 export interface GiftCardReward {
+  purchase_period?: GiftCardPurchasePeriod;
+  purchase_snapshot?: GiftCardPurchaseSnapshot;
   balance?: number;
   transfer_enable?: number;
   expire_days?: number;
@@ -748,6 +761,7 @@ export interface GiftCardTemplate {
 export type GiftCardTemplateInput = Omit<GiftCardTemplate, "id" | "admin_id" | "revision" | "created_at" | "updated_at"> & { revision?: number };
 
 export interface GiftCardCode {
+  purchase_snapshot?: GiftCardPurchaseSnapshot;
   id: number;
   template_id: number;
   template_name?: string;
@@ -765,6 +779,7 @@ export interface GiftCardCode {
 }
 
 export interface GiftCardUsage {
+  order_trade_no?: string;
   id: number;
   code_id: number;
   code?: string;
@@ -796,7 +811,7 @@ export interface GiftCardStatistics {
   daily_usages: Array<{ date: string; count: number }>;
   type_stats: Array<{ type: GiftCardType; count: number }>;
 }
-export interface GiftCardPreview { template: GiftCardTemplate; code_info: GiftCardCode; reward_preview: GiftCardReward; can_redeem: boolean; reason: string }
+export interface GiftCardPreview { purchase_preview?: { transfer_before: number; transfer_after: number; used_traffic: number; expires_before: string | null; expires_after: string | null; renewal: boolean }; template: GiftCardTemplate; code_info: GiftCardCode; reward_preview: GiftCardReward; can_redeem: boolean; reason: string }
 export interface GiftCardRedeemResult { message: string; rewards: GiftCardReward; invite_rewards: GiftCardReward; template_name: string; usage: GiftCardUsage }
 export interface GiftCardCodeInput { code?: string; status?: GiftCardCodeStatus; expires_at?: number | null; max_usage?: number }
 

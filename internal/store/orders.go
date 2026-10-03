@@ -1111,11 +1111,20 @@ func validateOrderPurchase(user orderUserState, plan Plan, period string, now ti
 }
 
 func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState, order *Order, trafficAware bool, now time.Time) error {
+	// External payments are unverified. Mixed entitlements must not mint panel credit.
+	var purchased bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM orders g WHERE g.user_id=? AND g.plan_id=? AND g.source='gift_card_purchase' AND g.status=3 AND g.id > COALESCE((SELECT MAX(o.id) FROM orders o WHERE o.user_id=g.user_id AND o.source='online' AND o.status=3 AND (o.type IN (1,3) OR o.period='onetime')),0))`, user.id, nullableSQLInt(user.planID)).Scan(&purchased); err != nil {
+		return err
+	}
+	if purchased {
+		return ErrGiftPurchaseConversion
+	}
+
 	if !user.expiredAt.Valid {
 		var id, paid int64
 		err := tx.QueryRowContext(ctx, `
 			SELECT id, total_amount + balance_amount FROM orders
-			WHERE user_id = ? AND period = 'onetime' AND status = 3 ORDER BY id DESC LIMIT 1
+			WHERE user_id = ? AND period = 'onetime' AND source = 'online' AND status = 3 ORDER BY id DESC LIMIT 1
 		`, user.id).Scan(&id, &paid)
 		if errors.Is(err, sql.ErrNoRows) || paid <= 0 || user.transferEnable <= 0 {
 			return nil
@@ -1135,7 +1144,7 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, total_amount, balance_amount, surplus_amount, surplus_credit, period, created_at
-		FROM orders WHERE user_id = ? AND period NOT IN ('reset_traffic', 'onetime') AND status = 3
+		FROM orders WHERE user_id = ? AND period NOT IN ('reset_traffic', 'onetime') AND source = 'online' AND status = 3
 		ORDER BY id
 	`, user.id)
 	if err != nil {
@@ -1199,7 +1208,7 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 
 func listSurplusOrderIDs(ctx context.Context, tx *sql.Tx, userID int64) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id FROM orders WHERE user_id = ? AND period <> 'reset_traffic' AND status = 3 ORDER BY id
+		SELECT id FROM orders WHERE user_id = ? AND period <> 'reset_traffic' AND source = 'online' AND status = 3 ORDER BY id
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list surplus order IDs: %w", err)
@@ -1247,7 +1256,7 @@ func setOrderCommission(ctx context.Context, tx *sql.Tx, user orderUserState, se
 	if commissionType == 2 {
 		var prior bool
 		if err := tx.QueryRowContext(ctx, `
-			SELECT EXISTS(SELECT 1 FROM orders WHERE user_id = ? AND status NOT IN (0, 2))
+			SELECT EXISTS(SELECT 1 FROM orders WHERE user_id = ? AND source = 'online' AND status NOT IN (0, 2))
 		`, user.id).Scan(&prior); err != nil {
 			return fmt.Errorf("check prior commission order: %w", err)
 		}
@@ -1308,7 +1317,7 @@ const orderColumns = `o.id, o.user_id, o.plan_id, o.payment_id, o.period, o.trad
 	       o.type, o.status, o.surplus_order_ids_json, o.coupon_id, o.commission_status,
 	       o.invite_user_id, o.actual_commission_balance, o.commission_rate, o.commission_auto_check,
 	       o.commission_balance, o.discount_amount, o.paid_at, o.callback_no, o.distributor_order_id,
-	       o.entitlement_expired_at_before, o.entitlement_expired_at_after, o.created_at, o.updated_at`
+	       o.entitlement_expired_at_before, o.entitlement_expired_at_after, o.created_at, o.updated_at, o.source, o.gift_card_code_id, o.purchase_snapshot_json, COALESCE((SELECT batch_no FROM gift_card_codes WHERE id=o.gift_card_code_id), '')`
 
 const orderSelect = `SELECT ` + orderColumns + ` FROM orders o`
 
@@ -1330,12 +1339,14 @@ func scanOrderFields(row rowScanner, userEmail, planName *string) (Order, error)
 	var callbackNo sql.NullString
 	var surplusJSON string
 	var createdAt, updatedAt int64
+	var giftCodeID sql.NullInt64
+	var purchaseJSON sql.NullString
 	arguments := []any{&order.ID, &order.UserID, &order.PlanID, &paymentID, &order.Period, &order.TradeNo,
 		&order.OriginalAmount, &order.TotalAmount, &handling, &order.BalanceAmount, &order.SurplusCredit,
 		&order.SurplusAmount, &order.Type, &order.Status, &surplusJSON, &couponID, &commissionStatus,
 		&inviteUserID, &actualCommission, &commissionRate, &commissionAuto, &order.CommissionBalance,
 		&order.DiscountAmount, &paidAt, &callbackNo, &distributorOrderID, &entitlementBefore,
-		&entitlementAfter, &createdAt, &updatedAt}
+		&entitlementAfter, &createdAt, &updatedAt, &order.Source, &giftCodeID, &purchaseJSON, &order.GiftCardBatchNo}
 	if userEmail != nil && planName != nil {
 		arguments = append(arguments, userEmail, planName)
 	}
@@ -1351,6 +1362,12 @@ func scanOrderFields(row rowScanner, userEmail, planName *string) (Order, error)
 	}
 	if order.SurplusOrderIDs == nil {
 		order.SurplusOrderIDs = []int64{}
+	}
+	order.GiftCardCodeID = nullableInt64Pointer(giftCodeID)
+	if purchaseJSON.Valid {
+		if err := json.Unmarshal([]byte(purchaseJSON.String), &order.PurchaseSnapshot); err != nil {
+			return Order{}, err
+		}
 	}
 	order.PaymentID = nullableInt64Pointer(paymentID)
 	order.HandlingAmount = nullableInt64Pointer(handling)

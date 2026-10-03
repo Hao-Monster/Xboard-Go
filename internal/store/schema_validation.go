@@ -445,6 +445,14 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	}
+	if schemaVersion >= 68 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"orders": {"source", "gift_card_code_id", "purchase_snapshot_json"}}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV68GiftPurchaseObjects); err != nil {
+			return err
+		}
+	}
 	if schemaVersion >= 67 {
 		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"purchase_channels": {"revision", "card_store_url", "chatwoot_base_url", "chatwoot_website_token", "updated_by", "updated_at"}}); err != nil {
 			return err

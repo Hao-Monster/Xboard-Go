@@ -20,6 +20,7 @@ const (
 	GiftCardTypeGeneral GiftCardType = iota + 1
 	GiftCardTypePlan
 	GiftCardTypeMystery
+	GiftCardTypePurchase
 )
 
 const (
@@ -45,6 +46,8 @@ type GiftCardType int
 type GiftCardCodeStatus int
 
 type GiftCardReward struct {
+	PurchasePeriod   string                 `json:"purchase_period,omitempty"`
+	PurchaseSnapshot *GiftPurchaseSnapshot  `json:"purchase_snapshot,omitempty"`
 	Balance          int64                  `json:"balance,omitempty"`
 	TransferEnable   int64                  `json:"transfer_enable,omitempty"`
 	ExpireDays       int                    `json:"expire_days,omitempty"`
@@ -117,20 +120,21 @@ type SaveGiftCardTemplateInput struct {
 }
 
 type GiftCardCode struct {
-	ID            int64              `json:"id"`
-	TemplateID    int64              `json:"template_id"`
-	TemplateName  string             `json:"template_name,omitempty"`
-	Code          string             `json:"code"`
-	BatchNo       string             `json:"batch_no"`
-	Status        GiftCardCodeStatus `json:"status"`
-	UserID        *int64             `json:"user_id"`
-	UsedAt        *time.Time         `json:"used_at"`
-	ExpiresAt     *time.Time         `json:"expires_at"`
-	ActualRewards *GiftCardReward    `json:"actual_rewards,omitempty"`
-	UsageCount    int                `json:"usage_count"`
-	MaxUsage      int                `json:"max_usage"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedAt     time.Time          `json:"updated_at"`
+	PurchaseSnapshot *GiftPurchaseSnapshot `json:"purchase_snapshot,omitempty"`
+	ID               int64                 `json:"id"`
+	TemplateID       int64                 `json:"template_id"`
+	TemplateName     string                `json:"template_name,omitempty"`
+	Code             string                `json:"code"`
+	BatchNo          string                `json:"batch_no"`
+	Status           GiftCardCodeStatus    `json:"status"`
+	UserID           *int64                `json:"user_id"`
+	UsedAt           *time.Time            `json:"used_at"`
+	ExpiresAt        *time.Time            `json:"expires_at"`
+	ActualRewards    *GiftCardReward       `json:"actual_rewards,omitempty"`
+	UsageCount       int                   `json:"usage_count"`
+	MaxUsage         int                   `json:"max_usage"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
 }
 
 type GenerateGiftCardCodesInput struct {
@@ -141,9 +145,10 @@ type GenerateGiftCardCodesInput struct {
 }
 
 type GiftCardPreview struct {
-	Template GiftCardTemplate `json:"template"`
-	Code     GiftCardCode     `json:"code"`
-	Rewards  GiftCardReward   `json:"rewards"`
+	PurchasePreview *GiftPurchasePreview `json:"purchase_preview,omitempty"`
+	Template        GiftCardTemplate     `json:"template"`
+	Code            GiftCardCode         `json:"code"`
+	Rewards         GiftCardReward       `json:"rewards"`
 }
 
 type RedeemGiftCardInput struct {
@@ -154,6 +159,7 @@ type RedeemGiftCardInput struct {
 }
 
 type GiftCardUsage struct {
+	OrderTradeNo               string         `json:"order_trade_no,omitempty"`
 	ID                         int64          `json:"id"`
 	CodeID                     int64          `json:"code_id"`
 	Code                       string         `json:"code,omitempty"`
@@ -273,7 +279,7 @@ func (s *Store) CreateGiftCardTemplate(ctx context.Context, input SaveGiftCardTe
 		return GiftCardTemplate{}, fmt.Errorf("begin create gift card template: %w", err)
 	}
 	defer tx.Rollback()
-	if err := validateGiftCardReferences(ctx, tx, normalized); err != nil {
+	if err := validateGiftCardReferences(ctx, tx, normalized, now); err != nil {
 		return GiftCardTemplate{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -316,8 +322,16 @@ func (s *Store) UpdateGiftCardTemplate(ctx context.Context, templateID, revision
 		return GiftCardTemplate{}, fmt.Errorf("begin update gift card template: %w", err)
 	}
 	defer tx.Rollback()
-	if err := validateGiftCardReferences(ctx, tx, normalized); err != nil {
+	if err := validateGiftCardReferences(ctx, tx, normalized, now); err != nil {
 		return GiftCardTemplate{}, err
+	}
+	var oldType GiftCardType
+	var issued bool
+	if err := tx.QueryRowContext(ctx, `SELECT type, EXISTS(SELECT 1 FROM gift_card_codes WHERE template_id = ?) FROM gift_card_templates WHERE id = ?`, templateID, templateID).Scan(&oldType, &issued); err != nil {
+		return GiftCardTemplate{}, err
+	}
+	if issued && oldType != normalized.Type && (oldType == GiftCardTypePurchase || normalized.Type == GiftCardTypePurchase) {
+		return GiftCardTemplate{}, ErrInvalidInput
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE gift_card_templates SET name = ?, description = ?, type = ?, status = ?,
@@ -396,7 +410,7 @@ func (s *Store) DeleteGiftCardTemplate(ctx context.Context, templateID int64) er
 
 func (s *Store) ListGiftCardTemplates(ctx context.Context, filter GiftCardTemplateFilter) (GiftCardTemplatePage, error) {
 	if filter.Page < 1 || filter.PageSize < 1 || filter.PageSize > maxGiftCardListSize ||
-		filter.Type != nil && (*filter.Type < GiftCardTypeGeneral || *filter.Type > GiftCardTypeMystery) {
+		filter.Type != nil && (*filter.Type < GiftCardTypeGeneral || *filter.Type > GiftCardTypePurchase) {
 		return GiftCardTemplatePage{}, ErrInvalidInput
 	}
 	where := make([]string, 0, 2)
@@ -466,10 +480,27 @@ func (s *Store) GenerateGiftCardCodes(ctx context.Context, templateID int64, inp
 	if !template.Status {
 		return nil, ErrGiftCardUnavailable
 	}
+	metadata := "{}"
+	var issuedSnapshot *GiftPurchaseSnapshot
+	if template.Type == GiftCardTypePurchase {
+		if input.MaxUsage != 1 {
+			return nil, ErrInvalidInput
+		}
+		snapshot, err := purchaseSnapshot(ctx, tx, template.Rewards, now)
+		if err != nil {
+			return nil, err
+		}
+		issuedSnapshot = snapshot
+		encoded, err := json.Marshal(map[string]any{"purchase_snapshot": snapshot})
+		if err != nil {
+			return nil, err
+		}
+		metadata = string(encoded)
+	}
 	statement, err := tx.PrepareContext(ctx, `
 		INSERT INTO gift_card_codes (
 			template_id, code, batch_no, status, expires_at, usage_count, max_usage, metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, 0, ?, 0, ?, '{}', ?, ?)
+		) VALUES (?, ?, ?, 0, ?, 0, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("prepare gift card code batch: %w", err)
@@ -484,7 +515,7 @@ func (s *Store) GenerateGiftCardCodes(ctx context.Context, templateID int64, inp
 				return nil, randomErr
 			}
 			code := prefix + random
-			result, insertErr := statement.ExecContext(ctx, templateID, code, batchNo, nullableUnix(input.ExpiresAt), input.MaxUsage, now.Unix(), now.Unix())
+			result, insertErr := statement.ExecContext(ctx, templateID, code, batchNo, nullableUnix(input.ExpiresAt), input.MaxUsage, metadata, now.Unix(), now.Unix())
 			if insertErr != nil {
 				var collision bool
 				if queryErr := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM gift_card_codes WHERE code = ?)`, code).Scan(&collision); queryErr != nil {
@@ -499,7 +530,7 @@ func (s *Store) GenerateGiftCardCodes(ctx context.Context, templateID int64, inp
 			if idErr != nil {
 				return nil, fmt.Errorf("read gift card code ID: %w", idErr)
 			}
-			codes = append(codes, GiftCardCode{ID: id, TemplateID: templateID, TemplateName: template.Name, Code: code, BatchNo: batchNo, Status: GiftCardCodeActive, ExpiresAt: cloneTime(input.ExpiresAt), MaxUsage: input.MaxUsage, CreatedAt: now, UpdatedAt: now})
+			codes = append(codes, GiftCardCode{PurchaseSnapshot: issuedSnapshot, ID: id, TemplateID: templateID, TemplateName: template.Name, Code: code, BatchNo: batchNo, Status: GiftCardCodeActive, ExpiresAt: cloneTime(input.ExpiresAt), MaxUsage: input.MaxUsage, CreatedAt: now, UpdatedAt: now})
 			inserted = true
 			break
 		}
@@ -582,6 +613,9 @@ func (s *Store) UpdateGiftCardCode(ctx context.Context, codeID int64, input Save
 	current, err := getGiftCardCode(ctx, tx, codeID)
 	if err != nil {
 		return GiftCardCode{}, err
+	}
+	if current.PurchaseSnapshot != nil && (input.MaxUsage != 1 || input.Code != current.Code) {
+		return GiftCardCode{}, ErrInvalidInput
 	}
 	if input.MaxUsage < current.UsageCount || input.Status == GiftCardCodeActive && (current.UsageCount >= input.MaxUsage || input.ExpiresAt != nil && input.ExpiresAt.Before(now)) {
 		return GiftCardCode{}, ErrInvalidInput
@@ -694,6 +728,14 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 		return GiftCardUsage{}, fmt.Errorf("begin redeem gift card: %w", err)
 	}
 	defer tx.Rollback()
+	var existingUsage int64
+	err = tx.QueryRowContext(ctx, `SELECT g.id FROM gift_card_usages g JOIN orders o ON o.gift_card_code_id=g.code_id JOIN gift_card_codes c ON c.id=g.code_id WHERE c.code=? AND g.user_id=? AND o.source='gift_card_purchase'`, input.Code, input.UserID).Scan(&existingUsage)
+	if err == nil {
+		return scanGiftCardUsage(tx.QueryRowContext(ctx, giftCardUsageSelect+` WHERE g.id=?`, existingUsage))
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return GiftCardUsage{}, err
+	}
 	preview, err := checkGiftCard(ctx, tx, input.UserID, input.Code, now, rand.Reader)
 	if err != nil {
 		return GiftCardUsage{}, err
@@ -731,7 +773,13 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 		upload, download := user.trafficUpload, user.trafficDownload
 		trafficResetUploadBefore, trafficResetDownloadBefore = &upload, &download
 	}
-	if err := applyGiftCardReward(ctx, tx, &user, preview.Template.Type, preview.Rewards, now); err != nil {
+	orderTradeNo := ""
+	if preview.Template.Type == GiftCardTypePurchase {
+		orderTradeNo, err = applyGiftPurchase(ctx, tx, &user, preview, now)
+	} else {
+		err = applyGiftCardReward(ctx, tx, &user, preview.Template.Type, preview.Rewards, now)
+	}
+	if err != nil {
 		return GiftCardUsage{}, err
 	}
 	inviterReward := GiftCardReward{}
@@ -774,7 +822,7 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 	if err := tx.Commit(); err != nil {
 		return GiftCardUsage{}, fmt.Errorf("commit gift card redemption: %w", err)
 	}
-	return GiftCardUsage{ID: usageID, CodeID: preview.Code.ID, Code: preview.Code.Code, TemplateID: preview.Template.ID,
+	return GiftCardUsage{OrderTradeNo: orderTradeNo, ID: usageID, CodeID: preview.Code.ID, Code: preview.Code.Code, TemplateID: preview.Template.ID,
 		TemplateName: preview.Template.Name, UserID: input.UserID, InviterID: inviterID, Rewards: preview.Rewards,
 		InviterRewards: inviterReward, UserLevelAtUse: nullableInt64Pointer(userLevelAtUse), UserPlanID: nullableInt64Pointer(user.planID), Multiplier: multiplier,
 		IPAddress: input.IPAddress, UserAgent: input.UserAgent, TrafficResetUploadBefore: trafficResetUploadBefore,
@@ -910,12 +958,12 @@ const giftCardTemplateSelect = `SELECT id, name, description, type, status, cond
 	created_at, updated_at FROM gift_card_templates`
 
 const giftCardCodeSelect = `SELECT c.id, c.template_id, t.name, c.code, c.batch_no, c.status, c.user_id,
-	c.used_at, c.expires_at, c.actual_rewards_json, c.usage_count, c.max_usage, c.created_at, c.updated_at
+	c.used_at, c.expires_at, c.actual_rewards_json, c.usage_count, c.max_usage, c.created_at, c.updated_at, c.metadata_json
 	FROM gift_card_codes c JOIN gift_card_templates t ON t.id = c.template_id`
 
 const giftCardUsageSelect = `SELECT g.id, g.code_id, c.code, g.template_id, t.name, t.type, g.user_id, u.email,
 	g.inviter_id, COALESCE(i.email, ''), g.rewards_json, g.inviter_rewards_json, g.user_level_at_use, g.user_plan_id, g.multiplier_basis_points,
-	g.ip_address, g.user_agent, g.notes, g.traffic_reset_upload_before, g.traffic_reset_download_before, g.used_at
+	g.ip_address, g.user_agent, g.notes, g.traffic_reset_upload_before, g.traffic_reset_download_before, g.used_at, COALESCE((SELECT trade_no FROM orders WHERE gift_card_code_id=g.code_id), '')
 	FROM gift_card_usages g JOIN gift_card_codes c ON c.id = g.code_id
 	JOIN gift_card_templates t ON t.id = g.template_id JOIN users u ON u.id = g.user_id
 	LEFT JOIN users i ON i.id = g.inviter_id`
@@ -952,15 +1000,23 @@ func getGiftCardCode(ctx context.Context, database interface {
 }
 
 func scanGiftCardCode(row rowScanner) (GiftCardCode, error) {
+	var metadata string
 	var item GiftCardCode
 	var userID, usedAt, expiresAt sql.NullInt64
 	var actual sql.NullString
 	var createdAt, updatedAt int64
 	if err := row.Scan(&item.ID, &item.TemplateID, &item.TemplateName, &item.Code, &item.BatchNo, &item.Status,
-		&userID, &usedAt, &expiresAt, &actual, &item.UsageCount, &item.MaxUsage, &createdAt, &updatedAt); err != nil {
+		&userID, &usedAt, &expiresAt, &actual, &item.UsageCount, &item.MaxUsage, &createdAt, &updatedAt, &metadata); err != nil {
 		return GiftCardCode{}, err
 	}
 	item.UserID, item.UsedAt, item.ExpiresAt = nullableInt64Pointer(userID), nullableUnixTime(usedAt), nullableUnixTime(expiresAt)
+	var purchase struct {
+		Snapshot *GiftPurchaseSnapshot `json:"purchase_snapshot"`
+	}
+	if err := json.Unmarshal([]byte(metadata), &purchase); err != nil {
+		return GiftCardCode{}, err
+	}
+	item.PurchaseSnapshot = purchase.Snapshot
 	item.CreatedAt, item.UpdatedAt = time.Unix(createdAt, 0).UTC(), time.Unix(updatedAt, 0).UTC()
 	if actual.Valid {
 		var reward GiftCardReward
@@ -979,7 +1035,7 @@ func scanGiftCardUsage(row rowScanner) (GiftCardUsage, error) {
 	var usedAt int64
 	if err := row.Scan(&item.ID, &item.CodeID, &item.Code, &item.TemplateID, &item.TemplateName, &item.TemplateType, &item.UserID,
 		&item.UserEmail, &inviterID, &item.InviterEmail, &rewardsJSON, &inviterJSON, &userLevelAtUse, &userPlanID, &item.Multiplier,
-		&item.IPAddress, &item.UserAgent, &item.Notes, &trafficResetUploadBefore, &trafficResetDownloadBefore, &usedAt); err != nil {
+		&item.IPAddress, &item.UserAgent, &item.Notes, &trafficResetUploadBefore, &trafficResetDownloadBefore, &usedAt, &item.OrderTradeNo); err != nil {
 		return GiftCardUsage{}, err
 	}
 	item.InviterID, item.UserLevelAtUse, item.UserPlanID = nullableInt64Pointer(inviterID), nullableInt64Pointer(userLevelAtUse), nullableInt64Pointer(userPlanID)
@@ -1013,7 +1069,7 @@ func normalizeGiftCardTemplate(input SaveGiftCardTemplateInput, adminID int64, n
 	if input.Theme == "" {
 		input.Theme = "#1890ff"
 	}
-	if adminID < 1 || now.Unix() < 0 || input.Type < GiftCardTypeGeneral || input.Type > GiftCardTypeMystery ||
+	if adminID < 1 || now.Unix() < 0 || input.Type < GiftCardTypeGeneral || input.Type > GiftCardTypePurchase ||
 		!validateGiftCardText(input.Name, 255, false) || !validateGiftCardText(input.Description, 4096, true) ||
 		!validateGiftCardText(input.Icon, 255, true) || !validateGiftCardText(input.BackgroundImage, 255, true) ||
 		(input.BackgroundImage != "" && !validHTTPURL(input.BackgroundImage)) || !validGiftCardTheme(input.Theme) ||
@@ -1026,10 +1082,15 @@ func normalizeGiftCardTemplate(input SaveGiftCardTemplateInput, adminID int64, n
 	if err := validateGiftCardReward(input.Type, input.Rewards, false); err != nil {
 		return SaveGiftCardTemplateInput{}, giftCardEncoded{}, err
 	}
-	if input.Limits.MaxUsePerUser == 0 {
+	if input.Type == GiftCardTypePurchase {
+		if input.Limits != (GiftCardLimits{}) || input.SpecialConfig.StartedAt != nil || input.SpecialConfig.EndedAt != nil || (input.SpecialConfig.FestivalMultiplierBasisPoints != 0 && input.SpecialConfig.FestivalMultiplierBasisPoints != 10000) || input.Conditions.NewUserOnly || input.Conditions.NewUserMaxDays != nil || input.Conditions.PaidUserOnly || input.Conditions.RequireInvite || len(input.Conditions.AllowedPlanIDs) > 0 || len(input.Conditions.DisallowedPlanIDs) > 0 {
+			return SaveGiftCardTemplateInput{}, giftCardEncoded{}, ErrInvalidInput
+		}
+	}
+	if input.Limits.MaxUsePerUser == 0 && input.Type != GiftCardTypePurchase {
 		input.Limits.MaxUsePerUser = 1
 	}
-	if input.Limits.MaxUsePerUser < 1 || input.Limits.MaxUsePerUser > 1_000_000_000 ||
+	if (input.Limits.MaxUsePerUser < 1 && input.Type != GiftCardTypePurchase) || input.Limits.MaxUsePerUser > 1_000_000_000 ||
 		input.Limits.CooldownHours < 0 || input.Limits.CooldownHours > 87_600 ||
 		input.Limits.InviteRewardBasisPoints < 0 || input.Limits.InviteRewardBasisPoints > 10_000 {
 		return SaveGiftCardTemplateInput{}, giftCardEncoded{}, ErrInvalidInput
@@ -1109,7 +1170,14 @@ func validateGiftCardReward(kind GiftCardType, reward GiftCardReward, nested boo
 	if nested && (reward.PlanID != nil || reward.PlanValidityDays != 0 || len(reward.RandomRewards) != 0) {
 		return ErrInvalidInput
 	}
+	if reward.PurchaseSnapshot != nil || (kind != GiftCardTypePurchase && reward.PurchasePeriod != "") {
+		return ErrInvalidInput
+	}
 	switch kind {
+	case GiftCardTypePurchase:
+		if reward.PlanID == nil || (reward.PurchasePeriod != "onetime" && orderPeriodMonths[reward.PurchasePeriod] == 0) || reward.Balance != 0 || reward.TransferEnable != 0 || reward.ExpireDays != 0 || reward.PlanValidityDays != 0 || reward.DeviceLimit != 0 || reward.ResetTraffic || len(reward.RandomRewards) > 0 {
+			return ErrInvalidInput
+		}
 	case GiftCardTypeGeneral:
 		if reward.PlanID != nil || reward.PlanValidityDays != 0 || len(reward.RandomRewards) != 0 || giftCardRewardEmpty(reward) {
 			return ErrInvalidInput
@@ -1142,7 +1210,7 @@ func giftCardRewardEmpty(reward GiftCardReward) bool {
 	return reward.Balance == 0 && reward.TransferEnable == 0 && reward.ExpireDays == 0 && reward.DeviceLimit == 0 && !reward.ResetTraffic
 }
 
-func validateGiftCardReferences(ctx context.Context, tx *sql.Tx, input SaveGiftCardTemplateInput) error {
+func validateGiftCardReferences(ctx context.Context, tx *sql.Tx, input SaveGiftCardTemplateInput, now time.Time) error {
 	// The administrator foreign key is checked by SQLite at insertion. Plan IDs
 	// are checked explicitly here so invalid configuration returns ErrInvalidInput.
 	ids := append(append([]int64(nil), input.Conditions.AllowedPlanIDs...), input.Conditions.DisallowedPlanIDs...)
@@ -1156,6 +1224,11 @@ func validateGiftCardReferences(ctx context.Context, tx *sql.Tx, input SaveGiftC
 		}
 		if !exists {
 			return fmt.Errorf("%w: gift card plan does not exist", ErrInvalidInput)
+		}
+	}
+	if input.Type == GiftCardTypePurchase {
+		if _, err := purchaseSnapshot(ctx, tx, input.Rewards, now); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1217,6 +1290,33 @@ func checkGiftCard(ctx context.Context, database interface {
 	}
 	if codeRecord.Status == GiftCardCodeUsed || codeRecord.UsageCount >= codeRecord.MaxUsage {
 		return GiftCardPreview{}, ErrGiftCardExhausted
+	}
+	if template.Type == GiftCardTypePurchase {
+		var metadata string
+		if err := database.QueryRowContext(ctx, `SELECT metadata_json FROM gift_card_codes WHERE id=?`, codeRecord.ID).Scan(&metadata); err != nil {
+			return GiftCardPreview{}, err
+		}
+		var record struct {
+			Snapshot *GiftPurchaseSnapshot `json:"purchase_snapshot"`
+		}
+		if err := json.Unmarshal([]byte(metadata), &record); err != nil || record.Snapshot == nil {
+			return GiftCardPreview{}, ErrInvalidInput
+		}
+		reward := GiftCardReward{PlanID: &record.Snapshot.PlanID, PurchasePeriod: record.Snapshot.Period, PurchaseSnapshot: record.Snapshot}
+		result := GiftCardPreview{Template: template, Code: codeRecord, Rewards: reward}
+		if user.banned {
+			return result, ErrGiftCardCondition
+		}
+		var pending bool
+		if err := database.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM orders WHERE user_id=? AND status IN (0,1))`, userID).Scan(&pending); err != nil {
+			return result, err
+		}
+		if pending {
+			return result, ErrGiftPurchasePending
+		}
+		p, err := giftPurchasePreview(user, record.Snapshot, now)
+		result.PurchasePreview = p
+		return result, err
 	}
 	conditionErr := validateGiftCardUserConditions(ctx, database, user, template, now)
 	reward := template.Rewards

@@ -220,3 +220,21 @@ describe("OrderManagementPage", () => {
 		expect(within(detail).getByText("无效")).toBeVisible();
 	});
 });
+
+
+describe("purchase code order presentation", () => {
+  it.each(["user", "admin"])("shows fixed purchase rights and no free checkout for %s", async (role) => {
+    const purchase = { ...pending, status: 3 as const, source: "gift_card_purchase" as const, gift_card_batch_no: "BATCH001", purchase_snapshot: { plan_id: 7, plan_name: "发码时的套餐", period: "onetime" as const, transfer_enable: 200 * 1073741824 }, user_email: "buyer@example.test", plan_name: "修改后的套餐", invite_user: null, commission_log: [], subscribe_url: null };
+    const api = { listOrders: vi.fn().mockResolvedValue([purchase]), getOrder: vi.fn().mockResolvedValue(purchase), listPaymentMethods: vi.fn(), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), listAdminOrders: vi.fn().mockResolvedValue({ items: [purchase], total: 1, page: 1, page_size: 20 }), getAdminOrder: vi.fn().mockResolvedValue(purchase), assignOrder: vi.fn(), paidAdminOrder: vi.fn(), cancelAdminOrder: vi.fn(), updateAdminOrderCommissionStatus: vi.fn(), listPlans: vi.fn().mockResolvedValue([plan]) };
+    const user = userEvent.setup(); render(role === "user" ? <UserOrdersPage api={api} /> : <OrderManagementPage api={api} />);
+    expect(await screen.findByText("发码时的套餐")).toBeVisible(); expect(screen.getByText("外部金额未核验")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: `查看订单：${purchase.trade_no}` }));
+    const dialog = within(await screen.findByRole("dialog", { name: "订单详情" }));
+    expect(dialog.getByText(/兑换批次：BATCH001/)).toBeVisible();
+    expect(dialog.getByText(/200 GB.*按流量/)).toBeVisible();
+    expect(dialog.getByText(/站内未收款；外部支付金额未核验/)).toBeVisible();
+    expect(dialog.queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "标记已支付并开通" })).not.toBeInTheDocument();
+    expect(api.checkoutOrder).not.toHaveBeenCalled(); expect(api.paidAdminOrder).not.toHaveBeenCalled();
+  });
+});

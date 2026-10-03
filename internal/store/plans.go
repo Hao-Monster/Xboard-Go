@@ -190,8 +190,9 @@ func (s *Store) DeletePlan(ctx context.Context, planID int64) error {
 		SELECT EXISTS(SELECT 1 FROM plans WHERE id = ?),
 		       (EXISTS(SELECT 1 FROM users WHERE plan_id = ? LIMIT 1)
 		        OR EXISTS(SELECT 1 FROM orders WHERE plan_id = ? LIMIT 1)
-		        OR EXISTS(SELECT 1 FROM app_settings WHERE id = 1 AND try_out_plan_id = ?))
-	`, planID, planID, planID, planID).Scan(&exists, &referenced); err != nil {
+		        OR EXISTS(SELECT 1 FROM app_settings WHERE id = 1 AND try_out_plan_id = ?)
+		        OR EXISTS(SELECT 1 FROM gift_card_codes WHERE json_extract(metadata_json, '$.purchase_snapshot.plan_id') = ?))
+	`, planID, planID, planID, planID, planID).Scan(&exists, &referenced); err != nil {
 		return fmt.Errorf("check plan references: %w", err)
 	}
 	if !exists {

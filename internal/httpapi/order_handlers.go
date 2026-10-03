@@ -653,6 +653,8 @@ func legacyAdminTradeNo(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 func writeLegacyAdminOrderError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrGiftPurchaseConversion):
+		writeLegacyOrderFail(w, http.StatusBadRequest, "当前套餐含兑换码权益，暂不支持自动折抵换套餐，请联系客服")
 	case errors.Is(err, store.ErrNotFound):
 		writeLegacyOrderFail(w, http.StatusBadRequest, "订单、用户或订阅不存在")
 	case errors.Is(err, store.ErrActiveOrderExists):
@@ -933,6 +935,10 @@ func (s *server) legacyCancelUserOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type legacyOrderResponse struct {
+	Source                     string                             `json:"source"`
+	GiftCardCodeID             *int64                             `json:"gift_card_code_id,omitempty"`
+	PurchaseSnapshot           *store.GiftPurchaseSnapshot        `json:"purchase_snapshot,omitempty"`
+	GiftCardBatchNo            string                             `json:"gift_card_batch_no,omitempty"`
 	ID                         int64                              `json:"id"`
 	UserID                     int64                              `json:"user_id"`
 	PlanID                     int64                              `json:"plan_id"`
@@ -990,7 +996,7 @@ type legacyOrderResponse struct {
 }
 
 func legacyOrderResponseOf(order store.Order) legacyOrderResponse {
-	response := legacyOrderResponse{
+	response := legacyOrderResponse{Source: order.Source, GiftCardCodeID: order.GiftCardCodeID, PurchaseSnapshot: order.PurchaseSnapshot, GiftCardBatchNo: order.GiftCardBatchNo,
 		ID: order.ID, UserID: order.UserID, PlanID: order.PlanID, PaymentID: order.PaymentID,
 		Period: legacyOrderPeriod(order.Period), TradeNo: order.TradeNo, OriginalAmount: order.OriginalAmount, TotalAmount: order.TotalAmount,
 		HandlingAmount: order.HandlingAmount, BalanceAmount: order.BalanceAmount, SurplusCredit: order.SurplusCredit,
@@ -1078,6 +1084,8 @@ func legacyOrderPlanResponse(plan *store.Plan) map[string]any {
 
 func handleOrderError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrGiftPurchaseConversion):
+		writeAPIError(w, http.StatusConflict, "gift_purchase_conversion", "当前套餐含兑换码权益，暂不支持自动折抵换套餐，请联系客服", nil)
 	case errors.Is(err, store.ErrCouponInvalid), errors.Is(err, store.ErrCouponNotStarted), errors.Is(err, store.ErrCouponExpired),
 		errors.Is(err, store.ErrCouponExhausted), errors.Is(err, store.ErrCouponPlanRestricted),
 		errors.Is(err, store.ErrCouponPeriodRestricted), errors.Is(err, store.ErrCouponUserLimit):
@@ -1097,6 +1105,8 @@ func handleOrderError(w http.ResponseWriter, err error) {
 
 func writeLegacyOrderStoreError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrGiftPurchaseConversion):
+		writeLegacyOrderFail(w, http.StatusBadRequest, "当前套餐含兑换码权益，暂不支持自动折抵换套餐，请联系客服")
 	case errors.Is(err, store.ErrCouponInvalid), errors.Is(err, store.ErrCouponNotStarted), errors.Is(err, store.ErrCouponExpired),
 		errors.Is(err, store.ErrCouponExhausted), errors.Is(err, store.ErrCouponPlanRestricted),
 		errors.Is(err, store.ErrCouponPeriodRestricted), errors.Is(err, store.ErrCouponUserLimit):
