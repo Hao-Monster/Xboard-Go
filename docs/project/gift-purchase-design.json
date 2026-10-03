@@ -53,12 +53,12 @@
     {
       "id": "GP-04",
       "task": "Targeted store/API/component/migration/concurrency/rollback checks and independent review",
-      "status": "targeted_checks_passed_deployment_recovery_pending"
+      "status": "targeted_checks_and_independent_review_passed"
     },
     {
       "id": "GP-05",
       "task": "Protected-main PR, exact-SHA image and CI internal deployment",
-      "status": "pending"
+      "status": "ready_for_ci_internal_deployment"
     },
     {
       "id": "GP-06",
@@ -111,6 +111,11 @@
         "risk": "paired SQLite and attachment backup restoration",
         "command": "go test ./internal/backup ./cmd/xboard -run 'Test.*Backup|Test.*Restore|TestAttachmentBundle' -count=1",
         "result": "PASS; backup 4.842s and CLI 20.772s"
+      },
+      {
+        "risk": "isolated deployment failure recovery and public cutover",
+        "command": "python -m unittest discover -s deploy -p 'production_*test.py' -v",
+        "result": "PASS; 20 tests; Docker/network commands mocked, real temporary file promotion verified. Actual server cutover pending CI."
       }
     ],
     "coverage": "No coverage percentage collected; targeted behavioral assertions and failure injection used.",
