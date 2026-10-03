@@ -1,0 +1,175 @@
+name: Publish stable image
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New stable version (vMAJOR.MINOR.PATCH)'
+        required: true
+        type: string
+      revision:
+        description: 'Full 40-character commit SHA already on main'
+        required: true
+        type: string
+      compatible_from:
+        description: 'Optional oldest stable version tested for automatic upgrade; empty requires operator approval'
+        required: false
+        type: string
+permissions:
+  contents: write
+  packages: write
+concurrency:
+  group: official-stable-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Hao-Monster/Xboard-Go' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+      REVISION: ${{ inputs.revision }}
+      COMPATIBLE_FROM: ${{ inputs.compatible_from }}
+      IMAGE: ghcr.io/hao-monster/xboard-go
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release source and reserve a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 deploy/stable-release.py validate "$VERSION" "$REVISION" "$COMPATIBLE_FROM"
+          git fetch origin main
+          git merge-base --is-ancestor "$REVISION" origin/main
+          test "$(git rev-parse "$REVISION^{commit}")" = "$REVISION"
+          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$VERSION" > "$RUNNER_TEMP/tags.json"
+          python3 deploy/stable-release.py unused "$VERSION" "$RUNNER_TEMP/tags.json"
+          git checkout --detach "$REVISION"
+      - name: Build exact release image
+        run: |
+          set -euo pipefail
+          docker build --build-arg APP_REVISION="$REVISION" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" --tag "xboard-go:$REVISION" .
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "xboard-go:$REVISION")" = "$REVISION"
+          mkdir artifacts
+          docker save "xboard-go:$REVISION" | gzip -1 > artifacts/xboard-go-linux-amd64.tar.gz
+      - name: Fresh installation and restart smoke
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/xboard-go-install-smoke"
+          XBOARD_INSTALL_DIR="$install_dir" XBOARD_PROJECT=xboard-go-install-smoke \
+            XBOARD_PORT=18083 XBOARD_BIND_ADDRESS=127.0.0.1 XBOARD_PANEL_URL=http://127.0.0.1:18083 \
+            XBOARD_ADMIN_EMAIL=smoke@example.test XBOARD_REVISION="$REVISION" \
+            XBOARD_IMAGE_ARCHIVE="$PWD/artifacts/xboard-go-linux-amd64.tar.gz" bash deploy/install.sh
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          curl --fail --silent http://127.0.0.1:18083/ > /dev/null
+          bash deploy/node-release-smoke.sh http://127.0.0.1:18083 v1.14.4
+          before="$(sha256sum "$install_dir/secrets/settings-key")"
+          # Exercise an actual failed candidate and recovery with retained volumes.
+          cp "$install_dir/.env" "$install_dir/.env.rollback-smoke"
+          mkdir "$RUNNER_TEMP/rollback-probe-context"
+          printf 'FROM xboard-go:%s\nENTRYPOINT ["/xboard", "invalid-smoke-command"]\n' "$REVISION" > "$RUNNER_TEMP/rollback-probe-context/Dockerfile"
+          docker build -f "$RUNNER_TEMP/rollback-probe-context/Dockerfile" -t xboard-go:rollback-smoke "$RUNNER_TEMP/rollback-probe-context"
+          sed -i 's/^XBOARD_IMAGE=.*/XBOARD_IMAGE=xboard-go:rollback-smoke/' "$install_dir/.env"
+          if docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --no-build --no-deps --wait --wait-timeout 15 app; then
+            echo 'Broken candidate unexpectedly started'; exit 1
+          fi
+          cp "$install_dir/.env.rollback-smoke" "$install_dir/.env"
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --no-build --no-deps --wait --wait-timeout 90 app
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          test "$before" = "$(sha256sum "$install_dir/secrets/settings-key")"
+          if XBOARD_INSTALL_DIR="$install_dir" XBOARD_PANEL_URL=http://127.0.0.1:18083 \
+             XBOARD_ADMIN_EMAIL=smoke@example.test bash deploy/install.sh; then
+            echo 'Installer unexpectedly overwrote an existing installation'; exit 1
+          fi
+          test "$before" = "$(sha256sum "$install_dir/secrets/settings-key")"
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" restart app
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" up -d --wait --wait-timeout 90
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" down --volumes
+      - name: Publish candidate image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          candidate="$IMAGE:candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker tag "xboard-go:$REVISION" "$candidate"
+          docker push "$candidate"
+          echo "CANDIDATE=$candidate" >> "$GITHUB_ENV"
+      - name: Require anonymous image access before promoting stable
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/anonymous-docker"
+          DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker" docker manifest inspect "$CANDIDATE" > /dev/null
+      - name: Publish version and stable channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Never overwrite a version tag. Registry errors fail closed.
+          python3 - <<'PY'
+          import json, os, urllib.request
+          image = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          url = 'https://ghcr.io/token?service=ghcr.io&scope=repository:' + image + ':pull'
+          token = json.load(urllib.request.urlopen(url, timeout=30))['token']
+          import urllib.error
+          request = urllib.request.Request('https://ghcr.io/v2/' + image + '/manifests/' + os.environ['VERSION'],
+                                           method='HEAD', headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json'})
+          try:
+              urllib.request.urlopen(request, timeout=30).close()
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+          else:
+              raise SystemExit('Version image already exists; select a new version, never overwrite it')
+          PY
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request, urllib.error
+          image = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          token = json.load(urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:' + image + ':pull', timeout=30))['token']
+          headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'}
+          def read(path):
+              with urllib.request.urlopen(urllib.request.Request('https://ghcr.io/v2/' + image + path, headers=headers), timeout=30) as response:
+                  return json.load(response)
+          try:
+              manifest = read('/manifests/stable')
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+          else:
+              labels = read('/blobs/' + manifest['config']['digest'])['config']['Labels']
+              old = tuple(map(int, labels['org.opencontainers.image.version'].removeprefix('v').split('.')))
+              new = tuple(map(int, os.environ['VERSION'][1:].split('.')))
+              if new <= old:
+                  raise SystemExit('Stable version must increase')
+              subprocess.run(['git', 'merge-base', '--is-ancestor', labels['org.opencontainers.image.revision'], os.environ['REVISION']], check=True)
+          PY
+          docker tag "xboard-go:$REVISION" "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          docker pull "$IMAGE:$VERSION"
+          reference="$(docker image inspect "$IMAGE:$VERSION" --format '{{index .RepoDigests 0}}')"
+          export RELEASE_IMAGE="$reference"
+          python3 - <<'PY'
+          import json, os, re
+          reference = os.environ['RELEASE_IMAGE']
+          if not re.fullmatch(re.escape(os.environ['IMAGE']) + r'@sha256:[0-9a-f]{64}', reference):
+              raise SystemExit('Invalid registry digest')
+          metadata = dict(schema_version=1, version=os.environ['VERSION'], revision=os.environ['REVISION'], image=reference,
+                          platforms=['linux/amd64'], automatic_upgrade=bool(os.environ['COMPATIBLE_FROM']),
+                          compatible_from=os.environ['COMPATIBLE_FROM'] or None)
+          with open('artifacts/release.json', 'w') as f:
+              json.dump(metadata, f, indent=2)
+          PY
+          printf 'Official stable image: %s\nSource: %s\nLinux amd64. See release.json for the publisher-declared automatic upgrade compatibility range.\n' "$reference" "$REVISION" > artifacts/notes.md
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$VERSION" -f "sha=$REVISION" > /dev/null
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file artifacts/notes.md --latest=false artifacts/release.json
+          docker tag "xboard-go:$REVISION" "$IMAGE:stable"
+          docker push "$IMAGE:stable"
+          echo "Published $VERSION ($REVISION): $reference" >> "$GITHUB_STEP_SUMMARY"
+      - name: Logout registry
+        if: always()
+        run: docker logout ghcr.io

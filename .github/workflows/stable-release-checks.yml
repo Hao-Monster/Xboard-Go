@@ -1,0 +1,19 @@
+name: Stable publisher checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stable-release*.yml'
+      - 'deploy/stable-release.py'
+      - 'deploy/stable_release_test.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s deploy -p stable_release_test.py -v
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= .github/workflows/stable-release.yml .github/workflows/stable-release-checks.yml
