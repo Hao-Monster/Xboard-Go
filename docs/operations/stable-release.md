@@ -6,7 +6,7 @@
 
 合入 main 后，在 Actions 中运行 `Publish stable image`，分支选择 main：
 
-- `version`：未使用的 `vMAJOR.MINOR.PATCH`，例如 `v1.0.0`（示例，不代表已发布）。
+- `version`：未使用的 `vMAJOR.MINOR.PATCH`，例如 `v0.1.0`（示例，不代表已发布）。
 - `revision`：已合入 main 的完整 40 位提交 SHA。
 - `compatible_from`：可选，已验证可以自动升级到本版的最低稳定版本，必须低于目标且属于同一主版本。填写即声明此范围内升级已验证；留空则要求下游人工确认。首次安装不属于升级。
 
@@ -29,12 +29,14 @@
 
 - `ghcr.io/hao-monster/xboard-go:vMAJOR.MINOR.PATCH`：流程拒绝覆盖已有版本。
 - `ghcr.io/hao-monster/xboard-go:stable`：所有检查完成后指向新版本。
-- GitHub 同版本 Release 的 `release.json`：源码 revision、固定 image digest、platforms、升级策略。
+- GitHub 同版本 Release 的 `release.json`：源码 revision、固定 image digest、platforms、升级策略、部署模板校验值。
+- `xboard-go-deploy-template.zip`：可直接成为第三方私有部署仓库的文件。模板设置见压缩包 README。
+- stable 推送后再次匿名核对 registry digest 与 release.json 一致。
 
 下游应先解析 stable 镜像的 digest 与 version 标签，再读取该版本的 release.json，并核对 image digest 一致；实际部署必须使用 digest。
 不要使用 GitHub latest Release API：仓库还发布内部测试包和节点版本。
 仅填写 compatible_from 时 automatic_upgrade=true；下游必须同时核对当前版本位于 [compatible_from, version) 且主版本一致，再按已实现的备份与迁移流程升级。未知版本、跨主版本、降级或 automatic_upgrade=false 时停止自动升级。
-此范围来自发布者验证后的声明，工作流自身不会证明历史数据迁移兼容。第三方部署模板、备份迁移策略是后续接入工作。
+此范围来自发布者验证后的声明，工作流自身不会证明历史数据迁移兼容。第三方模板会严格执行该范围，并在升级前停机备份；升级失败时停机保留现场，不自动恢复旧数据库。
 
 ## 失败与重试
 

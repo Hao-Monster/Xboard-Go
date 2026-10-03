@@ -47,6 +47,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$VERSION" > "$RUNNER_TEMP/tags.json"
           python3 deploy/stable-release.py unused "$VERSION" "$RUNNER_TEMP/tags.json"
           git checkout --detach "$REVISION"
+          test -f deploy/self-hosted/.github/workflows/deploy.yml
       - name: Build exact release image
         run: |
           set -euo pipefail
@@ -154,22 +155,57 @@ jobs:
           reference="$(docker image inspect "$IMAGE:$VERSION" --format '{{index .RepoDigests 0}}')"
           export RELEASE_IMAGE="$reference"
           python3 - <<'PY'
-          import json, os, re
+          import hashlib, json, os, re, subprocess, zipfile
+          from pathlib import Path
           reference = os.environ['RELEASE_IMAGE']
           if not re.fullmatch(re.escape(os.environ['IMAGE']) + r'@sha256:[0-9a-f]{64}', reference):
               raise SystemExit('Invalid registry digest')
           metadata = dict(schema_version=1, version=os.environ['VERSION'], revision=os.environ['REVISION'], image=reference,
                           platforms=['linux/amd64'], automatic_upgrade=bool(os.environ['COMPATIBLE_FROM']),
                           compatible_from=os.environ['COMPATIBLE_FROM'] or None)
+          root = Path('deploy/self-hosted')
+          template = Path('artifacts/xboard-go-deploy-template.zip')
+          files = subprocess.check_output(['git', 'ls-files', '-z', '--', str(root)]).decode().split('\0')
+          if not (root / '.github/workflows/deploy.yml').is_file():
+              raise SystemExit('Selected source lacks the deployment template')
+          with zipfile.ZipFile(template, 'w', zipfile.ZIP_DEFLATED) as archive:
+              for name in filter(None, files):
+                  archive.write(name, Path(name).relative_to(root).as_posix())
+          metadata['deployment_template'] = dict(asset=template.name, sha256=hashlib.sha256(template.read_bytes()).hexdigest())
           with open('artifacts/release.json', 'w') as f:
               json.dump(metadata, f, indent=2)
           PY
           printf 'Official stable image: %s\nSource: %s\nLinux amd64. See release.json for the publisher-declared automatic upgrade compatibility range.\n' "$reference" "$REVISION" > artifacts/notes.md
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$VERSION" -f "sha=$REVISION" > /dev/null
-          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file artifacts/notes.md --latest=false artifacts/release.json
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file artifacts/notes.md --latest=false artifacts/release.json artifacts/xboard-go-deploy-template.zip
           docker tag "xboard-go:$REVISION" "$IMAGE:stable"
           docker push "$IMAGE:stable"
+          python3 - <<'PY'
+          import json, os, urllib.request
+          image = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          token = json.load(urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:' + image + ':pull', timeout=30))['token']
+          request = urllib.request.Request('https://ghcr.io/v2/' + image + '/manifests/stable', method='HEAD', headers={
+              'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              if response.headers['Docker-Content-Digest'] != os.environ['RELEASE_IMAGE'].split('@')[1]:
+                  raise SystemExit('Published stable digest does not match release metadata')
+          PY
           echo "Published $VERSION ($REVISION): $reference" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify downstream anonymous release discovery
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker"
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'deploy/self-hosted')
+          import deploy
+          actual = deploy.release()
+          with open('artifacts/release.json') as source:
+              expected = json.load(source)
+          if actual != expected:
+              raise SystemExit('Downstream release discovery mismatch')
+          print('Verified downstream anonymous discovery:', actual['version'], actual['image'])
+          PY
       - name: Logout registry
         if: always()
         run: docker logout ghcr.io
