@@ -16,7 +16,6 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 [[ -d "$directory" && ! -L "$directory" && -f "$directory/.env" && ! -L "$directory/.env" ]] || fail 'Expected installation missing'
 exec 9>"$directory/.deployment.lock"
 flock -x 9
-[[ "$(docker inspect "$container" --format '{{index .Config.Labels "com.docker.compose.project"}} {{.State.Health.Status}}')" == "$project healthy" ]] || fail 'Expected healthy Xboard instance missing'
 old_revision="$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
 [[ "$old_revision" =~ ^[a-f0-9]{40}$ && "$old_revision" != "$revision" ]] || fail 'Invalid or already installed revision'
 snapshot() { docker inspect remnawave remnanode remnawave-db remnawave-redis caddy --format '{{.Name}} {{.Id}} {{.State.StartedAt}} {{.State.Running}}'; }
@@ -29,6 +28,49 @@ if [[ -f "$directory/compose.observability.yaml" ]]; then
 fi
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
+# Narrow recovery of the interrupted, pre-migration schema-68 rollout. The
+# previous image/configuration and schema must all still match; no data restore.
+if [[ "$(docker inspect "$container" --format '{{.State.Status}}')" == exited ]]; then
+  [[ "$old_revision" == 646878f202eb5e66bffdbde35f55771aca149d2f && "$revision" == bf4ef28e19d139904c2b0c3bd59a17b61dc8b895 ]] || fail 'Stopped update requires explicit recovery review'
+  docker inspect "$container" caddy > "$work/interrupted-containers.json"
+  docker network inspect "${project}_default" > "$work/interrupted-network.json"
+  docker volume inspect "${project}_data" > "$work/interrupted-volume.json"
+  python3 - "$work/interrupted-containers.json" "$work/interrupted-network.json" "$work/interrupted-volume.json" "$directory/.env" "$old_revision" "$project" <<'PYINTERRUPTED'
+import json,sqlite3,sys
+from pathlib import Path
+app,proxy=json.load(open(sys.argv[1])); network,=json.load(open(sys.argv[2])); volume,=json.load(open(sys.argv[3]))
+revision,project=sys.argv[5:7]; name=project+'_default'
+assert app['State']['Status']=='exited' and not app['State']['Running'] and proxy['State']['Running']
+assert app['Config']['Labels']['com.docker.compose.project']==project
+assert app['Config']['Labels']['org.opencontainers.image.revision']==revision
+assert name not in proxy['NetworkSettings']['Networks'] and set(app['NetworkSettings']['Networks'])=={name}
+assert network['Name']==name and network['Labels']['com.docker.compose.project']==project
+assert set(network['Containers']) <= {app['Id']}, 'Unexpected network member'
+assert volume['Name']==project+'_data' and volume['Driver']=='local' and not volume.get('Options')
+assert volume['Labels']['com.docker.compose.project']==project
+mount,=[m for m in app['Mounts'] if m['Destination']=='/var/lib/xboard']
+assert mount['Type']=='volume' and mount['Name']==volume['Name'] and mount['Source']==volume['Mountpoint']
+root=Path(volume['Mountpoint']); database=root/'xboard.db'
+assert root.is_absolute() and root.resolve()==root and not database.is_symlink() and database.is_file()
+lines=Path(sys.argv[4]).read_text().splitlines()
+keys=[line.split('=',1)[0] for line in lines]
+assert len(keys)==len(set(keys)), 'Duplicate interrupted configuration key'
+for expected in ('XBOARD_IMAGE=xboard-go:'+revision,'COMPOSE_PROJECT_NAME='+project,'XBOARD_PORT=7080','XBOARD_BIND_ADDRESS=127.0.0.1','XBOARD_PANEL_URL=https://fast.hjy.ca:8443'):
+    assert lines.count(expected)==1, 'Interrupted configuration changed'
+with sqlite3.connect(database.as_uri()+'?mode=ro',uri=True) as db:
+    assert db.execute('PRAGMA user_version').fetchone()[0]==67, 'Database already migrated; refuse automatic recovery'
+PYINTERRUPTED
+  curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$old_revision/compose.yaml" -o "$work/interrupted-compose.yaml"
+  cmp "$work/interrupted-compose.yaml" "$directory/compose.yaml" || fail 'Interrupted Compose differs from published previous release'
+  "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app </dev/null
+  curl -fsS --max-time 15 http://127.0.0.1:7080/healthz > "$work/recovered-health.json"
+  python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["status"]=="ok"' "$work/recovered-health.json"
+  [[ "$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$old_revision" ]] || fail 'Recovery image revision mismatch'
+  docker network connect "${project}_default" caddy </dev/null
+  curl -fsS --retry 3 --max-time 15 "$origin/healthz" > /dev/null
+  printf 'Recovered interrupted pre-migration update to verified previous image. Continuing requested update.\n'
+fi
+[[ "$(docker inspect "$container" --format '{{index .Config.Labels "com.docker.compose.project"}} {{.State.Health.Status}} {{.State.Running}}')" == "$project healthy true" ]] || fail 'Expected healthy running Xboard instance missing'
 if [[ "$node_source" != preserve ]]; then
   selected_base="$origin/api/v2/node/releases/$node_version"
   selected_metadata="$selected_base"
