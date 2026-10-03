@@ -1,0 +1,39 @@
+name: Deploy Xboard-Go stable
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'install only for a new server; update checks compatibility'
+        type: choice
+        options: [update, install]
+        default: update
+permissions:
+  contents: read
+concurrency:
+  group: xboard-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || vars.AUTO_UPDATE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Deploy reviewed template over verified SSH
+        env:
+          DEPLOY_MODE: ${{ inputs.mode || 'update' }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          PANEL_URL: ${{ vars.PANEL_URL }}
+          ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL }}
+          INSTALL_DIR: ${{ vars.INSTALL_DIR || '/opt/xboard-go' }}
+          APP_PORT: ${{ vars.APP_PORT || '7080' }}
+          BIND_ADDRESS: ${{ vars.BIND_ADDRESS || '127.0.0.1' }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: python3 client.py
