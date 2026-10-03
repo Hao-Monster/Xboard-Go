@@ -31,6 +31,34 @@ func purchaseFixture(t *testing.T, period string, count int) (*Store, Plan, int6
 	return db, plan, user, template, codes, now
 }
 
+func TestGiftPurchaseNewPreviewMatchesGrantedRights(t *testing.T) {
+	for _, period := range []string{"onetime", "monthly"} {
+		t.Run(period, func(t *testing.T) {
+			db, _, user, _, codes, now := purchaseFixture(t, period, 1)
+			if _, err := db.db.Exec(`UPDATE users SET plan_id=NULL,expired_at=?,traffic_u=123,traffic_d=456 WHERE id=?`, now.AddDate(1, 0, 0).Unix(), user); err != nil {
+				t.Fatal(err)
+			}
+			p, err := db.CheckGiftCard(t.Context(), user, codes[0].Code, now)
+			if err != nil || p.PurchasePreview == nil || p.PurchasePreview.Renewal || p.PurchasePreview.UsedTraffic != 0 {
+				t.Fatalf("preview=%+v err=%v", p, err)
+			}
+			if period == "monthly" && !p.PurchasePreview.ExpiresAfter.Equal(addOrderMonths(now, 1)) {
+				t.Fatalf("new subscription expiry=%v", p.PurchasePreview.ExpiresAfter)
+			}
+			if _, err := db.RedeemGiftCard(t.Context(), RedeemGiftCardInput{UserID: user, Code: codes[0].Code}, now); err != nil {
+				t.Fatal(err)
+			}
+			var used, quota int64
+			if err := db.db.QueryRow(`SELECT traffic_u+traffic_d,transfer_enable FROM users WHERE id=?`, user).Scan(&used, &quota); err != nil {
+				t.Fatal(err)
+			}
+			if used != p.PurchasePreview.UsedTraffic || quota != p.PurchasePreview.TransferAfter {
+				t.Fatalf("actual used/quota=%d/%d preview=%+v", used, quota, p.PurchasePreview)
+			}
+		})
+	}
+}
+
 func TestGiftPurchaseTrafficStacksSnapshotAndRetry(t *testing.T) {
 	db, plan, user, template, codes, now := purchaseFixture(t, "onetime", 2)
 	ctx := t.Context()

@@ -102,6 +102,9 @@ func giftPurchasePreview(user giftCardUserState, snapshot *GiftPurchaseSnapshot,
 	}
 	p := &GiftPurchasePreview{TransferBefore: user.transferEnable, TransferAfter: snapshot.TransferEnable,
 		UsedTraffic: user.trafficUpload + user.trafficDownload, ExpiresBefore: nullableUnixTime(user.expiredAt), Renewal: renewal}
+	if !renewal {
+		p.UsedTraffic = 0
+	}
 	if snapshot.Period == "onetime" {
 		if renewal {
 			if user.transferEnable > maxGiftCardTransfer-snapshot.TransferEnable {
@@ -111,7 +114,7 @@ func giftPurchasePreview(user giftCardUserState, snapshot *GiftPurchaseSnapshot,
 		}
 	} else {
 		base := now
-		if user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix() {
+		if renewal && user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix() {
 			base = time.Unix(user.expiredAt.Int64, 0)
 		}
 		expires := addOrderMonths(base, orderPeriodMonths[snapshot.Period])
