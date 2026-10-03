@@ -24,7 +24,7 @@
     "traffic": "No expiry; existing same-plan unlimited-time subscription adds frozen bytes; never resets used traffic.",
     "mismatch": "Reject other plan or cycle/traffic mode switch without consuming code, including expired different-plan subscriptions.",
     "pending": "Require user to cancel pending order or await processing completion; never auto-pay/cancel original order.",
-    "snapshot": "Frozen at generation: plan id/name, period, quota, initial group/speed/device/reset settings. Later template edits affect only future codes; template type immutable after issuance. Renewals preserve existing subscription limits and periodic quota.",
+    "snapshot": "Frozen at generation: plan id/name, period, quota, initial group/speed/device/reset settings. Later template edits affect only future codes; transitions involving purchase template type blocked after issuance. Renewals preserve existing subscription limits and periodic quota.",
     "orders": "source gift_card_purchase; amount zero means no panel receipt, not free; external amount unverified; no commission/refund automation. Mixed-source entitlements cannot be automatically converted into panel upgrade credit.",
     "retry": "Same owner receives same usage/order; other users rejected; unique code/order association."
   },
@@ -78,8 +78,8 @@
       {
         "risk": "legacy compatibility, schema preservation, orders/commission integration",
         "command": "go test ./internal/store ./internal/httpapi -run 'TestGift|Test.*Order|Test.*Commission|TestPurchaseChannels|Test.*Schema' -count=1 -json",
-        "result": "PASS; 230 test/subtest pass events, no fail/skip",
-        "evidence": "docs-dev/gift-purchase-tests.jsonl"
+        "result": "PASS at 05becc28; 238 test/subtest pass events, no fail/skip; store 29.883s, API 3.514s",
+        "evidence": "docs-dev/gift-purchase-release-tests.jsonl"
       },
       {
         "risk": "new purchase API, same/different user retry, two Store writers, snapshots, rollback, periodic reset and mixed credit rejection",
@@ -106,6 +106,11 @@
         "risk": "frontend consistency and bundle",
         "command": "pnpm --dir web run typecheck; pnpm --dir web run lint; pnpm --dir web run build",
         "result": "PASS"
+      },
+      {
+        "risk": "paired SQLite and attachment backup restoration",
+        "command": "go test ./internal/backup ./cmd/xboard -run 'Test.*Backup|Test.*Restore|TestAttachmentBundle' -count=1",
+        "result": "PASS; backup 4.842s and CLI 20.772s"
       }
     ],
     "coverage": "No coverage percentage collected; targeted behavioral assertions and failure injection used.",
