@@ -1,0 +1,13 @@
+.user-gift-card { min-width: 0; }
+.user-gift-card > .site-settings-card { min-width: 0; margin-bottom: 20px; }
+.user-gift-card .coupon-check-row { grid-template-columns: minmax(0, 1fr) auto; }
+.user-gift-card .coupon-check-row input { min-width: 0; width: 100%; }
+.user-gift-card .gift-preview { overflow-wrap: anywhere; }
+.user-gift-card .resource-table { table-layout: fixed; }
+.user-gift-card .resource-table td { overflow-wrap: anywhere; }
+.user-gift-card .pagination-footer { flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  .user-gift-card .coupon-check-row { grid-template-columns: minmax(0, 1fr); }
+  .user-gift-card .resource-table-wrap { margin-top: 16px; }
+}
