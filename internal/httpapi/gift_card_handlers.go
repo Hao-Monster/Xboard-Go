@@ -954,7 +954,7 @@ func (s *server) legacyRedeemGiftCard(w http.ResponseWriter, r *http.Request) {
 	if !giftCardRewardIsEmpty(usage.InviterRewards) {
 		inviterRewards = legacyGiftCardReward(usage.InviterRewards)
 	}
-	writeLegacySuccess(w, http.StatusOK, map[string]any{"message": "兑换成功！", "rewards": legacyGiftCardReward(usage.Rewards), "invite_rewards": inviterRewards, "template_name": usage.TemplateName, "order_trade_no": usage.OrderTradeNo})
+	writeLegacySuccess(w, http.StatusOK, map[string]any{"message": "兑换成功！", "code_id": usage.CodeID, "rewards": legacyGiftCardReward(usage.Rewards), "invite_rewards": inviterRewards, "template_name": usage.TemplateName, "order_trade_no": usage.OrderTradeNo})
 }
 func (s *server) legacyGiftCardHistory(w http.ResponseWriter, r *http.Request) {
 	page, size, ok := giftCardPage(w, r, 15)
@@ -1114,7 +1114,7 @@ func legacyGiftCardUsage(item store.GiftCardUsage, maskCode bool) map[string]any
 		code = maskGiftCardCode(code)
 	}
 	result := map[string]any{
-		"id": item.ID, "code": code, "template_name": item.TemplateName, "user_email": item.UserEmail, "order_trade_no": item.OrderTradeNo,
+		"id": item.ID, "code_id": item.CodeID, "code": code, "template_name": item.TemplateName, "user_email": item.UserEmail, "order_trade_no": item.OrderTradeNo,
 		"invite_user_email": maskedLegacyEmail(item.InviterEmail), "rewards_given": legacyGiftCardReward(item.Rewards),
 		"invite_rewards": legacyGiftCardOptionalReward(item.InviterRewards), "multiplier_applied": float64(item.Multiplier) / 10_000,
 		"created_at": item.UsedAt.Unix(),
@@ -1136,6 +1136,7 @@ func maskGiftCardCode(value string) string {
 func legacyGiftCardCodeInfo(preview store.GiftCardPreview) map[string]any {
 	code := legacyGiftCardCode(preview.Code)
 	return map[string]any{
+		"code_id":  preview.Code.ID,
 		"code":     preview.Code.Code,
 		"template": map[string]any{"name": preview.Template.Name, "description": preview.Template.Description, "type": preview.Template.Type, "type_name": giftCardTypeNames[int(preview.Template.Type)], "icon": preview.Template.Icon, "background_image": preview.Template.BackgroundImage, "theme_color": preview.Template.Theme},
 		"status":   code["status"], "status_name": code["status_name"], "expires_at": code["expires_at"],
