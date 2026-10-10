@@ -208,7 +208,7 @@ func TestDeploymentJournalRoundTripsValidatedState(t *testing.T) {
 	}
 }
 
-func TestDeploymentBackendFailureRestoresBackupAndExactPreviousCombination(t *testing.T) {
+func TestDeploymentBackendFailurePreservesBackupAndActiveDatabase(t *testing.T) {
 	now := time.Date(2026, 9, 5, 13, 1, 0, 0, time.UTC)
 	current := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
 	target := current
@@ -222,16 +222,16 @@ func TestDeploymentBackendFailureRestoresBackupAndExactPreviousCombination(t *te
 	}
 	store := &memoryDeploymentStateStore{}
 	result, err := NewDeploymentOrchestrator(platform, store, func() time.Time { return now }).Upgrade(context.Background(), manifestForDeployment(target))
-	if err == nil || !strings.Contains(err.Error(), "automatically rolled back") || result.Status != "failed" {
+	if err == nil || !strings.Contains(err.Error(), "explicit recovery required") || result.Status != "failed" {
 		t.Fatalf("Upgrade() = (%#v, %v)", result, err)
 	}
-	if platform.backups != 1 || platform.restores != 1 {
+	if platform.backups != 1 || platform.restores != 0 {
 		t.Fatalf("database operations = backups:%d restores:%d", platform.backups, platform.restores)
 	}
-	if len(platform.targets) != 2 || platform.targets[0] != target || platform.targets[1] != current {
+	if len(platform.targets) != 1 || platform.targets[0] != target {
 		t.Fatalf("activation targets = %#v", platform.targets)
 	}
-	if last := store.states[len(store.states)-1]; last.Status != StatusAutoRolledBack || last.ActiveDSN == defaultDatabaseDSN {
+	if last := store.states[len(store.states)-1]; last.Status != StatusTargetFailed || last.ActiveDSN != defaultDatabaseDSN {
 		t.Fatalf("last state = %#v", last)
 	}
 }
@@ -290,6 +290,7 @@ func (platform *fakeDeploymentPlatform) ResolveDeployment(context.Context, Deplo
 func (platform *fakeDeploymentPlatform) FreshDeployment(context.Context) (bool, error) {
 	return true, nil
 }
+func (platform *fakeDeploymentPlatform) StopDeployment(context.Context) error { return nil }
 func (platform *fakeDeploymentPlatform) ActivateDeployment(_ context.Context, target Deployment, dsn string, changed []Component) (DeploymentApplication, error) {
 	platform.targets = append(platform.targets, target)
 	platform.activations = append(platform.activations, append([]Component(nil), changed...))

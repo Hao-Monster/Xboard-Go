@@ -422,6 +422,13 @@ func (p *DockerPlatform) ActivateDeployment(ctx context.Context, deployment Depl
 	}
 }
 
+func (p *DockerPlatform) StopDeployment(ctx context.Context) error {
+	if _, err := p.runner.Run(ctx, "docker", "container", "stop", "--time", "15", p.deploymentContainerName(ComponentBackend)); err != nil {
+		return commandFailure("stop deployment backend", err)
+	}
+	return nil
+}
+
 func (p *DockerPlatform) BackupDeployment(ctx context.Context, current DeploymentApplication, outputPath string) (backup.Manifest, error) {
 	if err := validateDeploymentApplication(current); err != nil {
 		return backup.Manifest{}, err
@@ -539,6 +546,13 @@ func (p *DockerPlatform) Activate(ctx context.Context, image Image, dsn string) 
 		case <-timer.C:
 		}
 	}
+}
+
+func (p *DockerPlatform) Stop(ctx context.Context) error {
+	if _, err := p.runner.Run(ctx, "docker", "container", "stop", "--time", "15", p.containerName()); err != nil {
+		return commandFailure("stop application", err)
+	}
+	return nil
 }
 
 func (p *DockerPlatform) Backup(ctx context.Context, current Application, outputPath string) (backup.Manifest, error) {

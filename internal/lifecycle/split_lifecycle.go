@@ -47,6 +47,7 @@ type DeploymentPlatform interface {
 	ResolveDeployment(context.Context, DeploymentManifest) (Deployment, error)
 	FreshDeployment(context.Context) (bool, error)
 	ActivateDeployment(context.Context, Deployment, string, []Component) (DeploymentApplication, error)
+	StopDeployment(context.Context) error
 	BackupDeployment(context.Context, DeploymentApplication, string) (backup.Manifest, error)
 	RestoreDeployment(context.Context, Image, string, string, string) (backup.Manifest, error)
 }
@@ -175,25 +176,38 @@ func (orchestrator *DeploymentOrchestrator) Upgrade(ctx context.Context, manifes
 	if activationErr == nil {
 		state.Status = StatusUpgraded
 		state.UpdatedAt = orchestrator.now().UTC()
-		if err := orchestrator.store.Append(state); err != nil {
-			return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), err
+		if err := orchestrator.store.Append(state); err == nil {
+			return DeploymentResult{Status: "success", Action: "lifecycle.deployment.upgrade", Application: &application, State: &state}, nil
+		} else {
+			activationErr = fmt.Errorf("record successful deployment upgrade: %w", err)
 		}
-		return DeploymentResult{Status: "success", Action: "lifecycle.deployment.upgrade", Application: &application, State: &state}, nil
 	}
 	state.Status = StatusTargetFailed
 	state.UpdatedAt = orchestrator.now().UTC()
+	if backendChanged {
+		// Backend startup includes migrations and workers; reverting a snapshot can
+		// discard writes even if the candidate never passed its health checks.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		stopErr := orchestrator.platform.StopDeployment(cleanupCtx)
+		operationErr := fmt.Errorf("deployment upgrade failed; current data and pre-upgrade backup retained; explicit recovery required: %w", activationErr)
+		if stopErr != nil {
+			operationErr = errors.Join(operationErr, fmt.Errorf("stop failed backend: %w", stopErr))
+		} else {
+			application.Healthy = false
+		}
+		state.Failure = safeFailure(operationErr)
+		if err := orchestrator.store.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), operationErr
+	}
 	state.Failure = safeFailure(activationErr)
 	if err := orchestrator.store.Append(state); err != nil {
 		return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), errors.Join(activationErr, err)
 	}
 
 	recoveryDSN := current.DSN
-	if backendChanged {
-		recoveryDSN, err = orchestrator.restoreDeploymentBackup(ctx, &state)
-		if err != nil {
-			return orchestrator.rollbackFailure("lifecycle.deployment.upgrade", state, application, activationErr, err)
-		}
-	}
 	recovered, recoveryErr := orchestrator.platform.ActivateDeployment(ctx, current.Deployment, recoveryDSN, changed)
 	if recoveryErr != nil {
 		return orchestrator.rollbackFailure("lifecycle.deployment.upgrade", state, recovered, activationErr, recoveryErr)
@@ -241,8 +255,8 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if state.Status != StatusUpgraded || state.Previous == nil || state.Target == nil || len(state.Changed) == 0 {
-		return DeploymentResult{}, fmt.Errorf("deployment rollback requires complete lifecycle status %q", StatusUpgraded)
+	if (state.Status != StatusUpgraded && state.Status != StatusTargetFailed) || state.Previous == nil || state.Target == nil || len(state.Changed) == 0 {
+		return DeploymentResult{}, fmt.Errorf("deployment rollback requires complete lifecycle status %q or %q", StatusUpgraded, StatusTargetFailed)
 	}
 	current, err := orchestrator.platform.CurrentDeployment(ctx)
 	if err != nil {
