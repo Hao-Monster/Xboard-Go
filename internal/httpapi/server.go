@@ -826,7 +826,7 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
-	handler := api.requestDiagnostics(api.securityHeaders(api.recoverPanic(root)))
+	handler := api.withClientIP(api.requestDiagnostics(api.securityHeaders(api.recoverPanic(root))))
 	if !dependencies.WebSocketEnabled && authTelemetryDone == nil {
 		return handler
 	}

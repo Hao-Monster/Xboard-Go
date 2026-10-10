@@ -111,7 +111,7 @@ func (s *Store) ChangeUserLifecycle(ctx context.Context, input UserLifecycleInpu
 	if err := revokeAllCredentialsTx(ctx, tx, input.UserID, now); err != nil {
 		return AdminUser{}, AdminUserMutation{}, err
 	}
-	for _, query := range []string{`DELETE FROM login_link_tokens WHERE user_id=?`, `DELETE FROM password_reset_challenges WHERE user_id=?`, `DELETE FROM node_device_ips WHERE user_id=?`, `DELETE FROM node_user_online WHERE user_id=?`} {
+	for _, query := range []string{`DELETE FROM node_device_ips WHERE user_id=?`, `DELETE FROM node_user_online WHERE user_id=?`} {
 		if _, err = tx.ExecContext(ctx, query, input.UserID); err != nil {
 			return AdminUser{}, AdminUserMutation{}, err
 		}
