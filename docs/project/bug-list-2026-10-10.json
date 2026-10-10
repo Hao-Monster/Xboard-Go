@@ -4,6 +4,10 @@
   "recorded_at": "2026-10-10",
   "baseline_sha": "2acd15f9f917b9c75ed39c0ac644cd9e2427fec1",
   "branch": "codex/ci-001-tiered-gates",
+  "status": "fixed_local_verified",
+  "implementation_sha": "e79c62a3c281027ea7f35b287682a5cfc875646c",
+  "report": "docs/testing/bug-fix-results-2026-10-10.md",
+  "deployment_status": "not_deployed_waiting_for_authorization",
   "scope": "Record confirmed bugs, research each repair, implement bounded regression tests and fixes, review, and create local-only commits.",
   "authorization": {
     "local_changes_and_tests": true,
@@ -13,7 +17,7 @@
     "deployment": false,
     "production_operations": false
   },
-  "evidence_boundary": "Source findings at baseline; prior passing suites do not prove these repairs. Record new regression results separately. No live security probing or deployment recovery exercise is authorized.",
+  "evidence_boundary": "Each recorded bug has local regression and review evidence bound to the integrated fix commits below. Full-suite and final affected-scope results, failures, skips and NOT RUN checks are reported separately; local verification is not deployment or live acceptance. No live security probing or deployment recovery exercise is authorized.",
   "plan": "docs/testing/bug-fix-plan-2026-10-10.md",
   "bugs": [
     {
@@ -25,8 +29,9 @@
       "requirement_ids": ["AUTH-001", "AUTH-003", "AUTH-005", "AUTH-009"],
       "work_item_ids": ["VER-001"],
       "issues": [{"number": 119, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["8a28ad326f73c4207bc115d583e4bfe58f2b2723"],
+      "evidence": ["docs/testing/bug-fix-auth-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-02",
@@ -37,8 +42,9 @@
       "requirement_ids": ["OPS-002"],
       "work_item_ids": ["OPS-002"],
       "issues": [{"number": 117, "state_at_check": "OPEN", "milestone": "M2 Migration & Operations"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["af691d3775ed9cb98831e77c2ef1df415504f857"],
+      "evidence": ["docs/testing/bug-fix-durability-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-03",
@@ -49,8 +55,9 @@
       "requirement_ids": ["OPS-002"],
       "work_item_ids": ["OPS-002"],
       "issues": [{"number": 117, "state_at_check": "OPEN", "milestone": "M2 Migration & Operations"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["a9423fbff556490674f43d959fc01239833938a3"],
+      "evidence": ["docs/testing/bug-fix-worker-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-04",
@@ -61,8 +68,9 @@
       "requirement_ids": ["AUTH-003", "AUTH-009"],
       "work_item_ids": ["VER-001"],
       "issues": [{"number": 119, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["8a28ad326f73c4207bc115d583e4bfe58f2b2723"],
+      "evidence": ["docs/testing/bug-fix-auth-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-05",
@@ -73,8 +81,9 @@
       "requirement_ids": ["AUTH-003", "AUTH-009"],
       "work_item_ids": ["VER-001"],
       "issues": [{"number": 119, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["8a28ad326f73c4207bc115d583e4bfe58f2b2723"],
+      "evidence": ["docs/testing/bug-fix-auth-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-06",
@@ -85,8 +94,9 @@
       "requirement_ids": ["TICKET-001", "OPS-001"],
       "work_item_ids": ["VER-004", "VER-005"],
       "issues": [{"number": 122, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}, {"number": 123, "state_at_check": "CLOSED", "milestone": "M3 Release Candidate", "note": "Historical mapping only; do not reopen or claim this issue is newly closed by the repair."}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["a9423fbff556490674f43d959fc01239833938a3"],
+      "evidence": ["docs/testing/bug-fix-worker-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-07",
@@ -97,8 +107,9 @@
       "requirement_ids": ["OPS-002"],
       "work_item_ids": ["OPS-002"],
       "issues": [{"number": 117, "state_at_check": "OPEN", "milestone": "M2 Migration & Operations"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["af691d3775ed9cb98831e77c2ef1df415504f857"],
+      "evidence": ["docs/testing/bug-fix-durability-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-08",
@@ -109,8 +120,9 @@
       "requirement_ids": ["OPS-002"],
       "work_item_ids": ["OPS-002"],
       "issues": [{"number": 117, "state_at_check": "OPEN", "milestone": "M2 Migration & Operations"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["af691d3775ed9cb98831e77c2ef1df415504f857"],
+      "evidence": ["docs/testing/bug-fix-durability-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-09",
@@ -121,8 +133,9 @@
       "requirement_ids": ["PLAN-001"],
       "work_item_ids": ["VER-001"],
       "issues": [{"number": 119, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["e79c62a3c281027ea7f35b287682a5cfc875646c"],
+      "evidence": ["docs/testing/bug-fix-ui-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-10",
@@ -133,8 +146,9 @@
       "requirement_ids": ["ORD-002"],
       "work_item_ids": ["VER-002"],
       "issues": [{"number": 120, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["e79c62a3c281027ea7f35b287682a5cfc875646c"],
+      "evidence": ["docs/testing/bug-fix-ui-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     },
     {
       "id": "BUG-20261010-11",
@@ -145,8 +159,9 @@
       "requirement_ids": ["TICKET-001"],
       "work_item_ids": ["VER-004"],
       "issues": [{"number": 122, "state_at_check": "OPEN", "milestone": "M3 Release Candidate"}],
-      "status": "recorded",
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": ["e79c62a3c281027ea7f35b287682a5cfc875646c"],
+      "evidence": ["docs/testing/bug-fix-ui-2026-10-10.md", "docs/testing/bug-fix-results-2026-10-10.md"]
     }
   ]
 }
