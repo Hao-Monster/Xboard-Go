@@ -37,7 +37,7 @@
 
 ## 执行记录
 
-环境：Windows amd64，Go 1.26.8，Python 3.13.7，Git Bash；race 使用已安装的 MinGW GCC。所有数据库均为测试临时目录内的 SQLite，工作流 Docker/HTTP 边界使用本地替身，未调用 SSH；没有执行真实发布或恢复。
+环境：Windows amd64，Go 1.26.8，Python 3.13.7，Git Bash；race 使用已安装的 MinGW GCC。所有数据库均为测试临时目录内的 SQLite，工作流 Docker/HTTP 边界使用本地替身，未调用 SSH；没有执行真实发布或恢复。以下最终测试对应的生产代码与测试已提交为 `0c8658b6397efe175d74c6ee6e103533e1da32e5`，后续补充仅更新文档。
 
 ### Red → Green
 
@@ -60,16 +60,26 @@
 | `go vet ./internal/lifecycle ./cmd/xboard-lifecycle` | PASS / 0 | 静态检查，不适用测试计数 | 未单独计时 |
 | `go build -o $env:TEMP\xboard-lifecycle-durability-check.exe ./cmd/xboard-lifecycle` | PASS / 0 | 构建，不适用测试计数 | 未单独计时；产物在仓库外 |
 | `git diff --check` | PASS / 0 | 差异检查，不适用测试计数 | 未单独计时 |
-| `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= .github/workflows/legacy-parity.yml` | FAIL / 1 | 2 条既有 runner label 诊断 | 基线 `git show HEAD:.github/workflows/legacy-parity.yml` 送入同版本 actionlint 后出现相同两条错误；不是本次引入 |
+| `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= .github/workflows/legacy-parity.yml` | FAIL / 1 | 2 条既有 runner label 诊断 | 修改前 `HEAD` 即基线 `2acd15f9f917b9c75ed39c0ac644cd9e2427fec1`；将该 revision 的 workflow 送入同版本 actionlint 后出现相同两条错误，不是本次引入 |
 | `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -config-file .local/actionlint-durability.yaml .github/workflows/legacy-parity.yml` | PASS / 0 | 工作流语法/表达式检查，不适用测试计数 | 临时配置仅声明仓库已使用的 self-hosted label `xboard-go-legacy-parity`，未关闭 actionlint 规则；未单独计时 |
 
-临时 actionlint 配置为 `self-hosted-runner.labels: [xboard-go-legacy-parity]`，不提交工作站专属配置。`-shellcheck=` 沿用当前检查方式，未执行独立 ShellCheck；实际远端 heredoc 的 shell 行为由上述 12 项隔离测试执行验证。
+复现 actionlint 检查时，先在仓库根的 `.local/actionlint-durability.yaml` 保存以下内容；不提交工作站专属配置：
+
+```yaml
+self-hosted-runner:
+  labels:
+    - xboard-go-legacy-parity
+```
+
+`-shellcheck=` 沿用当前检查方式，未执行独立 ShellCheck；实际远端 heredoc 的 shell 行为由上述 12 项隔离测试执行验证。
 
 矩阵 D02-1 至 D08-2 的本地验证均 PASS；这里只声明矩阵列出的验证层级，不把命令替身称为真实 Docker 集成。主负责者另行只读复核本组生产 diff，未发现阻塞项。
 
 ### 覆盖率与剩余证据缺口
 
 Go 原生输出是语句覆盖率，不是行或分支覆盖率。本轮 `internal/lifecycle` 为 **69.0% statements**，`cmd/xboard-lifecycle` 为 **46.0% statements**，合计 **67.2% statements**。`go tool cover -func` 核对：新增 Stop/StopDeployment 为 100%；journal append 为 73.9%、历史记录校验为 90.0%；combined Upgrade/Rollback 为 86.7%/70.2%，split Upgrade/Rollback 为 81.8%/71.0%。没有新增或修改行级覆盖率统计，不能从这些包级数字推断全部变更路径都已覆盖。
+
+本轮生成的 profile 已移到 Git-ignored `.local/durability-coverage.out`。重跑时可将覆盖率参数写为 `"-coverprofile=.local/durability-coverage.out"`，然后执行 `go tool cover -func .local/durability-coverage.out`；目录须先存在，profile 不提交。
 
 - 行覆盖率、分支覆盖率：NOT RUN；本轮 Go 覆盖率工具没有提供对应口径。
 - 真实磁盘 read/truncate/seek/write/sync 故障注入、断电与磁盘满恢复：NOT RUN；已测完整损坏/部分尾行、上限、状态落盘失败替身，仍不能替代现场存储故障验证。
