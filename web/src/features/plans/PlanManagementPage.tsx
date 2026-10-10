@@ -1,7 +1,7 @@
 import { PlanAudienceModal } from "./PlanAudienceModal";
 import type { PlanAudienceAPI } from "../../lib/api";
 import { translateAdmin } from "../../lib/adminLocale";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { SafeMarkdown } from "../../components/SafeMarkdown";
 
 import { NodeGroupCreator } from "../nodes/NodeGroupCreator";
@@ -9,7 +9,6 @@ import { TagInput } from "../../components/TagInput";
 import { MarkdownEditor } from "../../components/MarkdownEditor";
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, Plan, PlanInput, PlanPeriod, PlanPrices, ServerGroup } from "../../lib/api";
-import { invalidateAdminData } from "../../lib/useAdminData";
 import { adminDataCache } from "../../lib/dataPrefetchCache";
 import "./PlanManagementPage.css";
 
@@ -24,6 +23,12 @@ const periods: Array<{ key: PlanPeriod; label: string }> = [
 const PAGE_SIZES = [10, 20, 50];
 const maxPlanPriceCents = 9_000_000_000_000_000n;
 const planDescriptionTemplate = `## 套餐特点\n• 高速稳定的全球网络接入\n• 支持多设备同时在线\n• 无限制的流量重置\n\n## 使用说明\n1. 支持设备：iOS、Android、Windows、macOS\n2. 24/7 技术支持\n3. 自动定期流量重置\n\n## 注意事项\n- 禁止滥用\n- 遵守当地法律法规\n- 支持随时更换套餐`;
+
+function invalidatePlanPrefetch() {
+  adminDataCache.invalidate("plans");
+  // Order assignment also consumes a prefetched list of plans.
+  adminDataCache.invalidate("orders");
+}
 
 export function PlanManagementPage({ api }: { api: PlansAPI }) {
   const [audienceID, setAudienceID] = useState<number | null>(null);
@@ -40,38 +45,58 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
   const [busyIDs, setBusyIDs] = useState<Set<number>>(() => new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const requestVersion = useRef(0);
+  const loadPending = useRef(false);
 
   const refresh = useCallback(async () => {
-    invalidateAdminData("plans");
+    invalidatePlanPrefetch();
+    const version = ++requestVersion.current;
+    loadPending.current = true;
     setLoading(true);
     setError("");
     try {
       const [nextPlans, nextGroups] = await Promise.all([api.listPlans(), api.listServerGroups()]);
+      if (version !== requestVersion.current) return;
       setPlans(nextPlans);
       setGroups(nextGroups);
     } catch (cause) {
-      setError(messageOf(cause));
+      if (version === requestVersion.current) setError(messageOf(cause));
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) {
+        loadPending.current = false;
+        setLoading(false);
+      }
     }
   }, [api]);
 
   useEffect(() => {
     let active = true;
+    const version = ++requestVersion.current;
+    loadPending.current = true;
     // Use prefetched data if available (from hover), otherwise fetch normally
     const source = adminDataCache.consume<[Plan[], ServerGroup[]]>("plans")
       ?? Promise.all([api.listPlans(), api.listServerGroups()]);
     void source.then(([nextPlans, nextGroups]) => {
-      if (!active) return;
+      if (!active || version !== requestVersion.current) return;
       setPlans(nextPlans);
       setGroups(nextGroups);
     }).catch((cause: unknown) => {
-      if (active) setError(messageOf(cause));
+      if (active && version === requestVersion.current) setError(messageOf(cause));
     }).finally(() => {
-      if (active) setLoading(false);
+      if (active && version === requestVersion.current) {
+        loadPending.current = false;
+        setLoading(false);
+      }
     });
-    return () => { active = false; };
+    return () => { active = false; requestVersion.current += 1; loadPending.current = false; };
   }, [api]);
+
+  const invalidateAfterMutation = () => {
+    invalidatePlanPrefetch();
+    // A write can finish before the initial list or a manual refresh does.
+    // Reload that snapshot rather than letting the old read erase the write.
+    if (loadPending.current) void refresh();
+  };
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -96,6 +121,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
     try {
       const state = { show: plan.show, sell: plan.sell, renew: plan.renew, [field]: value };
       const updated = await api.setPlanState(plan.id, plan.revision, state.show, state.sell, state.renew);
+      invalidateAfterMutation();
       setPlans((cur) => cur.map((item) => item.id === updated.id ? updated : item));
     } catch (cause) {
       setPlans((cur) => cur.map((item) => item.id === plan.id ? plan : item));
@@ -121,7 +147,9 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
     setSavingOrder(true);
     setError("");
     try {
-      setPlans(await api.reorderPlans(plans.map((plan) => plan.id)));
+      const updated = await api.reorderPlans(plans.map((plan) => plan.id));
+      invalidateAfterMutation();
+      setPlans(updated);
       setSorting(false);
     } catch (cause) {
       setError(messageOf(cause));
@@ -336,6 +364,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
           plan={editing}
           onClose={() => setEditing(undefined)}
           onSaved={(saved) => {
+            invalidateAfterMutation();
             setPlans((cur) => editing === null ? [...cur, saved] : cur.map((item) => item.id === saved.id ? saved : item));
             setEditing(undefined);
           }}
@@ -347,6 +376,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
           plan={deleting}
           onClose={() => setDeleting(null)}
           onDeleted={() => {
+            invalidateAfterMutation();
             setPlans((cur) => cur.filter((item) => item.id !== deleting.id));
             setDeleting(null);
           }}

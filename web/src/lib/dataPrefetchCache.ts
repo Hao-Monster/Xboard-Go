@@ -26,8 +26,8 @@ export class DataPrefetchCache {
       return entry.promise as Promise<T>;
     }
     const promise = fetcher().catch((err: unknown) => {
-      // Evict failed entries so the next access retries.
-      this.cache.delete(key);
+      // A superseded request must not evict a newer prefetch for the same key.
+      if (this.cache.get(key)?.promise === promise) this.cache.delete(key);
       throw err;
     });
     this.cache.set(key, { promise, expiresAt: now + ttlMs });

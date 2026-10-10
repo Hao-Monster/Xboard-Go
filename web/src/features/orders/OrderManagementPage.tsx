@@ -1,6 +1,6 @@
 import { GiftCardPurchaseDetails } from "./GiftCardPurchaseDetails";
 import { translateAdmin } from "../../lib/adminLocale";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { AdminDistributorPage, type AdminDistributorAPI } from "../distributor/AdminDistributorPage";
 import { Modal } from "../../components/Overlay";
@@ -36,35 +36,59 @@ export function OrderManagementPage({ api, distributorAPI }: { api: OrderManagem
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [assigning, setAssigning] = useState(false);
-	const [selected, setSelected] = useState<AdminOrderDetail | null>(null);
+	const [selected, setSelected] = useState<{ order: AdminOrderDetail; version: number; lifetime: number } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [previousAPI, setPreviousAPI] = useState(api);
+  const detailVersion = useRef(0);
+  const listVersion = useRef(0);
+  const pageLifetime = useRef(0);
+  const currentQuery = useRef<AdminOrderQuery>({ page: 1, page_size: 20 });
+
+  if (previousAPI !== api) {
+    setPreviousAPI(api);
+    setSelected(null);
+    setDetailLoading(false);
+  }
+
+  useEffect(() => () => {
+    detailVersion.current += 1;
+    listVersion.current += 1;
+    pageLifetime.current += 1;
+  }, [api]);
 
   const load = useCallback(async (query: AdminOrderQuery) => {
+    const version = ++listVersion.current;
+    currentQuery.current = query;
     setLoading(true);
     setError("");
     try {
-      setPage(await api.listAdminOrders(query));
+      const orders = await api.listAdminOrders(query);
+      if (version !== listVersion.current) return;
+      setPage(orders);
       setApplied(query);
     } catch (cause) {
-      setError(messageOf(cause));
+      if (version === listVersion.current) setError(messageOf(cause));
     } finally {
-      setLoading(false);
+      if (version === listVersion.current) setLoading(false);
     }
   }, [api]);
 
   useEffect(() => {
     let active = true;
     const defaultQuery = { page: 1, page_size: 20 } satisfies AdminOrderQuery;
+    const version = ++listVersion.current;
+    currentQuery.current = defaultQuery;
     // Consume prefetched data from hover, or fetch fresh
     const cached = adminDataCache.consume<[AdminOrderPage, Plan[]]>("orders");
     const source = cached ?? Promise.all([api.listAdminOrders(defaultQuery), api.listPlans()]);
     void source.then(([orders, nextPlans]) => {
       if (!active) return;
-      setPage(orders);
       setPlans(nextPlans);
+      if (version !== listVersion.current) return;
+      setPage(orders);
       setApplied(defaultQuery);
-    }).catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
-      .finally(() => { if (active) setLoading(false); });
+    }).catch((cause: unknown) => { if (active && version === listVersion.current) setError(messageOf(cause)); })
+      .finally(() => { if (active && version === listVersion.current) setLoading(false); });
     return () => { active = false; };
   }, [api]);
 
@@ -81,12 +105,27 @@ export function OrderManagementPage({ api, distributorAPI }: { api: OrderManagem
   };
 
   const open = async (tradeNo: string) => {
+    const version = ++detailVersion.current;
+    const lifetime = pageLifetime.current;
     setDetailLoading(true);
     setError("");
-    try { setSelected(await api.getAdminOrder(tradeNo)); } catch (cause) { setError(messageOf(cause)); } finally { setDetailLoading(false); }
+    try {
+      const order = await api.getAdminOrder(tradeNo);
+      if (version === detailVersion.current) setSelected({ order, version, lifetime });
+    } catch (cause) {
+      if (version === detailVersion.current) setError(messageOf(cause));
+    } finally {
+      if (version === detailVersion.current) setDetailLoading(false);
+    }
   };
 
-  const refreshCurrent = () => load(applied);
+  const closeDetail = () => {
+    detailVersion.current += 1;
+    setSelected(null);
+    setDetailLoading(false);
+  };
+
+  const refreshCurrent = () => load(currentQuery.current);
 	const sort = (field: NonNullable<AdminOrderQuery["sort_by"]>) => {
 		const descending = applied.sort_by === field ? !applied.sort_desc : false;
 		void load({ ...applied, page: 1, sort_by: field, sort_desc: descending });
@@ -126,7 +165,14 @@ export function OrderManagementPage({ api, distributorAPI }: { api: OrderManagem
       {page.total > page.page_size && <div className="pagination-footer"><button className="button secondary compact" disabled={page.page <= 1 || loading} onClick={() => void load({ ...applied, page: page.page - 1 })}>{translateAdmin("上一页")}</button><span>{translateAdmin("第")}{page.page} 页</span><button className="button secondary compact" disabled={page.page * page.page_size >= page.total || loading} onClick={() => void load({ ...applied, page: page.page + 1 })}>{translateAdmin("下一页")}</button></div>}
     </section>}
     {assigning && <AssignOrderDialog api={api} plans={plans} onClose={() => setAssigning(false)} onCreated={() => { setAssigning(false); void load({ page: 1, page_size: 20 }); }} />}
-    {selected !== null && <AdminOrderDetailDialog api={api} order={selected} onClose={() => setSelected(null)} onUpdated={(order) => { setSelected(order); void refreshCurrent(); }} />}
+    {selected !== null && <AdminOrderDetailDialog key={selected.version} api={api} order={selected.order} onClose={closeDetail} onUpdated={(order) => {
+      adminDataCache.invalidate("orders");
+      if (selected.lifetime !== pageLifetime.current) return;
+      // A completed write still refreshes the current list, but cannot revive
+      // a closed/replaced dialog or restore the query captured by that dialog.
+      if (selected.version === detailVersion.current) setSelected({ ...selected, order });
+      void refreshCurrent();
+    }} />}
   </main>;
 }
 
