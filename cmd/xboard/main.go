@@ -326,27 +326,10 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	go func() {
-		<-ctx.Done()
-		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownContext); err != nil {
-			logger.Error("shutdown HTTP server", "error", err)
-		}
-	}()
-
 	logger.Info("Xboard-Go API listening", "address", settings.Address)
-	serveErr := server.ListenAndServe()
-	if ctx.Err() != nil {
-		if waiter, ok := apiHandler.(httpapi.ShutdownWaiter); ok {
-			drainContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if err := waiter.WaitForShutdown(drainContext); err != nil {
-				logger.Error("wait for HTTP API shutdown", "error", err)
-			}
-			cancel()
-		}
-	}
-	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+	waiter, _ := apiHandler.(httpapi.ShutdownWaiter)
+	serveErr := runHTTPServer(ctx, server, waiter, logger, 10*time.Second)
+	if serveErr != nil {
 		logger.Error("serve HTTP", "error", serveErr)
 		os.Exit(1)
 	}
