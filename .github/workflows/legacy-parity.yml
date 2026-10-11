@@ -237,7 +237,7 @@ jobs:
           docker tag xboard-log-collector:local "xboard-log-collector:$SOURCE_SHA"
           docker save "xboard-log-collector:$SOURCE_SHA" | gzip > collector-artifact/collector.tar.gz
           python3 deploy/package-log-collector.py collector-artifact "$SOURCE_SHA"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tested-log-collector
           path: collector-artifact/
