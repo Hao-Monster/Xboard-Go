@@ -613,7 +613,6 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
           </Suspense>
         </div>
       </div>
-      <button type="button" className="distributor-floating-entry" aria-label="分销管理快捷入口" onClick={() => navigateAdminPage("distributors")}><span aria-hidden="true">分</span>分销管理</button>
       {menuSearchOpen && <Modal title="搜索菜单和功能" onClose={() => setMenuSearchOpen(false)} className="admin-search-dialog">
         <input autoFocus type="search" aria-label="搜索菜单和功能" placeholder={translateAdmin("搜索菜单和功能...")} value={menuSearch} onChange={event => setMenuSearch(event.target.value)} />
         <div className="admin-search-results">

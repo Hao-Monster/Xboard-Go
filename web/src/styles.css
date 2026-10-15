@@ -1369,8 +1369,6 @@ html[data-theme-radius="square"] :focus-visible {
 .admin-frame.sidebar-collapsed { --admin-sidebar-width: 64px; }
 .admin-frame.sidebar-collapsed .admin-sidebar-brand > span, .admin-frame.sidebar-collapsed .admin-nav-label, .admin-frame.sidebar-collapsed .nav-group-header { display: none; }
 .admin-frame.sidebar-collapsed .admin-sidebar-brand { padding: 0; }
-.distributor-floating-entry { position: fixed; bottom: 24px; right: 24px; z-index: 25; display: flex; align-items: center; gap: 8px; border: 1px solid var(--theme-border); border-radius: 24px; padding: 8px 14px 8px 8px; background: var(--theme-surface); color: var(--theme-text); box-shadow: 0 4px 14px #0002; font-size: 14px; }
-.distributor-floating-entry > span { display: grid; place-items: center; background: var(--theme-primary); color: var(--theme-primary-text); width: 30px; height: 30px; border-radius: 50%; }
 .admin-search-results { display: flex; flex-direction: column; max-height: 55dvh; overflow-y: auto; }
 .admin-search-results button { text-align: left; padding: 10px; background: transparent; color: var(--theme-text); border: 0; border-radius: 4px; }
 .admin-search-results button:hover { background: var(--theme-border); }
