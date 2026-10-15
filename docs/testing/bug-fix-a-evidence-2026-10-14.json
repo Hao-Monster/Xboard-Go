@@ -1,0 +1,537 @@
+{
+  "date": "2026-10-15",
+  "timezone": "Asia/Singapore",
+  "implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
+  "environment": {
+    "go": "go1.26.8",
+    "os": "windows",
+    "arch": "amd64",
+    "CGO_ENABLED": "1",
+    "CC": "C:/msys64/ucrt64/bin/gcc.exe"
+  },
+  "counting": "Test entries include parent tests and subtests; root_test_counts exclude names containing slash. Durations are Go package elapsed times, not shell/compilation wall clock.",
+  "results": [
+    {
+      "command": "go test -json -count=1 -run=TestBL0[123] -coverprofile=tmp/bugfix-a/final-target-coverage.out ./internal/store ./internal/httpapi ./internal/scheduler",
+      "status": "PASS",
+      "exit_code": 0,
+      "test_counts": {
+        "pass": 37,
+        "fail": 0,
+        "skip": 0
+      },
+      "root_test_counts": {
+        "pass": 10,
+        "fail": 0,
+        "skip": 0
+      },
+      "max_package_seconds": 5.086,
+      "packages": [
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/scheduler",
+          "status": "pass",
+          "elapsed_seconds": 2.446
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "status": "pass",
+          "elapsed_seconds": 3.284
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/store",
+          "status": "pass",
+          "elapsed_seconds": 5.086
+        }
+      ],
+      "skipped_tests": [],
+      "log_sha256": "04e9af6a1c71f7926b274678b3245a727258fea3845a1ed35d8907f452d3e6f5",
+      "raw_log": "tmp/bugfix-a/final-target.jsonl",
+      "verified_tests": [
+        "TestBL01PaymentWebhookNotifiesGroupsExactlyOnce",
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery/commit",
+        "TestBL01DistributorHandlersNotifySubscriber",
+        "TestBL02LatePaymentLogsWithoutRevivingOrder",
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery/rollback",
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery",
+        "TestBL01ManualAndFreeCompletionHandlers/admin",
+        "TestBL01ManualAndFreeCompletionHandlers/legacy_admin",
+        "TestBL01ManualAndFreeCompletionHandlers/free",
+        "TestBL01ManualAndFreeCompletionHandlers/legacy_free",
+        "TestBL01ManualAndFreeCompletionHandlers",
+        "TestBL01DistributorEntitlementUpdateHandlers/false",
+        "TestBL03ActualDayRewards/permanent_days",
+        "TestBL01DistributorEntitlementUpdateHandlers/true",
+        "TestBL01DistributorEntitlementUpdateHandlers",
+        "TestBL03ActualDayRewards/permanent_mixed",
+        "TestBL03ActualDayRewards/permanent_mystery",
+        "TestBL03ActualDayRewards/active",
+        "TestBL03ActualDayRewards/expired",
+        "TestBL03ActualDayRewards/no_plan",
+        "TestBL03ActualDayRewards",
+        "TestBL01OrderEntitlementChange/new",
+        "TestBL01OrderEntitlementChange/renewal",
+        "TestBL01OrderEntitlementChange/upgrade",
+        "TestBL01OrderEntitlementChange/onetime",
+        "TestBL01OrderEntitlementChange/reset_traffic",
+        "TestBL01OrderEntitlementChange/processing",
+        "TestBL01OrderEntitlementChange/rollback",
+        "TestBL01OrderEntitlementChange",
+        "TestBL02PaymentGrace/created",
+        "TestBL02PaymentGrace/creating",
+        "TestBL02PaymentGrace/failed",
+        "TestBL02PaymentGrace/expired_lease",
+        "TestBL02PaymentGrace/expired_grace",
+        "TestBL02PaymentGrace/hard_limit",
+        "TestBL02PaymentGrace",
+        "TestBL02CheckoutDeadlineAndGraceSettlement"
+      ]
+    },
+    {
+      "command": "go test -json -race -count=1 -run=TestBL0[123] ./internal/store ./internal/httpapi ./internal/scheduler",
+      "status": "PASS",
+      "exit_code": 0,
+      "test_counts": {
+        "pass": 37,
+        "fail": 0,
+        "skip": 0
+      },
+      "root_test_counts": {
+        "pass": 10,
+        "fail": 0,
+        "skip": 0
+      },
+      "max_package_seconds": 49.712,
+      "packages": [
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "status": "pass",
+          "elapsed_seconds": 38.772
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/store",
+          "status": "pass",
+          "elapsed_seconds": 44.658
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/scheduler",
+          "status": "pass",
+          "elapsed_seconds": 49.712
+        }
+      ],
+      "skipped_tests": [],
+      "log_sha256": "bd168cb3a1949407986d43c8bae7cfaf1b581abe4c9569e9972defc87aa40ada",
+      "raw_log": "tmp/bugfix-a/final-race.jsonl",
+      "verified_tests": [
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery/commit",
+        "TestBL03ActualDayRewards/permanent_days",
+        "TestBL03ActualDayRewards/permanent_mixed",
+        "TestBL01PaymentWebhookNotifiesGroupsExactlyOnce",
+        "TestBL03ActualDayRewards/permanent_mystery",
+        "TestBL01DistributorHandlersNotifySubscriber",
+        "TestBL03ActualDayRewards/active",
+        "TestBL03ActualDayRewards/expired",
+        "TestBL02LatePaymentLogsWithoutRevivingOrder",
+        "TestBL03ActualDayRewards/no_plan",
+        "TestBL03ActualDayRewards",
+        "TestBL01ManualAndFreeCompletionHandlers/admin",
+        "TestBL01OrderEntitlementChange/new",
+        "TestBL01ManualAndFreeCompletionHandlers/legacy_admin",
+        "TestBL01OrderEntitlementChange/renewal",
+        "TestBL01ManualAndFreeCompletionHandlers/free",
+        "TestBL01OrderEntitlementChange/upgrade",
+        "TestBL01OrderEntitlementChange/onetime",
+        "TestBL01ManualAndFreeCompletionHandlers/legacy_free",
+        "TestBL01ManualAndFreeCompletionHandlers",
+        "TestBL01OrderEntitlementChange/reset_traffic",
+        "TestBL01DistributorEntitlementUpdateHandlers/false",
+        "TestBL01OrderEntitlementChange/processing",
+        "TestBL01OrderEntitlementChange/rollback",
+        "TestBL01OrderEntitlementChange",
+        "TestBL01DistributorEntitlementUpdateHandlers/true",
+        "TestBL01DistributorEntitlementUpdateHandlers",
+        "TestBL02PaymentGrace/created",
+        "TestBL02PaymentGrace/creating",
+        "TestBL02PaymentGrace/failed",
+        "TestBL02PaymentGrace/expired_lease",
+        "TestBL02PaymentGrace/expired_grace",
+        "TestBL02PaymentGrace/hard_limit",
+        "TestBL02PaymentGrace",
+        "TestBL02CheckoutDeadlineAndGraceSettlement",
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery/rollback",
+        "TestBL01SchedulerNotifiesOnlyCommittedRecovery"
+      ]
+    },
+    {
+      "command": "go test -json ./cmd/... ./internal/...",
+      "status": "PASS",
+      "exit_code": 0,
+      "test_counts": {
+        "pass": 2168,
+        "fail": 0,
+        "skip": 36
+      },
+      "root_test_counts": {
+        "pass": 1264,
+        "fail": 0,
+        "skip": 34
+      },
+      "max_package_seconds": 147.25,
+      "packages": [
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/cmd/projectctl",
+          "status": "skip",
+          "elapsed_seconds": 0
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/cmd/testdatagen",
+          "status": "skip",
+          "elapsed_seconds": 0
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/captcha",
+          "status": "pass",
+          "elapsed_seconds": 0.002
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/config",
+          "status": "pass",
+          "elapsed_seconds": 0.007
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "status": "pass",
+          "elapsed_seconds": 0.006
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/geoip",
+          "status": "pass",
+          "elapsed_seconds": 0
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/clientcatalog",
+          "status": "pass",
+          "elapsed_seconds": 0.095
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/cmd/xboard-lifecycle",
+          "status": "pass",
+          "elapsed_seconds": 0.113
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/bulkops",
+          "status": "pass",
+          "elapsed_seconds": 1.073
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/backup",
+          "status": "pass",
+          "elapsed_seconds": 1.862
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/knowledge",
+          "status": "pass",
+          "elapsed_seconds": 0.001
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/operations",
+          "status": "pass",
+          "elapsed_seconds": 0
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/mailtemplate",
+          "status": "pass",
+          "elapsed_seconds": 0.001
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/observability",
+          "status": "pass",
+          "elapsed_seconds": 0.001
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "status": "pass",
+          "elapsed_seconds": 0.001
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/payment",
+          "status": "pass",
+          "elapsed_seconds": 0.015
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/mailer",
+          "status": "pass",
+          "elapsed_seconds": 0.038
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/maintenance",
+          "status": "pass",
+          "elapsed_seconds": 0.041
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/attachments",
+          "status": "pass",
+          "elapsed_seconds": 4.419
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/lifecycle",
+          "status": "pass",
+          "elapsed_seconds": 0.838
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/cmd/xboard",
+          "status": "pass",
+          "elapsed_seconds": 5.234
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/legacymigration",
+          "status": "pass",
+          "elapsed_seconds": 2.16
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "status": "pass",
+          "elapsed_seconds": 80.42
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/publicurl",
+          "status": "skip",
+          "elapsed_seconds": 0
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/schedule",
+          "status": "pass",
+          "elapsed_seconds": 0.003
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/settings",
+          "status": "pass",
+          "elapsed_seconds": 0.007
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/theme",
+          "status": "pass",
+          "elapsed_seconds": 0.008
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/security",
+          "status": "pass",
+          "elapsed_seconds": 0.011
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/webui",
+          "status": "pass",
+          "elapsed_seconds": 0.006
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/projectgovernance",
+          "status": "pass",
+          "elapsed_seconds": 0.015
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/telegrambot",
+          "status": "pass",
+          "elapsed_seconds": 0.014
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/subscription",
+          "status": "pass",
+          "elapsed_seconds": 0.038
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/scheduler",
+          "status": "pass",
+          "elapsed_seconds": 11.98
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/store",
+          "status": "pass",
+          "elapsed_seconds": 147.25
+        }
+      ],
+      "skipped_tests": [
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisOutageFailsClosedAndRecoversWithoutInventingEmptyState",
+          "reason": "redis_failure_integration_test.go:22: destructive Redis device-state failure injection is not enabled"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisWindowNormalizationDeduplicationAndCapacity",
+          "reason": "redis_integration_test.go:120: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisDatabaseThrottleAndTrailingFlush",
+          "reason": "redis_integration_test.go:178: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisDatabaseSummaryExpiresWithoutAnotherNodeReport",
+          "reason": "redis_integration_test.go:226: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisDatabaseSummaryReschedulesStaggeredExpiries",
+          "reason": "redis_integration_test.go:259: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisFailedSummaryRemainsPendingAndRecovers",
+          "reason": "redis_integration_test.go:299: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006RedisReplaceAllAndClearMaintainIndexes",
+          "reason": "redis_integration_test.go:333: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006NodeGenerationFencesStaleDisconnectCleanup",
+          "reason": "redis_integration_test.go:380: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006PendingAcknowledgementPreservesANewerVersion",
+          "reason": "redis_integration_test.go:412: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006PendingAndExpiryFlushIsDeduplicatedAndGloballyBounded",
+          "reason": "redis_integration_test.go:464: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006PendingFlushIsBoundedAndDrainsTheRemainder/default_batch",
+          "reason": "redis_integration_test.go:510: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/devicestate",
+          "test": "TestTIMENODE006PendingFlushIsBoundedAndDrainsTheRemainder/hard_maximum",
+          "reason": "redis_integration_test.go:510: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/geoip",
+          "test": "TestOpenLegacyReadsPinnedFixtureWhenAvailable",
+          "reason": "legacy_test.go:59: pinned 11 MB legacy XDB is exercised by packaged-image CI"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/backup",
+          "test": "TestReplicatePreservesExistingDestinationDirectoryMode",
+          "reason": "backup_test.go:175: Windows does not expose POSIX directory permission semantics"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/backup",
+          "test": "TestCreateRestrictsExistingOutputDirectory",
+          "reason": "backup_test.go:425: Windows does not expose POSIX permission bits"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorClaimsFencesRenewsAndConditionallyReleases",
+          "reason": "redis_integration_test.go:16: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorClaimsAndFencesLegacyNodeLease",
+          "reason": "redis_integration_test.go:65: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorFencesMachineMembershipChanges",
+          "reason": "redis_integration_test.go:93: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorPublishesReplacementAndBoundedCommands",
+          "reason": "redis_integration_test.go:122: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorRevokesMachineBeforePublishingDisconnect",
+          "reason": "redis_integration_test.go:157: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorRejectsInvalidOptionsAndInputs",
+          "reason": "redis_integration_test.go:185: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisCoordinatorExpiresUnrenewedLeaseAndAllowsReconnect",
+          "reason": "redis_integration_test.go:202: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/nodecoord",
+          "test": "TestINTNODE003RedisURLIsIsolated",
+          "reason": "redis_integration_test.go:297: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/attachments",
+          "test": "TestOneGiBAttachmentCompletesWithChunkBoundedMemory",
+          "reason": "large_file_integration_test.go:16: set XBOARD_RUN_LARGE_ATTACHMENT_TEST=1 for the 1 GiB streaming integration test"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/cmd/xboard",
+          "test": "TestRunCommandImportsCapturedRealTrustedPluginsSnapshot",
+          "reason": "legacy_trusted_plugins_migration_cli_test.go:142: set XBOARD_TEST_LEGACY_TRUSTED_PLUGINS_SNAPSHOT to the captured local legacy snapshot"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/legacymigration",
+          "test": "TestReadTrustedPluginsSnapshotMatchesCapturedRealSnapshot",
+          "reason": "trusted_plugins_test.go:100: set XBOARD_TEST_LEGACY_TRUSTED_PLUGINS_SNAPSHOT to the captured local legacy snapshot"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush",
+          "reason": "device_state_integration_test.go:25: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestTIMENODE006RedisGenerationFencesCrossInstanceReconnectAndDisconnect",
+          "reason": "device_state_integration_test.go:242: XBOARD_TEST_REDIS_URL is required for Redis device-state integration tests"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestCAPR014WebSocketConnectionDrain",
+          "reason": "websocket_capacity_integration_test.go:34: XBOARD_WS_CAPACITY_CONNECTIONS is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTR014GracefulDrainReleasesRedisOwnershipBeforeReconnect",
+          "reason": "websocket_coordination_integration_test.go:31: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTR014DrainWaitsForInFlightClaimAndReleasesOwnership",
+          "reason": "websocket_coordination_integration_test.go:83: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications",
+          "reason": "websocket_coordination_integration_test.go:198: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances",
+          "reason": "websocket_coordination_integration_test.go:432: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTNODE007TrafficExceededRefreshesRemoteReplicaAndReplays",
+          "reason": "websocket_coordination_integration_test.go:508: XBOARD_TEST_REDIS_URL is not configured"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+          "test": "TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers",
+          "reason": "websocket_coordination_integration_test.go:613: destructive Redis failure injection is not enabled"
+        },
+        {
+          "package": "github.com/Hao-Monster/Xboard-Go/internal/subscription",
+          "test": "TestGenerateRealClientCompatibilityFixtures",
+          "reason": "client_compat_fixture_test.go:24: XBOARD_CLIENT_COMPAT_OUTPUT_DIR is not set"
+        }
+      ],
+      "log_sha256": "a65b11c81c8c261e368b8c7436bb19f793fa4305156709b9b7c475bfacf9ed53",
+      "raw_log": "tmp/bugfix-a/verified-source.jsonl"
+    }
+  ]
+}
