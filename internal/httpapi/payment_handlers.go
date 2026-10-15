@@ -142,6 +142,9 @@ func (s *server) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	}, s.now())
 	if err != nil {
 		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrOrderState) {
+			s.logger.Error("payment webhook rejected for terminal order", "trade_no", verified.TradeNo, "payment_id", method.ID, "provider", method.Provider, "external_id", verified.ExternalID)
+		}
 		if errors.Is(err, store.ErrInvalidInput) {
 			status = http.StatusUnprocessableEntity
 		} else if errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrNotFound) {
@@ -152,9 +155,7 @@ func (s *server) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 		writePaymentWebhookFailure(w, status)
 		return
 	}
-	if s.hub != nil {
-		s.hub.NotifyUserMutation(r.Context(), order.UserID, "", nil, nil, true)
-	}
+	s.notifyEntitlementChange(r.Context(), order.Change)
 	writePaymentWebhookSuccess(w, method.Provider)
 }
 

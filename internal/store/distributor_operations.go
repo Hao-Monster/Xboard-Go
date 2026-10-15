@@ -177,6 +177,10 @@ func (s *Store) UpdateDistributorEntitlement(ctx context.Context, orderID int64,
 	} else if err != nil {
 		return DistributorEntitlement{}, fmt.Errorf("find distributor entitlement: %w", err)
 	}
+	change, err := readEntitlementChangeTx(ctx, tx, subscriberID)
+	if err != nil {
+		return DistributorEntitlement{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE users SET transfer_enable = ?,expired_at = ?,speed_limit = ?,device_limit = ?,
 			admin_revision = admin_revision + 1,updated_at = ?
@@ -199,6 +203,7 @@ func (s *Store) UpdateDistributorEntitlement(ctx context.Context, orderID int64,
 	if err := tx.Commit(); err != nil {
 		return DistributorEntitlement{}, fmt.Errorf("commit distributor entitlement update: %w", err)
 	}
+	value.Change = &change
 	return value, nil
 }
 

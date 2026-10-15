@@ -71,6 +71,7 @@ func (s *server) createDistributorOrder(w http.ResponseWriter, r *http.Request) 
 		handleModernDistributorError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), value.Change)
 	value, err = s.store.GetDistributorOrderByTradeNo(r.Context(), session.UserID, value.Order.TradeNo, s.now())
 	if err != nil {
 		handleModernDistributorError(w, err)
@@ -108,6 +109,7 @@ func (s *server) renewDistributorOrder(w http.ResponseWriter, r *http.Request) {
 		handleModernDistributorError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), value.Change)
 	value, err = s.store.GetDistributorOrderByTradeNo(r.Context(), session.UserID, value.Order.TradeNo, s.now())
 	if err != nil {
 		handleModernDistributorError(w, err)
@@ -251,6 +253,7 @@ func (s *server) updateAdminDistributorEntitlement(w http.ResponseWriter, r *htt
 		handleStoreError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), value.Change)
 	writeSuccess(w, http.StatusOK, value)
 }
 
@@ -440,6 +443,7 @@ func (s *server) legacyAdminUpdateDistributorEntitlement(w http.ResponseWriter, 
 		writeLegacyAdminDistributorError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), value.Change)
 	writeLegacySuccess(w, http.StatusOK, map[string]any{
 		"plan_id": value.PlanID, "plan_name": value.PlanName, "transfer_enable": value.TransferEnable,
 		"used_traffic": value.UsedTraffic, "remaining_traffic": value.RemainingTraffic,
@@ -526,6 +530,7 @@ func (s *server) legacyRenewDistributorOrder(w http.ResponseWriter, r *http.Requ
 		writeLegacyDistributorError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), order.Change)
 	writeLegacySuccess(w, http.StatusOK, map[string]any{
 		"trade_no": order.Order.TradeNo, "subscription_trade_no": order.Subscription.OriginalTradeNo,
 		"period": legacyOrderPeriod(order.Order.Period), "total_amount": order.Order.TotalAmount,

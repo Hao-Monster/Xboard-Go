@@ -88,9 +88,10 @@ type ShutdownWaiter interface {
 }
 
 type lifecycleHandler struct {
-	handler            http.Handler
-	webSocketDrainDone <-chan struct{}
-	authTelemetryDone  <-chan struct{}
+	notifyEntitlementChange func(context.Context, *store.EntitlementChange)
+	handler                 http.Handler
+	webSocketDrainDone      <-chan struct{}
+	authTelemetryDone       <-chan struct{}
 }
 
 func (h *lifecycleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -830,7 +831,7 @@ func New(dependencies Dependencies) http.Handler {
 	if !dependencies.WebSocketEnabled && authTelemetryDone == nil {
 		return handler
 	}
-	lifecycle := &lifecycleHandler{handler: handler, authTelemetryDone: authTelemetryDone}
+	lifecycle := &lifecycleHandler{handler: handler, authTelemetryDone: authTelemetryDone, notifyEntitlementChange: api.notifyEntitlementChange}
 	if dependencies.WebSocketEnabled {
 		lifecycle.webSocketDrainDone = api.hub.drainDone
 	}

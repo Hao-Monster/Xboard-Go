@@ -1765,7 +1765,16 @@ const (
 	OrderTypeResetTraffic
 )
 
+// EntitlementChange is returned only after the transaction that changed access commits.
+type EntitlementChange struct {
+	UserID       int64
+	PreviousUUID string
+	OldGroupID   *int64
+	NewGroupID   *int64
+}
+
 type Order struct {
+	Change                     *EntitlementChange    `json:"-"`
 	Source                     string                `json:"source,omitempty"`
 	GiftCardCodeID             *int64                `json:"gift_card_code_id,omitempty"`
 	PurchaseSnapshot           *GiftPurchaseSnapshot `json:"purchase_snapshot,omitempty"`
@@ -1852,6 +1861,7 @@ type DistributorSubscription struct {
 }
 
 type DistributorOrder struct {
+	Change                *EntitlementChange          `json:"-"`
 	Order                 Order                       `json:"order"`
 	PlanName              string                      `json:"plan_name"`
 	DistributorEmail      string                      `json:"distributor_email,omitempty"`
@@ -1912,14 +1922,15 @@ type RenewDistributorOrderInput struct {
 }
 
 type DistributorEntitlement struct {
-	PlanID           int64      `json:"plan_id"`
-	PlanName         string     `json:"plan_name"`
-	TransferEnable   int64      `json:"transfer_enable"`
-	UsedTraffic      int64      `json:"used_traffic"`
-	RemainingTraffic int64      `json:"remaining_traffic"`
-	ExpiredAt        *time.Time `json:"expired_at"`
-	SpeedLimit       int        `json:"speed_limit"`
-	DeviceLimit      int        `json:"device_limit"`
+	Change           *EntitlementChange `json:"-"`
+	PlanID           int64              `json:"plan_id"`
+	PlanName         string             `json:"plan_name"`
+	TransferEnable   int64              `json:"transfer_enable"`
+	UsedTraffic      int64              `json:"used_traffic"`
+	RemainingTraffic int64              `json:"remaining_traffic"`
+	ExpiredAt        *time.Time         `json:"expired_at"`
+	SpeedLimit       int                `json:"speed_limit"`
+	DeviceLimit      int                `json:"device_limit"`
 }
 
 type UpdateDistributorEntitlementInput struct {
@@ -1979,9 +1990,10 @@ type DistributorClaim struct {
 }
 
 type StaleOrderBatchResult struct {
-	Cancelled int `json:"cancelled"`
-	Completed int `json:"completed"`
-	Remaining int `json:"remaining"`
+	Changes   []EntitlementChange `json:"-"`
+	Cancelled int                 `json:"cancelled"`
+	Completed int                 `json:"completed"`
+	Remaining int                 `json:"remaining"`
 }
 
 type AdminOrder struct {

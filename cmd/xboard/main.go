@@ -217,7 +217,6 @@ func main() {
 
 	runtimeTracker := operations.NewTracker(time.Now())
 	worker := scheduler.NewWorker(database, settings.SchedulerInterval, logger, runtimeTracker)
-	go worker.Run(ctx)
 	if attachmentService != nil {
 		go runAttachmentCleanup(ctx, attachmentService, logger, time.Hour)
 	}
@@ -288,6 +287,10 @@ func main() {
 		LegacyAppClashRenderer:     legacyAppClashRenderer,
 		TicketRegionResolver:       ticketRegionResolver,
 	})
+	if notifier, ok := apiHandler.(scheduler.EntitlementNotifier); ok {
+		worker.SetEntitlementNotifier(notifier)
+	}
+	go worker.Run(ctx)
 	var handler http.Handler = apiHandler
 	if settings.WebRoot != "" || settings.FrontendOrigin != "" {
 		resolveFrontendAccess := func(request *http.Request) (webui.FrontendAccess, error) {

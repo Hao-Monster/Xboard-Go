@@ -787,12 +787,14 @@ func (s *Store) CompleteOrder(ctx context.Context, tradeNo, callbackNo string, n
 	if order.Status == OrderStatusCompleted {
 		return order, nil
 	}
-	if err := completeOrderTx(ctx, tx, &order, callbackNo, now); err != nil {
+	change, err := completeOrderTx(ctx, tx, &order, callbackNo, now)
+	if err != nil {
 		return Order{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete order: %w", err)
 	}
+	order.Change = &change
 	return order, nil
 }
 
@@ -815,14 +817,24 @@ func (s *Store) CompletePendingOrder(ctx context.Context, tradeNo, callbackNo st
 	if order.Status != OrderStatusPending {
 		return Order{}, ErrOrderState
 	}
-	if err := completeOrderTx(ctx, tx, &order, callbackNo, now); err != nil {
+	change, err := completeOrderTx(ctx, tx, &order, callbackNo, now)
+	if err != nil {
 		return Order{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete pending order: %w", err)
 	}
+	order.Change = &change
 	return order, nil
 }
+
+const paymentSettlementGrace = 30 * time.Minute
+
+// Selection and Remaining must agree so protected payments do not keep a sweep busy.
+const staleOrderPredicate = `WHERE o.status = 1 OR (o.status = 0 AND o.created_at <= ? AND (
+    o.created_at <= ? OR NOT EXISTS (
+        SELECT 1 FROM payment_checkout_attempts a WHERE a.order_id = o.id AND (
+            (a.status = 0 AND a.updated_at > ?) OR (a.status = 1 AND a.updated_at > ?)))))`
 
 func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int) (StaleOrderBatchResult, error) {
 	if limit < 1 || limit > maxOrderBatchSize || now.Unix() < 0 {
@@ -834,11 +846,10 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		return StaleOrderBatchResult{}, fmt.Errorf("begin stale order batch: %w", err)
 	}
 	defer tx.Rollback()
-	cutoff := now.Add(-orderTimeout).Unix()
+	cutoffs := []any{now.Add(-orderTimeout).Unix(), now.Add(-orderTimeout - paymentSettlementGrace).Unix(), now.Add(-paymentCheckoutLease).Unix(), now.Add(-paymentSettlementGrace).Unix()}
 	rows, err := tx.QueryContext(ctx, orderSelect+`
-		WHERE o.status = 1 OR (o.status = 0 AND o.created_at <= ?)
-		ORDER BY o.created_at, o.id LIMIT ?
-	`, cutoff, limit)
+		`+staleOrderPredicate+` ORDER BY o.created_at, o.id LIMIT ?
+	`, append(cutoffs, limit)...)
 	if err != nil {
 		return StaleOrderBatchResult{}, fmt.Errorf("list stale orders: %w", err)
 	}
@@ -871,14 +882,15 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		if callback == "" {
 			callback = order.TradeNo
 		}
-		if err := completeOrderTx(ctx, tx, order, callback, now); err != nil {
+		change, err := completeOrderTx(ctx, tx, order, callback, now)
+		if err != nil {
 			return StaleOrderBatchResult{}, err
 		}
+		result.Changes = append(result.Changes, change)
 		result.Completed++
 	}
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM orders WHERE status = 1 OR (status = 0 AND created_at <= ?)
-	`, cutoff).Scan(&result.Remaining); err != nil {
+		SELECT COUNT(*) FROM orders o `+staleOrderPredicate, cutoffs...).Scan(&result.Remaining); err != nil {
 		return StaleOrderBatchResult{}, fmt.Errorf("count stale orders: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -924,25 +936,29 @@ func hasActivePaymentCheckoutTx(ctx context.Context, tx *sql.Tx, orderID int64) 
 	return active, nil
 }
 
-func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo string, now time.Time) error {
+func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo string, now time.Time) (EntitlementChange, error) {
 	if order.Status != OrderStatusPending && order.Status != OrderStatusProcessing {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	user, err := readOrderUser(ctx, tx, order.UserID)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
+	}
+	change, err := readEntitlementChangeTx(ctx, tx, user.id)
+	if err != nil {
+		return EntitlementChange{}, err
 	}
 	plan, err := getPlan(ctx, tx, order.PlanID, now)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	settings, err := readOrderSettings(ctx, tx)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	beforeJSON, err := marshalEntitlementSnapshot(user)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 
 	paidAt := now.UTC()
@@ -958,14 +974,14 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 		WHERE id = ? AND status IN (0, 1)
 	`, paidAt.Unix(), callbackNo, now.Unix(), order.ID)
 	if err != nil {
-		return fmt.Errorf("mark order processing: %w", err)
+		return EntitlementChange{}, fmt.Errorf("mark order processing: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("count processing order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("count processing order: %w", err)
 	}
 	if changed != 1 {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	if order.SurplusCredit > 0 {
 		user.balance += order.SurplusCredit
@@ -973,13 +989,13 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	if len(order.SurplusOrderIDs) > 0 {
 		for _, orderID := range order.SurplusOrderIDs {
 			if orderID < 1 {
-				return fmt.Errorf("invalid surplus order ID in order %d", order.ID)
+				return EntitlementChange{}, fmt.Errorf("invalid surplus order ID in order %d", order.ID)
 			}
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE orders SET status = 4, updated_at = ?
 				WHERE id = ? AND user_id = ? AND status = 3 AND period <> 'reset_traffic'
 			`, now.Unix(), orderID, order.UserID); err != nil {
-				return fmt.Errorf("discount surplus order: %w", err)
+				return EntitlementChange{}, fmt.Errorf("discount surplus order: %w", err)
 			}
 		}
 	}
@@ -998,7 +1014,7 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	default:
 		months, valid := orderPeriodMonths[order.Period]
 		if !valid {
-			return fmt.Errorf("%w: invalid stored order period", ErrInvalidInput)
+			return EntitlementChange{}, fmt.Errorf("%w: invalid stored order period", ErrInvalidInput)
 		}
 		if order.Type == OrderTypeUpgrade {
 			user.expiredAt = sql.NullInt64{Int64: now.Unix(), Valid: true}
@@ -1037,7 +1053,7 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	}
 	var systemResetMethod int
 	if err := tx.QueryRowContext(ctx, `SELECT traffic_reset_method FROM app_settings WHERE id = 1`).Scan(&systemResetMethod); err != nil {
-		return fmt.Errorf("read order traffic reset method: %w", err)
+		return EntitlementChange{}, fmt.Errorf("read order traffic reset method: %w", err)
 	}
 	var expiry *time.Time
 	if user.expiredAt.Valid {
@@ -1055,31 +1071,31 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 		user.trafficDownload, nullableSQLInt(user.expiredAt), user.speedLimit, user.deviceLimit,
 		nullableSQLInt(user.nextResetAt), nullableSQLInt(user.lastResetAt), user.resetCount, user.balance,
 		now.Unix(), user.id); err != nil {
-		return fmt.Errorf("apply order entitlement: %w", err)
+		return EntitlementChange{}, fmt.Errorf("apply order entitlement: %w", err)
 	}
 	afterJSON, err := marshalEntitlementSnapshot(user)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO order_entitlement_events (order_id, user_id, event_type, before_json, after_json, applied_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, order.ID, order.UserID, orderTypeEventName(order.Type), string(beforeJSON), string(afterJSON), now.Unix()); err != nil {
-		return fmt.Errorf("record order entitlement: %w", err)
+		return EntitlementChange{}, fmt.Errorf("record order entitlement: %w", err)
 	}
 	completed, err := tx.ExecContext(ctx, `
 		UPDATE orders SET status = 3, entitlement_expired_at_before = ?, entitlement_expired_at_after = ?, updated_at = ?
 		WHERE id = ? AND status = 1
 	`, nullableTimeUnix(beforeExpiry), nullableSQLInt(user.expiredAt), now.Unix(), order.ID)
 	if err != nil {
-		return fmt.Errorf("complete order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("complete order: %w", err)
 	}
 	completedCount, err := completed.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("count completed order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("count completed order: %w", err)
 	}
 	if completedCount != 1 {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	order.Status = OrderStatusCompleted
 	order.PaidAt = &paidAt
@@ -1087,7 +1103,8 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	order.EntitlementExpiredAtBefore = beforeExpiry
 	order.EntitlementExpiredAtAfter = nullableUnixTime(user.expiredAt)
 	order.UpdatedAt = now.UTC()
-	return nil
+	change.NewGroupID = nullableInt64Pointer(user.groupID)
+	return change, nil
 }
 
 func validateOrderPurchase(user orderUserState, plan Plan, period string, now time.Time) error {
@@ -1581,4 +1598,16 @@ func attachOrderPlans(ctx context.Context, database interface {
 
 func escapeOrderLike(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+// Snapshot identity and groups inside the same transaction as the entitlement write.
+func readEntitlementChangeTx(ctx context.Context, tx *sql.Tx, userID int64) (EntitlementChange, error) {
+	change := EntitlementChange{UserID: userID}
+	var group sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT uuid, group_id FROM users WHERE id = ?`, userID).Scan(&change.PreviousUUID, &group); err != nil {
+		return EntitlementChange{}, fmt.Errorf("read entitlement change identity: %w", err)
+	}
+	change.OldGroupID = nullableInt64Pointer(group)
+	change.NewGroupID = nullableInt64Pointer(group)
+	return change, nil
 }
