@@ -1603,10 +1603,12 @@ func escapeOrderLike(value string) string {
 // Snapshot identity and groups inside the same transaction as the entitlement write.
 func readEntitlementChangeTx(ctx context.Context, tx *sql.Tx, userID int64) (EntitlementChange, error) {
 	change := EntitlementChange{UserID: userID}
+	var previousUUID sql.NullString
 	var group sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT uuid, group_id FROM users WHERE id = ?`, userID).Scan(&change.PreviousUUID, &group); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT uuid, group_id FROM users WHERE id = ?`, userID).Scan(&previousUUID, &group); err != nil {
 		return EntitlementChange{}, fmt.Errorf("read entitlement change identity: %w", err)
 	}
+	change.PreviousUUID = previousUUID.String
 	change.OldGroupID = nullableInt64Pointer(group)
 	change.NewGroupID = nullableInt64Pointer(group)
 	return change, nil

@@ -1570,6 +1570,9 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 		action := "add"
 		users := []store.RuntimeUser{user}
 		if errors.Is(err, store.ErrNotFound) {
+			if previousUUID == "" {
+				continue
+			}
 			action = "remove"
 			users = []store.RuntimeUser{{ID: userID, UUID: previousUUID}}
 		} else if err != nil {

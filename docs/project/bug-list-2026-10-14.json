@@ -4,7 +4,7 @@
   "recorded_at": "2026-10-15",
   "baseline_sha": "07476e0229efd7ed326843c67dc611c7b1366c1a",
   "branch": "codex/ci-001-tiered-gates",
-  "status": "batch_a_fixed_local_verified_waiting_review",
+  "status": "batch_a_rework_local_verified_waiting_rereview",
   "authorization": {
     "local_changes_and_tests": true,
     "local_commits": true,
@@ -55,14 +55,15 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "fixed_local_verified",
+      "status": "fixed_after_review_waiting_rereview",
       "fix_commits": [
         "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8"
       ],
       "evidence": [
         "docs/testing/bug-fix-a-results-2026-10-14.md",
         "docs/testing/bug-fix-a-evidence-2026-10-14.json"
-      ]
+      ],
+      "review_rework_evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/review_rework"
     },
     {
       "id": "BUG-20261014-02",
@@ -836,7 +837,66 @@
       "evidence": []
     }
   ],
-  "implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
   "report": "docs/testing/bug-fix-a-results-2026-10-14.md",
-  "evidence_boundary": "Local source and synthetic SQLite/hub/HMAC tests only. No production, real Redis dual-replica, provider settlement, browser or device acceptance. Root ./... commands hit ignored historical mixed-package artifacts; formal cmd/internal full regression passes."
+  "evidence_boundary": "Current local rework evidence is under review_rework; prior implementation_sha/results are historical. No push, PR, deployment, real Redis, provider or browser/device acceptance.",
+  "historical_implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
+  "decision_sources": {
+    "D-2": {
+      "source": "Explicit user reply in this conversation to the batch A async question",
+      "verbatim": "允许兑换：消耗卡但天数不生效",
+      "effect": "Overrides engineering specification recommendation to reject days-only cards; consume normally and record effective days as zero."
+    }
+  },
+  "review_rework": {
+    "baseline_sha": "f6e31fc3dd71e11058461a28a8cec5606da8e931",
+    "status": "locally_verified_waiting_user_rereview",
+    "finding": "High: NULL users.uuid caused readEntitlementChangeTx to fail order completion.",
+    "resolution": "sql.NullString -> empty PreviousUUID; skip only empty-UUID remove; preserve add/device/coordination.",
+    "commit_binding": "This record is stored in the single appended rework commit; source SHA256 binds the exact tested content without a self-referential commit hash.",
+    "source_sha256": {
+      "internal/store/orders.go": "1c3224726a65bb377c7e368885c13c588eddc131deb06b8a059546ad288b312c",
+      "internal/store/orders_entitlement_change_test.go": "15e83290263bd90dbe9e3c232cd42b15701d7612ab10bade498c118fb8c98c6e",
+      "internal/httpapi/websocket.go": "cbbb8efb260c6df8624808c0daaf79ff0f6260396ea1c44eb1ca3535fd24bada",
+      "internal/httpapi/order_entitlement_notification_test.go": "5f8eef3a5840a4c827d6bce42bc8b4472c99e57923abc3d41a0dc341848eebf2"
+    },
+    "test_evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/review_rework",
+    "root_glob": {
+      "commands": [
+        "go test ./...",
+        "go vet ./...",
+        "go build ./..."
+      ],
+      "status": "NOT RUN",
+      "reason": "Ignored docs-dev/gift-card-qa-20261004/supplement still mixes package httpapi and package store. User accepted ./cmd/... ./internal/... as substitute.",
+      "historical_result": "Initial batch A actually attempted these commands and FAILED; historical results remain recorded, not relabeled."
+    },
+    "low_1": "Actual httpapi.New notifier interface test covers non-nil Context with WebSocket on/off. Worker first sweep waits for dependency initialization; cadence, clock and cancellation are unchanged."
+  },
+  "found_but_unfixed": [
+    {
+      "finding": "Gift card redemption changes traffic and other entitlements without notifying runtime nodes.",
+      "status": "found_but_unfixed",
+      "scope": "Outside BL-03 permanent-day-reward fix; recorded only in this rework."
+    }
+  ],
+  "protected_frontend_work": {
+    "support_orders": {
+      "owner_thread": "01a13dcf-0b8c-7790-81af-8bc96aa31e6c",
+      "owner_title": "修复客服购买会话与订单发送",
+      "evidence": "docs/testing/purchase-support-handoff-2026-10-15.md and read-only task completion message",
+      "status": "Independent local work, not included or modified by batch A",
+      "overlap": "UserOrdersPage.tsx overlaps BL-26/27 in H."
+    },
+    "staged_shell": {
+      "files": [
+        "web/src/App.tsx",
+        "web/src/App.test.tsx",
+        "web/src/styles.css",
+        "docs/project/frontend-parity-2026-10-01.json"
+      ],
+      "purpose": "2026-10-12 removal of duplicate floating distributor entry",
+      "owner_status": "delivery owner/integration status not yet confirmed; preserve index"
+    },
+    "gate": "B not started pending A rereview; H not started, requires prior-batch approval and frontend ownership/integration reconciliation."
+  }
 }

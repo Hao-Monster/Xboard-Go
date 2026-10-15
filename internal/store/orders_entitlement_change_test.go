@@ -93,3 +93,62 @@ func TestBL01OrderEntitlementChange(t *testing.T) {
 		})
 	}
 }
+
+func TestBL01NullUUIDOrderCompletion(t *testing.T) {
+	for _, scenario := range []string{"complete", "pending", "processing"} {
+		t.Run(scenario, func(t *testing.T) {
+			db := newTestStore(t)
+			ctx := t.Context()
+			now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+			plan, userID := createOrderFixture(t, db, now, PlanPrices{"monthly": 1000}, nil)
+			if _, err := db.db.ExecContext(ctx, `UPDATE users SET uuid=NULL WHERE id=?`, userID); err != nil {
+				t.Fatal(err)
+			}
+			order, err := db.CreateOrder(ctx, CreateOrderInput{UserID: userID, PlanID: plan.ID, Period: "monthly"}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var change *EntitlementChange
+			switch scenario {
+			case "processing":
+				if _, err := db.db.ExecContext(ctx, `UPDATE orders SET status=? WHERE id=?`, OrderStatusProcessing, order.ID); err != nil {
+					t.Fatal(err)
+				}
+				batch, err := db.ProcessStaleOrders(ctx, now, 10)
+				if err != nil || batch.Completed != 1 || len(batch.Changes) != 1 {
+					t.Fatalf("NULL UUID recovery=%+v err=%v", batch, err)
+				}
+				change = &batch.Changes[0]
+			default:
+				complete := db.CompleteOrder
+				if scenario == "pending" {
+					complete = db.CompletePendingOrder
+				}
+				completed, err := complete(ctx, order.TradeNo, "QA-null-uuid", now)
+				if err != nil || completed.Status != OrderStatusCompleted {
+					t.Fatalf("NULL UUID completion=%+v err=%v", completed, err)
+				}
+				change = completed.Change
+			}
+			if change == nil || change.UserID != userID || change.PreviousUUID != "" || change.OldGroupID == nil || *change.OldGroupID != *plan.GroupID || change.NewGroupID == nil || *change.NewGroupID != *plan.GroupID {
+				t.Fatalf("NULL UUID change=%+v", change)
+			}
+			persisted, err := db.GetUserOrder(ctx, userID, order.TradeNo)
+			if err != nil || persisted.Status != OrderStatusCompleted || persisted.PaidAt == nil {
+				t.Fatalf("persisted order=%+v err=%v", persisted, err)
+			}
+			repeated, err := db.CompleteOrder(ctx, order.TradeNo, "QA-null-uuid", now)
+			if err != nil || repeated.Change != nil {
+				t.Fatalf("NULL UUID replay=%+v err=%v", repeated, err)
+			}
+			var uuid sql.NullString
+			var actualPlan, group, transfer, expiry, events int64
+			if err := db.db.QueryRowContext(ctx, `SELECT uuid,plan_id,group_id,transfer_enable,expired_at,(SELECT COUNT(*) FROM order_entitlement_events WHERE order_id=?) FROM users WHERE id=?`, order.ID, userID).Scan(&uuid, &actualPlan, &group, &transfer, &expiry, &events); err != nil {
+				t.Fatal(err)
+			}
+			if uuid.Valid || actualPlan != plan.ID || group != *plan.GroupID || transfer != 100*bytesPerGiB || expiry != now.AddDate(0, 1, 0).Unix() || events != 1 {
+				t.Fatalf("NULL UUID entitlement uuid/plan/group/transfer/expiry/events=%v/%d/%d/%d/%d/%d", uuid, actualPlan, group, transfer, expiry, events)
+			}
+		})
+	}
+}

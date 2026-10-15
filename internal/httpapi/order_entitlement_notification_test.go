@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/payment"
+	"github.com/Hao-Monster/Xboard-Go/internal/scheduler"
 	appsettings "github.com/Hao-Monster/Xboard-Go/internal/settings"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
@@ -74,6 +75,75 @@ func assertEntitlementDelta(t *testing.T, c *wsConnection, action string, userID
 		t.Fatalf("delta count=%d want 1", found)
 	}
 	return notified
+}
+
+func TestBL01EmptyPreviousUUIDPreservesOtherNotifications(t *testing.T) {
+	s, coord, _ := entitlementTestServer(t)
+	ctx := t.Context()
+	oldGroup, err := s.store.CreateServerGroup(ctx, "QA old group", fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	newGroup, err := s.store.CreateServerGroup(ctx, "QA new group", fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.store.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{Email: "QA-empty-previous@example.test", PasswordHash: "hash", GroupID: newGroup.ID, UUID: "8cb27c83-6795-45be-b9f3-a74824ad5f7a", TransferEnable: 100}, fixedNow())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldConn := entitlementConnection(t, s, oldGroup.ID)
+	newConn := entitlementConnection(t, s, newGroup.ID)
+	s.notifyEntitlementChange(ctx, &store.EntitlementChange{UserID: user.ID, PreviousUUID: "", OldGroupID: &oldGroup.ID, NewGroupID: &newGroup.ID})
+	for name, conn := range map[string]*wsConnection{"old": oldConn, "new": newConn} {
+		deltas, devices := 0, 0
+		for len(conn.writeCh) > 0 {
+			event := <-conn.writeCh
+			switch event.Event {
+			case "sync.user.delta":
+				deltas++
+				data := event.Data.(map[string]any)
+				users := data["users"].([]store.RuntimeUser)
+				if name == "old" || data["action"] != "add" || len(users) != 1 || users[0].ID != user.ID || users[0].UUID != user.UUID {
+					t.Errorf("unexpected %s group delta=%+v", name, data)
+				}
+			case "sync.devices":
+				devices++
+			}
+		}
+		wantDeltas := 0
+		if name == "new" {
+			wantDeltas = 1
+		}
+		if deltas != wantDeltas || devices != 1 {
+			t.Errorf("%s group deltas/devices=%d/%d want %d/1", name, deltas, devices, wantDeltas)
+		}
+	}
+	if len(coord.events) != 1 || coord.events[0].Kind != nodecoord.EventRefreshGroups || !coord.events[0].DevicesCleared || len(coord.events[0].GroupIDs) != 2 || coord.events[0].GroupIDs[0] != oldGroup.ID || coord.events[0].GroupIDs[1] != newGroup.ID {
+		t.Fatalf("coordination=%+v", coord.events)
+	}
+}
+
+func TestBL01HandlerExposesEntitlementNotifier(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("websocket_%t", enabled), func(t *testing.T) {
+			db := cloneHTTPAPITestDatabase(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			handler := New(Dependencies{Context: ctx, Store: db, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow, WebSocketEnabled: enabled})
+			notifier, ok := handler.(scheduler.EntitlementNotifier)
+			if !ok {
+				t.Fatalf("handler %T does not expose scheduler entitlement notifier", handler)
+			}
+			notifier.NotifyEntitlementChange(ctx, nil)
+			cancel()
+			waitCtx, stop := context.WithTimeout(t.Context(), 2*time.Second)
+			defer stop()
+			if err := handler.(ShutdownWaiter).WaitForShutdown(waitCtx); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestBL01PaymentWebhookNotifiesGroupsExactlyOnce(t *testing.T) {
