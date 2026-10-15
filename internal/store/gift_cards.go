@@ -1330,6 +1330,11 @@ func checkGiftCard(ctx context.Context, database interface {
 	if err != nil {
 		return GiftCardPreview{}, err
 	}
+	// Permanent subscriptions cannot gain days. Persist and display only the reward
+	// that takes effect; D-2 explicitly allows consuming even a days-only card.
+	if (template.Type == GiftCardTypeGeneral || template.Type == GiftCardTypeMystery) && user.planID.Valid && !user.expiredAt.Valid {
+		reward.ExpireDays = 0
+	}
 	return GiftCardPreview{Template: template, Code: codeRecord, Rewards: reward}, conditionErr
 }
 
@@ -1584,7 +1589,7 @@ func applyGiftCardReward(ctx context.Context, tx *sql.Tx, user *giftCardUserStat
 		baseExpiry = time.Unix(user.expiredAt.Int64, 0)
 	}
 	expiry := user.expiredAt
-	if reward.ExpireDays > 0 {
+	if reward.ExpireDays > 0 && !(user.planID.Valid && !user.expiredAt.Valid) {
 		expiry = sql.NullInt64{Int64: baseExpiry.AddDate(0, 0, reward.ExpireDays).Unix(), Valid: true}
 	}
 	upload, download := user.trafficUpload, user.trafficDownload
