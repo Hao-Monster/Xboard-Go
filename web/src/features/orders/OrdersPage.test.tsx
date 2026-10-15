@@ -1,4 +1,6 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+/// <reference types="node" />
+import { webcrypto } from "node:crypto";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +25,42 @@ const pending = {
 } satisfies Order;
 
 describe("UserOrdersPage", () => {
+  it("sends the selected order only after opening chat and waits for the rendered QR receipt", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const payable = { ...pending, total_amount: 1234, original_amount: 1234 };
+    const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn().mockResolvedValue({ revision: 1, card_store_url: "", chatwoot_base_url: "https://chat.example.test", chatwoot_website_token: "public_fixture" }) };
+    const user = userEvent.setup();
+    const view = render(<UserOrdersPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const open = await screen.findByRole("button", { name: "打开客服购买" });
+    expect(screen.queryByTitle("在线客服聊天")).not.toBeInTheDocument();
+    await user.click(open);
+    const frame = screen.getByTitle<HTMLIFrameElement>("在线客服聊天");
+    const target = frame.contentWindow!;
+    const post = vi.spyOn(target, "postMessage");
+    const receive = (data: string) => act(() => { window.dispatchEvent(new MessageEvent("message", { origin: "https://chat.example.test", source: target, data })); });
+    expect(post).not.toHaveBeenCalled();
+    receive(`chatwoot-widget:${JSON.stringify({ event: "loaded", config: { authToken: "qa.session.signature" } })}`);
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.stringContaining('"action":"purchase"'), "https://chat.example.test"));
+    const sent = post.mock.calls.find(([value]) => typeof value === "string" && value.includes('"action":"purchase"'))!;
+    const request = JSON.parse(String(sent[0]).slice("freedompost-handoff:".length));
+    expect(request.content).toContain(`订单号：${pending.trade_no}`);
+    expect(request.content).toContain("套餐：Premium");
+    expect(request.content).toContain("待付金额：¥12.34");
+    expect(screen.getByText("正在发送订单并等待微信二维码…")).toBeVisible();
+    expect(screen.queryByText("订单已发送，微信二维码已显示在会话中。")).not.toBeInTheDocument();
+    const receipt = `freedompost-handoff:${JSON.stringify({ ...request, ok: true, bindingId: "a".repeat(64), generation: "qa-generation", messageId: 101, qrMessageId: 102, rendered: true })}`;
+    receive(receipt);
+    expect(await screen.findByText("订单已发送，微信二维码已显示在会话中。")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "收起客服" }));
+    await user.click(screen.getByRole("button", { name: "打开客服购买" }));
+    receive(receipt);
+    expect(screen.queryByText("订单已发送，微信二维码已显示在会话中。")).not.toBeInTheDocument();
+    expect(api.checkoutOrder).not.toHaveBeenCalled();
+    expect(api.cancelOrder).not.toHaveBeenCalled();
+    view.unmount();
+    vi.unstubAllGlobals();
+  });
   it("only offers alternate purchases for a successfully loaded empty payment list without changing the order", async () => {
     const payable = { ...pending, total_amount: 1000, original_amount: 1000 };
     const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn().mockResolvedValue({ revision: 1, card_store_url: "https://cards.example.test", chatwoot_base_url: "", chatwoot_website_token: "" }) };
