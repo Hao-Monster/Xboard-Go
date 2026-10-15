@@ -534,12 +534,12 @@
     }
   ],
   "historical_implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
-  "results_scope": "Top-level results are historical first-delivery evidence; current review-rework results are in review_rework.",
+  "results_scope": "Top-level results and review_rework are historical evidence; latest A re-review is rereview_2026_10_15, which passed at ec4593bd.",
   "review_rework": {
     "date": "2026-10-15",
     "baseline_sha": "f6e31fc3dd71e11058461a28a8cec5606da8e931",
     "commit_binding": "This record is stored in the single appended rework commit; source SHA256 binds the exact tested content without a self-referential commit hash.",
-    "status": "locally_verified_waiting_user_rereview",
+    "status": "historical_local_rework_superseded_by_passed_rereview_2026_10_15",
     "source_sha256": {
       "internal/store/orders.go": "1c3224726a65bb377c7e368885c13c588eddc131deb06b8a059546ad288b312c",
       "internal/store/orders_entitlement_change_test.go": "15e83290263bd90dbe9e3c232cd42b15701d7612ab10bade498c118fb8c98c6e",
@@ -1194,5 +1194,92 @@
       "file_count": 14,
       "verification": "Working file SHA256 and index entries match the start-of-rework snapshot."
     }
+  },
+  "rereview_2026_10_15": {
+    "status": "PASS",
+    "reviewed_sha": "ec4593bde9b2573da36296bf84c58cf8cd7a3d84",
+    "rework_commit": "0fbd12141270f9709296d4bacf96bbdb2ec6e645",
+    "independent_source_review": "PASS; no blocking findings. NULL UUID real-SQLite completion, empty UUID remove suppression, non-empty remove and add/device/coordination preservation verified.",
+    "results": [
+      {
+        "command": "go test -json -count=1 ./internal/store ./internal/httpapi ./internal/scheduler",
+        "status": "PASS",
+        "exit_code": 0,
+        "test_counts": {
+          "pass": 1291,
+          "fail": 0,
+          "skip": 9
+        },
+        "root_test_counts": {
+          "pass": 792,
+          "fail": 0,
+          "skip": 9
+        },
+        "packages": [
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/scheduler",
+            "status": "pass",
+            "elapsed_seconds": 8.814
+          },
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+            "status": "pass",
+            "elapsed_seconds": 60.483
+          },
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/store",
+            "status": "pass",
+            "elapsed_seconds": 103.861
+          }
+        ],
+        "skipped_tests": [
+          "TestTIMENODE006HTTPReportUsesRedisAuthorityAndTrailingDatabaseFlush",
+          "TestTIMENODE006RedisGenerationFencesCrossInstanceReconnectAndDisconnect",
+          "TestCAPR014WebSocketConnectionDrain",
+          "TestINTR014GracefulDrainReleasesRedisOwnershipBeforeReconnect",
+          "TestINTR014DrainWaitsForInFlightClaimAndReleasesOwnership",
+          "TestINTNODE003RedisCoordinatedWebSocketsFenceAcrossInstancesAndRouteNotifications",
+          "TestINTNODE003RedisCoordinatedLegacyNodeWebSocketsFenceAndRotateAcrossInstances",
+          "TestINTNODE007TrafficExceededRefreshesRemoteReplicaAndReplays",
+          "TestINTNODE003RedisCoordinationFailureClosesBeforeWriteAndRecovers"
+        ],
+        "local_log": "tmp/bugfix-b/a-rereview.jsonl"
+      },
+      {
+        "command": "go test -json -race -count=1 -run=TestBL0[123] ./internal/store ./internal/httpapi ./internal/scheduler",
+        "status": "PASS",
+        "exit_code": 0,
+        "test_counts": {
+          "pass": 45,
+          "fail": 0,
+          "skip": 0
+        },
+        "root_test_counts": {
+          "pass": 13,
+          "fail": 0,
+          "skip": 0
+        },
+        "packages": [
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/httpapi",
+            "status": "pass",
+            "elapsed_seconds": 29.034
+          },
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/store",
+            "status": "pass",
+            "elapsed_seconds": 33.316
+          },
+          {
+            "package": "github.com/Hao-Monster/Xboard-Go/internal/scheduler",
+            "status": "pass",
+            "elapsed_seconds": 36.797
+          }
+        ],
+        "skipped_tests": [],
+        "local_log": "tmp/bugfix-b/a-rereview-race.jsonl"
+      }
+    ],
+    "scope": "Batch A local implementation review passed; authorizes starting batch B under user instruction. No live-provider, deployment or business acceptance claimed."
   }
 }

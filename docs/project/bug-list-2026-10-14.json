@@ -4,7 +4,7 @@
   "recorded_at": "2026-10-15",
   "baseline_sha": "07476e0229efd7ed326843c67dc611c7b1366c1a",
   "branch": "codex/ci-001-tiered-gates",
-  "status": "batch_a_rework_local_verified_waiting_rereview",
+  "status": "batch_a_rereview_passed_batch_b_local_verified_waiting_review",
   "authorization": {
     "local_changes_and_tests": true,
     "local_commits": true,
@@ -18,7 +18,8 @@
     "D-1": "Stage one: default 30 minute settlement grace; no late-payment money handling.",
     "D-2": "User confirmed consume days-only general cards for permanent users; days have no effect and are recorded as zero.",
     "D-3": "Pending approval; no schema changes.",
-    "D-4": "Pending approval; no parity changes in this batch."
+    "D-4": "Pending approval; no parity changes in this batch.",
+    "D-5": "Use engineering-spec default: HWID headers plus 404 empty body; account quota 429/60; render busy 503/1. V2 unchanged."
   },
   "bugs": [
     {
@@ -55,9 +56,10 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "fixed_after_review_waiting_rereview",
+      "status": "fixed_local_rereview_passed",
       "fix_commits": [
-        "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8"
+        "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8",
+        "0fbd12141270f9709296d4bacf96bbdb2ec6e645"
       ],
       "evidence": [
         "docs/testing/bug-fix-a-results-2026-10-14.md",
@@ -88,7 +90,7 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "fixed_local_verified",
+      "status": "fixed_local_rereview_passed",
       "fix_commits": [
         "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8"
       ],
@@ -119,7 +121,7 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "fixed_local_verified",
+      "status": "fixed_local_rereview_passed",
       "fix_commits": [
         "9dfae293cfc81dd2f49490fb54ffbe14033d68a3"
       ],
@@ -245,9 +247,10 @@
       "issues": [
         {
           "number": 119,
-          "milestone": "M3",
-          "state_at_check": "NOT_CHECKED",
-          "note": "Existing acceptance mapping; no issue closure claimed."
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
         },
         {
           "number": 120,
@@ -257,9 +260,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified_waiting_batch_review",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
     },
     {
       "id": "BUG-20261014-09",
@@ -282,9 +290,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified_waiting_batch_review",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
     },
     {
       "id": "BUG-20261014-10",
@@ -301,14 +314,20 @@
       "issues": [
         {
           "number": 119,
-          "milestone": "M3",
-          "state_at_check": "NOT_CHECKED",
-          "note": "Existing acceptance mapping; no issue closure claimed."
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified_waiting_batch_review",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
     },
     {
       "id": "BUG-20261014-11",
@@ -838,7 +857,7 @@
     }
   ],
   "report": "docs/testing/bug-fix-a-results-2026-10-14.md",
-  "evidence_boundary": "Current local rework evidence is under review_rework; prior implementation_sha/results are historical. No push, PR, deployment, real Redis, provider or browser/device acceptance.",
+  "evidence_boundary": "Current A re-review is batch_a_rereview / rereview_2026_10_15; current B evidence is batch_b. Prior first-delivery and review_rework results are historical. A and unrelated preserved work were pushed through ec4593bd by earlier explicit user authorization. B has local commits only; no PR, merge, deployment or live acceptance.",
   "historical_implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
   "decision_sources": {
     "D-2": {
@@ -849,7 +868,7 @@
   },
   "review_rework": {
     "baseline_sha": "f6e31fc3dd71e11058461a28a8cec5606da8e931",
-    "status": "locally_verified_waiting_user_rereview",
+    "status": "historical_local_rework_superseded_by_passed_batch_a_rereview",
     "finding": "High: NULL users.uuid caused readEntitlementChangeTx to fail order completion.",
     "resolution": "sql.NullString -> empty PreviousUUID; skip only empty-UUID remove; preserve add/device/coordination.",
     "commit_binding": "This record is stored in the single appended rework commit; source SHA256 binds the exact tested content without a self-referential commit hash.",
@@ -884,7 +903,7 @@
       "owner_thread": "01a13dcf-0b8c-7790-81af-8bc96aa31e6c",
       "owner_title": "修复客服购买会话与订单发送",
       "evidence": "docs/testing/purchase-support-handoff-2026-10-15.md and read-only task completion message",
-      "status": "Independent local work, not included or modified by batch A",
+      "status": "Historical separate work; integrated in 07c129f6 and pushed through ec4593bd before B. No frontend modifications in B.",
       "overlap": "UserOrdersPage.tsx overlaps BL-26/27 in H."
     },
     "staged_shell": {
@@ -895,8 +914,23 @@
         "docs/project/frontend-parity-2026-10-01.json"
       ],
       "purpose": "2026-10-12 removal of duplicate floating distributor entry",
-      "owner_status": "delivery owner/integration status not yet confirmed; preserve index"
+      "owner_status": "Historical staged state resolved by user-authorized preservation commit 746dd513; pushed through ec4593bd before B."
     },
-    "gate": "B not started pending A rereview; H not started, requires prior-batch approval and frontend ownership/integration reconciliation."
+    "gate": "A re-review passed; B locally verified pending user batch review. H not started; when authorized, adapt its scope on the already integrated frontend behavior without reverting prior work."
+  },
+  "batch_a_rereview": {
+    "date": "2026-10-15",
+    "status": "passed",
+    "sha": "ec4593bde9b2573da36296bf84c58cf8cd7a3d84",
+    "evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/rereview_2026_10_15"
+  },
+  "batch_b": {
+    "baseline_sha": "ec4593bde9b2573da36296bf84c58cf8cd7a3d84",
+    "plan": "docs/testing/bug-fix-b-plan-2026-10-15.md",
+    "status": "local_verified_independent_review_passed_pending_user_batch_review",
+    "authorization": "User requested A rereview, then B after pass. Local implementation/tests/commits only.",
+    "implementation_sha": "d35449b9546481ae329426f5184ddcdb58538abb",
+    "report": "docs/testing/bug-fix-b-results-2026-10-15.md",
+    "evidence": "docs/testing/bug-fix-b-evidence-2026-10-15.json"
   }
 }

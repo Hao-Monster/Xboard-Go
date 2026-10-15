@@ -196,3 +196,16 @@ Red 的 5 个失败条目包括 NULL UUID 父测试及三个场景，以及空 r
 本轮目标测试语句覆盖率：store 8.4%、httpapi 7.6%、scheduler 12.7%；readEntitlementChangeTx 88.9%、NotifyUserMutation 79.5%、两个通知转发 helper 均 100%。该结果不代表全仓覆盖率；未独立测行覆盖率，Go 原生工具不报告分支覆盖率。SQL 失败与部分通知错误路径、真实 Redis/提供方仍存在未测边界。
 
 `go run ./cmd/projectctl generate`、`go run ./cmd/projectctl check`：PASS / 0，均输出 `project governance check passed`，未单独计时。本次只有四个 Go 源码/测试文件变动；其他修改为本批矩阵、报告和两份 JSON，未引入依赖或迁移。提交前对照开工快照，其他任务的 14 个受保护文件内容 SHA256 与 index 均一致。
+
+## 2026-10-15 再复审结论：A 批通过
+
+复审基线为 `ec4593bde9b2573da36296bf84c58cf8cd7a3d84`，包含追加修订提交 `0fbd12141270f9709296d4bacf96bbdb2ec6e645`。独立只读复核 NULL UUID 实现、真实 SQLite 订单完成/权益/事件/幂等断言、空旧 UUID 的通知边界及非空 UUID 回归，无阻断发现。
+
+| 重新执行的命令 | 状态 / 退出码 | 通过 / 失败 / 跳过 | 最大包耗时 |
+| --- | --- | --- | --- |
+| `go test -json -count=1 ./internal/store ./internal/httpapi ./internal/scheduler` | PASS / 0 | 1291 / 0 / 9 | 103.861s |
+| `go test -json -race -count=1 -run=TestBL0[123] ./internal/store ./internal/httpapi ./internal/scheduler` | PASS / 0 | 45 / 0 / 0 | 36.797s |
+
+计数含父测试和子测试；9 个既有 skip 的名称见证据 JSON `rereview_2026_10_15`。本次未修改 A 批源码或测试。A 批本地修复验收通过，按用户指令才开始 B 批；不代表真实支付提供方、设备或生产验收。
+
+状态校正：上节的未推送及前端未提交描述是当时历史快照。之后用户授权全部推送，前端及交接资料已提交，分支已推到上述复审基线。当前 B 批未获新的推送/部署授权；A 的 Low 2/3 说明与历史失败记录继续保留。
