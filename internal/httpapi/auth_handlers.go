@@ -313,9 +313,16 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func currentCookieSessionID(session store.SessionUser) int64 {
+	if session.CredentialKind == store.CredentialKindCookieSession {
+		return session.SessionID
+	}
+	return 0
+}
+
 func (s *server) listAccountSessions(w http.ResponseWriter, r *http.Request) {
 	session, _ := sessionFromContext(r.Context())
-	sessions, err := s.store.ListActiveSessions(r.Context(), session.UserID, session.SessionID, s.now())
+	sessions, err := s.store.ListActiveSessions(r.Context(), session.UserID, currentCookieSessionID(session), s.now())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -333,7 +340,7 @@ func (s *server) revokeAccountSession(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if sessionID == session.SessionID {
+	if currentID := currentCookieSessionID(session); currentID > 0 && sessionID == currentID {
 		s.clearAuthCookies(w)
 	}
 	w.WriteHeader(http.StatusNoContent)

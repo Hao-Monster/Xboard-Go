@@ -86,6 +86,7 @@ type wsConnection struct {
 	closeOnce              sync.Once
 	nodesMu                sync.RWMutex
 	nodeIDs                map[int64]struct{}
+	pendingReleaseNodeIDs  map[int64]struct{}
 	messageRequests        *requestLimiter
 	controlMessageRequests *requestLimiter
 	nodeMessageRequests    *requestLimiter
@@ -612,6 +613,8 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 				ownedNodes = append(ownedNodes, nodeID)
 			}
 		}
+		pendingReleases := connection.takePendingReleases()
+		ownedNodes = uniquePositiveIDs(append(ownedNodes, pendingReleases...))
 		if !currentMachine && len(ownedNodes) == 0 {
 			h.mu.Unlock()
 			return false, nil, nil
@@ -1033,7 +1036,42 @@ func (c *wsConnection) replaceNodes(nodeIDs []int64) {
 	}
 	c.nodesMu.Lock()
 	c.nodeIDs = next
+	for _, nodeID := range nodeIDs {
+		delete(c.pendingReleaseNodeIDs, nodeID)
+	}
 	c.nodesMu.Unlock()
+}
+
+func (c *wsConnection) addPendingReleases(nodeIDs ...int64) {
+	if len(nodeIDs) == 0 {
+		return
+	}
+	c.nodesMu.Lock()
+	if c.pendingReleaseNodeIDs == nil {
+		c.pendingReleaseNodeIDs = make(map[int64]struct{}, len(nodeIDs))
+	}
+	for _, nodeID := range nodeIDs {
+		if nodeID > 0 {
+			c.pendingReleaseNodeIDs[nodeID] = struct{}{}
+		}
+	}
+	c.nodesMu.Unlock()
+}
+
+func (c *wsConnection) takePendingReleases() []int64 {
+	c.nodesMu.Lock()
+	if len(c.pendingReleaseNodeIDs) == 0 {
+		c.nodesMu.Unlock()
+		return nil
+	}
+	nodeIDs := make([]int64, 0, len(c.pendingReleaseNodeIDs))
+	for nodeID := range c.pendingReleaseNodeIDs {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	c.pendingReleaseNodeIDs = nil
+	c.nodesMu.Unlock()
+	sort.Slice(nodeIDs, func(i, j int) bool { return nodeIDs[i] < nodeIDs[j] })
+	return nodeIDs
 }
 
 func (c *wsConnection) nodeIDList() []int64 {
@@ -1166,16 +1204,22 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 	}
 	connection.enqueue(nodesSyncEnvelope(snapshots))
 	removedNodeIDs := make([]int64, 0, len(removedNodes))
+	failedRelease := false
 	for nodeID := range removedNodes {
 		if h.coordinator == nil {
 			removedNodeIDs = append(removedNodeIDs, nodeID)
 			continue
 		}
+		if failedRelease {
+			connection.addPendingReleases(nodeID)
+			continue
+		}
 		released, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id)
 		if err != nil {
 			h.logger.Warn("release removed node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", err)
-			connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
-			return
+			connection.addPendingReleases(nodeID)
+			failedRelease = true
+			continue
 		}
 		if released {
 			removedNodeIDs = append(removedNodeIDs, nodeID)
@@ -1183,6 +1227,10 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 	}
 	if len(removedNodeIDs) > 0 {
 		h.clearNodeDevices(ctx, removedNodeIDs, broadcast)
+	}
+	if failedRelease {
+		connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+		return
 	}
 	for _, snapshot := range snapshots {
 		if !connection.hasNode(snapshot.summary.ID) {
