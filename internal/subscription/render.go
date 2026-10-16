@@ -56,6 +56,10 @@ func subscriptionUserInfo(account store.SubscriptionAccount) string {
 	return fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%s", account.TrafficUpload, account.TrafficDownload, account.TransferEnable, expiry)
 }
 
+func CompatibleNodes(nodes []PreparedNode, client ClientInfo) []PreparedNode {
+	return compatibleNodes(nodes, client)
+}
+
 func compatibleNodes(nodes []PreparedNode, client ClientInfo) []PreparedNode {
 	allowed := allowedProtocols(client.Kind)
 	result := make([]PreparedNode, 0, len(nodes))

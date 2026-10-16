@@ -110,9 +110,11 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		types = ""
 	}
 	filtered := subscription.FilterNodes(prepared, types, r.URL.Query().Get("filter"))
+	rejectedByRequestFilter := len(prepared) - len(filtered)
+	filtered = subscription.CompatibleNodes(filtered, client)
 	filtered = subscription.PresentNodes(account, filtered, subscription.PrepareOptions{
 		ShowInfo: config.ShowInfo, ShowProtocol: config.ShowProtocol,
-		RejectedByRequestFilter: len(prepared) - len(filtered), NextResetAt: account.NextResetAt, Now: s.now(),
+		RejectedByRequestFilter: rejectedByRequestFilter, NextResetAt: account.NextResetAt, Now: s.now(),
 	})
 	appURL := strings.TrimRight(config.AppURL, "/")
 	if appURL == "" {

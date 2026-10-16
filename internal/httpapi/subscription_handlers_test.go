@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -480,3 +481,100 @@ func TestBoundedUTF8DoesNotSplitMultibyteInput(t *testing.T) {
 		t.Fatalf("bounded value cannot round-trip through query encoding: %v", err)
 	}
 }
+
+// TestBL11IncompatibleClientReceivesEmptySubscriptionBanner verifies that when the first node
+// is incompatible with the requesting client (e.g. Hysteria v2 on Shadowrocket < 1993) and a
+// subsequent node is compatible (e.g. VMess), PresentNodes clones the first compatible node so
+// the synthetic info nodes ("剩余流量", "套餐到期") are preserved rather than stripped by Render.
+// Note (Decision D-4): Legacy PHP cloned servers[0] before client compatibility filtering and
+// lost the synthetic info banners when servers[0] was filtered out; Go intentionally fixes this.
+func TestBL11IncompatibleClientReceivesEmptySubscriptionBanner(t *testing.T) {
+	api, database := newTestAPI(t)
+	ctx := t.Context()
+	now := fixedNow()
+
+	group, err := database.CreateServerGroup(ctx, "bl11-group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Node 1 (sort=1): Hysteria v2 — incompatible with Shadowrocket 1992 (< 1993).
+	hy2Node, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "BL11-Hy2-First", Type: "hysteria", Host: "hy2.bl11.example.test", Port: "443",
+		Show: true, Enabled: true, Sort: 1,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, hy2Node.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{group.ID},
+		Config: []byte(`{"protocol":"hysteria","version":2,"listen_ip":"0.0.0.0","server_port":443,"tls":{"server_name":"hy2.bl11.example.test"}}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Node 2 (sort=2): VMess — compatible with Shadowrocket 1992.
+	vmessNode, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "BL11-VMess-Second", Type: "vmess", Host: "vmess.bl11.example.test", Port: "443",
+		Show: true, Enabled: true, Sort: 2,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveNodeRuntime(ctx, vmessNode.ID, store.SaveNodeRuntimeInput{
+		RateMicros: 1_000_000, GroupIDs: []int64{group.ID},
+		Config: []byte(`{"protocol":"vmess","listen_ip":"0.0.0.0","server_port":443,"tls":1,"tls_settings":{"server_name":"vmess.bl11.example.test"}}`),
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable ShowInfo in subscription settings.
+	currentSubSettings, err := database.GetSubscriptionSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpdateSubscriptionSettings(ctx, 1, currentSubSettings.Revision, store.SaveSubscriptionSettingsInput{
+		Path:         currentSubSettings.Path,
+		ShowInfo:     true,
+		ShowProtocol: false,
+		Templates:    currentSubSettings.Templates,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	expiredAt := now.Add(7 * 24 * time.Hour)
+	user, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email: "bl11-user@example.test", PasswordHash: "hash", GroupID: &group.ID,
+		TransferEnable: 10 << 30, ExpiredAt: &expiredAt,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := database.GetSubscriptionAccount(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscribe?token="+account.SubscriptionToken, nil)
+	req.Header.Set("User-Agent", "Shadowrocket/1992")
+	req.RemoteAddr = "192.0.2.99:12345"
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("subscribe status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	rawBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(rec.Body.String()))
+	if err != nil {
+		t.Fatalf("decode base64 subscription: %v", err)
+	}
+	unescaped, err := url.QueryUnescape(string(rawBytes))
+	if err != nil {
+		unescaped = string(rawBytes)
+	}
+	if !strings.Contains(unescaped, "剩余流量") || !strings.Contains(unescaped, "套餐到期") {
+		t.Fatalf("Shadowrocket/1992 subscription missing synthetic info nodes when first node is Hysteria v2:\n%s", unescaped)
+	}
+	if strings.Contains(unescaped, "hysteria") {
+		t.Fatalf("Shadowrocket/1992 subscription leaked hysteria node:\n%s", unescaped)
+	}
+}
+
