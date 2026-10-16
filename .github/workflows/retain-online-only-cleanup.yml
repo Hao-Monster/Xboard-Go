@@ -2,7 +2,7 @@ name: Retain online-only convergence
 
 on:
   push:
-    branches: [main, codex/ci-001-tiered-gates]
+    branches: [main]
     paths:
       - 'deploy/retain-online-only.py'
       - 'deploy/retain_online_only_test.py'

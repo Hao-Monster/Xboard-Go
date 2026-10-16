@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeChangeSet } from "./detect-changes.mjs";
+import { analyzeChangeSet, analyzePrScope } from "./detect-changes.mjs";
 
 test("identifies pure frontend changes and isolates them from backend and packaging", () => {
   const changes = analyzeChangeSet(["web/src/App.tsx", "web/src/styles.css"]);
@@ -117,4 +117,83 @@ test("defaults to full regression fail-safe when change set is empty", () => {
   assert.equal(changes.run_go, "true");
   assert.equal(changes.run_web, "true");
   assert.equal(changes.run_full_regression, "true");
+});
+
+test("analyzePrScope assigns L0 for pure documentation and governance changes", () => {
+  const scope = analyzePrScope(["docs/operations/rapid-iteration-execution.md", "AGENTS.md", "README.md"]);
+  assert.equal(scope.tier, "L0");
+  assert.equal(scope.ci_deploy, "false");
+  assert.equal(scope.go_fast, "false");
+  assert.equal(scope.go_race, "false");
+  assert.equal(scope.web_fast, "false");
+  assert.equal(scope.web_full, "false");
+  assert.equal(scope.browser_smoke, "false");
+  assert.equal(scope.supply_chain, "false");
+  assert.equal(scope.migration_drill, "false");
+  assert.equal(scope.real_client_compat, "false");
+  assert.equal(scope.packaging_smoke, "false");
+  assert.equal(scope.split_runtime, "false");
+});
+
+test("analyzePrScope assigns L1 for localized Go leaf changes without triggering go_race matrix", () => {
+  const scope = analyzePrScope(["internal/mailer/mailer.go", "internal/telegrambot/bot_test.go"]);
+  assert.equal(scope.tier, "L1");
+  assert.equal(scope.go_fast, "true");
+  assert.equal(scope.go_race, "false");
+  assert.equal(scope.web_fast, "false");
+  assert.equal(scope.web_full, "false");
+  assert.equal(scope.browser_smoke, "false");
+  assert.equal(scope.migration_drill, "false");
+});
+
+test("analyzePrScope assigns L1 for localized frontend page changes without browser E2E", () => {
+  const scope = analyzePrScope(["web/src/features/notices/NoticeManagementPage.tsx", "web/src/styles.css"]);
+  assert.equal(scope.tier, "L1");
+  assert.equal(scope.web_fast, "true");
+  assert.equal(scope.web_full, "false");
+  assert.equal(scope.browser_smoke, "false");
+  assert.equal(scope.go_fast, "false");
+  assert.equal(scope.go_race, "false");
+});
+
+test("analyzePrScope assigns L1 for CI/deploy script edits instead of full regression", () => {
+  const scope = analyzePrScope([".github/workflows/pr-gate.yml", "deploy/retain-online-only.py"]);
+  assert.equal(scope.tier, "L1");
+  assert.equal(scope.ci_deploy, "true");
+  assert.equal(scope.go_race, "false");
+  assert.equal(scope.web_full, "false");
+  assert.equal(scope.packaging_smoke, "false");
+});
+
+test("analyzePrScope assigns L2 for httpapi or core frontend routing changes", () => {
+  const scope = analyzePrScope(["internal/httpapi/admin.go", "web/src/App.tsx"]);
+  assert.equal(scope.tier, "L2");
+  assert.equal(scope.go_race, "true");
+  assert.equal(scope.backend_services_a, "true");
+  assert.equal(scope.backend_store, "false");
+  assert.equal(scope.web_full, "true");
+  assert.equal(scope.browser_smoke, "true");
+  assert.equal(scope.real_client_compat, "false");
+});
+
+test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, or unknown paths", () => {
+  const migScope = analyzePrScope(["internal/legacymigration/reconcile.go"]);
+  assert.equal(migScope.tier, "L3");
+  assert.equal(migScope.migration_drill, "true");
+  assert.equal(migScope.go_fast, "true");
+
+  const depScope = analyzePrScope(["go.mod", "go.sum"]);
+  assert.equal(depScope.tier, "L3");
+  assert.equal(depScope.supply_chain, "true");
+  assert.equal(depScope.backend_all, "true");
+
+  const unknownScope = analyzePrScope(["mystery-binary.bin"]);
+  assert.equal(unknownScope.tier, "L3");
+  assert.equal(unknownScope.unknown_paths, "true");
+  assert.equal(unknownScope.backend_all, "true");
+  assert.equal(unknownScope.web_full, "true");
+
+  const emptyScope = analyzePrScope([]);
+  assert.equal(emptyScope.tier, "L3");
+  assert.equal(emptyScope.unknown_paths, "true");
 });

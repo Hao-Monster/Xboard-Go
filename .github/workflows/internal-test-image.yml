@@ -1,7 +1,7 @@
 name: Publish internal-test Docker installer
 on:
   push:
-    branches: [main, codex/ci-001-tiered-gates]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - '.docker/**'
