@@ -1,0 +1,141 @@
+name: Retain online-only convergence
+
+on:
+  push:
+    branches: [main, codex/ci-001-tiered-gates]
+    paths:
+      - 'deploy/retain-online-only.py'
+      - 'deploy/retain_online_only_test.py'
+      - '.github/workflows/retain-online-only-cleanup.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode: audit (read-only) or cleanup (remove offline garbage)"
+        required: true
+        default: cleanup
+        type: choice
+        options:
+          - audit
+          - cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-production-and-releases:
+    if: github.repository == 'Hao-Monster/Xboard-Go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-internal-test
+    concurrency:
+      group: production-internal-test-deployment
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Run deployment and convergence unit tests
+        run: python3 -m unittest discover -s deploy -p "*test*.py"
+      - name: Converge production host and GitHub internal-test releases
+        env:
+          MODE: ${{ inputs.mode || 'cleanup' }}
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == "audit" || "$MODE" == "cleanup" ]]
+          [[ "$DEPLOY_HOST" == "109.205.178.211" ]]
+          [[ "$DEPLOY_USER" == "root" ]]
+          port="${DEPLOY_PORT:-22}"
+          [[ "$port" =~ ^[0-9]+$ ]]
+
+          key_dir="$(mktemp -d "$RUNNER_TEMP/prod-ssh.XXXXXX")"
+          chmod 700 "$key_dir"
+          trap 'rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_dir/id_ed25519"
+          chmod 600 "$key_dir/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$key_dir/known_hosts"
+          chmod 600 "$key_dir/known_hosts"
+
+          ssh_opts=(
+            -i "$key_dir/id_ed25519"
+            -p "$port"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$key_dir/known_hosts"
+            -o ConnectTimeout=15
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+          )
+
+          prod_image="$(ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" "docker inspect -f '{{.Config.Image}}' xboard-production-internal-app-1")"
+          prod_sha="${prod_image#xboard-go:}"
+          [[ "$prod_sha" =~ ^[0-9a-f]{40}$ ]]
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "python3 - production-host --mode $MODE" < deploy/retain-online-only.py
+
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          python3 deploy/retain-online-only.py github-releases \
+            --mode "$MODE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --keep-sha "$prod_sha" \
+            --keep-sha "$main_sha" \
+            --keep-sha "$GITHUB_SHA" \
+            --keep-latest 2
+
+  cleanup-development-and-runner:
+    if: github.repository == 'Hao-Monster/Xboard-Go'
+    runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
+    timeout-minutes: 45
+    environment: development
+    concurrency:
+      group: legacy-parity-bingo-dev
+      cancel-in-progress: false
+    env:
+      no_proxy: localhost,127.0.0.1,::1,100.64.0.0/10,github.com,api.github.com,codeload.github.com,freedom.openal.uk,.openal.uk
+    steps:
+      - name: Converge self-hosted runner workspace and development server (bingo-dev)
+        env:
+          MODE: ${{ inputs.mode || 'cleanup' }}
+          TARGET_SHA: ${{ github.sha }}
+          DEPLOY_KEY: ${{ secrets.BINGO_DEV_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == "audit" || "$MODE" == "cleanup" ]]
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          work_dir="$(mktemp -d "$RUNNER_TEMP/retain-online-only.XXXXXX")"
+          chmod 700 "$work_dir"
+          trap 'rm -rf "$work_dir"' EXIT
+
+          archive="$work_dir/source.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --noproxy codeload.github.com --connect-timeout 10 --max-time 120 --retry 2 \
+            "https://codeload.github.com/Hao-Monster/Xboard-Go/tar.gz/$TARGET_SHA" \
+            --output "$archive"
+          mkdir -m 700 "$work_dir/src"
+          tar -xzf "$archive" --strip-components=1 --no-same-owner -C "$work_dir/src"
+          script="$work_dir/src/deploy/retain-online-only.py"
+          test -f "$script"
+
+          python3 "$script" runner-host --mode "$MODE" --workspace "$GITHUB_WORKSPACE"
+
+          printf '%s\n' "$DEPLOY_KEY" > "$work_dir/deploy_key"
+          chmod 600 "$work_dir/deploy_key"
+          ssh-keyscan -T 5 -H 127.0.0.1 > "$work_dir/known_hosts" 2>/dev/null
+
+          ssh -i "$work_dir/deploy_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$work_dir/known_hosts" \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            bingo@127.0.0.1 "python3 - development-host --mode $MODE" < "$script"

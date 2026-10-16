@@ -204,6 +204,7 @@ rollback() {
     exit 1
   fi
   if (( isolated )); then reconnect_proxy || exit 1; fi
+  docker image rm -f "xboard-go:$revision" >/dev/null 2>&1 || true
   printf 'Update failed; previous Xboard image restored. Backup: %s\n' "$backup" >&2
   if (( database_changed )); then printf 'Compatible data restored; failed data retained under %s/%s-failed\n' "$data_root" "$recovery" >&2; fi
   exit 1
@@ -269,6 +270,16 @@ fi
 trap - ERR
 install -m 600 "$work/env.before" "$directory/.env.before-$revision"
 install -m 600 "$work/compose.previous" "$directory/compose.before-$revision.yaml"
+while IFS= read -r img_ref; do
+  [[ -n "$img_ref" && "$img_ref" != "xboard-go:$revision" ]] || continue
+  docker image rm -f "$img_ref" >/dev/null 2>&1 || true
+done < <(docker image ls 'xboard-go' --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true)
+docker image prune -f >/dev/null 2>&1 || true
+find "$directory" -maxdepth 1 -type f \( -name '.env.before-*' ! -name ".env.before-$revision" -o -name 'compose.before-*.yaml' ! -name "compose.before-$revision.yaml" -o -name '*.failure.log' \) -delete 2>/dev/null || true
+backups_mount="$(docker volume inspect -f '{{.Mountpoint}}' "${project}_backups" 2>/dev/null || true)"
+if [[ -n "$backups_mount" && -d "$backups_mount" && ! -L "$backups_mount" ]]; then
+  ls -1t "$backups_mount"/*.xbbackup 2>/dev/null | tail -n +3 | xargs -r rm -f -- 2>/dev/null || true
+fi
 printf 'Updated Xboard to %s. HTTPS and node release v1.14.4 verified; protected containers unchanged. Previous revision: %s; backup: %s\n' "$revision" "$old_revision" "$backup"
 printf 'Node source selection: %s; version: %s (empty means preserved).\n' "$node_source" "$node_version"
 

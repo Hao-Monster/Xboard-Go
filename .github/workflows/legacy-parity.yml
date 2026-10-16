@@ -213,10 +213,23 @@ jobs:
           trap - ERR INT TERM HUP
           REMOTE
 
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "python3 - development-host --mode cleanup" < deploy/retain-online-only.py
           rm -f ~/.ssh/deploy_key
-      - name: Remove temporary deployment key
+      - name: Remove temporary deployment key and converge runner workspace
         if: always()
-        run: rm -f ~/.ssh/deploy_key
+        working-directory: ${{ github.workspace }}
+        env:
+          CANDIDATE_DIRECTORY: candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+        run: |
+          rm -f ~/.ssh/deploy_key
+          docker image rm "$XBOARD_GO_IMAGE" "xboard-go:${TARGET_SHA}" 2>/dev/null || true
+          if [[ -f "$CANDIDATE_DIRECTORY/deploy/retain-online-only.py" ]]; then
+            python3 "$CANDIDATE_DIRECTORY/deploy/retain-online-only.py" runner-host --mode cleanup --workspace "$GITHUB_WORKSPACE" || true
+          fi
+          chmod -R u+rwX "$CANDIDATE_DIRECTORY" 2>/dev/null || true
+          rm -rf "$CANDIDATE_DIRECTORY"
 
   logging-validate:
     needs: authorize
@@ -309,3 +322,7 @@ jobs:
         run: |
           cd "$LOGGING_CANDIDATE"
           python3 deploy/logging-runner.py
+      - name: Remove temporary logging workspace and artifact cache
+        if: always()
+        run: |
+          rm -rf "${LOGGING_CANDIDATE:-}" "${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}"
