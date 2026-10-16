@@ -220,3 +220,50 @@ func validLegacyNodesImport() LegacyNodesImport {
 }
 
 func int64Pointer(value int64) *int64 { return &value }
+
+func TestBL22ValidateLegacyNodesRejectsNonMinuteAlignedDailySchedule(t *testing.T) {
+	database := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 25, 8, 30, 0, 0, time.UTC)
+	ensureTestServerGroups(t, database, now, 3, 9)
+	if _, err := database.db.ExecContext(ctx, `INSERT INTO routing_rules (id,remarks,match_json,action,action_value,created_at,updated_at) VALUES (12,'direct','["domain:example.test"]','direct','',?,?)`, now.Unix(), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name          string
+		enableSecond  int64
+		disableSecond int64
+		wantErr       bool
+	}{
+		{name: "non-aligned disable 3630", enableSecond: 3600, disableSecond: 3630, wantErr: true},
+		{name: "non-aligned 86399", enableSecond: 0, disableSecond: 86399, wantErr: true},
+		{name: "aligned 3600 to 7200", enableSecond: 3600, disableSecond: 7200, wantErr: false},
+		{name: "aligned 0 to 86340", enableSecond: 0, disableSecond: 86340, wantErr: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := validLegacyNodesImport()
+			en, dis := tc.enableSecond, tc.disableSecond
+			input.Schedules[0].EnableSecond = &en
+			input.Schedules[0].DisableSecond = &dis
+			input.Checksums.Schedules = LegacySchedulesChecksum(input.Schedules)
+
+			err := ValidateLegacyNodesData(input)
+			if tc.wantErr {
+				if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "node 41") || !strings.Contains(err.Error(), "minute-aligned") {
+					t.Fatalf("ValidateLegacyNodesData(%d, %d) error = %v, want ErrInvalidInput mentioning node 41 and minute-aligned", en, dis, err)
+				}
+				if _, importErr := database.ImportLegacyNodes(ctx, input, now); !errors.Is(importErr, ErrInvalidInput) {
+					t.Fatalf("ImportLegacyNodes(%d, %d) error = %v, want ErrInvalidInput", en, dis, importErr)
+				}
+				var count int
+				if qErr := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes`).Scan(&count); qErr != nil || count != 0 {
+					t.Fatalf("nodes count after rejected import = %d, err = %v, want 0", count, qErr)
+				}
+			} else if err != nil {
+				t.Fatalf("ValidateLegacyNodesData(%d, %d) unexpected error = %v", en, dis, err)
+			}
+		})
+	}
+}
+

@@ -269,18 +269,24 @@ func (store *memoryDeploymentStateStore) Load() (DeploymentState, error) {
 }
 
 type fakeDeploymentPlatform struct {
-	current        DeploymentApplication
-	resolved       Deployment
-	backupManifest backup.Manifest
-	activateErrors []error
-	activations    [][]Component
-	targets        []Deployment
-	backups        int
-	restores       int
-	resolves       int
+	current            DeploymentApplication
+	currentErr         error
+	resolved           Deployment
+	backupManifest     backup.Manifest
+	restoreErr         error
+	activateErrors     []error
+	activateFailureApp *DeploymentApplication
+	activations        [][]Component
+	targets            []Deployment
+	backups            int
+	restores           int
+	resolves           int
 }
 
 func (platform *fakeDeploymentPlatform) CurrentDeployment(context.Context) (DeploymentApplication, error) {
+	if platform.currentErr != nil {
+		return DeploymentApplication{}, platform.currentErr
+	}
 	return platform.current, nil
 }
 func (platform *fakeDeploymentPlatform) ResolveDeployment(context.Context, DeploymentManifest) (Deployment, error) {
@@ -300,6 +306,10 @@ func (platform *fakeDeploymentPlatform) ActivateDeployment(_ context.Context, ta
 		platform.activateErrors = platform.activateErrors[1:]
 	}
 	if err != nil {
+		if platform.activateFailureApp != nil {
+			platform.current = *platform.activateFailureApp
+			return platform.current, err
+		}
 		return DeploymentApplication{}, err
 	}
 	platform.current = DeploymentApplication{Deployment: target, DSN: dsn, Healthy: true}
@@ -311,5 +321,150 @@ func (platform *fakeDeploymentPlatform) BackupDeployment(context.Context, Deploy
 }
 func (platform *fakeDeploymentPlatform) RestoreDeployment(context.Context, Image, string, string, string) (backup.Manifest, error) {
 	platform.restores++
+	if platform.restoreErr != nil {
+		return backup.Manifest{}, platform.restoreErr
+	}
 	return platform.backupManifest, nil
 }
+
+func TestBL19RollbackFailurePhasesAndRestoreRetry(t *testing.T) {
+	now := time.Date(2026, 9, 5, 14, 0, 0, 0, time.UTC)
+	previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	target := previous
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Backend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	verified := testBackupManifest(previous.Backend.Revision)
+	backupPath := "/var/lib/xboard-backups/lifecycle-20260905T140000.000000000Z-aaaaaaaaaaaa.xbbackup"
+
+	// Case A: Restore fails -> RollbackPhase == "restore", active deployment is still Target,
+	// Status() does not report drift, and retrying Rollback() after fixing restore succeeds.
+	t.Run("restore_failure_preserves_target_and_allows_retry", func(t *testing.T) {
+		store := &memoryDeploymentStateStore{states: []DeploymentState{{
+			Version: DeploymentStateVersion, Status: StatusUpgraded, UpdatedAt: now, Changed: []Component{ComponentBackend},
+			Previous: &previous, Target: &target, BackupPath: backupPath,
+			BackupManifest: &verified, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+		}}}
+		platform := &fakeDeploymentPlatform{
+			current:        DeploymentApplication{Deployment: target, DSN: defaultDatabaseDSN, Healthy: true},
+			backupManifest: verified,
+			restoreErr:     errors.New("disk full during restore"),
+		}
+		orchestrator := NewDeploymentOrchestrator(platform, store, func() time.Time { return now })
+		result, err := orchestrator.Rollback(context.Background())
+		if err == nil || result.State == nil {
+			t.Fatalf("Rollback() on restore failure = (%#v, %v), want error with state", result, err)
+		}
+		if result.State.Status != StatusRollbackFailed {
+			t.Fatalf("state.Status = %q, want %q", result.State.Status, StatusRollbackFailed)
+		}
+		// Status() must not report false drift because target is still running.
+		statusRes, statusErr := orchestrator.Status(context.Background())
+		if statusErr != nil {
+			t.Fatalf("Status() after restore-phase rollback failure = %v, want no false drift", statusErr)
+		}
+		if statusRes.Application == nil || !sameDeploymentImages(statusRes.Application.Deployment, target) {
+			t.Fatalf("Status() application = %#v, want target deployment", statusRes.Application)
+		}
+
+		// Clear restore error and retry Rollback() from StatusRollbackFailed (restore phase).
+		platform.restoreErr = nil
+		retryRes, retryErr := orchestrator.Rollback(context.Background())
+		if retryErr != nil || retryRes.Status != "success" || retryRes.State == nil || retryRes.State.Status != StatusRolledBack {
+			t.Fatalf("Rollback() retry after restore failure = (%#v, %v), want success StatusRolledBack", retryRes, retryErr)
+		}
+	})
+
+	// Case B: Activation fails after containers switched to Previous + restoredDSN (unhealthy) ->
+	// ActiveDSN and ObservedDeployment reflect Previous + restoredDSN, Status() does not report drift.
+	t.Run("activate_failure_records_observed_deployment_and_restored_dsn", func(t *testing.T) {
+		store := &memoryDeploymentStateStore{states: []DeploymentState{{
+			Version: DeploymentStateVersion, Status: StatusUpgraded, UpdatedAt: now, Changed: []Component{ComponentBackend},
+			Previous: &previous, Target: &target, BackupPath: backupPath,
+			BackupManifest: &verified, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+		}}}
+		expectedRestoredDSN := "file:/var/lib/xboard/xboard-rollback-20260905T140000.000000000Z.db"
+		platform := &fakeDeploymentPlatform{
+			current:        DeploymentApplication{Deployment: target, DSN: defaultDatabaseDSN, Healthy: true},
+			backupManifest: verified,
+			activateErrors: []error{errors.New("previous backend healthcheck timed out")},
+			activateFailureApp: &DeploymentApplication{
+				Deployment: previous,
+				DSN:        expectedRestoredDSN,
+				Healthy:    false,
+			},
+		}
+		orchestrator := NewDeploymentOrchestrator(platform, store, func() time.Time { return now })
+		result, err := orchestrator.Rollback(context.Background())
+		if err == nil || result.State == nil {
+			t.Fatalf("Rollback() on activate failure = (%#v, %v), want error with state", result, err)
+		}
+		if result.State.ActiveDSN != expectedRestoredDSN {
+			t.Fatalf("state.ActiveDSN = %q, want %q", result.State.ActiveDSN, expectedRestoredDSN)
+		}
+		if _, statusErr := orchestrator.Status(context.Background()); statusErr != nil {
+			t.Fatalf("Status() after activate-phase rollback failure = %v, want nil (matches observed deployment and DSN)", statusErr)
+		}
+	})
+
+	// Case C: Activation fails and CurrentDeployment also fails -> RollbackPhase == "unknown",
+	// Status() refuses and instructs manual recovery (docs/operations/lifecycle-recovery.md).
+	t.Run("unknown_failure_requires_manual_recovery", func(t *testing.T) {
+		store := &memoryDeploymentStateStore{states: []DeploymentState{{
+			Version: DeploymentStateVersion, Status: StatusUpgraded, UpdatedAt: now, Changed: []Component{ComponentFrontend},
+			Previous: &previous, Target: &target, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+		}}}
+		platform := &fakeDeploymentPlatform{
+			current:        DeploymentApplication{Deployment: target, DSN: defaultDatabaseDSN, Healthy: true},
+			activateErrors: []error{errors.New("docker daemon unreachable")},
+		}
+		customPlatform := &bl19UnknownObservationPlatform{
+			fakeDeploymentPlatform:   platform,
+			failCurrentAfterActivate: errors.New("docker inspect failed"),
+		}
+		customOrchestrator := NewDeploymentOrchestrator(customPlatform, store, func() time.Time { return now })
+		if _, err := customOrchestrator.Rollback(context.Background()); err == nil {
+			t.Fatalf("Rollback() expected failure")
+		}
+		customPlatform.failCurrentAfterActivate = nil
+		_, statusErr := customOrchestrator.Status(context.Background())
+		if statusErr == nil || !strings.Contains(statusErr.Error(), "docs/operations/lifecycle-recovery.md") {
+			t.Fatalf("Status() on unknown rollback failure = %v, want manual recovery guidance referencing docs/operations/lifecycle-recovery.md", statusErr)
+		}
+	})
+
+	// Case D: Legacy journal with StatusRollbackFailed and no RollbackPhase / ObservedDeployment ->
+	// preserves legacy behavior (expects Previous).
+	t.Run("legacy_journal_without_phase_expects_previous", func(t *testing.T) {
+		store := &memoryDeploymentStateStore{states: []DeploymentState{{
+			Version: DeploymentStateVersion, Status: StatusRollbackFailed, UpdatedAt: now, Changed: []Component{ComponentFrontend},
+			Previous: &previous, Target: &target, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+		}}}
+		platform := &fakeDeploymentPlatform{
+			current: DeploymentApplication{Deployment: previous, DSN: defaultDatabaseDSN, Healthy: true},
+		}
+		orchestrator := NewDeploymentOrchestrator(platform, store, func() time.Time { return now })
+		if _, err := orchestrator.Status(context.Background()); err != nil {
+			t.Fatalf("Status() on legacy RollbackFailed journal = %v, want nil", err)
+		}
+	})
+}
+
+type bl19UnknownObservationPlatform struct {
+	*fakeDeploymentPlatform
+	failCurrentAfterActivate error
+	activated                bool
+}
+
+func (p *bl19UnknownObservationPlatform) CurrentDeployment(ctx context.Context) (DeploymentApplication, error) {
+	if p.activated && p.failCurrentAfterActivate != nil {
+		return DeploymentApplication{}, p.failCurrentAfterActivate
+	}
+	return p.fakeDeploymentPlatform.CurrentDeployment(ctx)
+}
+
+func (p *bl19UnknownObservationPlatform) ActivateDeployment(ctx context.Context, target Deployment, dsn string, changed []Component) (DeploymentApplication, error) {
+	p.activated = true
+	return p.fakeDeploymentPlatform.ActivateDeployment(ctx, target, dsn, changed)
+}
+
