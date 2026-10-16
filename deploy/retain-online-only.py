@@ -16,11 +16,13 @@ HEX40_RE = re.compile(r'^[0-9a-f]{40}$')
 HEX64_RE = re.compile(r'^[0-9a-f]{64}$')
 STALE_DEV_CONTAINER_RE = re.compile(
     r'^(?:xboard-go-(?:closeout|r006|d009|arch001|acceptance|func003|ver004|node006|golang-base|legacy-parity)(?:-|$)'
+    r'|buildx_buildkit_xboard-go-'
     r'|xboardme-preonline'
     r'|xboard-xdb-extract$)'
 )
 STALE_DEV_VOLUME_RE = re.compile(
     r'^(?:xboard-go-(?:closeout|r006|d009|arch001|acceptance|func003|ver004|ops002|node006|legacy-parity)[_-]'
+    r'|buildx_buildkit_xboard-go-'
     r'|xboardme-preonline[_-]'
     r'|[0-9a-f]{64}$)'
 )
