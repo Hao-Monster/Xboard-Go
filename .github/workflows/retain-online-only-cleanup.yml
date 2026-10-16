@@ -17,6 +17,14 @@ on:
         options:
           - audit
           - cleanup
+      include_runner:
+        description: "Also run self-hosted runner and bingo-dev cleanup job (requires bingo-dev runner online)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write
@@ -90,7 +98,7 @@ jobs:
             --keep-latest 2
 
   cleanup-development-and-runner:
-    if: github.repository == 'Hao-Monster/Xboard-Go'
+    if: github.repository == 'Hao-Monster/Xboard-Go' && inputs.include_runner == 'true'
     runs-on: [self-hosted, Linux, X64, xboard-go-legacy-parity]
     timeout-minutes: 45
     environment: development
