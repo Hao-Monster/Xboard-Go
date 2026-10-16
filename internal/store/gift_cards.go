@@ -1586,7 +1586,7 @@ func applyGiftCardReward(ctx context.Context, tx *sql.Tx, user *giftCardUserStat
 	}
 	baseExpiry := now
 	if user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix() {
-		baseExpiry = time.Unix(user.expiredAt.Int64, 0)
+		baseExpiry = time.Unix(user.expiredAt.Int64, 0).In(now.Location())
 	}
 	expiry := user.expiredAt
 	if reward.ExpireDays > 0 && !(user.planID.Valid && !user.expiredAt.Valid) {
