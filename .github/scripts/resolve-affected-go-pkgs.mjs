@@ -51,14 +51,24 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
     if (!file.startsWith("cmd/") && !file.startsWith("internal/")) {
       continue;
     }
-    const dir = dirname(file).replace(/\\/g, "/");
-    const pkgPath = `${MODULE_PREFIX}/${dir}`;
-    if (!graph.has(pkgPath)) {
+    let dir = dirname(file).replace(/\\/g, "/");
+    let matchedPkg = "";
+    while (dir && dir !== "." && (dir.startsWith("cmd/") || dir.startsWith("internal/"))) {
+      const candidate = `${MODULE_PREFIX}/${dir}`;
+      if (graph.has(candidate)) {
+        matchedPkg = candidate;
+        break;
+      }
+      const parent = dirname(dir).replace(/\\/g, "/");
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!matchedPkg) {
       continue;
     }
-    directTestSet.add(pkgPath);
+    directTestSet.add(matchedPkg);
     if (!file.endsWith("_test.go")) {
-      nonTestModifiedSet.add(pkgPath);
+      nonTestModifiedSet.add(matchedPkg);
     }
   }
 
@@ -108,7 +118,8 @@ export function loadRepoGoGraph() {
       "-f",
       '{{.ImportPath}}\t{{join .Imports ","}}\t{{join .TestImports ","}}\t{{join .XTestImports ","}}',
       "./cmd/...",
-      "./internal/..."
+      "./internal/...",
+      "./internal/testdata/legacy/gen"
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
   );

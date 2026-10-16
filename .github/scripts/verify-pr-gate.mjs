@@ -86,6 +86,9 @@ export function evaluatePrGate(scopeJsonRaw, jobResults) {
     ok: errors.length === 0,
     tier: scope.tier ?? "UNKNOWN",
     reason: scope.reason ?? "unknown",
+    base_sha: scope.base_sha ?? "",
+    head_sha: scope.head_sha ?? "",
+    merge_sha: scope.merge_sha ?? "",
     errors,
     rows
   };
@@ -93,11 +96,19 @@ export function evaluatePrGate(scopeJsonRaw, jobResults) {
 
 export function formatGateSummary(evaluation) {
   const lines = [
-    `### Smart PR Gate Summary (\`${evaluation.tier}\` — \`${evaluation.reason}\`)`,
+    `### Smart PR Gate Summary (\`${evaluation.tier}\` — \`${evaluation.reason}\`)`
+  ];
+  if (evaluation.base_sha || evaluation.head_sha || evaluation.merge_sha) {
+    lines.push(
+      "",
+      `- **Base SHA**: \`${evaluation.base_sha || "n/a"}\` | **Head SHA**: \`${evaluation.head_sha || "n/a"}\` | **Merge/Test SHA**: \`${evaluation.merge_sha || "n/a"}\``
+    );
+  }
+  lines.push(
     "",
     "| Check Job | Required by Scope | Result | Gate Status |",
     "| :--- | :---: | :---: | :---: |"
-  ];
+  );
   for (const r of evaluation.rows) {
     lines.push(
       `| \`${r.job}\` | ${r.required ? "Yes" : "No (Skipped)"} | \`${r.result}\` | ${r.ok ? "PASS" : "FAIL"} |`

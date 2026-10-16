@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const dedicatedStore = [
@@ -117,13 +117,16 @@ const docExactFiles = new Set([
 
 const docPrefixes = [
   "docs/",
+  "docs- box/",
   ".github/ISSUE_TEMPLATE/"
 ];
 
 const ciDeployExactFiles = new Set([
   "Makefile",
   ".githooks/pre-commit",
-  ".githooks/pre-push"
+  ".githooks/pre-push",
+  ".github/dependabot.yml",
+  ".github/client-compatibility.json"
 ]);
 
 const ciDeployPrefixes = [
@@ -272,7 +275,8 @@ export function analyzeChangeSet(rawFiles) {
         f.startsWith("internal/httpapi/") ||
         f.startsWith("internal/clientcatalog/") ||
         f.startsWith(".github/scripts/clientcompat/") ||
-        f === ".github/scripts/check-real-client-compat.sh"
+        f === ".github/scripts/check-real-client-compat.sh" ||
+        f === ".github/client-compatibility.json"
     );
 
   const frontend = files.some((f) => f.startsWith("web/"));
@@ -398,7 +402,8 @@ export function analyzePrScope(rawFiles) {
       f.startsWith("internal/httpapi/subscription") ||
       f.startsWith("internal/httpapi/client") ||
       f.startsWith(".github/scripts/clientcompat/") ||
-      f === ".github/scripts/check-real-client-compat.sh"
+      f === ".github/scripts/check-real-client-compat.sh" ||
+      f === ".github/client-compatibility.json"
   );
 
   const sharedBackendCore =
@@ -413,13 +418,21 @@ export function analyzePrScope(rawFiles) {
     sharedBackendCore ||
     files.some((f) => f.startsWith("internal/httpapi/"));
 
-  const hasAnyGo =
-    sharedBackendCore ||
-    files.some((f) => f.endsWith(".go") || f.startsWith("cmd/") || f.startsWith("internal/"));
+  // go_fast is needed when non-shared Go packages are modified, or when non-test files in store/httpapi
+  // are modified (so upstream callers of store/httpapi get compile-checked).
+  const hasGoFastWork = files.some((f) => {
+    const isGoRelated = f.endsWith(".go") || f.startsWith("cmd/") || f.startsWith("internal/");
+    if (!isGoRelated) return false;
+    if (f.startsWith("internal/testdata/legacy/drill/")) return false;
+    const isHeavyDirectOnly = f.startsWith("internal/store/") || f.startsWith("internal/httpapi/");
+    if (isHeavyDirectOnly && f.endsWith("_test.go")) {
+      return false;
+    }
+    return true;
+  });
 
-  // L1 go_fast runs when Go files are modified but neither sharedBackendCore, store, nor httpapi are touched
   const goRace = sharedBackendCore || storeTouched || httpApiTouched;
-  const goFast = hasAnyGo && !sharedBackendCore;
+  const goFast = hasGoFastWork && !sharedBackendCore;
 
   const backendAll = sharedBackendCore;
   const backendStore = sharedBackendCore || storeTouched;
@@ -502,11 +515,60 @@ export function analyzePrScope(rawFiles) {
   };
 }
 
-export function getChangedFiles(env = process.env) {
+function readGithubEventPayload(env = process.env) {
+  const eventPath = env.GITHUB_EVENT_PATH ?? "";
+  if (!eventPath) return null;
+  try {
+    return JSON.parse(readFileSync(eventPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export function resolveGitRevisionMeta(env = process.env, payload = null) {
+  const event = payload ?? readGithubEventPayload(env);
+  let mergeSha = env.GITHUB_SHA ?? "";
+  try {
+    mergeSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    // ignore
+  }
+  const baseSha =
+    event?.pull_request?.base?.sha ??
+    env.GITHUB_EVENT_BEFORE ??
+    event?.before ??
+    "";
+  const headSha =
+    event?.pull_request?.head?.sha ??
+    mergeSha;
+  return { base_sha: baseSha, head_sha: headSha, merge_sha: mergeSha };
+}
+
+export function getChangedFiles(env = process.env, payload = null) {
   const eventName = env.GITHUB_EVENT_NAME ?? "";
+  const event = payload ?? readGithubEventPayload(env);
 
   if (eventName === "pull_request") {
     const baseRef = env.GITHUB_BASE_REF ?? "main";
+    // When running on refs/pull/<N>/merge, HEAD^1 is the exact base commit merged into HEAD
+    try {
+      execFileSync("git", ["rev-parse", "--verify", "HEAD^2"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      const mergedDiff = execFileSync(
+        "git",
+        ["diff", "--name-only", "HEAD^1..HEAD"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
+      );
+      const files = mergedDiff.split(/\r?\n/).filter((f) => f.trim() !== "");
+      if (files.length > 0) return files;
+    } catch {
+      // Not a synthetic merge commit; fall through to origin/${baseRef}...HEAD
+    }
     try {
       const output = execFileSync(
         "git",
@@ -528,7 +590,7 @@ export function getChangedFiles(env = process.env) {
     }
   }
 
-  const before = env.GITHUB_EVENT_BEFORE ?? "";
+  const before = env.GITHUB_EVENT_BEFORE || event?.before || "";
   if (before && before !== "0000000000000000000000000000000000000000") {
     try {
       const output = execFileSync(
@@ -564,7 +626,11 @@ export function writeGithubOutputs(results, outputPath) {
 function main() {
   const modeArgIdx = process.argv.indexOf("--mode");
   const mode = modeArgIdx >= 0 ? process.argv[modeArgIdx + 1] : "production";
+  const revMeta = resolveGitRevisionMeta();
   const files = getChangedFiles();
+  process.stdout.write(
+    `Revision context: base=${revMeta.base_sha || "n/a"} head=${revMeta.head_sha || "n/a"} merge=${revMeta.merge_sha || "n/a"}\n`
+  );
   process.stdout.write(`Detected changed files (${files.length}):\n`);
   for (const f of files) {
     process.stdout.write(`  - ${f}\n`);
@@ -580,7 +646,8 @@ function main() {
   if (outputPath) {
     writeGithubOutputs(results, outputPath);
     if (mode === "pr") {
-      appendFileSync(outputPath, `scope_json=${JSON.stringify(results)}\n`, { encoding: "utf8" });
+      const scopePayload = { ...results, ...revMeta };
+      appendFileSync(outputPath, `scope_json=${JSON.stringify(scopePayload)}\n`, { encoding: "utf8" });
     }
   }
 }

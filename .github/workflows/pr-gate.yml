@@ -3,7 +3,7 @@ name: Smart PR Gate
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review, edited, milestoned, demilestoned]
   push:
     branches: [codex/ci-001-tiered-gates]
   workflow_dispatch:
@@ -192,16 +192,18 @@ jobs:
           set -euo pipefail
           pnpm --dir web typecheck
           mapfile -t changed_web < <(node -e '
-            import("./.github/scripts/detect-changes.mjs").then((m) => {
-              for (const f of m.getChangedFiles()) {
-                if (f.startsWith("web/") && /\.(ts|tsx|js|mjs|cjs)$/.test(f)) {
-                  console.log(f.slice(4));
+            import("node:fs").then((fs) =>
+              import("./.github/scripts/detect-changes.mjs").then((m) => {
+                for (const f of m.getChangedFiles()) {
+                  if (f.startsWith("web/") && /\.(ts|tsx|js|mjs|cjs)$/.test(f) && fs.existsSync(f)) {
+                    console.log(f.slice(4));
+                  }
                 }
-              }
-            });
+              })
+            );
           ')
           if [ "${#changed_web[@]}" -gt 0 ]; then
-            pnpm --dir web exec eslint --max-warnings 0 "${changed_web[@]}"
+            pnpm --dir web exec eslint --max-warnings 0 --no-warn-ignored "${changed_web[@]}"
             pnpm --dir web exec vitest related --run --passWithNoTests "${changed_web[@]}"
           fi
           pnpm --dir web build

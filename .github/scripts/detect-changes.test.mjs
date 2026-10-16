@@ -197,3 +197,24 @@ test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, 
   assert.equal(emptyScope.tier, "L3");
   assert.equal(emptyScope.unknown_paths, "true");
 });
+
+test("analyzePrScope skips go_fast when only store or httpapi _test.go files are modified", () => {
+  const storeTestScope = analyzePrScope(["internal/store/sqlite_test.go"]);
+  assert.equal(storeTestScope.go_race, "true");
+  assert.equal(storeTestScope.go_fast, "false");
+  assert.equal(storeTestScope.go_race_groups, JSON.stringify(["store"]));
+
+  const storeImplScope = analyzePrScope(["internal/store/sqlite.go"]);
+  assert.equal(storeImplScope.go_race, "true");
+  assert.equal(storeImplScope.go_fast, "true");
+});
+
+test("analyzePrScope classifies every tracked file in git ls-files without unknown_paths fallback", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const tracked = execFileSync("git", ["ls-files"], { encoding: "utf8" })
+    .split(/\r?\n/)
+    .filter(Boolean);
+  assert.ok(tracked.length > 500);
+  const unknowns = tracked.filter((f) => analyzePrScope([f]).unknown_paths === "true");
+  assert.deepEqual(unknowns, []);
+});

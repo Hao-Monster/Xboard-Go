@@ -43,3 +43,19 @@ test("skipDirectPackages excludes store and httpapi when handled by dedicated go
   assert.deepEqual(res.directTestPackages, [`${MODULE_PREFIX}/internal/mailer`]);
   assert.deepEqual(res.compileOnlyPackages, [`${MODULE_PREFIX}/cmd/xboard`]);
 });
+
+test("embedded subdirectory assets walk up to their owning Go package", () => {
+  const graph = parseGoListGraph(sampleGraphOutput);
+  const res = resolveAffectedGoPackages(graph, [
+    "internal/mailtemplate/assets/welcome.html",
+    "internal/httpapi/testdata/legacy_v1_admission.golden.yaml"
+  ]);
+  assert.deepEqual(res.directTestPackages, [
+    `${MODULE_PREFIX}/internal/httpapi`,
+    `${MODULE_PREFIX}/internal/mailtemplate`
+  ]);
+  assert.deepEqual(res.compileOnlyPackages, [
+    `${MODULE_PREFIX}/cmd/xboard`,
+    `${MODULE_PREFIX}/internal/mailer`
+  ]);
+});
