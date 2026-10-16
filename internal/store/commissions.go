@@ -169,6 +169,94 @@ func (s *Store) TransferCommission(ctx context.Context, userID, amount int64, no
 	return transferred, nil
 }
 
+var (
+	errCommissionCycle        = errors.New("cyclic_invitation_relationship")
+	errCommissionBalanceLimit = errors.New("commission_recipient_balance_limit_exceeded")
+)
+
+type payableCommissionOrder struct {
+	id, userID, amount, commission, inviterID int64
+	tradeNo                                   string
+}
+
+func settleOrderCommissionTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	order payableCommissionOrder,
+	levels []int,
+	withdrawClosed bool,
+	now time.Time,
+) error {
+	inviterID := order.inviterID
+	actual := int64(0)
+	seen := make(map[int64]struct{}, len(levels))
+	for _, percentage := range levels {
+		if inviterID < 1 {
+			break
+		}
+		if _, duplicate := seen[inviterID]; duplicate {
+			return errCommissionCycle
+		}
+		seen[inviterID] = struct{}{}
+		var parentID sql.NullInt64
+		var accountKind string
+		if err := tx.QueryRowContext(ctx, `SELECT invite_user_id, account_kind FROM users WHERE id = ?`, inviterID).
+			Scan(&parentID, &accountKind); errors.Is(err, sql.ErrNoRows) {
+			break
+		} else if err != nil {
+			return fmt.Errorf("read commission recipient: %w", err)
+		}
+		if accountKind != AccountKindHuman {
+			break
+		}
+		share := commissionShare(order.commission, percentage)
+		if share > 0 {
+			column := "commission_balance"
+			if withdrawClosed {
+				column = "balance"
+			}
+			updated, err := tx.ExecContext(ctx, `UPDATE users SET `+column+` = `+column+` + ?, updated_at = ? WHERE id = ? AND `+column+` <= ?`,
+				share, now.Unix(), inviterID, maxOrderMoneyCents-share)
+			if err != nil {
+				return fmt.Errorf("credit commission recipient: %w", err)
+			}
+			count, err := updated.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("count commission recipient update: %w", err)
+			}
+			if count != 1 {
+				return errCommissionBalanceLimit
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO commission_logs (
+					order_id, invite_user_id, user_id, trade_no, order_amount, get_amount, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`, order.id, inviterID, order.userID, order.tradeNo, order.amount, share, now.Unix(), now.Unix()); err != nil {
+				return fmt.Errorf("record paid commission: %w", err)
+			}
+			actual += share
+		}
+		if parentID.Valid {
+			inviterID = parentID.Int64
+		} else {
+			inviterID = 0
+		}
+	}
+	updated, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET commission_status = 2, actual_commission_balance = ?, updated_at = ?
+		WHERE id = ? AND commission_status = 1
+	`, actual, now.Unix(), order.id)
+	if err != nil {
+		return fmt.Errorf("complete commission payment: %w", err)
+	}
+	count, err := updated.RowsAffected()
+	if err != nil || count != 1 {
+		return fmt.Errorf("complete commission payment: stale state")
+	}
+	return nil
+}
+
 func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int) (CommissionProcessingResult, error) {
 	if now.Unix() < 0 || limit < 1 || limit > maxCommissionBatchSize {
 		return CommissionProcessingResult{}, ErrInvalidInput
@@ -217,22 +305,22 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 		}
 	}
 
-	type payableOrder struct {
-		id, userID, amount, commission, inviterID int64
-		tradeNo                                   string
-	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, user_id, trade_no, total_amount, commission_balance, invite_user_id
-		FROM orders
-		WHERE status = ? AND commission_status = 1 AND invite_user_id IS NOT NULL
-		ORDER BY updated_at, id LIMIT ?
+		SELECT o.id, o.user_id, o.trade_no, o.total_amount, o.commission_balance, o.invite_user_id
+		FROM orders o
+		WHERE o.status = ? AND o.commission_status = 1 AND o.invite_user_id IS NOT NULL
+		  AND NOT EXISTS (
+			  SELECT 1 FROM scheduler_quarantine q
+			  WHERE q.scope = 'commission_settlement' AND q.order_id = o.id
+		  )
+		ORDER BY o.updated_at, o.id LIMIT ?
 	`, OrderStatusCompleted, limit)
 	if err != nil {
 		return CommissionProcessingResult{}, fmt.Errorf("list payable commissions: %w", err)
 	}
-	payable := make([]payableOrder, 0, limit)
+	payable := make([]payableCommissionOrder, 0, limit)
 	for rows.Next() {
-		var item payableOrder
+		var item payableCommissionOrder
 		if err := rows.Scan(&item.id, &item.userID, &item.tradeNo, &item.amount, &item.commission, &item.inviterID); err != nil {
 			_ = rows.Close()
 			return CommissionProcessingResult{}, fmt.Errorf("scan payable commission: %w", err)
@@ -247,75 +335,52 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 	}
 
 	for _, order := range payable {
-		inviterID := order.inviterID
-		actual := int64(0)
-		seen := make(map[int64]struct{}, len(levels))
-		for _, percentage := range levels {
-			if inviterID < 1 {
-				break
-			}
-			if _, duplicate := seen[inviterID]; duplicate {
-				return CommissionProcessingResult{}, fmt.Errorf("%w: cyclic invitation relationship", ErrConflict)
-			}
-			seen[inviterID] = struct{}{}
-			var parentID sql.NullInt64
-			var accountKind string
-			if err := tx.QueryRowContext(ctx, `SELECT invite_user_id, account_kind FROM users WHERE id = ?`, inviterID).
-				Scan(&parentID, &accountKind); errors.Is(err, sql.ErrNoRows) {
-				break
-			} else if err != nil {
-				return CommissionProcessingResult{}, fmt.Errorf("read commission recipient: %w", err)
-			}
-			if accountKind != AccountKindHuman {
-				break
-			}
-			share := commissionShare(order.commission, percentage)
-			if share > 0 {
-				column := "commission_balance"
-				if withdrawClosed {
-					column = "balance"
-				}
-				updated, err := tx.ExecContext(ctx, `UPDATE users SET `+column+` = `+column+` + ?, updated_at = ? WHERE id = ? AND `+column+` <= ?`,
-					share, now.Unix(), inviterID, maxOrderMoneyCents-share)
-				if err != nil {
-					return CommissionProcessingResult{}, fmt.Errorf("credit commission recipient: %w", err)
-				}
-				count, err := updated.RowsAffected()
-				if err != nil || count != 1 {
-					return CommissionProcessingResult{}, fmt.Errorf("credit commission recipient: balance limit exceeded")
-				}
-				if _, err := tx.ExecContext(ctx, `
-					INSERT INTO commission_logs (
-						order_id, invite_user_id, user_id, trade_no, order_amount, get_amount, created_at, updated_at
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-				`, order.id, inviterID, order.userID, order.tradeNo, order.amount, share, now.Unix(), now.Unix()); err != nil {
-					return CommissionProcessingResult{}, fmt.Errorf("record paid commission: %w", err)
-				}
-				actual += share
-			}
-			if parentID.Valid {
-				inviterID = parentID.Int64
-			} else {
-				inviterID = 0
-			}
+		if _, err := tx.ExecContext(ctx, `SAVEPOINT sp_item`); err != nil {
+			return CommissionProcessingResult{}, fmt.Errorf("create commission savepoint: %w", err)
 		}
-		updated, err := tx.ExecContext(ctx, `
-			UPDATE orders
-			SET commission_status = 2, actual_commission_balance = ?, updated_at = ?
-			WHERE id = ? AND commission_status = 1
-		`, actual, now.Unix(), order.id)
+		err := settleOrderCommissionTx(ctx, tx, order, levels, withdrawClosed, now)
 		if err != nil {
-			return CommissionProcessingResult{}, fmt.Errorf("complete commission payment: %w", err)
+			var quarantineReason string
+			switch {
+			case errors.Is(err, errCommissionCycle):
+				quarantineReason = errCommissionCycle.Error()
+			case errors.Is(err, errCommissionBalanceLimit):
+				quarantineReason = errCommissionBalanceLimit.Error()
+			}
+			if quarantineReason == "" {
+				return CommissionProcessingResult{}, err
+			}
+			if _, rbErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT sp_item`); rbErr != nil {
+				return CommissionProcessingResult{}, fmt.Errorf("rollback commission savepoint: %w", rbErr)
+			}
+			if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); relErr != nil {
+				return CommissionProcessingResult{}, fmt.Errorf("release commission savepoint after rollback: %w", relErr)
+			}
+			if _, qErr := tx.ExecContext(ctx, `
+				INSERT OR REPLACE INTO scheduler_quarantine (scope, order_id, reason, quarantined_at)
+				VALUES ('commission_settlement', ?, ?, ?)
+			`, order.id, quarantineReason, now.Unix()); qErr != nil {
+				return CommissionProcessingResult{}, fmt.Errorf("quarantine commission order %d: %w", order.id, qErr)
+			}
+			processing.Quarantined++
+			processing.QuarantinedOrders = append(processing.QuarantinedOrders, SchedulerQuarantineEvent{
+				OrderID: order.id,
+				Reason:  quarantineReason,
+			})
+			continue
 		}
-		count, err := updated.RowsAffected()
-		if err != nil || count != 1 {
-			return CommissionProcessingResult{}, fmt.Errorf("complete commission payment: stale state")
+		if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); err != nil {
+			return CommissionProcessingResult{}, fmt.Errorf("release commission savepoint: %w", err)
 		}
 		processing.Paid++
 	}
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM orders
-		WHERE status = ? AND commission_status = 1 AND invite_user_id IS NOT NULL
+		SELECT COUNT(*) FROM orders o
+		WHERE o.status = ? AND o.commission_status = 1 AND o.invite_user_id IS NOT NULL
+		  AND NOT EXISTS (
+			  SELECT 1 FROM scheduler_quarantine q
+			  WHERE q.scope = 'commission_settlement' AND q.order_id = o.id
+		  )
 	`, OrderStatusCompleted).Scan(&processing.Remaining); err != nil {
 		return CommissionProcessingResult{}, fmt.Errorf("count remaining commissions: %w", err)
 	}

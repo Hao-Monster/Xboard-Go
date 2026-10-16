@@ -139,8 +139,11 @@ func (w *Worker) processCommissions(ctx context.Context, now time.Time) {
 		}
 		return
 	}
-	if result.Checked > 0 || result.Paid > 0 {
-		w.logger.Info("invitation commissions processed", "checked", result.Checked, "paid", result.Paid, "remaining", result.Remaining)
+	for _, item := range result.QuarantinedOrders {
+		w.logger.Warn("commission order quarantined", "order_id", item.OrderID, "reason", item.Reason)
+	}
+	if result.Checked > 0 || result.Paid > 0 || result.Quarantined > 0 {
+		w.logger.Info("invitation commissions processed", "checked", result.Checked, "paid", result.Paid, "quarantined", result.Quarantined, "remaining", result.Remaining)
 	}
 }
 
@@ -161,8 +164,11 @@ func (w *Worker) processOrders(ctx context.Context, now time.Time) {
 			w.notifier.NotifyEntitlementChange(ctx, &result.Changes[i])
 		}
 	}
-	if result.Cancelled > 0 || result.Completed > 0 {
-		w.logger.Info("orders reconciled", "cancelled", result.Cancelled, "completed", result.Completed, "remaining", result.Remaining)
+	for _, item := range result.QuarantinedOrders {
+		w.logger.Warn("stale order quarantined", "order_id", item.OrderID, "reason", item.Reason)
+	}
+	if result.Cancelled > 0 || result.Completed > 0 || result.Quarantined > 0 {
+		w.logger.Info("orders reconciled", "cancelled", result.Cancelled, "completed", result.Completed, "quarantined", result.Quarantined, "remaining", result.Remaining)
 	}
 }
 

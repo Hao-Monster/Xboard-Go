@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 68
+const currentSchemaVersion = 69
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -495,6 +495,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v68: %w", err)
 		}
 		version = 68
+	}
+	if version < 69 {
+		if _, err := tx.ExecContext(ctx, schemaV69SchedulerQuarantine); err != nil {
+			return fmt.Errorf("apply schema v69: %w", err)
+		}
+		version = 69
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2978,3 +2984,13 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
+
+const schemaV69SchedulerQuarantine = `
+CREATE TABLE IF NOT EXISTS scheduler_quarantine (
+    scope TEXT NOT NULL CHECK (scope IN ('commission_settlement', 'stale_order_cancel')),
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+    quarantined_at INTEGER NOT NULL CHECK (quarantined_at >= 0),
+    PRIMARY KEY (scope, order_id)
+) STRICT, WITHOUT ROWID;
+`

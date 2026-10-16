@@ -619,10 +619,17 @@ type CommissionTransferResult struct {
 	Balance           int64 `json:"balance"`
 }
 
+type SchedulerQuarantineEvent struct {
+	OrderID int64
+	Reason  string
+}
+
 type CommissionProcessingResult struct {
-	Checked   int64 `json:"checked"`
-	Paid      int64 `json:"paid"`
-	Remaining int64 `json:"remaining"`
+	QuarantinedOrders []SchedulerQuarantineEvent `json:"-"`
+	Checked           int64                      `json:"checked"`
+	Paid              int64                      `json:"paid"`
+	Quarantined       int                        `json:"quarantined"`
+	Remaining         int64                      `json:"remaining"`
 }
 
 type TicketMailJob struct {
@@ -1990,10 +1997,12 @@ type DistributorClaim struct {
 }
 
 type StaleOrderBatchResult struct {
-	Changes   []EntitlementChange `json:"-"`
-	Cancelled int                 `json:"cancelled"`
-	Completed int                 `json:"completed"`
-	Remaining int                 `json:"remaining"`
+	Changes           []EntitlementChange        `json:"-"`
+	QuarantinedOrders []SchedulerQuarantineEvent `json:"-"`
+	Cancelled         int                        `json:"cancelled"`
+	Completed         int                        `json:"completed"`
+	Quarantined       int                        `json:"quarantined"`
+	Remaining         int                        `json:"remaining"`
 }
 
 type AdminOrder struct {
