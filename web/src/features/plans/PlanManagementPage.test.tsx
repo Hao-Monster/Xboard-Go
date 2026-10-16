@@ -138,7 +138,33 @@ describe("PlanManagementPage", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("月付价格无效");
     expect(api.createPlan).not.toHaveBeenCalled();
   });
+
+  it("retains inline-created server groups in parent state after closing and reopening the plan editor (BL-29)", async () => {
+    const createdGroup: ServerGroup = { id: 99, name: "新创建的分组", users_count: 0, server_count: 0, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z" };
+    const api = {
+      ...planAPI([plan]),
+      createServerGroup: vi.fn().mockResolvedValue(createdGroup)
+    };
+    const user = userEvent.setup();
+    render(<PlanManagementPage api={api} />);
+    await screen.findByText("Pro");
+
+    await user.click(screen.getByRole("button", { name: "添加套餐" }));
+    const editor = screen.getByRole("dialog", { name: "添加套餐" });
+    await user.click(within(editor).getByRole("button", { name: "添加分组" }));
+    const creator = screen.getByRole("dialog", { name: "创建权限组" });
+    await user.type(within(creator).getByLabelText("权限组名称"), "新创建的分组");
+    await user.click(within(creator).getByRole("button", { name: "创建权限组" }));
+    await waitFor(() => expect(api.createServerGroup).toHaveBeenCalledWith("新创建的分组"));
+
+    // Close the plan editor without saving the plan, then reopen "添加套餐"
+    await user.click(within(editor).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "添加套餐" }));
+    const reopened = screen.getByRole("dialog", { name: "添加套餐" });
+    expect(within(reopened).getByRole("option", { name: "新创建的分组" })).toBeInTheDocument();
+  });
 });
+
 
 describe("PlanCatalogPage", () => {
   it("renders unlimited capacity without the legacy false sold-out label", async () => {

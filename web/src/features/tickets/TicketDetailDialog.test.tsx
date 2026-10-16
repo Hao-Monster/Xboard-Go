@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Ticket } from "../../lib/api";
+import { Drawer, Modal } from "../../components/Overlay";
+import { NodeFilter } from "../nodes/NodeFilter";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 
 const ticket: Ticket = {
@@ -57,5 +59,46 @@ describe("ticket confirmation overlay", () => {
     expect(onUpdated).toHaveBeenCalledWith(closed);
     expect(within(screen.getByRole("dialog", { name: "工单详情" })).getByText("已关闭")).toBeVisible();
     expect(screen.queryByLabelText("回复内容")).not.toBeInTheDocument();
+  });
+
+  it("closes only the topmost NodeFilter popover or global search modal on Escape without closing the underlying Modal or Drawer (BL-23)", async () => {
+    const onCloseModal = vi.fn();
+    const onCloseDrawer = vi.fn();
+    const onCloseSearch = vi.fn();
+    function StackedExample() {
+      const [searchOpen, setSearchOpen] = useState(true);
+      return (
+        <>
+          <Drawer title="服务器详情" suspended={false} onClose={onCloseDrawer}>
+            <button type="button">详情按钮</button>
+          </Drawer>
+          <Modal title="编辑模板" onClose={onCloseModal}>
+            <NodeFilter label="允许的套餐" options={[{ value: "1", label: "Pro" }]} value={[]} onChange={vi.fn()} />
+          </Modal>
+          {searchOpen && (
+            <Modal title="搜索菜单和功能" onClose={() => { setSearchOpen(false); onCloseSearch(); }}>
+              <input aria-label="搜索输入" />
+            </Modal>
+          )}
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    render(<StackedExample />);
+    expect(screen.getByRole("dialog", { name: "搜索菜单和功能" })).toBeVisible();
+
+    // First Escape closes only the topmost search modal
+    await user.keyboard("{Escape}");
+    expect(onCloseSearch).toHaveBeenCalledOnce();
+    expect(onCloseModal).not.toHaveBeenCalled();
+    expect(onCloseDrawer).not.toHaveBeenCalled();
+
+    // Open NodeFilter inside "编辑模板" modal, then press Escape
+    await user.click(screen.getByRole("button", { name: "允许的套餐" }));
+    expect(screen.getByRole("dialog", { name: "允许的套餐筛选" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "允许的套餐筛选" })).not.toBeInTheDocument();
+    expect(onCloseModal).not.toHaveBeenCalled();
+    expect(onCloseDrawer).not.toHaveBeenCalled();
   });
 });

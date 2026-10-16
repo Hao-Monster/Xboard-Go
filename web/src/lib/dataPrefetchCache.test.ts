@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DataPrefetchCache } from "./dataPrefetchCache";
+import { DataPrefetchCache, adminDataCache, invalidateAdminData } from "./dataPrefetchCache";
 import { deferred } from "../test/deferred";
 
 describe("DataPrefetchCache", () => {
@@ -48,5 +48,19 @@ describe("DataPrefetchCache", () => {
     expect(cache.consume("plans")).toBeUndefined();
     await cache.prefetch("plans", fetcher);
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates multiple adminDataCache keys via invalidateAdminData", async () => {
+    adminDataCache.invalidatePrefix("");
+    await adminDataCache.prefetch("users", () => Promise.resolve(["u1"]));
+    await adminDataCache.prefetch("orders", () => Promise.resolve(["o1"]));
+    await adminDataCache.prefetch("plans", () => Promise.resolve(["p1"]));
+
+    invalidateAdminData("users", "orders");
+
+    expect(adminDataCache.consume("users")).toBeUndefined();
+    expect(adminDataCache.consume("orders")).toBeUndefined();
+    await expect(adminDataCache.consume("plans")).resolves.toEqual(["p1"]);
+    adminDataCache.invalidatePrefix("");
   });
 });

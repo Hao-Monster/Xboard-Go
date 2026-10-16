@@ -35,6 +35,10 @@ const typeNames: Record<GiftCardType, string> = { 1: "通用礼品卡", 2: "套�
 const purchasePeriods: Array<[GiftCardPurchasePeriod, string]> = [["monthly", "1 个月"], ["quarterly", "3 个月"], ["half_yearly", "6 个月"], ["yearly", "1 年"], ["two_yearly", "2 年"], ["three_yearly", "3 年"]];
 const codeStatusNames = ["可用", "已用完", "已禁用", "已过期"];
 
+function lastValidPage(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
 export function GiftCardManagementPage({ api }: { api: GiftCardManagementAPI }) {
   const [hiddenColumns, setHiddenColumns] = useState<Record<string, string[]>>({});
   const [tab, setTab] = useState<Tab>("templates");
@@ -60,8 +64,20 @@ export function GiftCardManagementPage({ api }: { api: GiftCardManagementAPI }) 
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      if (tab === "templates") setTemplates(await api.listGiftCardTemplates(templates.page, 20, optionalGiftType(templateType), optionalBoolean(templateStatus), templateSearch));
-      if (tab === "codes") setCodes(await api.listGiftCardCodes(codes.page, 20, codeSearch, optionalNumber(codeTemplate), optionalCodeStatus(codeStatus), codeBatch));
+      if (tab === "templates") {
+        const next = await api.listGiftCardTemplates(templates.page, 20, optionalGiftType(templateType), optionalBoolean(templateStatus), templateSearch);
+        const maxPage = lastValidPage(next.total, next.page_size || 20);
+        setTemplates(next.items.length === 0 && next.total > 0 && templates.page > maxPage
+          ? { ...(await api.listGiftCardTemplates(maxPage, 20, optionalGiftType(templateType), optionalBoolean(templateStatus), templateSearch)), page: maxPage }
+          : next);
+      }
+      if (tab === "codes") {
+        const next = await api.listGiftCardCodes(codes.page, 20, codeSearch, optionalNumber(codeTemplate), optionalCodeStatus(codeStatus), codeBatch);
+        const maxPage = lastValidPage(next.total, next.page_size || 20);
+        setCodes(next.items.length === 0 && next.total > 0 && codes.page > maxPage
+          ? { ...(await api.listGiftCardCodes(maxPage, 20, codeSearch, optionalNumber(codeTemplate), optionalCodeStatus(codeStatus), codeBatch)), page: maxPage }
+          : next);
+      }
       if (tab === "usages") setUsages(await api.listGiftCardUsages(usages.page, 20, optionalNumber(usageUser), optionalNumber(usageTemplate), optionalNumber(usageCode)));
       if (tab === "statistics") setStatistics(await api.getGiftCardStatistics());
     } catch (cause) { setError(cause instanceof Error ? cause.message : "礼品卡数据加载失败"); }
@@ -74,8 +90,24 @@ export function GiftCardManagementPage({ api }: { api: GiftCardManagementAPI }) 
     void request.then((value) => {
       if (!active) return;
       setError("");
-      if (tab === "templates") setTemplates(value as GiftCardTemplatePage);
-      if (tab === "codes") setCodes(value as GiftCardCodePage);
+      if (tab === "templates") {
+        const next = value as GiftCardTemplatePage;
+        const maxPage = lastValidPage(next.total, next.page_size || 20);
+        if (next.items.length === 0 && next.total > 0 && templates.page > maxPage) {
+          setTemplates((current) => ({ ...current, page: maxPage }));
+          return;
+        }
+        setTemplates(next);
+      }
+      if (tab === "codes") {
+        const next = value as GiftCardCodePage;
+        const maxPage = lastValidPage(next.total, next.page_size || 20);
+        if (next.items.length === 0 && next.total > 0 && codes.page > maxPage) {
+          setCodes((current) => ({ ...current, page: maxPage }));
+          return;
+        }
+        setCodes(next);
+      }
       if (tab === "usages") setUsages(value as GiftCardUsagePage);
       if (tab === "statistics") setStatistics(value as GiftCardStatistics);
     }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : "礼品卡数据加载失败"); }).finally(() => { if (active) setLoading(false); });

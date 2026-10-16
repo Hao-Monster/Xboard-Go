@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import { Modal } from "../../components/Overlay";
 import type { AdminAPI, ServerGroup } from "../../lib/api";
+import { invalidateAdminData } from "../../lib/dataPrefetchCache";
 import "./ServerGroupsPage.css";
 
 type GroupsAPI = Pick<AdminAPI, "listServerGroups" | "createServerGroup" | "updateServerGroup" | "deleteServerGroup">;
@@ -251,6 +252,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
           group={editing}
           onClose={() => setEditing(undefined)}
           onSaved={(saved) => {
+            invalidateAdminData("groups");
             setGroups((current) =>
               editing === null
                 ? [saved, ...current]
@@ -266,6 +268,7 @@ export function ServerGroupsPage({ api }: { api: GroupsAPI }) {
           group={deleting}
           onClose={() => setDeleting(null)}
           onDeleted={() => {
+            invalidateAdminData("groups");
             setGroups((current) => current.filter((item) => item.id !== deleting.id));
             setDeleting(null);
           }}

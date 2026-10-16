@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { APIError, type AdminUser, type AdminUserBulkJob, type AdminUserGeneratedCredential, type Plan, type ServerGroup } from "../../lib/api";
+import { adminDataCache } from "../../lib/dataPrefetchCache";
+import { deferred } from "../../test/deferred";
 import { generatedUsersCSV, UsersPage } from "./UsersPage";
 
 const group: ServerGroup = { id: 7, name: "Premium", users_count: 1, server_count: 1, created_at: "2026-08-24T12:00:00Z", updated_at: "2026-08-24T12:00:00Z" };
@@ -611,7 +613,48 @@ describe("UsersPage", () => {
     expect(within(dialog).getByLabelText("封禁用户")).toBeDisabled();
     expect(within(dialog).getByText(/不能在本页封禁或移除管理员角色/)).toBeVisible();
   });
+
+  it("populates groups and plans even if a user search increments requestVersion before initial metadata resolves (BL-24) and invalidates prefetch cache on mutations (BL-28)", async () => {
+    adminDataCache.invalidate("users");
+    adminDataCache.invalidate("orders");
+    const groupsDeferred = deferred<ServerGroup[]>();
+    const plansDeferred = deferred<Plan[]>();
+    const api = baseAPI();
+    api.listAdminUsers.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 });
+    api.listServerGroups.mockReturnValue(groupsDeferred.promise);
+    api.listPlans.mockReturnValue(plansDeferred.promise);
+    api.updateAdminUser.mockResolvedValue({ ...account, revision: 2 });
+
+    const user = userEvent.setup();
+    render(<UsersPage api={api} currentUserID={1} />);
+
+    // Trigger a search before groups/plans resolve (increments requestVersion.current)
+    const searchBox = screen.getByRole("searchbox", { name: "邮箱前缀" });
+    await user.type(searchBox, "a");
+    await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2));
+
+    // Now resolve groups and plans
+    await act(async () => {
+      groupsDeferred.resolve([group, groupTwo]);
+      plansDeferred.resolve([plan, planTwo]);
+      await Promise.all([groupsDeferred.promise, plansDeferred.promise]);
+    });
+
+    // Open user editor: groups and plans must be populated despite earlier search
+    await user.click(await screen.findByRole("button", { name: "编辑用户：alpha@example.test" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑用户" });
+    expect(within(dialog).getByRole("option", { name: "旗舰套餐" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("option", { name: "Premium" })).toBeInTheDocument();
+
+    // Seed users prefetch cache and verify saving user invalidates it (BL-28)
+    void adminDataCache.prefetch("users", () => Promise.resolve({ items: [account], total: 1, page: 1, page_size: 20 }));
+    expect(adminDataCache.consume("users")).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalled());
+    expect(adminDataCache.consume("users")).toBeUndefined();
+  });
 });
+
 
 function baseAPI() {
   return {

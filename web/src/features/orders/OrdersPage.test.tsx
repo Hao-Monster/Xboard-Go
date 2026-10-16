@@ -260,6 +260,9 @@ describe("OrderManagementPage", () => {
 });
 
 
+import { adminDataCache } from "../../lib/dataPrefetchCache";
+import { deferred } from "../../test/deferred";
+
 describe("purchase code order presentation", () => {
   it.each(["user", "admin"])("shows fixed purchase rights and no free checkout for %s", async (role) => {
     const purchase = { ...pending, status: 3 as const, source: "gift_card_purchase" as const, gift_card_batch_no: "BATCH001", purchase_snapshot: { plan_id: 7, plan_name: "发码时的套餐", period: "onetime" as const, transfer_enable: 200 * 1073741824 }, user_email: "buyer@example.test", plan_name: "修改后的套餐", invite_user: null, commission_log: [], subscribe_url: null };
@@ -274,5 +277,83 @@ describe("purchase code order presentation", () => {
     expect(dialog.queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "标记已支付并开通" })).not.toBeInTheDocument();
     expect(api.checkoutOrder).not.toHaveBeenCalled(); expect(api.paidAdminOrder).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale detail responses and removes status-mismatched orders from filtered user list (BL-26, BL-27)", async () => {
+    const orderA: Order = { ...pending, id: 101, trade_no: "TRADE_A", status: 0 };
+    const orderB: Order = { ...pending, id: 102, trade_no: "TRADE_B", status: 0 };
+    const slowDetailA = deferred<Order>();
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([orderA, orderB]),
+      getOrder: vi.fn().mockImplementation((tradeNo: string) =>
+        tradeNo === "TRADE_A" ? slowDetailA.promise : Promise.resolve(orderB)
+      ),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn().mockResolvedValue({ ...orderB, status: 2 as const })
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+    expect(await screen.findByText("TRADE_A")).toBeVisible();
+
+    // Filter to "待支付" (status 0)
+    await user.click(screen.getByRole("button", { name: "待支付" }));
+    await waitFor(() => expect(api.listOrders).toHaveBeenLastCalledWith(0, 100));
+
+    // Click order A (slow), then click order B (fast)
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_A" }));
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_B" }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(dialog).getByText("TRADE_B")).toBeVisible();
+
+    // Now resolve slow detail A; it must NOT overwrite TRADE_B in the dialog
+    await act(async () => {
+      slowDetailA.resolve(orderA);
+      await slowDetailA.promise;
+    });
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).getByText("TRADE_B")).toBeVisible();
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).queryByText("TRADE_A")).not.toBeInTheDocument();
+
+    // Cancel TRADE_B while filtered by "待支付" (status 0): TRADE_B becomes status 2 ("已取消")
+    // so it must be removed from the filtered table while the detail modal updates to "已取消".
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith("TRADE_B"));
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).getByText("已取消")).toBeVisible();
+    const table = screen.getByRole("region", { name: "订单列表" });
+    expect(within(table).queryByText("TRADE_B")).not.toBeInTheDocument();
+  });
+
+  it("invalidates both orders and users prefetch cache when assigning an order in OrderManagementPage (BL-28)", async () => {
+    adminDataCache.invalidate("orders");
+    adminDataCache.invalidate("users");
+    const paidPlan: Plan = { ...plan, prices: { monthly: 1000 } };
+    const api = {
+      listAdminOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
+      getAdminOrder: vi.fn(),
+      assignOrder: vi.fn().mockResolvedValue(pending),
+      paidAdminOrder: vi.fn(),
+      cancelAdminOrder: vi.fn(),
+      updateAdminOrderCommissionStatus: vi.fn(),
+      listPlans: vi.fn().mockResolvedValue([paidPlan])
+    };
+    const user = userEvent.setup();
+    render(<OrderManagementPage api={api} />);
+    await screen.findByText("没有符合条件的订单。");
+
+    // Seed prefetch cache entries
+    void adminDataCache.prefetch("orders", () => Promise.resolve([{ items: [], total: 0, page: 1, page_size: 20 }, [paidPlan]]));
+    void adminDataCache.prefetch("users", () => Promise.resolve({ items: [], total: 0, page: 1, page_size: 20 }));
+    expect(adminDataCache.consume("orders")).toBeDefined();
+    expect(adminDataCache.consume("users")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "添加订单" }));
+    const dialog = screen.getByRole("dialog", { name: "订单分配" });
+    await user.type(within(dialog).getByLabelText("用户邮箱"), "buyer@example.test");
+    await user.selectOptions(within(dialog).getByLabelText("订阅计划"), String(paidPlan.id));
+    await user.selectOptions(within(dialog).getByLabelText("订单周期"), "monthly");
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.assignOrder).toHaveBeenCalled());
+    expect(adminDataCache.consume("orders")).toBeUndefined();
+    expect(adminDataCache.consume("users")).toBeUndefined();
   });
 });

@@ -536,7 +536,7 @@ export function NodeManagementPage({ api, initialMachineID, initiallyCreating = 
       </footer>
     </section>}
 
-    {editing !== null && <NodeDefinitionModal initialMachineID={initialMachineID} api={api} node={editing === "create" ? null : editing} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void run(() => Promise.resolve(), false); }} />}
+    {editing !== null && <NodeDefinitionModal initialMachineID={initialMachineID} api={api} node={editing === "create" ? null : editing} machines={machines} groups={groups} routes={routes} onClose={() => setEditing(null)} onGroupCreated={(group) => setGroups((current) => current.some((existing) => existing.id === group.id) ? current : [...current, group])} onSaved={() => { setEditing(null); void run(() => Promise.resolve(), false); }} />}
     {confirming !== null && <ConfirmNodeMutation api={api} kind={confirming.kind} targets={confirming.targets} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); void run(() => Promise.resolve(), false); }} />}
   </main>;
 }

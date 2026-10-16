@@ -60,3 +60,20 @@ export class DataPrefetchCache {
 
 /** Singleton cache shared across the admin panel. */
 export const adminDataCache = new DataPrefetchCache();
+
+export type AdminDataDomain = "users" | "orders" | "plans" | "groups";
+
+const domainKeys: Record<AdminDataDomain, readonly string[]> = {
+  users: ["users"],
+  orders: ["orders"],
+  plans: ["plans", "orders"],
+  groups: ["plans"],
+};
+
+export function invalidateAdminData(...domains: AdminDataDomain[]): void {
+  for (const domain of domains) {
+    for (const key of domainKeys[domain]) {
+      adminDataCache.invalidate(key);
+    }
+  }
+}

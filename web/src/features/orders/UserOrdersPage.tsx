@@ -1,5 +1,5 @@
 import { GiftCardPurchaseDetails } from "./GiftCardPurchaseDetails";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type { Order, OrderStatus, PaymentCheckout, PurchaseChannels, UserPaymentMethod } from "../../lib/api";
@@ -21,62 +21,81 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
   const [detailLoading, setDetailLoading] = useState(initialTradeNo !== null);
+  const listRequest = useRef(0);
+  const detailRequest = useRef(0);
+  const statusRef = useRef<"" | OrderStatus>(status);
 
-  const load = useCallback(async (nextStatus: "" | OrderStatus = status) => {
+  const load = useCallback(async (nextStatus: "" | OrderStatus = statusRef.current) => {
+    const id = ++listRequest.current;
     setLoading(true);
     setError("");
     try {
-      setOrders(await api.listOrders(nextStatus === "" ? undefined : nextStatus, 100));
+      const next = await api.listOrders(nextStatus === "" ? undefined : nextStatus, 100);
+      if (id === listRequest.current) setOrders(next);
     } catch (cause) {
-      setError(messageOf(cause));
+      if (id === listRequest.current) setError(messageOf(cause));
     } finally {
-      setLoading(false);
+      if (id === listRequest.current) setLoading(false);
     }
-  }, [api, status]);
+  }, [api]);
 
   const open = useCallback(async (tradeNo: string) => {
+    const id = ++detailRequest.current;
     setDetailLoading(true);
     setError("");
     try {
-      setSelected(await api.getOrder(tradeNo));
+      const next = await api.getOrder(tradeNo);
+      if (id === detailRequest.current) setSelected(next);
     } catch (cause) {
-      setError(messageOf(cause));
+      if (id === detailRequest.current) setError(messageOf(cause));
     } finally {
-      setDetailLoading(false);
+      if (id === detailRequest.current) setDetailLoading(false);
     }
   }, [api]);
 
   useEffect(() => {
     let active = true;
-    void api.listOrders(undefined, 100).then((result) => { if (active) setOrders(result); })
-      .catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
-      .finally(() => { if (active) setLoading(false); });
+    const id = ++listRequest.current;
+    void api.listOrders(undefined, 100).then((result) => { if (active && id === listRequest.current) setOrders(result); })
+      .catch((cause: unknown) => { if (active && id === listRequest.current) setError(messageOf(cause)); })
+      .finally(() => { if (active && id === listRequest.current) setLoading(false); });
     return () => { active = false; };
   }, [api]);
 
   useEffect(() => {
     if (initialTradeNo === null) return;
     let active = true;
-    void api.getOrder(initialTradeNo).then((result) => { if (active) setSelected(result); })
-      .catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
-      .finally(() => { if (active) { setDetailLoading(false); onInitialHandled?.(); } });
+    const id = ++detailRequest.current;
+    void api.getOrder(initialTradeNo).then((result) => { if (active && id === detailRequest.current) setSelected(result); })
+      .catch((cause: unknown) => { if (active && id === detailRequest.current) setError(messageOf(cause)); })
+      .finally(() => { if (active && id === detailRequest.current) { setDetailLoading(false); onInitialHandled?.(); } });
     return () => { active = false; };
   }, [api, initialTradeNo, onInitialHandled]);
 
   const replace = useCallback((order: Order) => {
-    setOrders((current) => current.map((item) => item.id === order.id ? { ...item, ...order } : item));
-    setSelected(order);
+    setOrders((current) =>
+      statusRef.current !== "" && order.status !== statusRef.current
+        ? current.filter((item) => item.id !== order.id)
+        : current.map((item) => item.id === order.id ? { ...item, ...order } : item)
+    );
+    setSelected((current) => (current?.trade_no === order.trade_no ? order : current));
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    detailRequest.current += 1;
+    setDetailLoading(false);
+    setSelected(null);
   }, []);
 
   return <main className="page-shell resource-page order-page">
     <header className="page-header"><div><p className="eyebrow">Orders</p><h1>我的订单</h1><p className="muted">查看订单金额、支付状态与套餐开通结果。</p></div><button className="button secondary" disabled={loading} onClick={() => void load()}>{loading ? "正在刷新…" : "刷新"}</button></header>
-    <div className="ticket-status-tabs" role="group" aria-label="订单状态筛选">{([ ["", "全部"], [0, "待支付"], [1, "开通中"], [2, "已取消"], [3, "已完成"], [4, "已折抵"] ] as const).map(([value, label]) => <button key={String(value)} className={`button ${status === value ? "primary" : "secondary"}`} onClick={() => { setStatus(value); void load(value); }}>{label}</button>)}</div>
+    <div className="ticket-status-tabs" role="group" aria-label="订单状态筛选">{([ ["", "全部"], [0, "待支付"], [1, "开通中"], [2, "已取消"], [3, "已完成"], [4, "已折抵"] ] as const).map(([value, label]) => <button key={String(value)} className={`button ${status === value ? "primary" : "secondary"}`} onClick={() => { statusRef.current = value; setStatus(value); void load(value); }}>{label}</button>)}</div>
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void load()}>重试</button></div>}
     {detailLoading && <div className="alert" role="status">正在读取订单详情…</div>}
     {loading && orders.length === 0 ? <div className="empty-card">正在加载订单…</div> : orders.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap" aria-label="订单列表"><table className="resource-table"><thead><tr><th>订单号</th><th>套餐</th><th>类型 / 周期</th><th>金额</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}>
       <td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="套餐">{order.purchase_snapshot?.plan_name ?? order.plan?.name ?? `套餐 #${order.plan_id}`}</td><td data-label="类型 / 周期">{order.source === "gift_card_purchase" ? "兑换码购买" : orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="金额">{order.source === "gift_card_purchase" ? "外部金额未核验" : `¥${formatCents(order.total_amount)}`}{order.balance_amount > 0 && <small className="muted">余额支付 ¥{formatCents(order.balance_amount)}</small>}</td><td data-label="状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td>
     </tr>)}</tbody></table></section>}
-    {selected !== null && <OrderDetailDialog api={api} order={selected} onUpdated={replace} onClose={() => setSelected(null)} onRedeem={onRedeem} />}
+    {selected !== null && <OrderDetailDialog api={api} order={selected} onUpdated={replace} onClose={closeDetail} onRedeem={onRedeem} />}
   </main>;
 }
 

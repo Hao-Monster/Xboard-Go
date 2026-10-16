@@ -241,4 +241,37 @@ describe("GiftCardManagementPage", () => {
     await waitFor(() => expect(api.generateGiftCardCodesCSV).toHaveBeenCalledWith(7, 1, "GC", null, 1));
     expect(api.generateGiftCardCodes).not.toHaveBeenCalled(); expect(createObjectURL).toHaveBeenCalled();
   });
+
+  it("clamps to the last valid page after deleting the only record on page > 1 (BL-25)", async () => {
+    const api = createAPI();
+    const secondPageTemplate: GiftCardTemplate = { ...template, id: 8, name: "第二页模板" };
+    let deleted = false;
+    api.listGiftCardTemplates.mockImplementation((page = 1) => {
+      if (!deleted) {
+        return Promise.resolve(
+          page === 1
+            ? { items: [template], total: 21, page: 1, page_size: 20 }
+            : { items: [secondPageTemplate], total: 21, page: 2, page_size: 20 }
+        );
+      }
+      return Promise.resolve(
+        page === 1
+          ? { items: [template], total: 20, page: 1, page_size: 20 }
+          : { items: [], total: 20, page: 2, page_size: 20 }
+      );
+    });
+    api.deleteGiftCardTemplate.mockImplementation(() => {
+      deleted = true;
+      return Promise.resolve();
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<GiftCardManagementPage api={api} />);
+    await screen.findByText("新人礼品卡");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(await screen.findByText("第二页模板")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    expect(await screen.findByText("新人礼品卡")).toBeVisible();
+    expect(screen.queryByText("暂无礼品卡模板")).not.toBeInTheDocument();
+  });
 });
