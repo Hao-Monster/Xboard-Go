@@ -619,10 +619,11 @@ func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now tim
 		OriginalAmount: input.TotalAmount, TotalAmount: input.TotalAmount, Status: OrderStatusPending,
 		SurplusOrderIDs: []int64{}, CommissionStatus: &commissionStatus, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}
+	activeSubscription := !user.expiredAt.Valid || user.expiredAt.Int64 > now.Unix()
 	switch {
 	case period == "reset_traffic":
 		order.Type = OrderTypeResetTraffic
-	case user.planID.Valid && user.planID.Int64 != input.PlanID:
+	case user.planID.Valid && user.planID.Int64 != input.PlanID && activeSubscription:
 		order.Type = OrderTypeUpgrade
 	case user.planID.Valid && user.planID.Int64 == input.PlanID && user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix():
 		order.Type = OrderTypeRenewal
@@ -1140,7 +1141,7 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 	if !user.expiredAt.Valid {
 		var id, paid int64
 		err := tx.QueryRowContext(ctx, `
-			SELECT id, total_amount + balance_amount FROM orders
+			SELECT id, total_amount + balance_amount + surplus_amount - surplus_credit FROM orders
 			WHERE user_id = ? AND period = 'onetime' AND source = 'online' AND status = 3 ORDER BY id DESC LIMIT 1
 		`, user.id).Scan(&id, &paid)
 		if errors.Is(err, sql.ErrNoRows) || paid <= 0 || user.transferEnable <= 0 {
@@ -1205,20 +1206,27 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 		order.SurplusOrderIDs = ids
 		return nil
 	}
-	numerator, denominator := remainingSeconds, totalSeconds
+	numerator, denominator := big.NewInt(remainingSeconds), big.NewInt(totalSeconds)
 	if trafficAware {
 		currentPlan, err := getPlan(ctx, tx, user.planID.Int64, now)
 		if err != nil {
 			return err
 		}
-		totalTraffic := currentPlan.TransferEnableGiB * int64(monthSum) * bytesPerGiB
-		used := minInt64(totalTraffic, user.trafficUpload+user.trafficDownload)
-		trafficRemaining := maxInt64(0, totalTraffic-used)
-		if fractionLess(trafficRemaining, totalTraffic, numerator, denominator) {
+		totalTraffic := new(big.Int).Mul(big.NewInt(currentPlan.TransferEnableGiB), big.NewInt(int64(monthSum)))
+		totalTraffic.Mul(totalTraffic, big.NewInt(bytesPerGiB))
+		used := big.NewInt(safeTrafficTotal(user.trafficUpload, user.trafficDownload))
+		if used.Cmp(totalTraffic) > 0 {
+			used.Set(totalTraffic)
+		}
+		trafficRemaining := new(big.Int).Sub(totalTraffic, used)
+		if trafficRemaining.Sign() < 0 {
+			trafficRemaining.SetInt64(0)
+		}
+		if fractionLessBig(trafficRemaining, totalTraffic, numerator, denominator) {
 			numerator, denominator = trafficRemaining, totalTraffic
 		}
 	}
-	order.SurplusAmount = mulDivFloor(amountSum, numerator, denominator)
+	order.SurplusAmount = mulDivFloorBig(amountSum, numerator, denominator)
 	order.SurplusOrderIDs = ids
 	return nil
 }
@@ -1549,8 +1557,15 @@ func mulDivFloor(value, numerator, denominator int64) int64 {
 	if value <= 0 || numerator <= 0 || denominator <= 0 {
 		return 0
 	}
-	product := new(big.Int).Mul(big.NewInt(value), big.NewInt(numerator))
-	product.Quo(product, big.NewInt(denominator))
+	return mulDivFloorBig(value, big.NewInt(numerator), big.NewInt(denominator))
+}
+
+func mulDivFloorBig(value int64, numerator, denominator *big.Int) int64 {
+	if value <= 0 || numerator == nil || denominator == nil || numerator.Sign() <= 0 || denominator.Sign() <= 0 {
+		return 0
+	}
+	product := new(big.Int).Mul(big.NewInt(value), numerator)
+	product.Quo(product, denominator)
 	if !product.IsInt64() || product.Int64() > maxOrderMoneyCents {
 		return maxOrderMoneyCents
 	}
@@ -1561,8 +1576,18 @@ func fractionLess(leftNumerator, leftDenominator, rightNumerator, rightDenominat
 	if leftDenominator <= 0 {
 		return true
 	}
-	left := new(big.Int).Mul(big.NewInt(leftNumerator), big.NewInt(rightDenominator))
-	right := new(big.Int).Mul(big.NewInt(rightNumerator), big.NewInt(leftDenominator))
+	return fractionLessBig(big.NewInt(leftNumerator), big.NewInt(leftDenominator), big.NewInt(rightNumerator), big.NewInt(rightDenominator))
+}
+
+func fractionLessBig(leftNumerator, leftDenominator, rightNumerator, rightDenominator *big.Int) bool {
+	if leftDenominator == nil || leftDenominator.Sign() <= 0 {
+		return true
+	}
+	if rightDenominator == nil || rightDenominator.Sign() <= 0 {
+		return false
+	}
+	left := new(big.Int).Mul(leftNumerator, rightDenominator)
+	right := new(big.Int).Mul(rightNumerator, leftDenominator)
 	return left.Cmp(right) < 0
 }
 
