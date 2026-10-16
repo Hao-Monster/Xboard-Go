@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "title": "2026-10-14 BL-01 through BL-30 local repair ledger",
-  "recorded_at": "2026-10-15",
+  "recorded_at": "2026-10-16",
   "baseline_sha": "07476e0229efd7ed326843c67dc611c7b1366c1a",
   "branch": "codex/ci-001-tiered-gates",
-  "status": "batch_a_rereview_passed_batch_b_local_verified_waiting_review",
+  "status": "batches_a_through_h_local_verified_and_committed",
   "authorization": {
     "local_changes_and_tests": true,
     "local_commits": true,
@@ -17,9 +17,10 @@
   "decisions": {
     "D-1": "Stage one: default 30 minute settlement grace; no late-payment money handling.",
     "D-2": "User confirmed consume days-only general cards for permanent users; days have no effect and are recorded as zero.",
-    "D-3": "Pending approval; no schema changes.",
-    "D-4": "Pending approval; no parity changes in this batch.",
-    "D-5": "Use engineering-spec default: HWID headers plus 404 empty body; account quota 429/60; render busy 503/1. V2 unchanged."
+    "D-3": "User approved schemaV69 scheduler_quarantine table migration and per-item SAVEPOINT isolation for BL-17 and BL-18.",
+    "D-4": "User approved intentional deviations from legacy PHP bugs for BL-04 (expired cross-period assign OrderTypeNew), BL-07 (chained onetime upgrade surplus), and BL-11 (version-compatible synthetic info items).",
+    "D-5": "Use engineering-spec default: HWID headers plus 404 empty body; account quota 429/60; render busy 503/1. V2 unchanged.",
+    "D-6": "User approved rejecting non-minute-aligned enable_second/disable_second in ValidateLegacyNodesData (BL-22) with error containing node ID."
   },
   "bugs": [
     {
@@ -123,7 +124,8 @@
       ],
       "status": "fixed_local_rereview_passed",
       "fix_commits": [
-        "9dfae293cfc81dd2f49490fb54ffbe14033d68a3"
+        "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
+        "165c99ef00aa6a5eb44cfcddb7c4690a83407fb4"
       ],
       "evidence": [
         "docs/testing/bug-fix-a-results-2026-10-14.md",
@@ -151,9 +153,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-05",
@@ -176,9 +183,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-06",
@@ -201,9 +213,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-07",
@@ -226,9 +243,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-08",
@@ -349,9 +371,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-f-plan-2026-10-16.md",
+        "docs/testing/bug-fix-f-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-12",
@@ -373,9 +400,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-f-plan-2026-10-16.md",
+        "docs/testing/bug-fix-f-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-13",
@@ -398,9 +430,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-14",
@@ -424,9 +461,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-15",
@@ -448,9 +490,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-16",
@@ -472,9 +519,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-17",
@@ -497,9 +549,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-18",
@@ -523,9 +580,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-19",
@@ -561,9 +623,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-g-plan-2026-10-16.md",
+        "docs/testing/bug-fix-g-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-20",
@@ -585,9 +652,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-21",
@@ -609,9 +681,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-22",
@@ -634,9 +711,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-g-plan-2026-10-16.md",
+        "docs/testing/bug-fix-g-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-23",
@@ -659,9 +741,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-24",
@@ -683,9 +770,14 @@
           "note": "Existing acceptance mapping; no issue closure claimed."
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-25",
@@ -708,9 +800,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-26",
@@ -733,9 +830,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-27",
@@ -758,9 +860,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-28",
@@ -791,9 +898,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-29",
@@ -824,9 +936,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
     },
     {
       "id": "BUG-20261014-30",
@@ -851,9 +968,14 @@
           "checked_at": "2026-10-15"
         }
       ],
-      "status": "not_started_waiting_for_batch_review",
-      "fix_commits": [],
-      "evidence": []
+      "status": "fixed_local_verified",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
     }
   ],
   "report": "docs/testing/bug-fix-a-results-2026-10-14.md",
@@ -932,5 +1054,41 @@
     "implementation_sha": "d35449b9546481ae329426f5184ddcdb58538abb",
     "report": "docs/testing/bug-fix-b-results-2026-10-15.md",
     "evidence": "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+  },
+  "batch_c": {
+    "plan": "docs/testing/bug-fix-c-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-c-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+  },
+  "batch_d": {
+    "plan": "docs/testing/bug-fix-d-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-d-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+  },
+  "batch_e": {
+    "plan": "docs/testing/bug-fix-e-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-e-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+  },
+  "batch_f": {
+    "plan": "docs/testing/bug-fix-f-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-f-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+  },
+  "batch_g": {
+    "plan": "docs/testing/bug-fix-g-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-g-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+  },
+  "batch_h": {
+    "plan": "docs/testing/bug-fix-h-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-h-results-2026-10-16.md",
+    "status": "local_verified_and_committed",
+    "implementation_sha": "b6c351e2c3c88dac3226460463ef2d35a140cdde"
   }
 }
