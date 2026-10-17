@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const dedicatedStore = [
@@ -627,6 +627,60 @@ export function getChangedFiles(env = process.env, payload = null) {
   }
 }
 
+export const BASELINE_SMOKE_E2E_SPECS = [
+  "e2e/admin-navigation.spec.ts",
+  "e2e/registration.spec.ts"
+];
+
+export function resolveModifiedE2eSpecs(
+  rawFiles,
+  existsFn = (p) => existsSync(p),
+  readFn = (p) => readFileSync(p, "utf8")
+) {
+  const baselineSet = new Set(BASELINE_SMOKE_E2E_SPECS);
+  const regularSet = new Set();
+  const packagedSet = new Set();
+
+  for (const raw of rawFiles ?? []) {
+    const f = raw.trim().replace(/\\/g, "/");
+    if (!f.startsWith("web/e2e/") || !f.endsWith(".spec.ts") || !existsFn(f)) {
+      continue;
+    }
+    const rel = f.slice(4);
+    if (baselineSet.has(rel)) {
+      continue;
+    }
+    const content = readFn(f);
+    if (/XBOARD_E2E_MAILPIT_URL|XBOARD_E2E_EXTERNAL_SERVER/.test(content)) {
+      packagedSet.add(rel);
+    } else {
+      regularSet.add(rel);
+    }
+  }
+
+  return {
+    baselineSpecs: [...BASELINE_SMOKE_E2E_SPECS],
+    regularSpecs: [...regularSet].sort(),
+    packagedSpecs: [...packagedSet].sort()
+  };
+}
+
+export function assertPlaywrightReportNotAllSkipped(reportJson, specName) {
+  const parsed = typeof reportJson === "string" ? JSON.parse(reportJson) : reportJson;
+  const stats = parsed?.stats;
+  if (!stats || typeof stats.expected !== "number") {
+    throw new Error(`Invalid Playwright JSON report for ${specName}`);
+  }
+  if ((stats.unexpected ?? 0) > 0) {
+    throw new Error(`Playwright spec ${specName} had ${stats.unexpected} unexpected failure(s)`);
+  }
+  if (stats.expected <= 0) {
+    throw new Error(
+      `Playwright spec ${specName} executed 0 passing tests (skipped=${stats.skipped ?? 0}); refusing all-skipped pass`
+    );
+  }
+}
+
 export function writeGithubOutputs(results, outputPath) {
   if (!outputPath) return;
   const lines = Object.entries(results)
@@ -636,6 +690,30 @@ export function writeGithubOutputs(results, outputPath) {
 }
 
 function main() {
+  if (process.argv.includes("--list-e2e-regular")) {
+    const { regularSpecs } = resolveModifiedE2eSpecs(getChangedFiles());
+    for (const spec of regularSpecs) {
+      process.stdout.write(`${spec}\n`);
+    }
+    return;
+  }
+
+  if (process.argv.includes("--list-e2e-packaged")) {
+    const { packagedSpecs } = resolveModifiedE2eSpecs(getChangedFiles());
+    for (const spec of packagedSpecs) {
+      process.stdout.write(`${spec}\n`);
+    }
+    return;
+  }
+
+  const verifyIdx = process.argv.indexOf("--verify-playwright-report");
+  if (verifyIdx >= 0) {
+    const reportPath = process.argv[verifyIdx + 1] ?? "";
+    const specName = process.argv[verifyIdx + 2] ?? reportPath;
+    assertPlaywrightReportNotAllSkipped(readFileSync(reportPath, "utf8"), specName);
+    return;
+  }
+
   const modeArgIdx = process.argv.indexOf("--mode");
   const mode = modeArgIdx >= 0 ? process.argv[modeArgIdx + 1] : "production";
   const revMeta = resolveGitRevisionMeta();

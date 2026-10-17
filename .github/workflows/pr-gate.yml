@@ -265,7 +265,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.browser_smoke == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -289,29 +289,49 @@ jobs:
       - name: Run Playwright browser smoke suite and any modified E2E specs
         run: |
           set -euo pipefail
+          run_and_verify_spec() {
+            local spec="$1"
+            local report_file="$RUNNER_TEMP/playwright-report-$(basename "$spec" .spec.ts).json"
+            rm -f "$report_file"
+            PLAYWRIGHT_JSON_OUTPUT_NAME="$report_file" \
+              pnpm --dir web exec playwright test "$spec" --project chromium --reporter=list,json
+            node .github/scripts/detect-changes.mjs --verify-playwright-report "$report_file" "$spec"
+          }
           pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium
-          mapfile -t extra_specs < <(node -e '
-            import("node:fs").then((fs) =>
-              import("./.github/scripts/detect-changes.mjs").then((m) => {
-                const baseline = new Set(["e2e/admin-navigation.spec.ts", "e2e/registration.spec.ts"]);
-                const extra = new Set();
-                for (const f of m.getChangedFiles()) {
-                  if (f.startsWith("web/e2e/") && f.endsWith(".spec.ts") && fs.existsSync(f)) {
-                    const rel = f.slice(4);
-                    if (!baseline.has(rel)) {
-                      extra.add(rel);
-                    }
-                  }
-                }
-                for (const s of [...extra].sort()) {
-                  console.log(s);
-                }
-              })
-            );
-          ')
-          for spec in "${extra_specs[@]}"; do
-            pnpm --dir web exec playwright test "$spec" --project chromium
+          mapfile -t regular_specs < <(node .github/scripts/detect-changes.mjs --list-e2e-regular)
+          for spec in "${regular_specs[@]}"; do
+            run_and_verify_spec "$spec"
           done
+          mapfile -t packaged_specs < <(node .github/scripts/detect-changes.mjs --list-e2e-packaged)
+          if [ "${#packaged_specs[@]}" -gt 0 ]; then
+            cleanup_packaged() {
+              docker compose -f compose.local.yaml --profile e2e down -v --remove-orphans || true
+            }
+            trap cleanup_packaged EXIT
+            mkdir -p .local
+            password="$(openssl rand -hex 24)"
+            settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+            printf '%s' "$password" > .local/bootstrap-password.txt
+            printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+            export XBOARD_GO_REVISION="${{ github.sha }}"
+            export XBOARD_E2E_ADMIN_PATH="e2e-admin-secure"
+            export XBOARD_LEGACY_ADMIN_PATH="e2e-admin-secure"
+            export XBOARD_CAPTCHA_ALLOW_INSECURE="true"
+            export XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL="http://captcha-stub:4199/recaptcha"
+            export XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL="http://captcha-stub:4199/recaptcha-v3"
+            export XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL="http://captcha-stub:4199/turnstile"
+            docker compose -f compose.local.yaml --profile e2e up --build --wait
+            export XBOARD_E2E_BASE_URL="http://127.0.0.1:7080"
+            export XBOARD_E2E_EXTERNAL_SERVER="true"
+            export XBOARD_E2E_ADMIN_EMAIL="admin@xboard-go.local"
+            export XBOARD_E2E_ADMIN_PASSWORD="$password"
+            export XBOARD_E2E_MAILPIT_URL="http://127.0.0.1:7082"
+            for spec in "${packaged_specs[@]}"; do
+              docker compose -f compose.local.yaml --profile e2e restart xboard-go
+              docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
+              run_and_verify_spec "$spec"
+            done
+          fi
 
   supply-chain:
     needs: detect-changes

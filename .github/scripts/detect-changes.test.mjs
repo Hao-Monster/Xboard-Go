@@ -230,3 +230,48 @@ test("analyzePrScope classifies every tracked file in git ls-files without unkno
   const unknowns = tracked.filter((f) => analyzePrScope([f]).unknown_paths === "true");
   assert.deepEqual(unknowns, []);
 });
+
+test("resolveModifiedE2eSpecs separates regular E2E specs from Mailpit and external-server specs", async () => {
+  const { resolveModifiedE2eSpecs, assertPlaywrightReportNotAllSkipped } = await import(
+    "./detect-changes.mjs"
+  );
+  const classified = resolveModifiedE2eSpecs([
+    "web/e2e/admin-navigation.spec.ts",
+    "web/e2e/ui-state-regressions.spec.ts",
+    "web/e2e/zz-orders.spec.ts",
+    "web/e2e/login-links.spec.ts",
+    "web/e2e/safe-access.spec.ts",
+    "web/e2e/deleted-nonexistent.spec.ts"
+  ]);
+  assert.deepEqual(classified.regularSpecs, [
+    "e2e/ui-state-regressions.spec.ts",
+    "e2e/zz-orders.spec.ts"
+  ]);
+  assert.deepEqual(classified.packagedSpecs, [
+    "e2e/login-links.spec.ts",
+    "e2e/safe-access.spec.ts"
+  ]);
+
+  assert.doesNotThrow(() =>
+    assertPlaywrightReportNotAllSkipped(
+      JSON.stringify({ stats: { expected: 2, unexpected: 0, skipped: 0 } }),
+      "e2e/zz-orders.spec.ts"
+    )
+  );
+  assert.throws(
+    () =>
+      assertPlaywrightReportNotAllSkipped(
+        JSON.stringify({ stats: { expected: 0, unexpected: 0, skipped: 1 } }),
+        "e2e/safe-access.spec.ts"
+      ),
+    /executed 0 passing tests/
+  );
+  assert.throws(
+    () =>
+      assertPlaywrightReportNotAllSkipped(
+        JSON.stringify({ stats: { expected: 1, unexpected: 1, skipped: 0 } }),
+        "e2e/login-links.spec.ts"
+      ),
+    /unexpected failure/
+  );
+});
