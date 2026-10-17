@@ -1,8 +1,8 @@
 # Bug Fix Batch H Test Results (`BL-23` through `BL-29`)
 
-**Date:** 2026-10-16  
-**Branch:** `codex/ci-001-tiered-gates`  
-**Scope:** Frontend React/TypeScript overlay Escape stack, user editor reset, gift card pagination clamp, user order detail request versioning & filtered replacement, admin prefetch cache invalidation, and inline server group state sync (`web/src`)
+- **Date:** 2026-10-16
+- **Branch:** `codex/ci-001-tiered-gates`
+- **Scope:** Frontend React/TypeScript overlay Escape stack, user editor reset, gift card pagination clamp, user order detail request versioning & filtered replacement, admin prefetch cache invalidation, and inline server group state sync (`web/src`)
 
 ## Red → Green Summary
 

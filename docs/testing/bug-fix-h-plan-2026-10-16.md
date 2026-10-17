@@ -1,8 +1,8 @@
 # Bug Fix Batch H Test Plan (`BL-23` .. `BL-29`)
 
-**Date:** 2026-10-16  
-**Branch:** `codex/ci-001-tiered-gates`  
-**Scope:** Frontend modal Escape stacking, async race conditions, pagination bounds, prefetch cache invalidation, and inline group creation (`web/src`)
+- **Date:** 2026-10-16
+- **Branch:** `codex/ci-001-tiered-gates`
+- **Scope:** Frontend modal Escape stacking, async race conditions, pagination bounds, prefetch cache invalidation, and inline group creation (`web/src`)
 
 ## Target Bug Items
 

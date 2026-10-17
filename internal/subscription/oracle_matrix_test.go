@@ -422,4 +422,3 @@ func TestBL12ShadowrocketHysteriaV1AndV2URIs(t *testing.T) {
 		t.Fatalf("shadowrocketLine(invalidVersion) = %q, want empty string", got)
 	}
 }
-

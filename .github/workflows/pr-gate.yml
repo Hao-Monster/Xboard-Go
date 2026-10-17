@@ -69,7 +69,19 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Check formatting and whitespace
-        run: git diff --check
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          if [ -n "$PR_BASE_SHA" ]; then
+            git diff --check "${PR_BASE_SHA}..HEAD"
+          elif [ -n "$PUSH_BEFORE_SHA" ] && ! [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "${PUSH_BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git diff --check "${PUSH_BEFORE_SHA}..HEAD"
+          elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            git diff --check HEAD~1..HEAD
+          fi
       - name: Validate project governance baseline
         run: go run ./cmd/projectctl check
       - name: Validate pull request metadata
@@ -116,6 +128,27 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24
+      - name: Fetch pinned legacy Ip2Region test fixture when geoip is tested
+        run: |
+          set -euo pipefail
+          needs_geoip="$(node -e '
+            import("./.github/scripts/detect-changes.mjs").then((d) =>
+              import("./.github/scripts/resolve-affected-go-pkgs.mjs").then((r) => {
+                const res = r.resolveAffectedGoPackages(d.getChangedFiles(), { skipDirectPackages: r.HEAVY_RACE_GROUP_PACKAGES });
+                console.log(res.testPackages.includes("./internal/geoip") ? "true" : "false");
+              })
+            );
+          ')"
+          if [ "$needs_geoip" = "true" ]; then
+            fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
+              --output "$fixture" \
+              https://raw.githubusercontent.com/zoujingli/ip2region/a031c359620c22889fac7b998409fdcdef76a69c/ip2region.xdb
+            printf '%s  %s\n' \
+              '5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469' \
+              "$fixture" | sha256sum --check --strict
+            printf 'XBOARD_TEST_LEGACY_IP2REGION_XDB=%s\n' "$fixture" >> "$GITHUB_ENV"
+          fi
       - name: Run Go dependency-graph incremental tests and caller compile checks
         run: node .github/scripts/resolve-affected-go-pkgs.mjs --run --skip-heavy-groups
 
@@ -243,6 +276,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -259,8 +293,32 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
       - run: pnpm --dir web build
       - run: pnpm --dir web exec playwright install --with-deps chromium
-      - name: Run Playwright browser smoke suite
-        run: pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium
+      - name: Run Playwright browser smoke suite and any modified E2E specs
+        run: |
+          set -euo pipefail
+          pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium
+          mapfile -t extra_specs < <(node -e '
+            import("node:fs").then((fs) =>
+              import("./.github/scripts/detect-changes.mjs").then((m) => {
+                const baseline = new Set(["e2e/admin-navigation.spec.ts", "e2e/registration.spec.ts"]);
+                const extra = new Set();
+                for (const f of m.getChangedFiles()) {
+                  if (f.startsWith("web/e2e/") && f.endsWith(".spec.ts") && fs.existsSync(f)) {
+                    const rel = f.slice(4);
+                    if (!baseline.has(rel)) {
+                      extra.add(rel);
+                    }
+                  }
+                }
+                for (const s of [...extra].sort()) {
+                  console.log(s);
+                }
+              })
+            );
+          ')
+          for spec in "${extra_specs[@]}"; do
+            pnpm --dir web exec playwright test "$spec" --project chromium
+          done
 
   supply-chain:
     needs: detect-changes

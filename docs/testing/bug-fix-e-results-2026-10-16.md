@@ -1,8 +1,8 @@
 # Bug Fix Batch E Test Results (`BL-13`, `BL-14`, `BL-15`)
 
-**Date:** 2026-10-16  
-**Branch:** `codex/ci-001-tiered-gates`  
-**Scope:** Real-time node coordination & auth session/token isolation (`internal/httpapi`)
+- **Date:** 2026-10-16
+- **Branch:** `codex/ci-001-tiered-gates`
+- **Scope:** Real-time node coordination & auth session/token isolation (`internal/httpapi`)
 
 ## Red → Green Summary
 

@@ -266,4 +266,3 @@ func TestBL22ValidateLegacyNodesRejectsNonMinuteAlignedDailySchedule(t *testing.
 		})
 	}
 }
-

@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { webcrypto } from "node:crypto";
+import { useState } from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -321,6 +322,57 @@ describe("purchase code order presentation", () => {
     expect(within(screen.getByRole("dialog", { name: "订单详情" })).getByText("已取消")).toBeVisible();
     const table = screen.getByRole("region", { name: "订单列表" });
     expect(within(table).queryByText("TRADE_B")).not.toBeInTheDocument();
+  });
+
+  it("consumes initialTradeNo even when superseded by manual selection so parent re-renders do not re-open it", async () => {
+    const orderA: Order = { ...pending, id: 101, trade_no: "TRADE_A", status: 0 };
+    const orderB: Order = { ...pending, id: 102, trade_no: "TRADE_B", status: 0 };
+    const slowInitialA = deferred<Order>();
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([orderA, orderB]),
+      getOrder: vi.fn().mockImplementation((tradeNo: string) =>
+        tradeNo === "TRADE_A" ? slowInitialA.promise : Promise.resolve(orderB)
+      ),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn()
+    };
+    function Harness() {
+      const [openOrderTradeNo, setOpenOrderTradeNo] = useState<string | null>("TRADE_A");
+      const [collapsed, setCollapsed] = useState(false);
+      return (
+        <div>
+          <button onClick={() => setCollapsed((v) => !v)}>切换导航 {String(collapsed)}</button>
+          <UserOrdersPage
+            api={api}
+            initialTradeNo={openOrderTradeNo}
+            onInitialHandled={() => setOpenOrderTradeNo(null)}
+          />
+        </div>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(await screen.findByText("TRADE_B")).toBeVisible();
+
+    // User manually opens TRADE_B before initialTradeNo TRADE_A resolves
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_B" }));
+    const dialogB = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(dialogB).getByText("TRADE_B")).toBeVisible();
+
+    // Initial TRADE_A resolves late
+    await act(async () => {
+      slowInitialA.resolve(orderA);
+      await slowInitialA.promise;
+    });
+
+    // User closes TRADE_B dialog, then triggers parent re-render with fresh inline callback
+    await user.click(within(dialogB).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /切换导航/ }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+    expect(api.getOrder.mock.calls.map(([t]) => String(t))).toEqual(["TRADE_A", "TRADE_B"]);
   });
 
   it("invalidates both orders and users prefetch cache when assigning an order in OrderManagementPage (BL-28)", async () => {

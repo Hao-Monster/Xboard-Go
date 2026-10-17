@@ -467,4 +467,3 @@ func (p *bl19UnknownObservationPlatform) ActivateDeployment(ctx context.Context,
 	p.activated = true
 	return p.fakeDeploymentPlatform.ActivateDeployment(ctx, target, dsn, changed)
 }
-

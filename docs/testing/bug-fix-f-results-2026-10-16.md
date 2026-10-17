@@ -1,8 +1,8 @@
 # Bug Fix Batch F Test Results (`BL-11`, `BL-12`)
 
-**Date:** 2026-10-16  
-**Branch:** `codex/ci-001-tiered-gates`  
-**Scope:** Subscription delivery & Shadowrocket URI rendering (`internal/subscription`, `internal/httpapi`)
+- **Date:** 2026-10-16
+- **Branch:** `codex/ci-001-tiered-gates`
+- **Scope:** Subscription delivery & Shadowrocket URI rendering (`internal/subscription`, `internal/httpapi`)
 
 ## Red → Green Summary
 

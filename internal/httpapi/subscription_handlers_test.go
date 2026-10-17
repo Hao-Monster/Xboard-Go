@@ -577,4 +577,3 @@ func TestBL11IncompatibleClientReceivesEmptySubscriptionBanner(t *testing.T) {
 		t.Fatalf("Shadowrocket/1992 subscription leaked hysteria node:\n%s", unescaped)
 	}
 }
-

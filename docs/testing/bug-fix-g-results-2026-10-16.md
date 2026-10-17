@@ -1,8 +1,8 @@
 # Bug Fix Batch G Test Results (`BL-19`, `BL-22`)
 
-**Date:** 2026-10-16  
-**Branch:** `codex/ci-001-tiered-gates`  
-**Scope:** Split lifecycle rollback journal fidelity (`internal/lifecycle`) & legacy node schedule minute-alignment validation (`internal/store`)
+- **Date:** 2026-10-16
+- **Branch:** `codex/ci-001-tiered-gates`
+- **Scope:** Split lifecycle rollback journal fidelity (`internal/lifecycle`) & legacy node schedule minute-alignment validation (`internal/store`)
 
 ## Red → Green Summary
 

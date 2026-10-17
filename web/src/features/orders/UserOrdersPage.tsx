@@ -24,6 +24,11 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const statusRef = useRef<"" | OrderStatus>(status);
+  const onInitialHandledRef = useRef(onInitialHandled);
+
+  useEffect(() => {
+    onInitialHandledRef.current = onInitialHandled;
+  }, [onInitialHandled]);
 
   const load = useCallback(async (nextStatus: "" | OrderStatus = statusRef.current) => {
     const id = ++listRequest.current;
@@ -43,6 +48,7 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     const id = ++detailRequest.current;
     setDetailLoading(true);
     setError("");
+    onInitialHandledRef.current?.();
     try {
       const next = await api.getOrder(tradeNo);
       if (id === detailRequest.current) setSelected(next);
@@ -68,9 +74,16 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     const id = ++detailRequest.current;
     void api.getOrder(initialTradeNo).then((result) => { if (active && id === detailRequest.current) setSelected(result); })
       .catch((cause: unknown) => { if (active && id === detailRequest.current) setError(messageOf(cause)); })
-      .finally(() => { if (active && id === detailRequest.current) { setDetailLoading(false); onInitialHandled?.(); } });
+      .finally(() => {
+        if (active && id === detailRequest.current) {
+          setDetailLoading(false);
+        }
+        if (active) {
+          onInitialHandledRef.current?.();
+        }
+      });
     return () => { active = false; };
-  }, [api, initialTradeNo, onInitialHandled]);
+  }, [api, initialTradeNo]);
 
   const replace = useCallback((order: Order) => {
     setOrders((current) =>
@@ -85,6 +98,7 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     detailRequest.current += 1;
     setDetailLoading(false);
     setSelected(null);
+    onInitialHandledRef.current?.();
   }, []);
 
   return <main className="page-shell resource-page order-page">
