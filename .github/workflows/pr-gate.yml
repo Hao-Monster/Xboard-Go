@@ -261,7 +261,6 @@ jobs:
       - run: pnpm --dir web lint
       - run: pnpm --dir web test
       - run: pnpm --dir web build
-      - run: pnpm --dir web audit --audit-level high
 
   browser-smoke:
     needs: detect-changes
@@ -361,11 +360,12 @@ jobs:
         run: |
           go run github.com/google/go-licenses/v2@v2.0.1 check --include_tests --ignore github.com/Hao-Monster/Xboard-Go ./cmd/... ./internal/...
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./cmd/... ./internal/...
-      - name: Check web production dependency licenses
+      - name: Check web production dependency licenses and vulnerabilities
         run: |
           mkdir -p artifacts
           pnpm --dir web licenses list --prod --json > artifacts/web-production-licenses.json
           node .github/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
+          pnpm --dir web audit --audit-level high
 
   migration-drill:
     needs: detect-changes

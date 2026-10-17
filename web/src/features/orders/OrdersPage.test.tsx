@@ -119,6 +119,76 @@ describe("UserOrdersPage", () => {
     expect(within(dialog).queryByRole("button", { name: "关闭订单" })).not.toBeInTheDocument();
   });
 
+  it("does not resurrect a cancelled order when an earlier in-flight status-filtered list request resolves late", async () => {
+    const payable = { ...pending, original_amount: 1_000, total_amount: 1_000 };
+    const cancelled = { ...payable, status: 2 as const };
+    let resolveFilteredList!: (orders: Order[]) => void;
+    const delayedFilteredList = new Promise<Order[]>((resolve) => {
+      resolveFilteredList = resolve;
+    });
+    const api = {
+      listOrders: vi.fn()
+        .mockResolvedValueOnce([payable])
+        .mockReturnValueOnce(delayedFilteredList),
+      getOrder: vi.fn().mockResolvedValue(payable),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn().mockResolvedValue(cancelled)
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+
+    expect(await screen.findByText(payable.trade_no)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "待支付" }));
+    await user.click(screen.getByRole("button", { name: `查看订单：${payable.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith(payable.trade_no));
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单详情" }));
+
+    await act(async () => {
+      resolveFilteredList([payable]);
+      await delayedFilteredList;
+    });
+    expect(screen.queryByText(payable.trade_no)).not.toBeInTheDocument();
+    expect(screen.getByText("没有符合条件的订单。")).toBeVisible();
+  });
+
+  it("preserves a newer discounted server snapshot over an older local checkout completion", async () => {
+    const completed = { ...pending, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", updated_at: "2026-08-26T00:01:00Z" };
+    const discounted = { ...completed, status: 4 as const, updated_at: "2026-08-26T00:02:00Z" };
+    let resolveFilteredList!: (orders: Order[]) => void;
+    const delayedFilteredList = new Promise<Order[]>((resolve) => {
+      resolveFilteredList = resolve;
+    });
+    const api = {
+      listOrders: vi.fn()
+        .mockResolvedValueOnce([pending])
+        .mockReturnValueOnce(delayedFilteredList),
+      getOrder: vi.fn().mockResolvedValue(pending),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn().mockResolvedValue(completed),
+      cancelOrder: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+
+    expect(await screen.findByText(pending.trade_no)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "已折抵" }));
+    await user.click(screen.getByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "立即开通" }));
+    await waitFor(() => expect(api.checkoutOrder).toHaveBeenCalledWith(pending.trade_no));
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单详情" }));
+
+    await act(async () => {
+      resolveFilteredList([discounted]);
+      await delayedFilteredList;
+    });
+    expect(await screen.findByText(discounted.trade_no)).toBeVisible();
+    expect(screen.getByText("已折抵", { selector: ".order-status" })).toBeVisible();
+  });
+
   it("selects an enabled payment method, shows the exact fee, and exposes the created checkout safely", async () => {
     const payable = { ...pending, original_amount: 1_000, total_amount: 1_000 };
 		const completed = { ...payable, status: 3 as const, payment_id: 9, handling_amount: 148, paid_at: "2026-08-26T00:01:00Z" };

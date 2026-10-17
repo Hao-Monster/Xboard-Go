@@ -430,12 +430,17 @@ export function analyzePrScope(rawFiles) {
     sharedBackendCore ||
     files.some((f) => f.startsWith("internal/httpapi/"));
 
+  const xboardTouched =
+    sharedBackendCore ||
+    files.some((f) => matchesPrefix(f, dedicatedXboard));
+
   // go_fast is needed when non-shared Go packages are modified, or when non-test files in store/httpapi
   // are modified (so upstream callers of store/httpapi get compile-checked).
   const hasGoFastWork = files.some((f) => {
     const isGoRelated = f.endsWith(".go") || f.startsWith("cmd/") || f.startsWith("internal/");
     if (!isGoRelated) return false;
     if (f.startsWith("internal/testdata/legacy/drill/")) return false;
+    if (matchesPrefix(f, dedicatedXboard)) return false;
     const isHeavyDirectOnly = f.startsWith("internal/store/") || f.startsWith("internal/httpapi/");
     if (isHeavyDirectOnly && f.endsWith("_test.go")) {
       return false;
@@ -443,12 +448,12 @@ export function analyzePrScope(rawFiles) {
     return true;
   });
 
-  const goRace = sharedBackendCore || storeTouched || httpApiTouched;
+  const goRace = sharedBackendCore || storeTouched || httpApiTouched || xboardTouched;
   const goFast = hasGoFastWork && !sharedBackendCore;
 
   const backendAll = sharedBackendCore;
   const backendStore = sharedBackendCore || storeTouched;
-  const backendXboard = sharedBackendCore;
+  const backendXboard = sharedBackendCore || xboardTouched;
   const backendServicesA = sharedBackendCore || httpApiTouched;
   const backendServicesB = sharedBackendCore;
   const backendRemainder = sharedBackendCore;

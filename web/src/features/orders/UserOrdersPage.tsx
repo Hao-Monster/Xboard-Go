@@ -23,6 +23,8 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
   const [detailLoading, setDetailLoading] = useState(initialTradeNo !== null);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const mutationSequence = useRef(0);
+  const recentOrderMutations = useRef(new Map<number, { seq: number; order: Order }>());
   const statusRef = useRef<"" | OrderStatus>(status);
   const onInitialHandledRef = useRef(onInitialHandled);
 
@@ -30,19 +32,31 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     onInitialHandledRef.current = onInitialHandled;
   }, [onInitialHandled]);
 
+  const reconcileLoadedOrders = useCallback((items: Order[], startedAtMutation: number, activeStatus: "" | OrderStatus) => {
+    const merged = items.map((item) => {
+      const mutated = recentOrderMutations.current.get(item.id);
+      if (mutated === undefined || mutated.seq <= startedAtMutation || !isNewerOrderSnapshot(mutated.order, item)) {
+        return item;
+      }
+      return { ...item, ...mutated.order };
+    });
+    return activeStatus === "" ? merged : merged.filter((item) => item.status === activeStatus);
+  }, []);
+
   const load = useCallback(async (nextStatus: "" | OrderStatus = statusRef.current) => {
     const id = ++listRequest.current;
+    const startedAtMutation = mutationSequence.current;
     setLoading(true);
     setError("");
     try {
       const next = await api.listOrders(nextStatus === "" ? undefined : nextStatus, 100);
-      if (id === listRequest.current) setOrders(next);
+      if (id === listRequest.current) setOrders(reconcileLoadedOrders(next, startedAtMutation, statusRef.current));
     } catch (cause) {
       if (id === listRequest.current) setError(messageOf(cause));
     } finally {
       if (id === listRequest.current) setLoading(false);
     }
-  }, [api]);
+  }, [api, reconcileLoadedOrders]);
 
   const open = useCallback(async (tradeNo: string) => {
     const id = ++detailRequest.current;
@@ -51,7 +65,9 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     onInitialHandledRef.current?.();
     try {
       const next = await api.getOrder(tradeNo);
-      if (id === detailRequest.current) setSelected(next);
+      if (id === detailRequest.current) {
+        setSelected((current) => current?.trade_no === next.trade_no && !isNewerOrderSnapshot(next, current) ? current : next);
+      }
     } catch (cause) {
       if (id === detailRequest.current) setError(messageOf(cause));
     } finally {
@@ -61,18 +77,28 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
 
   useEffect(() => {
     let active = true;
+    recentOrderMutations.current.clear();
     const id = ++listRequest.current;
-    void api.listOrders(undefined, 100).then((result) => { if (active && id === listRequest.current) setOrders(result); })
+    const startedAtMutation = mutationSequence.current;
+    void api.listOrders(undefined, 100).then((result) => {
+      if (active && id === listRequest.current) {
+        setOrders(reconcileLoadedOrders(result, startedAtMutation, statusRef.current));
+      }
+    })
       .catch((cause: unknown) => { if (active && id === listRequest.current) setError(messageOf(cause)); })
       .finally(() => { if (active && id === listRequest.current) setLoading(false); });
     return () => { active = false; };
-  }, [api]);
+  }, [api, reconcileLoadedOrders]);
 
   useEffect(() => {
     if (initialTradeNo === null) return;
     let active = true;
     const id = ++detailRequest.current;
-    void api.getOrder(initialTradeNo).then((result) => { if (active && id === detailRequest.current) setSelected(result); })
+    void api.getOrder(initialTradeNo).then((result) => {
+      if (active && id === detailRequest.current) {
+        setSelected((current) => current?.trade_no === result.trade_no && !isNewerOrderSnapshot(result, current) ? current : result);
+      }
+    })
       .catch((cause: unknown) => { if (active && id === detailRequest.current) setError(messageOf(cause)); })
       .finally(() => {
         if (active && id === detailRequest.current) {
@@ -86,12 +112,20 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
   }, [api, initialTradeNo]);
 
   const replace = useCallback((order: Order) => {
-    setOrders((current) =>
-      statusRef.current !== "" && order.status !== statusRef.current
-        ? current.filter((item) => item.id !== order.id)
-        : current.map((item) => item.id === order.id ? { ...item, ...order } : item)
+    const existingMutation = recentOrderMutations.current.get(order.id);
+    const nextOrder = existingMutation !== undefined && !isNewerOrderSnapshot(order, existingMutation.order)
+      ? existingMutation.order
+      : order;
+    recentOrderMutations.current.set(order.id, { seq: ++mutationSequence.current, order: nextOrder });
+    setOrders((current) => {
+      const updated = current.map((item) =>
+        item.id === nextOrder.id && isNewerOrderSnapshot(nextOrder, item) ? { ...item, ...nextOrder } : item
+      );
+      return statusRef.current === "" ? updated : updated.filter((item) => item.status === statusRef.current);
+    });
+    setSelected((current) =>
+      current?.trade_no === nextOrder.trade_no && isNewerOrderSnapshot(nextOrder, current) ? nextOrder : current
     );
-    setSelected((current) => (current?.trade_no === order.trade_no ? order : current));
   }, []);
 
   const closeDetail = useCallback(() => {
@@ -194,4 +228,30 @@ export function formatCents(value: number): string { return `${Math.trunc(value 
 export function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false }); }
 function paymentHandlingFee(amount: number, method: UserPaymentMethod): number { return Number((BigInt(amount) * BigInt(method.handling_fee_basis_points) + 5_000n) / 10_000n + BigInt(method.handling_fee_fixed)); }
 function safePaymentURL(value: string): string { try { const parsed = new URL(value); return parsed.protocol === "https:" ? parsed.toString() : "#"; } catch { return "#"; } }
+function orderLifecycleRank(status: OrderStatus): number {
+  switch (status) {
+    case 0:
+      return 0;
+    case 1:
+      return 1;
+    case 3:
+      return 2;
+    case 2:
+    case 4:
+      return 3;
+  }
+}
+function isNewerOrderSnapshot(candidate: Order, baseline: Order): boolean {
+  const candidateRank = orderLifecycleRank(candidate.status);
+  const baselineRank = orderLifecycleRank(baseline.status);
+  if (candidateRank !== baselineRank) {
+    return candidateRank > baselineRank;
+  }
+  const candidateTime = Date.parse(candidate.updated_at);
+  const baselineTime = Date.parse(baseline.updated_at);
+  if (!Number.isNaN(candidateTime) && !Number.isNaN(baselineTime) && candidateTime !== baselineTime) {
+    return candidateTime > baselineTime;
+  }
+  return true;
+}
 function messageOf(cause: unknown): string { return cause instanceof Error ? cause.message : "订单请求失败"; }

@@ -153,7 +153,9 @@ export function loadRepoGoGraph() {
 
 export const HEAVY_RACE_GROUP_PACKAGES = [
   `${MODULE_PREFIX}/internal/store`,
-  `${MODULE_PREFIX}/internal/httpapi`
+  `${MODULE_PREFIX}/internal/httpapi`,
+  `${MODULE_PREFIX}/cmd/xboard`,
+  `${MODULE_PREFIX}/cmd/xboard-lifecycle`
 ];
 
 export function needsGeoipFixture(directTestPackages) {

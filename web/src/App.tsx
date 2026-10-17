@@ -2,7 +2,7 @@ import { translateAdmin, applyAdminLocale, loadAdminLocale, savedAdminLocale, ty
 import { AdminNavIcon } from "./components/AdminNavIcon";
 import { ThemeFooter } from "./components/ThemeFooter";
 import { Modal } from "./components/Overlay";
-import { lazy, startTransition, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { APIClient, type AdminAPI, type GuestConfig, type LoginLinkRedirect, type SiteSettings, type ThemeAppearance, type UserSession } from "./lib/api";
 import { resetCaptchaProviderScripts, useCaptchaChallenge } from "./features/auth/CaptchaChallenge";
@@ -253,6 +253,21 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   }, [surface.kind, session?.is_admin]);
   const authenticationSequence = useRef(0);
   const adminNavigationSequence = useRef(0);
+  const adminLeaveStateRef = useRef({ page, clientAppSettingsDirty, themeSettingsDirty });
+  useEffect(() => {
+    adminLeaveStateRef.current = { page, clientAppSettingsDirty, themeSettingsDirty };
+  }, [page, clientAppSettingsDirty, themeSettingsDirty]);
+  const handleClientAppDirtyChange = useCallback((dirty: boolean) => {
+    adminLeaveStateRef.current.clientAppSettingsDirty = dirty;
+    setClientAppSettingsDirty(dirty);
+  }, []);
+  const handleThemeDirtyChange = useCallback((dirty: boolean) => {
+    adminLeaveStateRef.current.themeSettingsDirty = dirty;
+    setThemeSettingsDirty(dirty);
+  }, []);
+  const adminLeavePrompt = (state = adminLeaveStateRef.current) =>
+    state.page === "themes" && state.themeSettingsDirty ? "主题设置有未保存的修改，确认离开并放弃这些修改吗？"
+      : state.page === "client-app" && state.clientAppSettingsDirty ? "客户端版本有未保存的修改，确认离开并放弃这些修改吗？" : "";
 
   useEffect(() => {
     if (surface.kind !== "admin") return;
@@ -264,14 +279,18 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
         return;
       }
       const sequence = ++adminNavigationSequence.current;
-      const message = page === "themes" && themeSettingsDirty ? "主题设置有未保存的修改，确认离开并放弃这些修改吗？"
-        : page === "client-app" && clientAppSettingsDirty ? "客户端版本有未保存的修改，确认离开并放弃这些修改吗？" : "";
-      if (message && !window.confirm(message)) {
+      const initialPrompt = adminLeavePrompt();
+      if (initialPrompt && !window.confirm(initialPrompt)) {
         window.history.replaceState(null, "", `#${adminRoutes[page]}`);
         return;
       }
       void loadAdminPage(next).then(() => {
         if (sequence !== adminNavigationSequence.current || adminPageFromHash(window.location.hash) !== next) return;
+        const latePrompt = initialPrompt ? "" : adminLeavePrompt();
+        if (latePrompt && !window.confirm(latePrompt)) {
+          window.history.replaceState(null, "", `#${adminRoutes[adminLeaveStateRef.current.page]}`);
+          return;
+        }
         startTransition(() => {
           setMachineNodeTarget(null);
           setPage(next);
@@ -449,19 +468,24 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   };
 
   const canLeaveAdminPage = () => {
-    if (page === "client-app" && clientAppSettingsDirty) return window.confirm("客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
-    if (page === "themes" && themeSettingsDirty) return window.confirm("主题设置有未保存的修改，确认离开并放弃这些修改吗？");
-    return true;
+    const message = adminLeavePrompt();
+    return !message || window.confirm(message);
   };
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
-    if (nextPage === page) return;
+    if (nextPage === page) {
+      adminNavigationSequence.current += 1;
+      return;
+    }
     const sequence = ++adminNavigationSequence.current;
-    if (!canLeaveAdminPage()) return;
+    const initialPrompt = adminLeavePrompt();
+    if (initialPrompt && !window.confirm(initialPrompt)) return;
     // Fire data prefetch in parallel (no-op if hover already did it)
     prefetchPageData(nextPage, api);
     void loadAdminPage(nextPage).then(() => {
       if (sequence !== adminNavigationSequence.current) return;
+      const latePrompt = initialPrompt ? "" : adminLeavePrompt();
+      if (latePrompt && !window.confirm(latePrompt)) return;
       window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
       startTransition(() => {
         setMachineNodeTarget(null);
@@ -580,10 +604,10 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
               onTabChange={(tab) => navigateAdminPage(configDestinations[tab])}
               onIdentityChanged={identityChanged}
               onSecurePathChanged={(nextPath) => window.location.replace(`/${nextPath}/#/`)}
-              onClientAppDirtyChange={setClientAppSettingsDirty}
+              onClientAppDirtyChange={handleClientAppDirtyChange}
             />}
             {page === "system" && <SystemOperationsPage api={api} />}
-            {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={setThemeSettingsDirty} onThemeChanged={refreshTheme} />}
+            {page === "themes" && <ThemeManagementPage api={api} onDirtyChange={handleThemeDirtyChange} onThemeChanged={refreshTheme} />}
             {page === "servers" && <ServerManagementPage api={api} onNavigateNodes={(id, create) => {
               const sequence = ++adminNavigationSequence.current;
               void loadAdminPage("nodes").then(() => {

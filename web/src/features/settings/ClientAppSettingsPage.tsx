@@ -40,8 +40,10 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
     setCurrent(settings);
     setDraft(toDraft(settings));
   };
-  const dirty = current !== null && draft !== null && platforms.some(({ version, downloadURL }) =>
-    current[version] !== draft[version] || current[downloadURL] !== draft[downloadURL]);
+  const isDirtyDraft = (nextCurrent: ClientAppSettings | null, nextDraft: ClientAppDraft | null) =>
+    nextCurrent !== null && nextDraft !== null && platforms.some(({ version, downloadURL }) =>
+      nextCurrent[version] !== nextDraft[version] || nextCurrent[downloadURL] !== nextDraft[downloadURL]);
+  const dirty = isDirtyDraft(current, draft);
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
@@ -85,7 +87,9 @@ export function ClientAppSettingsPage({ api, onDirtyChange = () => undefined }: 
 
   const update = (key: keyof ClientAppDraft, value: string) => {
     if (draft === null) return;
-    setDraft({ ...draft, [key]: value });
+    const nextDraft = { ...draft, [key]: value };
+    setDraft(nextDraft);
+    onDirtyChange(isDirtyDraft(current, nextDraft));
     setError(""); setSuccess("");
   };
 

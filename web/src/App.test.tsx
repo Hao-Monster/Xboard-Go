@@ -119,6 +119,15 @@ describe("App public identity bootstrap", () => {
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     expect(screen.getByRole("heading", { name: "APP设置" })).toBeVisible();
 
+    await user.clear(version);
+    await user.type(version, "4.8.1");
+    confirm.mockClear();
+    confirm.mockReturnValueOnce(false).mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "插件管理" }));
+    fireEvent.change(version, { target: { value: "5.0.1" } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("客户端版本有未保存的修改，确认离开并放弃这些修改吗？"));
+    expect(screen.getByRole("heading", { name: "APP设置" })).toBeVisible();
+
     await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
