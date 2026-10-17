@@ -392,3 +392,121 @@ func TestBL01DistributorEntitlementUpdateHandlers(t *testing.T) {
 		})
 	}
 }
+
+func TestGiftCardRedeemNotifiesRuntimeNodes(t *testing.T) {
+	s, coord, _ := entitlementTestServer(t)
+	ctx := t.Context()
+	now := fixedNow()
+
+	oldGroup, err := s.store.CreateServerGroup(ctx, "QA gift old group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inviterGroup, err := s.store.CreateServerGroup(ctx, "QA gift inviter group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := createOrderAPIPlan(t, s.store, store.PlanPrices{"monthly": 1000})
+
+	inviterEmail := "QA-gift-inviter@example.test"
+	userEmail := "QA-gift-user@example.test"
+	inviter, err := s.store.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: inviterEmail, PasswordHash: "hash",
+		GroupID: inviterGroup.ID, UUID: "22222222-3333-4444-8555-666666666666", TransferEnable: 500,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.store.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: userEmail, PasswordHash: "hash",
+		GroupID: oldGroup.ID, UUID: "77777777-8888-4999-8aaa-bbbbbbbbbbbb", TransferEnable: 500,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.store.UpdateAdminUser(ctx, user.ID, store.UpdateAdminUserInput{
+		Revision: 1, Email: userEmail, GroupID: &oldGroup.ID,
+		InviteUserEmailSet: true, InviteUserEmail: &inviterEmail,
+		TransferEnable: 500,
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	oldConn := entitlementConnection(t, s, oldGroup.ID)
+	newConn := entitlementConnection(t, s, *plan.GroupID)
+	inviterConn := entitlementConnection(t, s, inviterGroup.ID)
+
+	invokeRedeem := func(legacy bool, code string) {
+		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fmt.Sprintf(`{"code":%q}`, code)))
+		r.Header.Set("Content-Type", "application/json")
+		r = r.WithContext(context.WithValue(ctx, sessionContextKey, store.SessionUser{UserID: user.ID}))
+		w := httptest.NewRecorder()
+		if legacy {
+			s.legacyRedeemGiftCard(w, r)
+		} else {
+			s.redeemGiftCard(w, r)
+		}
+		if w.Code != http.StatusOK {
+			t.Fatalf("redeem legacy=%t status=%d body=%s", legacy, w.Code, w.Body)
+		}
+	}
+
+	// 1. Balance-only gift card must not notify runtime nodes.
+	balanceTpl, err := s.store.CreateGiftCardTemplate(ctx, store.SaveGiftCardTemplateInput{
+		Name: "QA Balance Gift", Type: store.GiftCardTypeGeneral, Status: true,
+		Rewards: store.GiftCardReward{Balance: 100}, Limits: store.GiftCardLimits{MaxUsePerUser: 1},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balanceCodes, err := s.store.GenerateGiftCardCodes(ctx, balanceTpl.ID, store.GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invokeRedeem(false, balanceCodes[0].Code)
+	if len(oldConn.writeCh) != 0 || len(newConn.writeCh) != 0 || len(inviterConn.writeCh) != 0 || len(coord.events) != 0 {
+		t.Fatalf("balance-only gift card emitted notifications: coord=%+v", coord.events)
+	}
+
+	// 2. Plan gift card via modern redeem endpoint notifies oldGroup (remove) and plan.GroupID (add).
+	planTpl, err := s.store.CreateGiftCardTemplate(ctx, store.SaveGiftCardTemplateInput{
+		Name: "QA Plan Gift", Type: store.GiftCardTypePlan, Status: true,
+		Rewards: store.GiftCardReward{PlanID: &plan.ID, PlanValidityDays: 30}, Limits: store.GiftCardLimits{MaxUsePerUser: 1},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planCodes, err := s.store.GenerateGiftCardCodes(ctx, planTpl.ID, store.GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invokeRedeem(false, planCodes[0].Code)
+	assertEntitlementDelta(t, oldConn, "remove", user.ID, user.UUID)
+	assertEntitlementDelta(t, newConn, "add", user.ID, user.UUID)
+	if len(coord.events) != 1 || coord.events[0].Kind != nodecoord.EventRefreshGroups || len(coord.events[0].GroupIDs) != 2 {
+		t.Fatalf("plan gift card coord=%+v", coord.events)
+	}
+
+	// 3. General traffic + inviter reward via legacy redeem endpoint notifies both redeemer and inviter groups.
+	trafficTpl, err := s.store.CreateGiftCardTemplate(ctx, store.SaveGiftCardTemplateInput{
+		Name: "QA Traffic Gift", Type: store.GiftCardTypeGeneral, Status: true,
+		Rewards: store.GiftCardReward{TransferEnable: 2048, DeviceLimit: 2},
+		Limits:  store.GiftCardLimits{MaxUsePerUser: 1, InviteRewardBasisPoints: 5000},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficCodes, err := s.store.GenerateGiftCardCodes(ctx, trafficTpl.ID, store.GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invokeRedeem(true, trafficCodes[0].Code)
+	notifiedUser := assertEntitlementDelta(t, newConn, "add", user.ID, user.UUID)
+	if notifiedUser.DeviceLimit < 2 {
+		t.Fatalf("notified user device limit = %d, want >= 2", notifiedUser.DeviceLimit)
+	}
+	assertEntitlementDelta(t, inviterConn, "add", inviter.ID, inviter.UUID)
+	if len(coord.events) != 3 {
+		t.Fatalf("traffic + inviter coord events = %+v, want 3 total", coord.events)
+	}
+}

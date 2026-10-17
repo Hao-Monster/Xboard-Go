@@ -555,6 +555,9 @@ func (s *server) redeemGiftCard(w http.ResponseWriter, r *http.Request) {
 		handleGiftCardError(w, err)
 		return
 	}
+	for index := range usage.Changes {
+		s.notifyEntitlementChange(r.Context(), &usage.Changes[index])
+	}
 	writeSuccess(w, http.StatusOK, map[string]any{"message": "兑换成功！", "rewards": usage.Rewards, "invite_rewards": usage.InviterRewards, "template_name": usage.TemplateName, "usage": usage})
 }
 
@@ -949,6 +952,9 @@ func (s *server) legacyRedeemGiftCard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeLegacyGiftCardError(w, err)
 		return
+	}
+	for index := range usage.Changes {
+		s.notifyEntitlementChange(r.Context(), &usage.Changes[index])
 	}
 	var inviterRewards any
 	if !giftCardRewardIsEmpty(usage.InviterRewards) {

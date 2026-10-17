@@ -681,3 +681,162 @@ func TestGiftCardTemplateSearchIsLiteralAndPaginated(t *testing.T) {
 		}
 	}
 }
+
+func TestGiftCardRedemptionEntitlementChanges(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	oldGroup, err := database.CreateServerGroup(ctx, "Gift Old Group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newGroup, err := database.CreateServerGroup(ctx, "Gift New Group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inviterGroup, err := database.CreateServerGroup(ctx, "Gift Inviter Group", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldPlan, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "Old Plan", GroupID: &oldGroup.ID, TransferEnableGiB: 10,
+		Prices: PlanPrices{"monthly": 100, "onetime": 100},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SetPlanState(ctx, oldPlan.ID, oldPlan.Revision, PlanState{Show: true, Sell: true, Renew: true}, now); err != nil {
+		t.Fatal(err)
+	}
+	newPlan, err := database.CreatePlan(ctx, SavePlanInput{
+		Name: "New Plan", GroupID: &newGroup.ID, TransferEnableGiB: 20,
+		Prices: PlanPrices{"monthly": 200, "onetime": 200},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SetPlanState(ctx, newPlan.ID, newPlan.Revision, PlanState{Show: true, Sell: true, Renew: true}, now); err != nil {
+		t.Fatal(err)
+	}
+
+	inviter, err := database.CreateRuntimeUser(ctx, CreateRuntimeUserInput{
+		Email: "gift-inviter-entitlement@example.test", PasswordHash: "hash",
+		GroupID: inviterGroup.ID, UUID: "11111111-2222-4333-8444-555555555555", TransferEnable: 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redeemer, err := database.CreateRuntimeUser(ctx, CreateRuntimeUserInput{
+		Email: "gift-redeemer-entitlement@example.test", PasswordHash: "hash",
+		GroupID: oldGroup.ID, UUID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", TransferEnable: 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredAt := now.Add(-24 * time.Hour).Unix()
+	if _, err := database.db.ExecContext(ctx, `UPDATE users SET plan_id = ?, expired_at = ?, invite_user_id = ? WHERE id = ?`, oldPlan.ID, expiredAt, inviter.ID, redeemer.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Balance-only gift card should not emit any runtime EntitlementChange.
+	balanceTpl, err := database.CreateGiftCardTemplate(ctx, SaveGiftCardTemplateInput{
+		Name: "Balance Only", Type: GiftCardTypeGeneral, Status: true,
+		Rewards: GiftCardReward{Balance: 500},
+		Limits:  GiftCardLimits{MaxUsePerUser: 2, InviteRewardBasisPoints: 2000},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balanceCodes, err := database.GenerateGiftCardCodes(ctx, balanceTpl.ID, GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balanceUsage, err := database.RedeemGiftCard(ctx, RedeemGiftCardInput{UserID: redeemer.ID, Code: balanceCodes[0].Code}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(balanceUsage.Changes) != 0 {
+		t.Fatalf("balance-only gift card changes = %+v, want empty", balanceUsage.Changes)
+	}
+
+	// 2. Plan gift card switches redeemer from oldGroup to newGroup.
+	planTpl, err := database.CreateGiftCardTemplate(ctx, SaveGiftCardTemplateInput{
+		Name: "Plan Switch", Type: GiftCardTypePlan, Status: true,
+		Rewards: GiftCardReward{PlanID: &newPlan.ID, PlanValidityDays: 30},
+		Limits:  GiftCardLimits{MaxUsePerUser: 1},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planCodes, err := database.GenerateGiftCardCodes(ctx, planTpl.ID, GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planUsage, err := database.RedeemGiftCard(ctx, RedeemGiftCardInput{UserID: redeemer.ID, Code: planCodes[0].Code}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(planUsage.Changes) != 1 {
+		t.Fatalf("plan gift card changes = %+v, want 1", planUsage.Changes)
+	}
+	if got := planUsage.Changes[0]; got.UserID != redeemer.ID || got.PreviousUUID != redeemer.UUID ||
+		got.OldGroupID == nil || *got.OldGroupID != oldGroup.ID || got.NewGroupID == nil || *got.NewGroupID != newGroup.ID {
+		t.Fatalf("plan gift card change = %+v, want user=%d oldGroup=%d newGroup=%d", got, redeemer.ID, oldGroup.ID, newGroup.ID)
+	}
+
+	// 3. General card with traffic + inviter traffic reward emits changes for both redeemer and inviter.
+	trafficTpl, err := database.CreateGiftCardTemplate(ctx, SaveGiftCardTemplateInput{
+		Name: "Traffic + Inviter", Type: GiftCardTypeGeneral, Status: true,
+		Rewards: GiftCardReward{TransferEnable: 10_000, DeviceLimit: 1},
+		Limits:  GiftCardLimits{MaxUsePerUser: 1, InviteRewardBasisPoints: 5000},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficCodes, err := database.GenerateGiftCardCodes(ctx, trafficTpl.ID, GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trafficUsage, err := database.RedeemGiftCard(ctx, RedeemGiftCardInput{UserID: redeemer.ID, Code: trafficCodes[0].Code}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trafficUsage.Changes) != 2 {
+		t.Fatalf("traffic + inviter gift card changes = %+v, want 2", trafficUsage.Changes)
+	}
+	if got := trafficUsage.Changes[0]; got.UserID != redeemer.ID || got.OldGroupID == nil || *got.OldGroupID != newGroup.ID || got.NewGroupID == nil || *got.NewGroupID != newGroup.ID {
+		t.Fatalf("redeemer change = %+v", got)
+	}
+	if got := trafficUsage.Changes[1]; got.UserID != inviter.ID || got.PreviousUUID != inviter.UUID || got.OldGroupID == nil || *got.OldGroupID != inviterGroup.ID || got.NewGroupID == nil || *got.NewGroupID != inviterGroup.ID {
+		t.Fatalf("inviter change = %+v", got)
+	}
+
+	// 4. Purchase code emits 1 change on first redemption and 0 on idempotent replay.
+	purchaseTpl, err := database.CreateGiftCardTemplate(ctx, SaveGiftCardTemplateInput{
+		Name: "Purchase Renewal", Type: GiftCardTypePurchase, Status: true,
+		Rewards: GiftCardReward{PlanID: &newPlan.ID, PurchasePeriod: "monthly"},
+	}, inviter.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchaseCodes, err := database.GenerateGiftCardCodes(ctx, purchaseTpl.ID, GenerateGiftCardCodesInput{Count: 1, MaxUsage: 1}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchaseFirst, err := database.RedeemGiftCard(ctx, RedeemGiftCardInput{UserID: redeemer.ID, Code: purchaseCodes[0].Code}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(purchaseFirst.Changes) != 1 || purchaseFirst.Changes[0].UserID != redeemer.ID {
+		t.Fatalf("purchase first changes = %+v, want 1", purchaseFirst.Changes)
+	}
+	purchaseReplay, err := database.RedeemGiftCard(ctx, RedeemGiftCardInput{UserID: redeemer.ID, Code: purchaseCodes[0].Code}, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(purchaseReplay.Changes) != 0 {
+		t.Fatalf("purchase replay changes = %+v, want empty", purchaseReplay.Changes)
+	}
+}
