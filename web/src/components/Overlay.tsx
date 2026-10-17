@@ -85,20 +85,29 @@ function useDialogFocus(
   useEffect(() => {
     const opener = restoreFocusRef?.current
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const container = ref.current;
     const frame = window.requestAnimationFrame(() => {
-      const container = ref.current;
+      const currentContainer = ref.current;
       // A fast keyboard or pointer user may reach the dialog before this frame.
       // Do not steal that focus and redirect their following keystrokes.
-      if (container !== null && !container.contains(document.activeElement)) {
-        focusableElements(container)[0]?.focus();
+      if (currentContainer !== null && !currentContainer.contains(document.activeElement)) {
+        focusableElements(currentContainer)[0]?.focus();
       }
     });
     return () => {
       window.cancelAnimationFrame(frame);
       // The parent drawer may still be inert during this cleanup. Restore on the
-      // next frame, after React has committed the overlay stack change.
+      // next frame, after React has committed the overlay stack change, unless
+      // the user has already moved focus to another connected element.
       window.requestAnimationFrame(() => {
-        if (opener?.isConnected === true) {
+        const active = document.activeElement;
+        const focusIsUnset =
+          active === null ||
+          active === document.body ||
+          active === document.documentElement ||
+          !active.isConnected ||
+          (container !== null && container.contains(active));
+        if (focusIsUnset && opener?.isConnected === true) {
           opener.focus();
         }
       });

@@ -111,4 +111,34 @@ describe("ticket confirmation overlay", () => {
     expect(onCloseModal).not.toHaveBeenCalled();
     expect(onCloseDrawer).not.toHaveBeenCalled();
   });
+
+  it("does not steal focus back to the opener on the next animation frame when focus has already moved to another input", async () => {
+    function FocusHandoffExample() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>打开子弹窗</button>
+          <input aria-label="后续输入框" />
+          {open && (
+            <Modal title="子弹窗" onClose={() => setOpen(false)}>
+              <button type="button" onClick={() => setOpen(false)}>确认关闭</button>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+    const user = userEvent.setup();
+    render(<FocusHandoffExample />);
+
+    const opener = screen.getByRole("button", { name: "打开子弹窗" });
+    const nextInput = screen.getByRole("textbox", { name: "后续输入框" });
+    await user.click(opener);
+    const closeBtn = within(screen.getByRole("dialog", { name: "子弹窗" })).getByRole("button", { name: "确认关闭" });
+    await user.click(closeBtn);
+    nextInput.focus();
+    expect(document.activeElement).toBe(nextInput);
+
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    expect(document.activeElement).toBe(nextInput);
+  });
 });

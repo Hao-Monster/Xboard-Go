@@ -456,16 +456,17 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
   const refreshTheme = () => { void api.guestConfig().then(setGuestConfig).catch(() => undefined); };
   const navigateAdminPage = (nextPage: AdminPage) => {
     if (nextPage === page) return;
+    const sequence = ++adminNavigationSequence.current;
     if (!canLeaveAdminPage()) return;
-    ++adminNavigationSequence.current;
-    // Kick off JS chunk load in parallel — Suspense shows skeleton while it loads
-    void loadAdminPage(nextPage).catch(() => undefined);
     // Fire data prefetch in parallel (no-op if hover already did it)
     prefetchPageData(nextPage, api);
-    window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
-    startTransition(() => {
-      setMachineNodeTarget(null);
-      setPage(nextPage);
+    void loadAdminPage(nextPage).then(() => {
+      if (sequence !== adminNavigationSequence.current) return;
+      window.history.pushState(null, "", `#${adminRoutes[nextPage]}`);
+      startTransition(() => {
+        setMachineNodeTarget(null);
+        setPage(nextPage);
+      });
     });
   };
   const signOut = () => {
