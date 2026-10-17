@@ -151,12 +151,20 @@ export function loadRepoGoGraph() {
   return parseGoListGraph(output);
 }
 
+export const HEAVY_RACE_GROUP_PACKAGES = [
+  `${MODULE_PREFIX}/internal/store`,
+  `${MODULE_PREFIX}/internal/httpapi`
+];
+
+export function needsGeoipFixture(directTestPackages) {
+  return (directTestPackages ?? []).includes(`${MODULE_PREFIX}/internal/geoip`);
+}
+
 function main() {
   const runMode = process.argv.includes("--run");
+  const checkGeoip = process.argv.includes("--check-geoip");
   const skipHeavy = process.argv.includes("--skip-heavy-groups");
-  const skipDirectPackages = skipHeavy
-    ? [`${MODULE_PREFIX}/internal/store`, `${MODULE_PREFIX}/internal/httpapi`]
-    : [];
+  const skipDirectPackages = skipHeavy ? HEAVY_RACE_GROUP_PACKAGES : [];
 
   const graph = loadRepoGoGraph();
   const files = getChangedFiles();
@@ -165,6 +173,11 @@ function main() {
     files,
     { skipDirectPackages }
   );
+
+  if (checkGeoip) {
+    process.stdout.write(`${needsGeoipFixture(directTestPackages) ? "true" : "false"}\n`);
+    return;
+  }
 
   process.stdout.write(
     `Resolved affected Go packages:\n` +

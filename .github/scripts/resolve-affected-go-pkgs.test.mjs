@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 import {
+  HEAVY_RACE_GROUP_PACKAGES,
   MODULE_PREFIX,
+  needsGeoipFixture,
   parseGoListGraph,
   resolveAffectedGoPackages
 } from "./resolve-affected-go-pkgs.mjs";
@@ -38,7 +41,7 @@ test("skipDirectPackages excludes store and httpapi when handled by dedicated go
   const res = resolveAffectedGoPackages(
     graph,
     ["internal/mailer/mailer.go", "internal/httpapi/admin.go"],
-    { skipDirectPackages: [`${MODULE_PREFIX}/internal/httpapi`] }
+    { skipDirectPackages: HEAVY_RACE_GROUP_PACKAGES }
   );
   assert.deepEqual(res.directTestPackages, [`${MODULE_PREFIX}/internal/mailer`]);
   assert.deepEqual(res.compileOnlyPackages, [`${MODULE_PREFIX}/cmd/xboard`]);
@@ -72,4 +75,26 @@ test("resolves tools Go helper packages and reports unmapped Go files for fail-c
   const unmapped = resolveAffectedGoPackages(graph, ["tools/unknown/orphan.go"]);
   assert.deepEqual(unmapped.directTestPackages, []);
   assert.deepEqual(unmapped.unmappedGoFiles, ["tools/unknown/orphan.go"]);
+});
+
+test("needsGeoipFixture detects internal/geoip in directTestPackages and CLI --check-geoip executes cleanly", () => {
+  const graph = parseGoListGraph(
+    `${sampleGraphOutput}\n${MODULE_PREFIX}/internal/geoip\tos,strings\ttesting\t`
+  );
+  const withGeoip = resolveAffectedGoPackages(graph, ["internal/geoip/legacy.go"], {
+    skipDirectPackages: HEAVY_RACE_GROUP_PACKAGES
+  });
+  assert.equal(needsGeoipFixture(withGeoip.directTestPackages), true);
+
+  const withoutGeoip = resolveAffectedGoPackages(graph, ["internal/mailer/mailer.go"], {
+    skipDirectPackages: HEAVY_RACE_GROUP_PACKAGES
+  });
+  assert.equal(needsGeoipFixture(withoutGeoip.directTestPackages), false);
+
+  const cliOut = execFileSync(
+    process.execPath,
+    [".github/scripts/resolve-affected-go-pkgs.mjs", "--skip-heavy-groups", "--check-geoip"],
+    { encoding: "utf8" }
+  ).trim();
+  assert.ok(cliOut === "true" || cliOut === "false");
 });

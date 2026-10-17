@@ -131,14 +131,7 @@ jobs:
       - name: Fetch pinned legacy Ip2Region test fixture when geoip is tested
         run: |
           set -euo pipefail
-          needs_geoip="$(node -e '
-            import("./.github/scripts/detect-changes.mjs").then((d) =>
-              import("./.github/scripts/resolve-affected-go-pkgs.mjs").then((r) => {
-                const res = r.resolveAffectedGoPackages(d.getChangedFiles(), { skipDirectPackages: r.HEAVY_RACE_GROUP_PACKAGES });
-                console.log(res.testPackages.includes("./internal/geoip") ? "true" : "false");
-              })
-            );
-          ')"
+          needs_geoip="$(node .github/scripts/resolve-affected-go-pkgs.mjs --skip-heavy-groups --check-geoip)"
           if [ "$needs_geoip" = "true" ]; then
             fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
             curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
