@@ -325,7 +325,7 @@ PRAGMA user_version=67;`)
 		t.Fatal(err)
 	}
 	var version int
-	if err = db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 69 {
+	if err = db.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 70 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 }

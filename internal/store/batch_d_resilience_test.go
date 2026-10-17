@@ -448,5 +448,90 @@ func bytesRepeat(b byte, n int) []byte {
 	return []byte(strings.Repeat(string([]byte{b}), n))
 }
 
+func TestSchemaV70UpgradesV69SchedulerQuarantineAndPreservesRows(t *testing.T) {
+	database := newTestStore(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	plan, buyerID := createOrderFixture(t, database, now, PlanPrices{"monthly": 1_500}, nil)
+	ordCommission, err := database.CreateOrder(ctx, CreateOrderInput{UserID: buyerID, PlanID: plan.ID, Period: "monthly"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, ordCommission.TradeNo, "v70-commission", now); err != nil {
+		t.Fatal(err)
+	}
+	ordStale, err := database.CreateOrder(ctx, CreateOrderInput{UserID: buyerID, PlanID: plan.ID, Period: "monthly"}, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an existing v69 database with the baseline scheduler_quarantine(job_kind, item_id, reason, created_at) table.
+	if _, err := database.db.ExecContext(ctx, `
+		DROP TABLE scheduler_quarantine;
+		CREATE TABLE scheduler_quarantine (
+			job_kind TEXT NOT NULL,
+			item_id INTEGER NOT NULL,
+			reason TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY (job_kind, item_id)
+		);
+		INSERT INTO scheduler_quarantine (job_kind, item_id, reason, created_at) VALUES
+			('commission', ?, 'legacy commission poison row', ?),
+			('stale_order', ?, '', ?),
+			('stale_order', 999999, 'orphan order should be skipped', ?);
+		PRAGMA user_version = 69;
+	`, ordCommission.ID, now.Unix(), ordStale.ID, now.Unix()-10, now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate from v69 failed: %v", err)
+	}
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("idempotent Migrate at v70 failed: %v", err)
+	}
+
+	var version int
+	if err := database.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 70 {
+		t.Fatalf("PRAGMA user_version = %d, err=%v, want 70", version, err)
+	}
+
+	var (
+		reason        string
+		attempts      int
+		firstFailedAt int64
+		lastFailedAt  int64
+		retryAfter    int64
+	)
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT reason, attempts, first_failed_at, last_failed_at, retry_after
+		FROM scheduler_quarantine
+		WHERE kind = 'commission' AND entity_id = ?
+	`, ordCommission.ID).Scan(&reason, &attempts, &firstFailedAt, &lastFailedAt, &retryAfter); err != nil {
+		t.Fatalf("query migrated commission quarantine row: %v", err)
+	}
+	if reason != "legacy commission poison row" || attempts != 1 || firstFailedAt != now.Unix() || lastFailedAt != now.Unix() || retryAfter != now.Unix()+3600 {
+		t.Fatalf("migrated commission row = (%q, %d, %d, %d, %d), want ('legacy commission poison row', 1, %d, %d, %d)",
+			reason, attempts, firstFailedAt, lastFailedAt, retryAfter, now.Unix(), now.Unix(), now.Unix()+3600)
+	}
+
+	if err := database.db.QueryRowContext(ctx, `
+		SELECT reason, attempts, first_failed_at, last_failed_at, retry_after
+		FROM scheduler_quarantine
+		WHERE kind = 'stale_order' AND entity_id = ?
+	`, ordStale.ID).Scan(&reason, &attempts, &firstFailedAt, &lastFailedAt, &retryAfter); err != nil {
+		t.Fatalf("query migrated stale_order quarantine row: %v", err)
+	}
+	if reason != "quarantined" || attempts != 1 || firstFailedAt != now.Unix()-10 || lastFailedAt != now.Unix()-10 || retryAfter != now.Unix()-10+3600 {
+		t.Fatalf("migrated stale_order row = (%q, %d, %d, %d, %d)", reason, attempts, firstFailedAt, lastFailedAt, retryAfter)
+	}
+
+	var totalCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_quarantine`).Scan(&totalCount); err != nil || totalCount != 2 {
+		t.Fatalf("total migrated rows = %d, err=%v, want 2 (orphan skipped)", totalCount, err)
+	}
+}
+
 var _ = errors.Is
 var _ = context.Background

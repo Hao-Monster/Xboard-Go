@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 69
+const currentSchemaVersion = 70
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -497,10 +497,16 @@ func (s *Store) Migrate(ctx context.Context) error {
 		version = 68
 	}
 	if version < 69 {
-		if _, err := tx.ExecContext(ctx, schemaV69SchedulerQuarantine); err != nil {
+		if _, err := tx.ExecContext(ctx, schemaV69SchedulerQuarantineLegacy); err != nil {
 			return fmt.Errorf("apply schema v69: %w", err)
 		}
 		version = 69
+	}
+	if version < 70 {
+		if err := applySchemaV70SchedulerQuarantine(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v70: %w", err)
+		}
+		version = 70
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2985,7 +2991,17 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-const schemaV69SchedulerQuarantine = `
+const schemaV69SchedulerQuarantineLegacy = `
+CREATE TABLE IF NOT EXISTS scheduler_quarantine (
+    job_kind TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (job_kind, item_id)
+);
+`
+
+const schemaV70SchedulerQuarantine = `
 CREATE TABLE IF NOT EXISTS scheduler_quarantine (
     kind TEXT NOT NULL CHECK (kind IN ('commission', 'stale_order')),
     entity_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -2997,3 +3013,45 @@ CREATE TABLE IF NOT EXISTS scheduler_quarantine (
     PRIMARY KEY (kind, entity_id)
 ) STRICT, WITHOUT ROWID;
 `
+
+func applySchemaV70SchedulerQuarantine(ctx context.Context, tx *sql.Tx) error {
+	var hasLegacyColumn bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('scheduler_quarantine') WHERE name = 'job_kind')
+	`).Scan(&hasLegacyColumn); err != nil {
+		return fmt.Errorf("inspect scheduler_quarantine schema: %w", err)
+	}
+	if !hasLegacyColumn {
+		_, err := tx.ExecContext(ctx, schemaV70SchedulerQuarantine)
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE scheduler_quarantine RENAME TO scheduler_quarantine_v69_legacy`); err != nil {
+		return fmt.Errorf("rename v69 scheduler_quarantine: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, schemaV70SchedulerQuarantine); err != nil {
+		return fmt.Errorf("create v70 scheduler_quarantine: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
+		SELECT job_kind,
+		       item_id,
+		       CASE
+		           WHEN length(trim(reason)) = 0 THEN 'quarantined'
+		           WHEN length(reason) > 512 THEN substr(reason, 1, 512)
+		           ELSE reason
+		       END,
+		       1,
+		       CASE WHEN created_at < 0 THEN 0 ELSE created_at END,
+		       CASE WHEN created_at < 0 THEN 0 ELSE created_at END,
+		       (CASE WHEN created_at < 0 THEN 0 ELSE created_at END) + 3600
+		FROM scheduler_quarantine_v69_legacy
+		WHERE job_kind IN ('commission', 'stale_order')
+		  AND EXISTS (SELECT 1 FROM orders WHERE id = scheduler_quarantine_v69_legacy.item_id)
+	`); err != nil {
+		return fmt.Errorf("migrate v69 scheduler_quarantine rows: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TABLE scheduler_quarantine_v69_legacy`); err != nil {
+		return fmt.Errorf("drop v69 scheduler_quarantine backup: %w", err)
+	}
+	return nil
+}

@@ -14,8 +14,8 @@ func TestAdminUserSchemaV37AddsProfileFieldsAndDirectoryIndexes(t *testing.T) {
 	database := newTestStore(t)
 	ctx := context.Background()
 
-	if CurrentSchemaVersion() != 69 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 69", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 70 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 70", CurrentSchemaVersion())
 	}
 	for _, column := range []string{"telegram_id", "remind_expire", "remind_traffic", "remarks"} {
 		var found int
