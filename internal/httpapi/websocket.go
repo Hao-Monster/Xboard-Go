@@ -84,6 +84,7 @@ type wsConnection struct {
 	writeCh                chan wsEnvelope
 	done                   chan struct{}
 	closeOnce              sync.Once
+	unregistered           bool
 	nodesMu                sync.RWMutex
 	nodeIDs                map[int64]struct{}
 	pendingReleaseNodeIDs  map[int64]struct{}
@@ -556,6 +557,7 @@ func (h *wsHub) register(connection *wsConnection) ([]*wsConnection, bool) {
 		h.mu.Unlock()
 		return nil, false
 	}
+	connection.unregistered = false
 	replaced := make(map[*wsConnection]struct{})
 	if !connection.legacy {
 		if old := h.machines[connection.machineID]; old != nil && old != connection {
@@ -602,6 +604,7 @@ func (h *wsHub) releaseUnregisteredClaim(ctx context.Context, connection *wsConn
 func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, error) {
 	if h.coordinator != nil {
 		h.mu.Lock()
+		connection.unregistered = true
 		currentMachine := !connection.legacy && h.machines[connection.machineID] == connection
 		if currentMachine {
 			delete(h.machines, connection.machineID)
@@ -1200,14 +1203,15 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 			delete(h.nodes, nodeID)
 		}
 	}
-	h.mu.Unlock()
 	connection.replaceNodes(nodeIDs)
+	h.mu.Unlock()
 	for replaced := range replacedConnections {
 		replaced.close(websocket.ClosePolicyViolation, "connection replaced")
 	}
 	connection.enqueue(nodesSyncEnvelope(snapshots))
 	removedNodeIDs := make([]int64, 0, len(removedNodes))
-	var failedReleases []int64
+	failedRelease := false
+	retryAfterUnregister := false
 	for nodeID := range removedNodes {
 		if h.coordinator == nil {
 			removedNodeIDs = append(removedNodeIDs, nodeID)
@@ -1216,7 +1220,13 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 		released, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id)
 		if err != nil {
 			h.logger.Warn("release removed node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", err)
-			failedReleases = append(failedReleases, nodeID)
+			h.mu.Lock()
+			connection.addPendingReleases(nodeID)
+			if connection.unregistered {
+				retryAfterUnregister = true
+			}
+			h.mu.Unlock()
+			failedRelease = true
 			continue
 		}
 		if released {
@@ -1226,9 +1236,13 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 	if len(removedNodeIDs) > 0 {
 		h.clearNodeDevices(ctx, removedNodeIDs, broadcast)
 	}
-	if len(failedReleases) > 0 {
-		connection.addPendingReleases(failedReleases...)
+	if failedRelease {
 		connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
+		if retryAfterUnregister {
+			if _, userIDs, _ := h.unregisterAndClear(connection); len(userIDs) > 0 {
+				h.NotifyDeviceStates(context.Background(), userIDs)
+			}
+		}
 		return
 	}
 	for _, snapshot := range snapshots {

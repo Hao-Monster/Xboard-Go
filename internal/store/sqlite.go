@@ -2993,12 +2993,12 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 
 const schemaV69SchedulerQuarantineLegacy = `
 CREATE TABLE IF NOT EXISTS scheduler_quarantine (
-    job_kind TEXT NOT NULL,
-    item_id INTEGER NOT NULL,
-    reason TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY (job_kind, item_id)
-);
+    scope TEXT NOT NULL CHECK (scope IN ('commission_settlement', 'stale_order_cancel')),
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+    quarantined_at INTEGER NOT NULL CHECK (quarantined_at >= 0),
+    PRIMARY KEY (scope, order_id)
+) STRICT, WITHOUT ROWID;
 `
 
 const schemaV70SchedulerQuarantine = `
@@ -3017,7 +3017,7 @@ CREATE TABLE IF NOT EXISTS scheduler_quarantine (
 func applySchemaV70SchedulerQuarantine(ctx context.Context, tx *sql.Tx) error {
 	var hasLegacyColumn bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS(SELECT 1 FROM pragma_table_info('scheduler_quarantine') WHERE name = 'job_kind')
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('scheduler_quarantine') WHERE name = 'scope')
 	`).Scan(&hasLegacyColumn); err != nil {
 		return fmt.Errorf("inspect scheduler_quarantine schema: %w", err)
 	}
@@ -3033,20 +3033,19 @@ func applySchemaV70SchedulerQuarantine(ctx context.Context, tx *sql.Tx) error {
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
-		SELECT job_kind,
-		       item_id,
-		       CASE
-		           WHEN length(trim(reason)) = 0 THEN 'quarantined'
-		           WHEN length(reason) > 512 THEN substr(reason, 1, 512)
-		           ELSE reason
+		SELECT CASE scope
+		           WHEN 'commission_settlement' THEN 'commission'
+		           WHEN 'stale_order_cancel' THEN 'stale_order'
 		       END,
+		       order_id,
+		       reason,
 		       1,
-		       CASE WHEN created_at < 0 THEN 0 ELSE created_at END,
-		       CASE WHEN created_at < 0 THEN 0 ELSE created_at END,
-		       (CASE WHEN created_at < 0 THEN 0 ELSE created_at END) + 3600
+		       quarantined_at,
+		       quarantined_at,
+		       quarantined_at + 3600
 		FROM scheduler_quarantine_v69_legacy
-		WHERE job_kind IN ('commission', 'stale_order')
-		  AND EXISTS (SELECT 1 FROM orders WHERE id = scheduler_quarantine_v69_legacy.item_id)
+		WHERE scope IN ('commission_settlement', 'stale_order_cancel')
+		  AND EXISTS (SELECT 1 FROM orders WHERE id = scheduler_quarantine_v69_legacy.order_id)
 	`); err != nil {
 		return fmt.Errorf("migrate v69 scheduler_quarantine rows: %w", err)
 	}

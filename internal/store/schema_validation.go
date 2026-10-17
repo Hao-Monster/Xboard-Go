@@ -454,7 +454,7 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 	} else if schemaVersion == 69 {
-		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"scheduler_quarantine": {"job_kind", "item_id", "reason", "created_at"}}); err != nil {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"scheduler_quarantine": {"scope", "order_id", "reason", "quarantined_at"}}); err != nil {
 			return err
 		}
 		if err := validateDeclaredSchemaObjects(ctx, database, schemaV69SchedulerQuarantineLegacy); err != nil {

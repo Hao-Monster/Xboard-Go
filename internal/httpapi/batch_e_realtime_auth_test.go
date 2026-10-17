@@ -359,6 +359,96 @@ func TestBL14NotifyMachineNodesFailedReleaseRetriedOnDisconnect(t *testing.T) {
 	if clearErrAgain != nil || currentAgain {
 		t.Fatalf("second unregisterAndClear() = (%v, %v), want (false, nil)", currentAgain, clearErrAgain)
 	}
+
+	// Subcase: Disconnect (unregisterAndClear) interleaves during clearNodeDevices I/O when batch has mixed release outcomes.
+	t.Run("disconnect_during_clearNodeDevices_io", func(t *testing.T) {
+		for _, removed := range []store.Node{node2, node3} {
+			cur, gErr := database.GetNode(ctx, removed.ID)
+			if gErr != nil {
+				t.Fatal(gErr)
+			}
+			if aErr := database.AssignNode(ctx, machine.ID, removed.ID, cur.Revision, now); aErr != nil {
+				t.Fatal(aErr)
+			}
+		}
+		if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{
+			MachineID: machine.ID, NodeID: node2.ID,
+			Alive: map[int64][]string{user.ID: {"198.51.100.91"}}, ReplaceAllDevices: true, Now: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{
+			MachineID: machine.ID, NodeID: node3.ID,
+			Alive: map[int64][]string{user3.ID: {"198.51.100.92"}}, ReplaceAllDevices: true, Now: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		wsConnInterleaved := &wsConnection{
+			id:        "conn-bl14-interleaved",
+			machineID: machine.ID,
+			conn:      serverConn,
+			hub:       hub,
+			writeCh:   make(chan wsEnvelope, 16),
+			done:      make(chan struct{}),
+			nodeIDs:   map[int64]struct{}{node1.ID: {}, node2.ID: {}, node3.ID: {}},
+		}
+		hub.register(wsConnInterleaved)
+
+		for _, removed := range []store.Node{node2, node3} {
+			cur, gErr := database.GetNode(ctx, removed.ID)
+			if gErr != nil {
+				t.Fatal(gErr)
+			}
+			if uErr := database.UnassignNode(ctx, machine.ID, removed.ID, cur.Revision, now); uErr != nil {
+				t.Fatal(uErr)
+			}
+		}
+
+		coord.mu.Lock()
+		coord.releasedNodes = nil
+		coord.failNextReleaseFor[node2.ID] = errors.New("transient release failure before clearNodeDevices")
+		disconnectedMidClear := false
+		coord.peerHandler = func(ev nodecoord.Event) {
+			if ev.Kind == nodecoord.EventDeviceUsers && !disconnectedMidClear {
+				disconnectedMidClear = true
+				_, _, _ = hub.unregisterAndClear(wsConnInterleaved)
+			}
+		}
+		coord.mu.Unlock()
+		defer func() {
+			coord.mu.Lock()
+			coord.peerHandler = nil
+			coord.mu.Unlock()
+		}()
+
+		hub.notifyMachineNodes(ctx, machine.ID, true)
+		if !disconnectedMidClear {
+			t.Fatal("expected unregisterAndClear to fire during clearNodeDevices publish")
+		}
+
+		releasedInterleaved := coord.ReleasedNodes()
+		got2, got3 := false, false
+		for _, id := range releasedInterleaved {
+			if id == node2.ID {
+				got2 = true
+			}
+			if id == node3.ID {
+				got3 = true
+			}
+		}
+		if !got2 || !got3 {
+			t.Fatalf("ReleasedNodes after mid-clear disconnect = %v, want both %d and %d", releasedInterleaved, node2.ID, node3.ID)
+		}
+
+		devicesAfter, err := database.ListUserDevices(ctx, []int64{user.ID, user3.ID}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(devicesAfter[user.ID]) != 0 || len(devicesAfter[user3.ID]) != 0 {
+			t.Fatalf("devices after mid-clear disconnect = %#v, want empty", devicesAfter)
+		}
+	})
 }
 
 func TestBL15BearerTokenDoesNotCollideWithCookieSessionID(t *testing.T) {
