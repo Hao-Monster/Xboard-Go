@@ -842,7 +842,8 @@
       ],
       "status": "fixed_local_rereview_passed",
       "fix_commits": [
-        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+        "c63aab689b5827387d03e0f8c48b461f8d8124c4"
       ],
       "evidence": [
         "docs/testing/bug-fix-h-plan-2026-10-16.md",
@@ -1114,7 +1115,8 @@
     "implementation_sha": "b6c351e2c3c88dac3226460463ef2d35a140cdde",
     "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
     "additional_rework_shas": [
-      "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc"
+      "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
+      "c63aab689b5827387d03e0f8c48b461f8d8124c4"
     ]
   },
   "code_review_2026_10_16": {
@@ -1122,11 +1124,13 @@
     "rework_commit": "938db89d028fe83886990495a855cd254a55aaa6",
     "codex_review_rework_commit": "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
     "tech_lead_review_rework_commit": "b3deb666706263eb41bd0af6e12b55f99fb5cfef",
+    "tech_lead_rereview_rework_commit": "c63aab689b5827387d03e0f8c48b461f8d8124c4",
     "findings_resolved": [
       "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
       "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
       "BL-23 (Medium): Preserved parent Modal/Drawer Tab focus trap in overlayStack.ts when a child non-trapping overlay layer (such as NodeFilter) is open on top.",
-      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop, included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope, included deploy/compose.yaml in packagingTriggers, routed .docker/ and Dockerfile/.dockerignore to splitRuntimeTriggers with gateway/frontend/backend validation in pr-gate.yml, and enforced non-empty affected Go package resolution in go-fast.",
+      "BL-26 (Medium): Decoupled initialTradeNo consumption from stale detail response check in UserOrdersPage.tsx so an initial order superseded by manual selection does not re-open on parent re-renders.",
+      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop, checked commit range git diff --check in governance, included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope, included deploy/compose.yaml in packagingTriggers, routed .docker/ and Dockerfile/.dockerignore to splitRuntimeTriggers with gateway/frontend/backend validation in pr-gate.yml, enforced non-empty affected Go package resolution and GeoIP fixture setup in go-fast, and executed modified web/e2e/*.spec.ts files in browser-smoke.",
       "BL-25/BL-24 (Low): Extended GiftCardManagementPage.test.tsx BL-25 test to cover both template and code tabs, and aligned BL-24 test case name in docs/testing/bug-fix-h-results-2026-10-16.md."
     ]
   }
