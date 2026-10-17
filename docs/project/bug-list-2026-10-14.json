@@ -751,7 +751,8 @@
       ],
       "status": "fixed_local_rereview_passed",
       "fix_commits": [
-        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+        "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc"
       ],
       "evidence": [
         "docs/testing/bug-fix-h-plan-2026-10-16.md",
@@ -1107,10 +1108,12 @@
   "code_review_2026_10_16": {
     "status": "passed_after_rework",
     "rework_commit": "938db89d028fe83886990495a855cd254a55aaa6",
-    "codex_review_rework_commit": "ff791c392af6302bd4807b03257fe2d21b71f333",
+    "codex_review_rework_commit": "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
     "findings_resolved": [
       "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
       "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
+      "BL-23 (Medium): Preserved parent Modal/Drawer Tab focus trap in overlayStack.ts when a child non-trapping overlay layer (such as NodeFilter) is open on top.",
+      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop and included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope.",
       "BL-25/BL-24 (Low): Extended GiftCardManagementPage.test.tsx BL-25 test to cover both template and code tabs, and aligned BL-24 test case name in docs/testing/bug-fix-h-results-2026-10-16.md."
     ]
   }
