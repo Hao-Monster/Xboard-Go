@@ -85,6 +85,20 @@ func setDatabaseCompatibilitySchemaVersion(t *testing.T, path string, version in
 		t.Fatal(err)
 	}
 	defer database.Close()
+	if version == 69 {
+		if _, err := database.ExecContext(t.Context(), `
+			DROP TABLE IF EXISTS scheduler_quarantine;
+			CREATE TABLE IF NOT EXISTS scheduler_quarantine (
+			    scope TEXT NOT NULL CHECK (scope IN ('commission_settlement', 'stale_order_cancel')),
+			    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+			    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+			    quarantined_at INTEGER NOT NULL CHECK (quarantined_at >= 0),
+			    PRIMARY KEY (scope, order_id)
+			) STRICT, WITHOUT ROWID;
+		`); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.ExecContext(t.Context(), fmt.Sprintf("PRAGMA user_version = %d", version)); err != nil {
 		t.Fatal(err)
 	}
