@@ -1020,8 +1020,9 @@
   "found_but_unfixed": [
     {
       "finding": "Gift card redemption changes traffic and other entitlements without notifying runtime nodes.",
-      "status": "found_but_unfixed",
-      "scope": "Outside BL-03 permanent-day-reward fix; recorded only in this rework."
+      "status": "fixed_local_verified",
+      "fix_commit": "a27718757c0e0a976e214b9526558bd74192a08c",
+      "scope": "Outside BL-03 permanent-day-reward fix; fixed and verified in internal/store/gift_cards.go and internal/httpapi/gift_card_handlers.go."
     }
   ],
   "protected_frontend_work": {
