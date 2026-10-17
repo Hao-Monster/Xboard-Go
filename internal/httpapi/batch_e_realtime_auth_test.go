@@ -218,7 +218,14 @@ func TestBL14NotifyMachineNodesFailedReleaseRetriedOnDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []store.Node{node1, node2} {
+	node3, err := database.CreateNode(ctx, store.CreateNodeInput{
+		Name: "bl14-node-3", Type: "vless", Host: "bl14-3.example.test", Port: "445",
+		Show: true, Enabled: true, MachineID: &machine.ID,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []store.Node{node1, node2, node3} {
 		if _, err := database.SaveNodeRuntime(ctx, n.ID, store.SaveNodeRuntimeInput{
 			RateMicros: 1_000_000, GroupIDs: []int64{7},
 			Config: []byte(`{"protocol":"vless","listen_ip":"0.0.0.0","server_port":443}`),
@@ -233,9 +240,22 @@ func TestBL14NotifyMachineNodesFailedReleaseRetriedOnDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	user3, err := database.CreateRuntimeUser(ctx, store.CreateRuntimeUserInput{
+		Email: "bl14-user3@example.test", PasswordHash: "hash",
+		UUID: uuid.NewString(), GroupID: 7, TransferEnable: 1_000_000,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{
 		MachineID: machine.ID, NodeID: node2.ID,
 		Alive: map[int64][]string{user.ID: {"198.51.100.77"}}, ReplaceAllDevices: true, Now: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ApplyNodeReport(ctx, store.NodeReportInput{
+		MachineID: machine.ID, NodeID: node3.ID,
+		Alive: map[int64][]string{user3.ID: {"198.51.100.88"}}, ReplaceAllDevices: true, Now: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -271,24 +291,37 @@ func TestBL14NotifyMachineNodesFailedReleaseRetriedOnDisconnect(t *testing.T) {
 		hub:       hub,
 		writeCh:   make(chan wsEnvelope, 16),
 		done:      make(chan struct{}),
-		nodeIDs:   map[int64]struct{}{node1.ID: {}, node2.ID: {}},
+		nodeIDs:   map[int64]struct{}{node1.ID: {}, node2.ID: {}, node3.ID: {}},
 	}
 	hub.register(wsConn)
 
-	// Unassign node2 from machine so notifyMachineNodes treats node2 as a removed node.
-	currentNode2, err := database.GetNode(ctx, node2.ID)
+	// Unassign both node2 and node3 from machine so notifyMachineNodes treats both as removed nodes.
+	for _, removed := range []store.Node{node2, node3} {
+		cur, gErr := database.GetNode(ctx, removed.ID)
+		if gErr != nil {
+			t.Fatal(gErr)
+		}
+		if uErr := database.UnassignNode(ctx, machine.ID, removed.ID, cur.Revision, now); uErr != nil {
+			t.Fatal(uErr)
+		}
+	}
+
+	// Inject a transient coordinator failure on ReleaseNodeIfOwned for node2 only.
+	coord.failNextReleaseFor[node2.ID] = errors.New("redis timeout releasing node2")
+
+	// notifyMachineNodes must still release node3 and clear node3's devices immediately, while recording node2 in pendingReleases and closing wsConn.
+	hub.notifyMachineNodes(ctx, machine.ID, false)
+
+	devicesMid, err := database.ListUserDevices(ctx, []int64{user.ID, user3.ID}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UnassignNode(ctx, machine.ID, node2.ID, currentNode2.Revision, now); err != nil {
-		t.Fatal(err)
+	if len(devicesMid[user3.ID]) != 0 {
+		t.Fatalf("node3 devices after notifyMachineNodes = %#v, want empty (immediately cleared)", devicesMid[user3.ID])
 	}
-
-	// Inject a transient coordinator failure on ReleaseNodeIfOwned for node2.
-	coord.failNextReleaseFor[node2.ID] = errors.New("redis timeout releasing node2")
-
-	// notifyMachineNodes removes node2 from hub.nodes and wsConn.nodeIDs, then fails ReleaseNodeIfOwned(node2) and closes wsConn.
-	hub.notifyMachineNodes(ctx, machine.ID, false)
+	if len(devicesMid[user.ID]) != 1 {
+		t.Fatalf("node2 devices before disconnect retry = %#v, want still present until confirmed release", devicesMid[user.ID])
+	}
 
 	// When the closed connection runs unregisterAndClear on disconnect, it must retry releasing node2 and clear node2's devices!
 	current, _, clearErr := hub.unregisterAndClear(wsConn)
@@ -300,23 +333,31 @@ func TestBL14NotifyMachineNodesFailedReleaseRetriedOnDisconnect(t *testing.T) {
 	}
 
 	released := coord.ReleasedNodes()
-	foundNode2 := false
+	foundNode2, foundNode3 := false, false
 	for _, id := range released {
 		if id == node2.ID {
 			foundNode2 = true
-			break
+		}
+		if id == node3.ID {
+			foundNode3 = true
 		}
 	}
-	if !foundNode2 {
-		t.Fatalf("coordinator.ReleasedNodes() = %v, want removed node %d released on disconnect retry", released, node2.ID)
+	if !foundNode2 || !foundNode3 {
+		t.Fatalf("coordinator.ReleasedNodes() = %v, want both %d and %d released", released, node2.ID, node3.ID)
 	}
 
-	devices, err := database.ListUserDevices(ctx, []int64{user.ID}, now)
+	devices, err := database.ListUserDevices(ctx, []int64{user.ID, user3.ID}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(devices[user.ID]) != 0 {
-		t.Fatalf("devices after disconnect = %#v, want empty (node2 devices cleared)", devices)
+	if len(devices[user.ID]) != 0 || len(devices[user3.ID]) != 0 {
+		t.Fatalf("devices after disconnect = %#v, want empty", devices)
+	}
+
+	// Second unregisterAndClear must be a no-op without errors.
+	currentAgain, _, clearErrAgain := hub.unregisterAndClear(wsConn)
+	if clearErrAgain != nil || currentAgain {
+		t.Fatalf("second unregisterAndClear() = (%v, %v), want (false, nil)", currentAgain, clearErrAgain)
 	}
 }
 

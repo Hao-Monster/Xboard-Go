@@ -626,6 +626,9 @@ func (h *wsHub) unregisterAndClear(connection *wsConnection) (bool, []int64, err
 		for _, nodeID := range ownedNodes {
 			released, err := h.coordinator.ReleaseNodeIfOwned(context.Background(), nodeID, connection.id)
 			if err != nil {
+				// If coordinator release still fails on disconnect, the 180s Redis lease TTL
+				// and 5m runtime device TTL serve as the bounded fallback.
+				h.logger.Warn("release node websocket ownership on disconnect", "machine_id", connection.machineID, "node_id", nodeID, "error", err)
 				releaseErrors = append(releaseErrors, err)
 				continue
 			}
@@ -1204,21 +1207,16 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 	}
 	connection.enqueue(nodesSyncEnvelope(snapshots))
 	removedNodeIDs := make([]int64, 0, len(removedNodes))
-	failedRelease := false
+	var failedReleases []int64
 	for nodeID := range removedNodes {
 		if h.coordinator == nil {
 			removedNodeIDs = append(removedNodeIDs, nodeID)
 			continue
 		}
-		if failedRelease {
-			connection.addPendingReleases(nodeID)
-			continue
-		}
 		released, err := h.coordinator.ReleaseNodeIfOwned(ctx, nodeID, connection.id)
 		if err != nil {
 			h.logger.Warn("release removed node websocket ownership", "machine_id", machineID, "node_id", nodeID, "error", err)
-			connection.addPendingReleases(nodeID)
-			failedRelease = true
+			failedReleases = append(failedReleases, nodeID)
 			continue
 		}
 		if released {
@@ -1228,7 +1226,8 @@ func (h *wsHub) notifyMachineNodes(ctx context.Context, machineID int64, broadca
 	if len(removedNodeIDs) > 0 {
 		h.clearNodeDevices(ctx, removedNodeIDs, broadcast)
 	}
-	if failedRelease {
+	if len(failedReleases) > 0 {
+		connection.addPendingReleases(failedReleases...)
 		connection.close(websocket.CloseTryAgainLater, "coordination unavailable")
 		return
 	}

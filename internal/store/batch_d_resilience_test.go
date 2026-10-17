@@ -117,16 +117,18 @@ func TestBL17CommissionPoisonOrderIsolation(t *testing.T) {
 		assertCommissionState(cycleB.ID, orderPoison.ID, 0, 1, 0)
 
 		var reason string
-		var quarantinedAt int64
+		var attempts int
+		var firstFailedAt, lastFailedAt, retryAfter int64
 		if err := database.db.QueryRowContext(ctx, `
-			SELECT reason, quarantined_at FROM scheduler_quarantine
-			WHERE scope = 'commission_settlement' AND order_id = ?
-		`, orderPoison.ID).Scan(&reason, &quarantinedAt); err != nil {
+			SELECT reason, attempts, first_failed_at, last_failed_at, retry_after
+			FROM scheduler_quarantine
+			WHERE kind = 'commission' AND entity_id = ?
+		`, orderPoison.ID).Scan(&reason, &attempts, &firstFailedAt, &lastFailedAt, &retryAfter); err != nil {
 			t.Fatalf("read quarantine row: %v", err)
 		}
-		if reason != "cyclic_invitation_relationship" || quarantinedAt != maturedAt.Unix() {
-			t.Fatalf("quarantine = (%q, %d), want (cyclic_invitation_relationship, %d)",
-				reason, quarantinedAt, maturedAt.Unix())
+		if reason != "cyclic_invitation_relationship" || attempts != 1 || firstFailedAt != maturedAt.Unix() || lastFailedAt != maturedAt.Unix() || retryAfter != maturedAt.Add(time.Hour).Unix() {
+			t.Fatalf("quarantine = (%q, attempts=%d, first=%d, last=%d, retry=%d), want (cyclic_invitation_relationship, 1, %d, %d, %d)",
+				reason, attempts, firstFailedAt, lastFailedAt, retryAfter, maturedAt.Unix(), maturedAt.Unix(), maturedAt.Add(time.Hour).Unix())
 		}
 
 		// Re-run while quarantined: skipped, no re-payout, Remaining=0.
@@ -135,19 +137,38 @@ func TestBL17CommissionPoisonOrderIsolation(t *testing.T) {
 			t.Fatalf("ProcessCommissions(within quarantine) = (%#v, %v)", again, err)
 		}
 
-		// Break the cycle and release quarantine entry, then re-run.
+		// Re-run after retry_after while still broken: attempts increments to 2, first_failed_at preserved.
+		secondFailAt := maturedAt.Add(time.Hour + time.Second)
+		secondTry, err := database.ProcessCommissions(ctx, secondFailAt, 100)
+		if err != nil || secondTry.Paid != 0 || secondTry.Quarantined != 1 || secondTry.Remaining != 0 {
+			t.Fatalf("ProcessCommissions(second failure after retry_after) = (%#v, %v)", secondTry, err)
+		}
+		if err := database.db.QueryRowContext(ctx, `
+			SELECT attempts, first_failed_at, last_failed_at, retry_after
+			FROM scheduler_quarantine
+			WHERE kind = 'commission' AND entity_id = ?
+		`, orderPoison.ID).Scan(&attempts, &firstFailedAt, &lastFailedAt, &retryAfter); err != nil {
+			t.Fatalf("read quarantine row after second attempt: %v", err)
+		}
+		if attempts != 2 || firstFailedAt != maturedAt.Unix() || lastFailedAt != secondFailAt.Unix() || retryAfter != secondFailAt.Add(time.Hour).Unix() {
+			t.Fatalf("second quarantine = (attempts=%d, first=%d, last=%d, retry=%d)", attempts, firstFailedAt, lastFailedAt, retryAfter)
+		}
+
+		// Break the cycle and advance clock past retry_after (NO manual DELETE from scheduler_quarantine).
 		if _, err := database.db.ExecContext(ctx, `UPDATE users SET invite_user_id = NULL WHERE id = ?`, cycleB.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := database.db.ExecContext(ctx, `DELETE FROM scheduler_quarantine WHERE scope = 'commission_settlement' AND order_id = ?`, orderPoison.ID); err != nil {
-			t.Fatal(err)
-		}
-		recovered, err := database.ProcessCommissions(ctx, maturedAt.Add(time.Hour+time.Second), 100)
+		recovered, err := database.ProcessCommissions(ctx, secondFailAt.Add(time.Hour+time.Second), 100)
 		if err != nil || recovered.Paid != 1 || recovered.Quarantined != 0 || recovered.Remaining != 0 {
 			t.Fatalf("ProcessCommissions(after fix) = (%#v, %v), want Paid=1 Quarantined=0 Remaining=0", recovered, err)
 		}
 		assertCommissionState(cycleA.ID, orderPoison.ID, 1_000, 2, 2)
 		assertCommissionState(cycleB.ID, orderPoison.ID, 600, 2, 2)
+
+		var quarantineCount int
+		if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_quarantine WHERE kind = 'commission' AND entity_id = ?`, orderPoison.ID).Scan(&quarantineCount); err != nil || quarantineCount != 0 {
+			t.Fatalf("quarantine count after recovery = %d, err=%v, want 0", quarantineCount, err)
+		}
 	})
 
 	t.Run("balance_limit_exceeded_quarantined_and_l1_rolled_back", func(t *testing.T) {
@@ -232,6 +253,41 @@ func TestBL17CommissionPoisonOrderIsolation(t *testing.T) {
 			t.Fatalf("healthyInviter commission_balance = %d, err=%v, want 1000", healthyBal, err)
 		}
 	})
+
+	t.Run("infrastructure_error_rolls_back_entire_batch", func(t *testing.T) {
+		database := newTestStore(t)
+		ctx := t.Context()
+		now := time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
+
+		plan, buyer := createOrderFixture(t, database, now, PlanPrices{"monthly": 10_000}, nil)
+		inviter, err := database.CreateAdminUser(ctx, CreateAdminUserInput{Email: "bl17-infra-inv@example.test", PasswordHash: "hash"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.db.ExecContext(ctx, `UPDATE users SET invite_user_id = ? WHERE id = ?`, inviter.ID, buyer); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.db.ExecContext(ctx, `UPDATE users SET commission_type = 1, commission_rate = 20 WHERE id = ?`, inviter.ID); err != nil {
+			t.Fatal(err)
+		}
+		ord, err := database.CreateOrder(ctx, CreateOrderInput{UserID: buyer, PlanID: plan.ID, Period: "monthly"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.CompleteOrder(ctx, ord.TradeNo, "bl17-infra-cb", now); err != nil {
+			t.Fatal(err)
+		}
+
+		canceledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+		if _, err := database.ProcessCommissions(canceledCtx, now.Add(commissionConfirmationDelay+time.Minute), 100); err == nil {
+			t.Fatal("ProcessCommissions(canceledCtx) succeeded, want error")
+		}
+		var status int
+		if err := database.db.QueryRowContext(ctx, `SELECT commission_status FROM orders WHERE id = ?`, ord.ID).Scan(&status); err != nil || status != 0 {
+			t.Fatalf("commission_status after canceled context = %d, err=%v, want 0 (unmodified)", status, err)
+		}
+	})
 }
 
 func TestBL18StaleOrderRefundOverflowIsolation(t *testing.T) {
@@ -307,11 +363,8 @@ func TestBL18StaleOrderRefundOverflowIsolation(t *testing.T) {
 		t.Fatalf("ProcessStaleOrders(within quarantine) = (%#v, %v)", again, err)
 	}
 
-	// Adjust userPoison balance and release quarantine entry, then re-run.
+	// Adjust userPoison balance and advance clock past retry_after (NO manual DELETE from scheduler_quarantine).
 	if _, err := database.db.ExecContext(ctx, `UPDATE users SET balance = 1000 WHERE id = ?`, userPoison.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.db.ExecContext(ctx, `DELETE FROM scheduler_quarantine WHERE scope = 'stale_order_cancel' AND order_id = ?`, ordPoison.ID); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := database.ProcessStaleOrders(ctx, staleAt.Add(time.Hour+time.Second), 100)
@@ -319,6 +372,11 @@ func TestBL18StaleOrderRefundOverflowIsolation(t *testing.T) {
 		t.Fatalf("ProcessStaleOrders(after fix) = (%#v, %v), want Cancelled=1 Quarantined=0 Remaining=0", recovered, err)
 	}
 	checkUserOrder(userPoison.ID, ordPoison.ID, 3_000, OrderStatusCancelled)
+
+	var quarantineCount int
+	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_quarantine WHERE kind = 'stale_order' AND entity_id = ?`, ordPoison.ID).Scan(&quarantineCount); err != nil || quarantineCount != 0 {
+		t.Fatalf("quarantine count after recovery = %d, err=%v, want 0", quarantineCount, err)
+	}
 }
 
 func TestBL20TelegramExhaustedThirdClaimRecovery(t *testing.T) {

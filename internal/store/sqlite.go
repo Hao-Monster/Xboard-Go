@@ -2987,10 +2987,13 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 
 const schemaV69SchedulerQuarantine = `
 CREATE TABLE IF NOT EXISTS scheduler_quarantine (
-    scope TEXT NOT NULL CHECK (scope IN ('commission_settlement', 'stale_order_cancel')),
-    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('commission', 'stale_order')),
+    entity_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
-    quarantined_at INTEGER NOT NULL CHECK (quarantined_at >= 0),
-    PRIMARY KEY (scope, order_id)
+    attempts INTEGER NOT NULL CHECK (attempts >= 1),
+    first_failed_at INTEGER NOT NULL CHECK (first_failed_at >= 0),
+    last_failed_at INTEGER NOT NULL CHECK (last_failed_at >= first_failed_at),
+    retry_after INTEGER NOT NULL CHECK (retry_after >= last_failed_at),
+    PRIMARY KEY (kind, entity_id)
 ) STRICT, WITHOUT ROWID;
 `

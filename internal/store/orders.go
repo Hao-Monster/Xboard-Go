@@ -830,6 +830,7 @@ func (s *Store) CompletePendingOrder(ctx context.Context, tradeNo, callbackNo st
 }
 
 const paymentSettlementGrace = 30 * time.Minute
+const schedulerQuarantineBackoff = time.Hour
 
 var errRefundBalanceLimit = fmt.Errorf("%w: refund_balance_limit_exceeded", ErrConflict)
 
@@ -840,7 +841,7 @@ const staleOrderPredicate = `WHERE (o.status = 1 OR (o.status = 0 AND o.created_
             (a.status = 0 AND a.updated_at > ?) OR (a.status = 1 AND a.updated_at > ?))))))
     AND NOT EXISTS (
         SELECT 1 FROM scheduler_quarantine q
-        WHERE q.scope = 'stale_order_cancel' AND q.order_id = o.id
+        WHERE q.kind = 'stale_order' AND q.entity_id = o.id AND q.retry_after > ?
     )`
 
 func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int) (StaleOrderBatchResult, error) {
@@ -853,7 +854,13 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		return StaleOrderBatchResult{}, fmt.Errorf("begin stale order batch: %w", err)
 	}
 	defer tx.Rollback()
-	cutoffs := []any{now.Add(-orderTimeout).Unix(), now.Add(-orderTimeout - paymentSettlementGrace).Unix(), now.Add(-paymentCheckoutLease).Unix(), now.Add(-paymentSettlementGrace).Unix()}
+	cutoffs := []any{
+		now.Add(-orderTimeout).Unix(),
+		now.Add(-orderTimeout - paymentSettlementGrace).Unix(),
+		now.Add(-paymentCheckoutLease).Unix(),
+		now.Add(-paymentSettlementGrace).Unix(),
+		now.Unix(),
+	}
 	rows, err := tx.QueryContext(ctx, orderSelect+`
 		`+staleOrderPredicate+` ORDER BY o.created_at, o.id LIMIT ?
 	`, append(cutoffs, limit)...)
@@ -876,6 +883,7 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		return StaleOrderBatchResult{}, fmt.Errorf("iterate stale orders: %w", err)
 	}
 	result := StaleOrderBatchResult{}
+	retryAfterUnix := now.Add(schedulerQuarantineBackoff).Unix()
 	for index := range orders {
 		order := &orders[index]
 		if order.Status == OrderStatusPending {
@@ -894,9 +902,14 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 				}
 				const quarantineReason = "refund_balance_limit_exceeded"
 				if _, qErr := tx.ExecContext(ctx, `
-					INSERT OR REPLACE INTO scheduler_quarantine (scope, order_id, reason, quarantined_at)
-					VALUES ('stale_order_cancel', ?, ?, ?)
-				`, order.ID, quarantineReason, now.Unix()); qErr != nil {
+					INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
+					VALUES ('stale_order', ?, ?, 1, ?, ?, ?)
+					ON CONFLICT (kind, entity_id) DO UPDATE SET
+						reason = excluded.reason,
+						attempts = scheduler_quarantine.attempts + 1,
+						last_failed_at = excluded.last_failed_at,
+						retry_after = excluded.retry_after
+				`, order.ID, quarantineReason, now.Unix(), now.Unix(), retryAfterUnix); qErr != nil {
 					return StaleOrderBatchResult{}, fmt.Errorf("quarantine stale order %d: %w", order.ID, qErr)
 				}
 				result.Quarantined++
@@ -908,6 +921,9 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 			}
 			if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); err != nil {
 				return StaleOrderBatchResult{}, fmt.Errorf("release stale order savepoint: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM scheduler_quarantine WHERE kind = 'stale_order' AND entity_id = ?`, order.ID); err != nil {
+				return StaleOrderBatchResult{}, fmt.Errorf("clear stale order quarantine %d: %w", order.ID, err)
 			}
 			result.Cancelled++
 			continue

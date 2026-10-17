@@ -311,10 +311,10 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 		WHERE o.status = ? AND o.commission_status = 1 AND o.invite_user_id IS NOT NULL
 		  AND NOT EXISTS (
 			  SELECT 1 FROM scheduler_quarantine q
-			  WHERE q.scope = 'commission_settlement' AND q.order_id = o.id
+			  WHERE q.kind = 'commission' AND q.entity_id = o.id AND q.retry_after > ?
 		  )
 		ORDER BY o.updated_at, o.id LIMIT ?
-	`, OrderStatusCompleted, limit)
+	`, OrderStatusCompleted, now.Unix(), limit)
 	if err != nil {
 		return CommissionProcessingResult{}, fmt.Errorf("list payable commissions: %w", err)
 	}
@@ -334,6 +334,7 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 		return CommissionProcessingResult{}, fmt.Errorf("iterate payable commissions: %w", err)
 	}
 
+	retryAfterUnix := now.Add(schedulerQuarantineBackoff).Unix()
 	for _, order := range payable {
 		if _, err := tx.ExecContext(ctx, `SAVEPOINT sp_item`); err != nil {
 			return CommissionProcessingResult{}, fmt.Errorf("create commission savepoint: %w", err)
@@ -343,9 +344,9 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 			var quarantineReason string
 			switch {
 			case errors.Is(err, errCommissionCycle):
-				quarantineReason = errCommissionCycle.Error()
+				quarantineReason = "cyclic_invitation_relationship"
 			case errors.Is(err, errCommissionBalanceLimit):
-				quarantineReason = errCommissionBalanceLimit.Error()
+				quarantineReason = "commission_balance_limit_exceeded"
 			}
 			if quarantineReason == "" {
 				return CommissionProcessingResult{}, err
@@ -357,9 +358,14 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 				return CommissionProcessingResult{}, fmt.Errorf("release commission savepoint after rollback: %w", relErr)
 			}
 			if _, qErr := tx.ExecContext(ctx, `
-				INSERT OR REPLACE INTO scheduler_quarantine (scope, order_id, reason, quarantined_at)
-				VALUES ('commission_settlement', ?, ?, ?)
-			`, order.id, quarantineReason, now.Unix()); qErr != nil {
+				INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
+				VALUES ('commission', ?, ?, 1, ?, ?, ?)
+				ON CONFLICT (kind, entity_id) DO UPDATE SET
+					reason = excluded.reason,
+					attempts = scheduler_quarantine.attempts + 1,
+					last_failed_at = excluded.last_failed_at,
+					retry_after = excluded.retry_after
+			`, order.id, quarantineReason, now.Unix(), now.Unix(), retryAfterUnix); qErr != nil {
 				return CommissionProcessingResult{}, fmt.Errorf("quarantine commission order %d: %w", order.id, qErr)
 			}
 			processing.Quarantined++
@@ -372,6 +378,9 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 		if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); err != nil {
 			return CommissionProcessingResult{}, fmt.Errorf("release commission savepoint: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM scheduler_quarantine WHERE kind = 'commission' AND entity_id = ?`, order.id); err != nil {
+			return CommissionProcessingResult{}, fmt.Errorf("clear commission quarantine %d: %w", order.id, err)
+		}
 		processing.Paid++
 	}
 	if err := tx.QueryRowContext(ctx, `
@@ -379,9 +388,9 @@ func (s *Store) ProcessCommissions(ctx context.Context, now time.Time, limit int
 		WHERE o.status = ? AND o.commission_status = 1 AND o.invite_user_id IS NOT NULL
 		  AND NOT EXISTS (
 			  SELECT 1 FROM scheduler_quarantine q
-			  WHERE q.scope = 'commission_settlement' AND q.order_id = o.id
+			  WHERE q.kind = 'commission' AND q.entity_id = o.id AND q.retry_after > ?
 		  )
-	`, OrderStatusCompleted).Scan(&processing.Remaining); err != nil {
+	`, OrderStatusCompleted, now.Unix()).Scan(&processing.Remaining); err != nil {
 		return CommissionProcessingResult{}, fmt.Errorf("count remaining commissions: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
