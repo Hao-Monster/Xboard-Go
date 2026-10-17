@@ -1125,6 +1125,7 @@
     "codex_review_rework_commit": "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
     "tech_lead_review_rework_commit": "b3deb666706263eb41bd0af6e12b55f99fb5cfef",
     "tech_lead_rereview_rework_commit": "c63aab689b5827387d03e0f8c48b461f8d8124c4",
+    "geoip_probe_rework_commit": "8fd49fefdbd1c3e712879237c9a0f8d0e7011300",
     "findings_resolved": [
       "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
       "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
