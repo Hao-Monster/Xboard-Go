@@ -187,6 +187,15 @@ test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, 
   assert.equal(depScope.supply_chain, "true");
   assert.equal(depScope.backend_all, "true");
 
+  const installerComposeScope = analyzePrScope(["deploy/compose.yaml"]);
+  assert.equal(installerComposeScope.tier, "L3");
+  assert.equal(installerComposeScope.packaging_smoke, "true");
+  assert.equal(installerComposeScope.ci_deploy, "true");
+
+  const splitNginxScope = analyzePrScope([".docker/gateway/nginx.conf"]);
+  assert.equal(splitNginxScope.tier, "L3");
+  assert.equal(splitNginxScope.split_runtime, "true");
+
   const unknownScope = analyzePrScope(["mystery-binary.bin"]);
   assert.equal(unknownScope.tier, "L3");
   assert.equal(unknownScope.unknown_paths, "true");

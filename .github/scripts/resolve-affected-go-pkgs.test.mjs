@@ -58,4 +58,18 @@ test("embedded subdirectory assets walk up to their owning Go package", () => {
     `${MODULE_PREFIX}/cmd/xboard`,
     `${MODULE_PREFIX}/internal/mailer`
   ]);
+  assert.deepEqual(res.unmappedGoFiles, []);
+});
+
+test("resolves tools Go helper packages and reports unmapped Go files for fail-closed handling", () => {
+  const graph = parseGoListGraph(
+    `${sampleGraphOutput}\n${MODULE_PREFIX}/tools/local-parity\tfmt,os\t\t`
+  );
+  const mapped = resolveAffectedGoPackages(graph, ["tools/local-parity/clean-web-root.go"]);
+  assert.deepEqual(mapped.directTestPackages, [`${MODULE_PREFIX}/tools/local-parity`]);
+  assert.deepEqual(mapped.unmappedGoFiles, []);
+
+  const unmapped = resolveAffectedGoPackages(graph, ["tools/unknown/orphan.go"]);
+  assert.deepEqual(unmapped.directTestPackages, []);
+  assert.deepEqual(unmapped.unmappedGoFiles, ["tools/unknown/orphan.go"]);
 });

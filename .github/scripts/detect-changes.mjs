@@ -57,6 +57,9 @@ const dependencyTriggers = [
 ];
 
 const splitRuntimeTriggers = [
+  "Dockerfile",
+  ".dockerignore",
+  ".docker/",
   "compose.split.yaml",
   "Dockerfile.split",
   ".github/scripts/check-split-topology",
@@ -66,9 +69,9 @@ const splitRuntimeTriggers = [
 const packagingTriggers = [
   "Dockerfile",
   ".dockerignore",
-  ".docker/",
   "compose.yaml",
   "compose.local.yaml",
+  "deploy/compose.yaml",
   "deploy/install.sh"
 ];
 

@@ -42,18 +42,27 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
   const skipDirectSet = new Set(options.skipDirectPackages ?? []);
   const directTestSet = new Set();
   const nonTestModifiedSet = new Set();
+  const unmappedGoFiles = [];
 
   const files = (rawFiles ?? [])
     .map((f) => f.trim().replace(/\\/g, "/"))
     .filter((f) => f !== "");
 
   for (const file of files) {
-    if (!file.startsWith("cmd/") && !file.startsWith("internal/")) {
+    if (file.startsWith("internal/testdata/legacy/drill/")) {
+      continue;
+    }
+    const isGoCandidate =
+      file.startsWith("cmd/") ||
+      file.startsWith("internal/") ||
+      file.startsWith("tools/") ||
+      file.endsWith(".go");
+    if (!isGoCandidate) {
       continue;
     }
     let dir = dirname(file).replace(/\\/g, "/");
     let matchedPkg = "";
-    while (dir && dir !== "." && (dir.startsWith("cmd/") || dir.startsWith("internal/"))) {
+    while (dir && dir !== ".") {
       const candidate = `${MODULE_PREFIX}/${dir}`;
       if (graph.has(candidate)) {
         matchedPkg = candidate;
@@ -63,7 +72,20 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
       if (parent === dir) break;
       dir = parent;
     }
+    if (!matchedPkg && dir === "." && graph.has(MODULE_PREFIX)) {
+      matchedPkg = MODULE_PREFIX;
+    }
+    if (
+      !matchedPkg &&
+      file.startsWith("internal/testdata/legacy/") &&
+      graph.has(`${MODULE_PREFIX}/internal/legacymigration`)
+    ) {
+      matchedPkg = `${MODULE_PREFIX}/internal/legacymigration`;
+    }
     if (!matchedPkg) {
+      if (file.endsWith(".go") || file.startsWith("cmd/") || file.startsWith("internal/")) {
+        unmappedGoFiles.push(file);
+      }
       continue;
     }
     directTestSet.add(matchedPkg);
@@ -106,7 +128,8 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
 
   return {
     directTestPackages,
-    compileOnlyPackages
+    compileOnlyPackages,
+    unmappedGoFiles: unmappedGoFiles.sort()
   };
 }
 
@@ -119,6 +142,8 @@ export function loadRepoGoGraph() {
       '{{.ImportPath}}\t{{join .Imports ","}}\t{{join .TestImports ","}}\t{{join .XTestImports ","}}',
       "./cmd/...",
       "./internal/...",
+      "./tools/...",
+      "./.github/scripts/clientcompat",
       "./internal/testdata/legacy/gen"
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
@@ -135,7 +160,7 @@ function main() {
 
   const graph = loadRepoGoGraph();
   const files = getChangedFiles();
-  const { directTestPackages, compileOnlyPackages } = resolveAffectedGoPackages(
+  const { directTestPackages, compileOnlyPackages, unmappedGoFiles } = resolveAffectedGoPackages(
     graph,
     files,
     { skipDirectPackages }
@@ -144,18 +169,33 @@ function main() {
   process.stdout.write(
     `Resolved affected Go packages:\n` +
       `  Direct test packages (${directTestPackages.length}): ${directTestPackages.join(", ") || "none"}\n` +
-      `  Compile-check dependent packages (${compileOnlyPackages.length}): ${compileOnlyPackages.join(", ") || "none"}\n`
+      `  Compile-check dependent packages (${compileOnlyPackages.length}): ${compileOnlyPackages.join(", ") || "none"}\n` +
+      `  Unmapped Go files (${unmappedGoFiles.length}): ${unmappedGoFiles.join(", ") || "none"}\n`
   );
 
   if (!runMode) {
     return;
   }
 
-  const allVetPackages = [...new Set([...directTestPackages, ...compileOnlyPackages])];
-  if (allVetPackages.length > 0) {
-    process.stdout.write(`\n[go-fast] Running go vet on ${allVetPackages.length} package(s)...\n`);
-    execFileSync("go", ["vet", ...allVetPackages], { stdio: "inherit" });
+  if (unmappedGoFiles.length > 0) {
+    process.stderr.write(
+      `\n[go-fast] ERROR: refusing to pass with unmapped Go-related changes: ${unmappedGoFiles.join(", ")}\n`
+    );
+    process.exitCode = 1;
+    return;
   }
+
+  const allVetPackages = [...new Set([...directTestPackages, ...compileOnlyPackages])];
+  if (allVetPackages.length === 0) {
+    process.stderr.write(
+      "\n[go-fast] ERROR: resolved zero Go packages to verify when go-fast was scheduled; refusing empty pass.\n"
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  process.stdout.write(`\n[go-fast] Running go vet on ${allVetPackages.length} package(s)...\n`);
+  execFileSync("go", ["vet", ...allVetPackages], { stdio: "inherit" });
 
   if (directTestPackages.length > 0) {
     process.stdout.write(`\n[go-fast] Running go test -race on ${directTestPackages.length} directly modified package(s)...\n`);

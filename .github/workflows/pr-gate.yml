@@ -92,11 +92,12 @@ jobs:
       - name: Validate shell scripts and run deploy unit tests
         run: |
           set -euo pipefail
-          for script in deploy/*.sh .github/scripts/*.sh; do
+          for script in deploy/*.sh .github/scripts/*.sh tools/local-parity/*.sh; do
             bash -n "$script"
           done
           python3 -m unittest discover -s deploy -p "*test*.py"
           python3 -m unittest discover -s deploy/observability -p "*test*.py"
+          python3 -m unittest discover -s deploy/self-hosted -p "*test*.py"
 
   go-fast:
     needs: detect-changes
@@ -359,6 +360,15 @@ jobs:
     if: needs.detect-changes.outputs.split_runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
+      XBOARD_WEBSOCKET_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -371,6 +381,53 @@ jobs:
           node --test .github/scripts/check-split-topology.test.mjs
           docker compose -f compose.split.yaml config --format json |
             node .github/scripts/check-split-topology.mjs
+      - name: Build exact split images
+        run: |
+          set -euo pipefail
+          mkdir -p .local
+          chmod 0700 .local
+          password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          echo "::add-mask::$password"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          docker compose -f compose.split.yaml build gateway frontend backend
+          for image in xboard-go-gateway:local xboard-go-frontend:local xboard-go-backend:local; do
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$GITHUB_SHA"
+          done
+      - name: Start split application and verify routing boundaries
+        run: |
+          set -euo pipefail
+          docker compose -f compose.split.yaml --profile e2e up -d --no-build --wait
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/)" = 200
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/wrong-admin-path)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/frontend-healthz)" = 404
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/gateway-healthz)" = 200
+          asset="$(curl --fail --silent http://127.0.0.1:7080/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -n1)"
+          test -n "$asset"
+          curl --fail --silent --head "http://127.0.0.1:7080$asset" |
+            grep -qi '^cache-control: public, max-age=31536000, immutable'
+          for service in gateway frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '.[0].HostConfig.ReadonlyRootfs == true and
+                (.[0].HostConfig.CapDrop | index("ALL") != null) and
+                (.[0].HostConfig.SecurityOpt | index("no-new-privileges:true") != null)' >/dev/null
+          done
+          for service in frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '((.[0].HostConfig.PortBindings // {}) | length) == 0' >/dev/null
+          done
+      - name: Capture split container logs on failure
+        if: failure()
+        run: docker compose -f compose.split.yaml --profile e2e logs --no-color
+      - name: Stop split application
+        if: always()
+        run: |
+          docker compose -f compose.split.yaml --profile e2e down --volumes
+          chmod 0600 .local/bootstrap-password.txt .local/settings-encryption-key.txt 2>/dev/null || true
 
   pr-gate:
     name: pr-gate
