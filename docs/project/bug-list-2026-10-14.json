@@ -17,7 +17,7 @@
   "decisions": {
     "D-1": "Stage one: default 30 minute settlement grace; no late-payment money handling.",
     "D-2": "User confirmed consume days-only general cards for permanent users; days have no effect and are recorded as zero.",
-    "D-3": "User approved schemaV69 scheduler_quarantine table migration and per-item SAVEPOINT isolation for BL-17 and BL-18.",
+    "D-3": "User approved schemaV69 scheduler_quarantine table migration (upgraded to schemaV70 in 938db89d028fe83886990495a855cd254a55aaa6 with retry_after/attempts/first_failed_at/last_failed_at) and per-item SAVEPOINT isolation for BL-17 and BL-18.",
     "D-4": "User approved intentional deviations from legacy PHP bugs for BL-04 (expired cross-period assign OrderTypeNew), BL-07 (chained onetime upgrade surplus), and BL-11 (version-compatible synthetic info items).",
     "D-5": "Use engineering-spec default: HWID headers plus 404 empty body; account quota 429/60; render busy 503/1. V2 unchanged.",
     "D-6": "User approved rejecting non-minute-aligned enable_second/disable_second in ValidateLegacyNodesData (BL-22) with error containing node ID."
@@ -989,7 +989,8 @@
     }
   ],
   "report": "docs/testing/bug-fix-a-results-2026-10-14.md",
-  "evidence_boundary": "Current A re-review is batch_a_rereview / rereview_2026_10_15; current B evidence is batch_b. Prior first-delivery and review_rework results are historical. A and unrelated preserved work were pushed through ec4593bd by earlier explicit user authorization. B has local commits only; no PR, merge, deployment or live acceptance.",
+  "historical_evidence_boundary": "Current A re-review is batch_a_rereview / rereview_2026_10_15; current B evidence is batch_b. Prior first-delivery and review_rework results are historical. A and unrelated preserved work were pushed through ec4593bd by earlier explicit user authorization. B has local commits only; no PR, merge, deployment or live acceptance.",
+  "evidence_boundary": "Batches A and B were pushed through ec4593bd and 5d771d22 by earlier explicit user authorizations. Current evidence for Batches C through H is recorded in batch_c through batch_h and code_review_2026_10_16. Prior first-delivery and review_rework results for Batch A remain historical. Batches C through H and subsequent review rework commits are locally verified and committed on codex/ci-001-tiered-gates; push, PR update, merge, deployment, and live acceptance remain pending explicit user authorization.",
   "historical_implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
   "decision_sources": {
     "D-2": {
@@ -1037,7 +1038,7 @@
       "owner_title": "修复客服购买会话与订单发送",
       "evidence": "docs/testing/purchase-support-handoff-2026-10-15.md and read-only task completion message",
       "status": "Historical separate work; integrated in 07c129f6 and pushed through ec4593bd before B. No frontend modifications in B.",
-      "overlap": "UserOrdersPage.tsx overlaps BL-26/27 in H."
+      "overlap": "UserOrdersPage.tsx overlapped BL-26/27 in H; Batch H integrated cleanly on top of 07c129f6 without reverting support_orders behavior."
     },
     "staged_shell": {
       "files": [
@@ -1049,7 +1050,8 @@
       "purpose": "2026-10-12 removal of duplicate floating distributor entry",
       "owner_status": "Historical staged state resolved by user-authorized preservation commit 746dd513; pushed through ec4593bd before B."
     },
-    "gate": "A re-review passed; B locally verified pending user batch review. H not started; when authorized, adapt its scope on the already integrated frontend behavior without reverting prior work."
+    "historical_gate_before_batch_h": "A re-review passed; B locally verified pending user batch review. H not started; when authorized, adapt its scope on the already integrated frontend behavior without reverting prior work.",
+    "gate": "Batches A through H locally verified and re-review passed. Batch H adapted its scope on top of the integrated support_orders (07c129f6) and staged_shell (746dd513) frontend behavior without reverting prior work (implementation b6c351e2, rework 938db89d and ce46a242)."
   },
   "batch_a_rereview": {
     "date": "2026-10-15",
@@ -1077,14 +1079,21 @@
     "report": "docs/testing/bug-fix-d-results-2026-10-16.md",
     "status": "local_verified_and_rereview_passed",
     "implementation_sha": "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
-    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6"
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+      "ff791c392af6302bd4807b03257fe2d21b71f333"
+    ]
   },
   "batch_e": {
     "plan": "docs/testing/bug-fix-e-plan-2026-10-16.md",
     "report": "docs/testing/bug-fix-e-results-2026-10-16.md",
     "status": "local_verified_and_rereview_passed",
     "implementation_sha": "7565b25d0923106b51199626ca7bbe9d23f7b44d",
-    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6"
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "ff791c392af6302bd4807b03257fe2d21b71f333"
+    ]
   },
   "batch_f": {
     "plan": "docs/testing/bug-fix-f-plan-2026-10-16.md",
@@ -1103,17 +1112,21 @@
     "report": "docs/testing/bug-fix-h-results-2026-10-16.md",
     "status": "local_verified_and_rereview_passed",
     "implementation_sha": "b6c351e2c3c88dac3226460463ef2d35a140cdde",
-    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6"
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc"
+    ]
   },
   "code_review_2026_10_16": {
     "status": "passed_after_rework",
     "rework_commit": "938db89d028fe83886990495a855cd254a55aaa6",
     "codex_review_rework_commit": "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
+    "tech_lead_review_rework_commit": "b3deb666706263eb41bd0af6e12b55f99fb5cfef",
     "findings_resolved": [
       "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
       "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
       "BL-23 (Medium): Preserved parent Modal/Drawer Tab focus trap in overlayStack.ts when a child non-trapping overlay layer (such as NodeFilter) is open on top.",
-      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop and included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope.",
+      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop, included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope, included deploy/compose.yaml in packagingTriggers, routed .docker/ and Dockerfile/.dockerignore to splitRuntimeTriggers with gateway/frontend/backend validation in pr-gate.yml, and enforced non-empty affected Go package resolution in go-fast.",
       "BL-25/BL-24 (Low): Extended GiftCardManagementPage.test.tsx BL-25 test to cover both template and code tabs, and aligned BL-24 test case name in docs/testing/bug-fix-h-results-2026-10-16.md."
     ]
   }

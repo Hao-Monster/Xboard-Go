@@ -90,10 +90,10 @@
 | 步骤 | 工作内容 | 前置 | 完成条件 | 状态 |
 | --- | --- | --- | --- | --- |
 | ITER-T00 | 编写执行单，AGENTS 增加入口 | 无 | 文档审查、diff check、projectctl check、本地提交 | VERIFIED |
-| ITER-T01 | 建立本次治理记录与真实 Issue/Milestone；核对授权范围 | T00 | 新 Work Item 与 Issue 一致，generate/check 通过；记录远端操作授权 | TODO |
+| ITER-T01 | 建立本次治理记录与真实 Issue/Milestone；核对授权范围 | T00 | 新 Work Item 与 Issue 一致，generate/check 通过；记录远端操作授权 | VERIFIED |
 | ITER-T02 | 保存规则、合并设置、Environment 与工作流基线，确认当前无冲突发布 | T01 | 脱敏快照、回滚命令设计、两个保留分支 SHA | TODO |
-| ITER-T03 | 实现快速范围分类及合同测试 | T01 | 文档/Go/前端/依赖/工作流/高风险/未知路径用例通过，旧手动流程不回归 | TODO |
-| ITER-T04 | 实现 PR jobs 和 pr-gate、缓存与取消策略 | T03 | 本地测试与工作流语法检查通过；无 PR Secrets 或发布权限 | TODO |
+| ITER-T03 | 实现快速范围分类及合同测试 | T01 | 文档/Go/前端/依赖/工作流/高风险/未知路径用例通过，旧手动流程不回归 | VERIFIED |
+| ITER-T04 | 实现 PR jobs 和 pr-gate、缓存与取消策略 | T03 | 本地测试与工作流语法检查通过；无 PR Secrets 或发布权限 | VERIFIED |
 | ITER-T05 | 云端试运行，观察成功与失败情形 | T02,T04 | 第 6 节必需场景有真实证据；尚不启用强制规则 | TODO |
 | ITER-T06 | 增量启用 main 检查及开发分支保护 | T05 | 合格 PR 可合并，失败被阻止；唯一开发分支可正常推送 | TODO |
 | ITER-T07 | 核对 Environment 来源及部署链路 | T02 | development 合法链路可用，非受信来源被拒；内部测试环境用途明确 | TODO |
@@ -137,6 +137,9 @@
 
 | 步骤 | 提交/配置标识 | 命令或运行链接 | 结果与限制 |
 | --- | --- | --- | --- |
-| T00 | 本文件的 docs: record rapid iteration delivery execution plan 提交（git log -- docs/operations/rapid-iteration-execution.md 查询） | git diff --check；go run ./cmd/projectctl check | PASS（退出码 0）；规则冲突与引用人工复核通过；未修改云端规则和工作流 |
+| T00 | 883fee99c2e503d7c0afa7802111926769b9709c（docs: record rapid iteration delivery execution plan） | git diff --check；go run ./cmd/projectctl check | PASS（退出码 0）；规则冲突与引用人工复核通过；未修改云端规则和工作流 |
+| T01 | Work Item `CI-002`（`docs/project/work-items.json` / `docs/project/STATUS.md`），绑定 GitHub Issue #341（Milestone `M3 Release Candidate`） | go run ./cmd/projectctl generate；go run ./cmd/projectctl check；git diff --check | PASS（退出码 0）；已登记独立工作项 `CI-002` 与真实 Issue #341；当前授权范围为本地实现、验证与本地提交（远端 Ruleset/Environment 变更、推送最新提交、创建/合并 PR 待单独明确授权） |
+| T03 | 685412fe27392e9f14ffbe3373ef608f0284c2f9、fbcc1b1615c89e2bc8ef46ef93d2ba6ec90fc939、ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc、b3deb666706263eb41bd0af6e12b55f99fb5cfef（`.github/scripts/detect-changes.mjs`、`.github/scripts/resolve-affected-go-pkgs.mjs`、`.github/scripts/go-test-groups.mjs` 及对应测试） | node --test .github/scripts/*.test.mjs | PASS（46/46 用例通过）；覆盖纯文档、Go 反向依赖图、未映射 Go 路径 fail-closed、前端、依赖、CI/部署脚本、`deploy/compose.yaml` 打包冒烟、`.docker/` 与 `Dockerfile` 拆分运行时、迁移演练及未知路径保守升级，且保留手动生产门禁 `fullRegressionResult` 兼容 |
+| T04 | 685412fe27392e9f14ffbe3373ef608f0284c2f9、fbcc1b1615c89e2bc8ef46ef93d2ba6ec90fc939、ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc、b3deb666706263eb41bd0af6e12b55f99fb5cfef（`.github/workflows/pr-gate.yml`） | go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= .github/workflows/pr-gate.yml；node --test .github/scripts/*.test.mjs | PASS（退出码 0）；实现 L0-L3 分级 PR 任务、`split-runtime`（验证 gateway/frontend/backend 拆分镜像与路由）、`packaging-smoke`、`migration-drill`、同 PR 并发取消及 fail-closed `pr-gate` 汇总；工作流为 `contents: read` 且不接触发布凭据；云端试运行（T05）与强制规则绑定（T06）保持 TODO |
 
 执行完成时记录：精确 SHA、运行 URL、Ruleset ID、实际检查名、环境策略、预览运行版本、耗时、回滚证据及未完成项。不得记录敏感凭据或原始生产数据。

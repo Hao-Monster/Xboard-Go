@@ -32,6 +32,7 @@
     {"id":"OBS-009","title":"通过 curl 与产物摘要验证日志镜像下载","status":"in_progress","milestone":"M3","issue_number":316,"requirement_ids":[],"decision_ids":[]},
     {"id":"OBS-010","title":"慢链路产物断点续传与完整摘要验证","status":"in_progress","milestone":"M3","issue_number":318,"requirement_ids":[],"decision_ids":[]},
     {"id":"OBS-011","title":"规范化 Docker 内容身份中的等价默认字段","status":"in_progress","milestone":"M3","issue_number":320,"requirement_ids":[],"decision_ids":[]},
-    {"id":"DIST-001","title":"官方 stable 镜像发布与第三方更新契约","status":"in_progress","milestone":"M3","issue_number":331,"requirement_ids":[],"decision_ids":[]}
+    {"id":"DIST-001","title":"官方 stable 镜像发布与第三方更新契约","status":"in_progress","milestone":"M3","issue_number":331,"requirement_ids":[],"decision_ids":[]},
+    {"id":"CI-002","title":"实施快速迭代阶段智能 PR 门禁与分级检查","status":"in_progress","milestone":"M3","issue_number":341,"requirement_ids":[],"decision_ids":[]}
   ]
 }

@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-16
 - **Branch**: `codex/ci-001-tiered-gates`
-- **Spec Reference**: `docs- box/FIX_ENGINEERING_SPEC_2026-10-14.md` §Batch D
+- **Spec Reference**: `docs-dev/FIX_ENGINEERING_SPEC_2026-10-14.md` §Batch D
 
 ## Scope
 
@@ -10,7 +10,7 @@
    - Release claimed recipients when a bulk mail job transitions to `cancelling`/`cancelled` during SMTP delivery (`ReleaseCancelledAdminUserBulkMailClaim`) instead of persisting `status='sent'`.
    - Reap stale claimed recipients (`claimed_at + lease < now`) and settle `cancelling` bulk mail jobs into `cancelled` at the beginning of `RunMailOnce` (`ReapCancellingAdminUserBulkMail`).
 2. **`BL-17` (`internal/store/sqlite.go`, `internal/store/schema_validation.go`, `internal/store/commissions.go`, `internal/scheduler/worker.go`)**:
-   - Add `scheduler_quarantine` table (`schemaV69SchedulerQuarantine`, schema version `69`).
+   - Add `scheduler_quarantine` table (`schemaV69SchedulerQuarantine`, upgraded in review rework to `schemaV70SchedulerQuarantine` at schema version `70` with `attempts`, `first_failed_at`, `last_failed_at`, `retry_after`).
    - Isolate each order in `ProcessPendingCommissions` inside `SAVEPOINT sp_item`, detect inviter-chain cycles (`errCommissionCycle`, max 3 levels) and commission balance overflow (`errCommissionBalanceLimit`), roll back only the poison order to `sp_item`, record it in `scheduler_quarantine`, and allow valid orders in the same batch to commit.
 3. **`BL-18` (`internal/store/orders.go`, `internal/scheduler/worker.go`)**:
    - Isolate each stale order cancellation in `ProcessStaleOrders` inside `SAVEPOINT sp_item`, check `users.balance + balance_amount > MaxUserCreditCents` (`errRefundBalanceLimit`) before `cancelOrderTx` credit refund, roll back only the overflowing order to `sp_item`, record it in `scheduler_quarantine`, and allow subsequent stale orders in the batch to cancel.
