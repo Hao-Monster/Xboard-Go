@@ -38,7 +38,17 @@ function handleDocumentKeyDown(event: KeyboardEvent) {
   if (event.key !== "Tab") {
     return;
   }
-  const trapRef = top.getTrapRef();
+  let trapRef: RefObject<HTMLElement | null> | undefined;
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    const candidate = stack[index];
+    if (candidate !== undefined && candidate.getActive()) {
+      const ref = candidate.getTrapRef();
+      if (ref !== undefined) {
+        trapRef = ref;
+        break;
+      }
+    }
+  }
   if (trapRef === undefined) {
     return;
   }

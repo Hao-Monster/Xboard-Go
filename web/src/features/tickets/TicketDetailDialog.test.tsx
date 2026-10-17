@@ -93,9 +93,19 @@ describe("ticket confirmation overlay", () => {
     expect(onCloseModal).not.toHaveBeenCalled();
     expect(onCloseDrawer).not.toHaveBeenCalled();
 
-    // Open NodeFilter inside "编辑模板" modal, then press Escape
+    // Open NodeFilter inside "编辑模板" modal, verify parent modal Tab trap remains active, then press Escape
     await user.click(screen.getByRole("button", { name: "允许的套餐" }));
-    expect(screen.getByRole("dialog", { name: "允许的套餐筛选" })).toBeVisible();
+    const filterDialog = screen.getByRole("dialog", { name: "允许的套餐筛选" });
+    expect(filterDialog).toBeVisible();
+    const editModal = screen.getByRole("dialog", { name: "编辑模板" });
+    const modalFocusable = Array.from(editModal.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])"));
+    const firstModalControl = modalFocusable[0]!;
+    const lastModalControl = modalFocusable[modalFocusable.length - 1]!;
+    lastModalControl.focus();
+    expect(document.activeElement).toBe(lastModalControl);
+    await user.keyboard("{Tab}");
+    expect(document.activeElement).toBe(firstModalControl);
+
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "允许的套餐筛选" })).not.toBeInTheDocument();
     expect(onCloseModal).not.toHaveBeenCalled();

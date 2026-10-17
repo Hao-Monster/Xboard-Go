@@ -92,7 +92,9 @@ jobs:
       - name: Validate shell scripts and run deploy unit tests
         run: |
           set -euo pipefail
-          bash -n deploy/*.sh .github/scripts/*.sh
+          for script in deploy/*.sh .github/scripts/*.sh; do
+            bash -n "$script"
+          done
           python3 -m unittest discover -s deploy -p "*test*.py"
           python3 -m unittest discover -s deploy/observability -p "*test*.py"
 

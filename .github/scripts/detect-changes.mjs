@@ -386,13 +386,22 @@ export function analyzePrScope(rawFiles) {
   const packagingSmoke = files.some((f) => matchesPrefix(f, packagingTriggers));
   const splitRuntime = files.some((f) => matchesPrefix(f, splitRuntimeTriggers));
 
+  const migrationSchemaStoreFiles = new Set([
+    "internal/store/sqlite.go",
+    "internal/store/commission_withdrawals.go",
+    "internal/store/gift_card_purchase.go",
+    "internal/store/plan_visibility.go",
+    "internal/store/purchase_channels.go"
+  ]);
+
   const migrationDrill = files.some(
     (f) =>
       f.startsWith("internal/testdata/legacy/") ||
       f.startsWith("internal/legacymigration/") ||
       f.startsWith("internal/store/migrate") ||
       f.startsWith("internal/store/schema") ||
-      f.startsWith("internal/store/legacy")
+      f.startsWith("internal/store/legacy") ||
+      migrationSchemaStoreFiles.has(f)
   );
 
   const realClientCompat = files.some(

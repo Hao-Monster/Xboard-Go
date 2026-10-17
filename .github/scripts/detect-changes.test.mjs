@@ -202,11 +202,14 @@ test("analyzePrScope skips go_fast when only store or httpapi _test.go files are
   const storeTestScope = analyzePrScope(["internal/store/sqlite_test.go"]);
   assert.equal(storeTestScope.go_race, "true");
   assert.equal(storeTestScope.go_fast, "false");
+  assert.equal(storeTestScope.migration_drill, "false");
   assert.equal(storeTestScope.go_race_groups, JSON.stringify(["store"]));
 
   const storeImplScope = analyzePrScope(["internal/store/sqlite.go"]);
+  assert.equal(storeImplScope.tier, "L3");
   assert.equal(storeImplScope.go_race, "true");
   assert.equal(storeImplScope.go_fast, "true");
+  assert.equal(storeImplScope.migration_drill, "true");
 });
 
 test("analyzePrScope classifies every tracked file in git ls-files without unknown_paths fallback", async () => {
