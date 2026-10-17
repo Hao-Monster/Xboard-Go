@@ -537,29 +537,56 @@ function readGithubEventPayload(env = process.env) {
   }
 }
 
-export function resolveGitRevisionMeta(env = process.env, payload = null) {
+function defaultGitExec(args) {
+  return execFileSync("git", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+}
+
+function isMainRef(env = process.env, event = null) {
+  const ref = env.GITHUB_REF || event?.ref || "";
+  const refName = env.GITHUB_REF_NAME || "";
+  return ref === "refs/heads/main" || refName === "main";
+}
+
+export function resolveGitRevisionMeta(
+  env = process.env,
+  payload = null,
+  gitExec = defaultGitExec
+) {
   const event = payload ?? readGithubEventPayload(env);
   let mergeSha = env.GITHUB_SHA ?? "";
   try {
-    mergeSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
+    mergeSha = gitExec(["rev-parse", "HEAD"]).trim();
   } catch {
     // ignore
   }
-  const baseSha =
-    event?.pull_request?.base?.sha ??
-    env.GITHUB_EVENT_BEFORE ??
-    event?.before ??
-    "";
+  let baseSha = event?.pull_request?.base?.sha ?? "";
+  if (!baseSha && !isMainRef(env, event)) {
+    try {
+      const mergeBase = gitExec(["merge-base", "origin/main", "HEAD"]).trim();
+      if (mergeBase && mergeBase !== mergeSha) {
+        baseSha = mergeBase;
+      }
+    } catch {
+      // Fall back to push before SHA when origin/main is unavailable
+    }
+  }
+  if (!baseSha) {
+    baseSha = env.GITHUB_EVENT_BEFORE ?? event?.before ?? "";
+  }
   const headSha =
     event?.pull_request?.head?.sha ??
     mergeSha;
   return { base_sha: baseSha, head_sha: headSha, merge_sha: mergeSha };
 }
 
-export function getChangedFiles(env = process.env, payload = null) {
+export function getChangedFiles(
+  env = process.env,
+  payload = null,
+  gitExec = defaultGitExec
+) {
   const eventName = env.GITHUB_EVENT_NAME ?? "";
   const event = payload ?? readGithubEventPayload(env);
 
@@ -567,34 +594,19 @@ export function getChangedFiles(env = process.env, payload = null) {
     const baseRef = env.GITHUB_BASE_REF ?? "main";
     // When running on refs/pull/<N>/merge, HEAD^1 is the exact base commit merged into HEAD
     try {
-      execFileSync("git", ["rev-parse", "--verify", "HEAD^2"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"]
-      });
-      const mergedDiff = execFileSync(
-        "git",
-        ["diff", "--name-only", "HEAD^1..HEAD"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-      );
+      gitExec(["rev-parse", "--verify", "HEAD^2"]);
+      const mergedDiff = gitExec(["diff", "--name-only", "HEAD^1..HEAD"]);
       const files = mergedDiff.split(/\r?\n/).filter((f) => f.trim() !== "");
       if (files.length > 0) return files;
     } catch {
       // Not a synthetic merge commit; fall through to origin/${baseRef}...HEAD
     }
     try {
-      const output = execFileSync(
-        "git",
-        ["diff", "--name-only", `origin/${baseRef}...HEAD`],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-      );
+      const output = gitExec(["diff", "--name-only", `origin/${baseRef}...HEAD`]);
       return output.split(/\r?\n/).filter((f) => f.trim() !== "");
     } catch {
       try {
-        const fallback = execFileSync(
-          "git",
-          ["diff", "--name-only", "HEAD~1...HEAD"],
-          { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-        );
+        const fallback = gitExec(["diff", "--name-only", "HEAD~1...HEAD"]);
         return fallback.split(/\r?\n/).filter((f) => f.trim() !== "");
       } catch {
         return [];
@@ -602,14 +614,23 @@ export function getChangedFiles(env = process.env, payload = null) {
     }
   }
 
+  // On non-main branches (e.g., push to codex/ci-001-tiered-gates in pr-gate.yml),
+  // always evaluate the full branch diff against origin/main when ahead of origin/main
+  // so that concurrency cancel-in-progress on rapid pushes never downgrades the gate tier.
+  if (!isMainRef(env, event)) {
+    try {
+      const branchDiff = gitExec(["diff", "--name-only", "origin/main...HEAD"]);
+      const files = branchDiff.split(/\r?\n/).filter((f) => f.trim() !== "");
+      if (files.length > 0) return files;
+    } catch {
+      // Fall through to push before..HEAD when origin/main is unavailable
+    }
+  }
+
   const before = env.GITHUB_EVENT_BEFORE || event?.before || "";
   if (before && before !== "0000000000000000000000000000000000000000") {
     try {
-      const output = execFileSync(
-        "git",
-        ["diff", "--name-only", `${before}..HEAD`],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-      );
+      const output = gitExec(["diff", "--name-only", `${before}..HEAD`]);
       return output.split(/\r?\n/).filter((f) => f.trim() !== "");
     } catch {
       // Fallback below
@@ -617,10 +638,7 @@ export function getChangedFiles(env = process.env, payload = null) {
   }
 
   try {
-    const output = execFileSync("git", ["diff", "--name-only", "HEAD~1..HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"]
-    });
+    const output = gitExec(["diff", "--name-only", "HEAD~1..HEAD"]);
     return output.split(/\r?\n/).filter((f) => f.trim() !== "");
   } catch {
     return [];

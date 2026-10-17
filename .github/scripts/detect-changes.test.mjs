@@ -275,3 +275,49 @@ test("resolveModifiedE2eSpecs separates regular E2E specs from Mailpit and exter
     /unexpected failure/
   );
 });
+
+test("getChangedFiles and resolveGitRevisionMeta use origin/main...HEAD on non-main branch pushes to prevent cancel-in-progress tier downgrade", async () => {
+  const { getChangedFiles, resolveGitRevisionMeta } = await import("./detect-changes.mjs");
+  const fakeGit = (args) => {
+    const cmd = args.join(" ");
+    if (cmd === "rev-parse HEAD") return "deadbeef11111111111111111111111111111111\n";
+    if (cmd === "merge-base origin/main HEAD") return "base000011111111111111111111111111111111\n";
+    if (cmd === "diff --name-only origin/main...HEAD") {
+      return "internal/store/orders.go\nweb/src/App.tsx\ndocs/README.md\n";
+    }
+    if (cmd === "diff --name-only prev000011111111111111111111111111111111..HEAD") {
+      return "docs/README.md\n";
+    }
+    throw new Error(`unexpected git args: ${cmd}`);
+  };
+
+  const devEnv = {
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_REF: "refs/heads/codex/ci-001-tiered-gates",
+    GITHUB_REF_NAME: "codex/ci-001-tiered-gates",
+    GITHUB_EVENT_BEFORE: "prev000011111111111111111111111111111111"
+  };
+  assert.deepEqual(getChangedFiles(devEnv, null, fakeGit), [
+    "internal/store/orders.go",
+    "web/src/App.tsx",
+    "docs/README.md"
+  ]);
+  assert.deepEqual(resolveGitRevisionMeta(devEnv, null, fakeGit), {
+    base_sha: "base000011111111111111111111111111111111",
+    head_sha: "deadbeef11111111111111111111111111111111",
+    merge_sha: "deadbeef11111111111111111111111111111111"
+  });
+
+  const mainEnv = {
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_REF: "refs/heads/main",
+    GITHUB_REF_NAME: "main",
+    GITHUB_EVENT_BEFORE: "prev000011111111111111111111111111111111"
+  };
+  assert.deepEqual(getChangedFiles(mainEnv, null, fakeGit), ["docs/README.md"]);
+  assert.deepEqual(resolveGitRevisionMeta(mainEnv, null, fakeGit), {
+    base_sha: "prev000011111111111111111111111111111111",
+    head_sha: "deadbeef11111111111111111111111111111111",
+    merge_sha: "deadbeef11111111111111111111111111111111"
+  });
+});

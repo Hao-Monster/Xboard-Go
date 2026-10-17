@@ -83,8 +83,9 @@ function useDialogFocus(
   useOverlayLayer({ active, onEscape: onClose, trapRef: ref });
 
   useEffect(() => {
+    const activeAtMount = document.activeElement;
     const opener = restoreFocusRef?.current
-      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+      ?? (activeAtMount instanceof HTMLElement ? activeAtMount : null);
     const container = ref.current;
     const frame = window.requestAnimationFrame(() => {
       const currentContainer = ref.current;
@@ -98,13 +99,14 @@ function useDialogFocus(
       window.cancelAnimationFrame(frame);
       // The parent drawer may still be inert during this cleanup. Restore on the
       // next frame, after React has committed the overlay stack change, unless
-      // the user has already moved focus to another connected element.
+      // focus has moved to a new connected element since the dialog mounted.
       window.requestAnimationFrame(() => {
         const active = document.activeElement;
         const focusIsUnset =
           active === null ||
           active === document.body ||
           active === document.documentElement ||
+          active === activeAtMount ||
           !active.isConnected ||
           (container !== null && container.contains(active));
         if (focusIsUnset && opener?.isConnected === true) {

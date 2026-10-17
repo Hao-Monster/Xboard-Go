@@ -237,6 +237,6 @@ test("canceling a newer leave confirmation also cancels an older pending navigat
   releaseGiftCardChunk();
   await giftCardChunkLoaded;
   await expect(page).toHaveURL(/#\/config\/system\/client-app$/);
-  await expect(page.getByRole("heading", { name: "客户端版本", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "APP设置", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "礼品卡管理", exact: true })).toHaveCount(0);
 });
