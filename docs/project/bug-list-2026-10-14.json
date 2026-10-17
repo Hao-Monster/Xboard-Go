@@ -464,7 +464,8 @@
       "status": "fixed_local_rereview_passed",
       "fix_commits": [
         "7565b25d0923106b51199626ca7bbe9d23f7b44d",
-        "938db89d028fe83886990495a855cd254a55aaa6"
+        "938db89d028fe83886990495a855cd254a55aaa6",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
       ],
       "evidence": [
         "docs/testing/bug-fix-e-plan-2026-10-16.md",
@@ -554,7 +555,8 @@
       "fix_commits": [
         "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
         "938db89d028fe83886990495a855cd254a55aaa6",
-        "1a9d4b2111448ffe9978939398dfa49c6fad26be"
+        "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
       ],
       "evidence": [
         "docs/testing/bug-fix-d-plan-2026-10-16.md",
@@ -587,7 +589,8 @@
       "fix_commits": [
         "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
         "938db89d028fe83886990495a855cd254a55aaa6",
-        "1a9d4b2111448ffe9978939398dfa49c6fad26be"
+        "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
       ],
       "evidence": [
         "docs/testing/bug-fix-d-plan-2026-10-16.md",
@@ -1104,10 +1107,10 @@
   "code_review_2026_10_16": {
     "status": "passed_after_rework",
     "rework_commit": "938db89d028fe83886990495a855cd254a55aaa6",
-    "codex_review_rework_commit": "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+    "codex_review_rework_commit": "ff791c392af6302bd4807b03257fe2d21b71f333",
     "findings_resolved": [
-      "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases.",
-      "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while only failed nodes enter pendingReleases.",
+      "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
+      "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
       "BL-25/BL-24 (Low): Extended GiftCardManagementPage.test.tsx BL-25 test to cover both template and code tabs, and aligned BL-24 test case name in docs/testing/bug-fix-h-results-2026-10-16.md."
     ]
   }
