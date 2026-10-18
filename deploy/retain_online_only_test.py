@@ -186,6 +186,156 @@ class RetainOnlineOnlyTests(unittest.TestCase):
         self.assertIn(['image', 'rm', '-f', 'xboard-go:old'], commands)
         self.assertNotIn(['image', 'rm', '-f', 'xboard-go:active'], commands)
 
+    def test_protected_app_entries_for_host_paths_protects_bind_mounts_and_compose_dirs(self):
+        container = {
+            'Mounts': [
+                {'Type': 'bind', 'Source': '/home/bingo/apps/xboard-node-live/data'},
+                {'Type': 'bind', 'Source': '/var/run/docker.sock'},
+            ],
+            'HostConfig': {
+                'Binds': ['/home/bingo/apps/xboard-team-active:/app:ro'],
+            },
+            'Config': {
+                'Image': 'custom:latest',
+                'Labels': {
+                    'com.docker.compose.project.working_dir': '/home/bingo/apps/xboard-go-active-worker',
+                    'com.docker.compose.project.config_files': '/home/bingo/apps/xboardme-live/compose.yaml',
+                },
+            },
+        }
+        host_paths = retain.container_host_paths(container)
+        apps_root = Path('/home/bingo/apps')
+        entries = [
+            apps_root / 'xboard-node-live',
+            apps_root / 'xboard-team-active',
+            apps_root / 'xboard-go-active-worker',
+            apps_root / 'xboardme-live',
+            apps_root / 'xboard-node-workspace',
+        ]
+        protected = retain.protected_app_entries_for_host_paths(host_paths, apps_root, entries)
+        self.assertEqual(
+            protected,
+            {
+                'xboard-node-live',
+                'xboard-team-active',
+                'xboard-go-active-worker',
+                'xboardme-live',
+            },
+        )
+
+    def test_run_development_host_preserves_active_container_bind_mount_dir(self):
+        containers = [
+            {
+                'Id': 'c1',
+                'Name': '/xboard-go-freedom-app-1',
+                'Image': 'sha256:' + '1' * 64,
+                'Config': {
+                    'Image': 'xboard-go:active',
+                    'Labels': {
+                        'com.docker.compose.project.working_dir': '/home/bingo/apps/xboard-go-freedom',
+                        'com.docker.compose.project.config_files': '/home/bingo/apps/xboard-go-freedom/compose.yaml,/home/bingo/apps/xboard-go-freedom/compose.extra.yaml',
+                    },
+                },
+                'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c2',
+                'Name': '/xboard-log-collector-development-collector-1',
+                'Image': 'sha256:' + '2' * 64,
+                'Config': {'Image': 'xboard-log-collector:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c3',
+                'Name': '/xboard-logs-auth-1',
+                'Image': 'sha256:' + '3' * 64,
+                'Config': {'Image': 'caddy:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c4',
+                'Name': '/xboard-logs-victoria-logs-1',
+                'Image': 'sha256:' + '4' * 64,
+                'Config': {'Image': 'victoria-logs:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c5',
+                'Name': '/xboard-node-live-1',
+                'Image': 'sha256:' + '5' * 64,
+                'Config': {'Image': 'xboard-node:live'},
+                'State': {'Running': True},
+                'Mounts': [
+                    {
+                        'Type': 'bind',
+                        'Source': '/home/bingo/apps/xboard-node-live',
+                        'Destination': '/etc/xboard-node',
+                    }
+                ],
+                'NetworkSettings': {'Networks': {}},
+            },
+        ]
+        removed_paths = []
+        apps_root = Path('/home/bingo/apps')
+        freedom_dir = apps_root / 'xboard-go-freedom'
+        fake_entries = [
+            freedom_dir,
+            apps_root / 'xboard-node-live',
+            apps_root / 'xboard-node-workspace',
+        ]
+        fake_freedom_entries = [
+            freedom_dir / 'compose.yaml',
+            freedom_dir / 'compose.extra.yaml',
+            freedom_dir / 'stale-image.tar',
+        ]
+
+        def fake_is_dir(self_path):
+            norm = retain._norm_posix(self_path)
+            return norm in {retain._norm_posix(apps_root), retain._norm_posix(freedom_dir)}
+
+        def fake_iterdir(self_path):
+            norm = retain._norm_posix(self_path)
+            if norm == retain._norm_posix(apps_root):
+                return iter(fake_entries)
+            if norm == retain._norm_posix(freedom_dir):
+                return iter(fake_freedom_entries)
+            return iter([])
+
+        with (
+            patch.object(retain.socket, 'gethostname', return_value='bingo'),
+            patch.object(retain, 'disk_available_kib', return_value=1024),
+            patch.object(retain, 'inspect_containers', return_value=containers),
+            patch.object(retain, 'check_http_health', return_value=None),
+            patch.object(
+                retain,
+                'docker_cmd',
+                return_value=subprocess.CompletedProcess(['docker'], 0, '', ''),
+            ),
+            patch.object(retain, 'prune_unreferenced_images', return_value=(0, 0)),
+            patch.object(retain.os, 'getuid', create=True, return_value=1000),
+            patch.object(Path, 'is_socket', return_value=False),
+            patch.object(Path, 'is_dir', fake_is_dir),
+            patch.object(Path, 'is_symlink', return_value=False),
+            patch.object(Path, 'iterdir', fake_iterdir),
+            patch.object(Path, 'glob', return_value=iter([])),
+            patch.object(
+                retain,
+                'remove_path_robust',
+                side_effect=lambda target, parent_mount=None: removed_paths.append(target.name),
+            ),
+        ):
+            retain.run_development_host('cleanup')
+
+        self.assertEqual(removed_paths, ['xboard-node-workspace', 'stale-image.tar'])
+
 
 if __name__ == '__main__':
     unittest.main()

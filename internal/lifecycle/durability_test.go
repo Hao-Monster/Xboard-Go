@@ -442,3 +442,144 @@ func TestDockerStopUsesOnlyConfiguredContainerAndPropagatesFailure(t *testing.T)
 		}
 	}
 }
+
+type preStartFailurePlatform struct {
+	*fakePlatform
+	docker *DockerPlatform
+	target Image
+	stops  int
+}
+
+func (p *preStartFailurePlatform) Activate(ctx context.Context, image Image, dsn string) (Application, error) {
+	if image.ID == p.target.ID {
+		return p.docker.Activate(ctx, image, dsn)
+	}
+	return p.fakePlatform.Activate(ctx, image, dsn)
+}
+
+func (p *preStartFailurePlatform) Stop(context.Context) error {
+	p.stops++
+	p.current.Healthy = false
+	p.current.ContainerStatus = "exited"
+	return nil
+}
+
+func TestUpgradePreStartPreparationFailurePreservesHealthyPrevious(t *testing.T) {
+	previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
+	target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
+	docker, runner := newDockerTestPlatform(t)
+	runner.outputs = []runnerResult{{err: errors.New("synthetic image tag failure")}}
+	platform := &preStartFailurePlatform{
+		fakePlatform: &fakePlatform{
+			current: healthyApplication(previous, defaultDatabaseDSN),
+			images:  map[string]Image{"candidate": target},
+		},
+		docker: docker,
+		target: target,
+	}
+	orchestrator := NewOrchestrator(platform, NewJournal(filepath.Join(t.TempDir(), "journal.jsonl")), time.Now)
+	result, err := orchestrator.Upgrade(context.Background(), "candidate")
+	if err == nil {
+		t.Fatal("expected pre-start preparation failure")
+	}
+	if len(runner.calls) != 1 || !strings.Contains(strings.Join(runner.calls[0].arguments, " "), "image tag") {
+		t.Fatalf("unexpected candidate commands: %#v", runner.calls)
+	}
+	if !platform.current.Healthy || platform.stops != 0 {
+		t.Fatalf("pre-start failure stopped the healthy previous version: healthy=%v stops=%d", platform.current.Healthy, platform.stops)
+	}
+	if result.State == nil || result.State.Status != StatusAutoRolledBack {
+		t.Fatalf("state = %#v, want %q", result.State, StatusAutoRolledBack)
+	}
+}
+
+type splitPreStartFailurePlatform struct {
+	*fakeDeploymentPlatform
+	docker *DockerPlatform
+	target Deployment
+	stops  int
+}
+
+func (p *splitPreStartFailurePlatform) ActivateDeployment(ctx context.Context, target Deployment, dsn string, changed []Component) (DeploymentApplication, error) {
+	if sameDeploymentImages(target, p.target) {
+		return p.docker.ActivateDeployment(ctx, target, dsn, changed)
+	}
+	return p.fakeDeploymentPlatform.ActivateDeployment(ctx, target, dsn, changed)
+}
+
+func (p *splitPreStartFailurePlatform) StopDeployment(context.Context) error {
+	p.stops++
+	p.current.Healthy = false
+	return nil
+}
+
+func TestSplitUpgradePreStartPreparationFailurePreservesHealthyPrevious(t *testing.T) {
+	previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	target := previous
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Backend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	docker, runner := newDockerTestPlatform(t)
+	runner.outputs = []runnerResult{{err: errors.New("synthetic image tag failure")}}
+	platform := &splitPreStartFailurePlatform{
+		fakeDeploymentPlatform: &fakeDeploymentPlatform{
+			current:        DeploymentApplication{Deployment: previous, DSN: defaultDatabaseDSN, Healthy: true},
+			resolved:       target,
+			backupManifest: testBackupManifest(previous.Backend.Revision),
+		},
+		docker: docker,
+		target: target,
+	}
+	orchestrator := NewDeploymentOrchestrator(platform, &memoryDeploymentStateStore{}, time.Now)
+	result, err := orchestrator.Upgrade(context.Background(), manifestForDeployment(target))
+	if err == nil {
+		t.Fatal("expected pre-start preparation failure")
+	}
+	if len(runner.calls) != 1 || !strings.Contains(strings.Join(runner.calls[0].arguments, " "), "image tag") {
+		t.Fatalf("unexpected candidate commands: %#v", runner.calls)
+	}
+	if !platform.current.Healthy || platform.stops != 0 {
+		t.Fatalf("pre-start failure stopped the healthy previous backend: healthy=%v stops=%d", platform.current.Healthy, platform.stops)
+	}
+	if result.State == nil || result.State.Status != StatusAutoRolledBack {
+		t.Fatalf("state = %#v, want %q", result.State, StatusAutoRolledBack)
+	}
+	if statusRes, statusErr := orchestrator.Status(context.Background()); statusErr != nil || statusRes.Application == nil || !statusRes.Application.Healthy {
+		t.Fatalf("Status() after pre-start failure = (%#v, %v), want healthy previous deployment", statusRes, statusErr)
+	}
+}
+
+func TestSplitRollbackRestoreFailureOnPreviousAllowsStatusAndRetry(t *testing.T) {
+	now := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
+	previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+	target := previous
+	target.SourceRevision = strings.Repeat("b", 40)
+	target.Backend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+	target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+	verified := testBackupManifest(previous.Backend.Revision)
+	store := &memoryDeploymentStateStore{states: []DeploymentState{{
+		Version: DeploymentStateVersion, Status: StatusTargetFailed, UpdatedAt: now, Changed: []Component{ComponentBackend},
+		Previous: &previous, Target: &target, BackupPath: "/var/lib/xboard-backups/lifecycle-20260905T150000.000000000Z-aaaaaaaaaaaa.xbbackup",
+		BackupManifest: &verified, OriginalDSN: defaultDatabaseDSN, ActiveDSN: defaultDatabaseDSN,
+	}}}
+	runtimePrevious := previous
+	runtimePrevious.SourceRevision = ""
+	platform := &fakeDeploymentPlatform{
+		current:        DeploymentApplication{Deployment: runtimePrevious, DSN: defaultDatabaseDSN, Healthy: false},
+		backupManifest: verified,
+		restoreErr:     errors.New("temporary restore failure"),
+	}
+	orchestrator := NewDeploymentOrchestrator(platform, store, func() time.Time { return now })
+	if _, err := orchestrator.Rollback(context.Background()); err == nil {
+		t.Fatal("expected first Rollback() to fail during restore")
+	}
+	statusRes, err := orchestrator.Status(context.Background())
+	if err != nil || statusRes.Application == nil || statusRes.Application.Deployment.SourceRevision != previous.SourceRevision {
+		t.Fatalf("Status() after restore failure on Previous = (%#v, %v), want SourceRevision %q", statusRes, err, previous.SourceRevision)
+	}
+	platform.restoreErr = nil
+	res, err := orchestrator.Rollback(context.Background())
+	if err != nil || res.Status != "success" || res.State == nil || res.State.Status != StatusRolledBack {
+		t.Fatalf("retry Rollback() = (%#v, %v), want success StatusRolledBack", res, err)
+	}
+}

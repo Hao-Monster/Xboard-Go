@@ -176,7 +176,7 @@ test("analyzePrScope assigns L2 for httpapi or core frontend routing changes", (
   assert.equal(scope.real_client_compat, "false");
 });
 
-test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, or unknown paths", () => {
+test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, or unknown paths", async () => {
   const migScope = analyzePrScope(["internal/legacymigration/reconcile.go"]);
   assert.equal(migScope.tier, "L3");
   assert.equal(migScope.migration_drill, "true");
@@ -191,6 +191,15 @@ test("analyzePrScope assigns L3 for high-risk migration, dependency, packaging, 
   assert.equal(installerComposeScope.tier, "L3");
   assert.equal(installerComposeScope.packaging_smoke, "true");
   assert.equal(installerComposeScope.ci_deploy, "true");
+
+  const localComposeScope = analyzePrScope(["compose.local.yaml"]);
+  assert.equal(localComposeScope.tier, "L3");
+  assert.equal(localComposeScope.packaging_smoke, "true");
+  const prGateWorkflow = (await import("node:fs")).readFileSync(
+    new URL("../workflows/pr-gate.yml", import.meta.url),
+    "utf8"
+  );
+  assert.match(prGateWorkflow, /docker compose -p xboard-go-local-smoke -f compose\.local\.yaml/);
 
   const splitNginxScope = analyzePrScope([".docker/gateway/nginx.conf"]);
   assert.equal(splitNginxScope.tier, "L3");

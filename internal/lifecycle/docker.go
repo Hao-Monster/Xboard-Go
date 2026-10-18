@@ -374,18 +374,21 @@ func (p *DockerPlatform) FreshDeployment(ctx context.Context) (bool, error) {
 
 func (p *DockerPlatform) ActivateDeployment(ctx context.Context, deployment Deployment, dsn string, changed []Component) (DeploymentApplication, error) {
 	if err := validateDeployment(deployment); err != nil {
-		return DeploymentApplication{}, err
+		return DeploymentApplication{}, markPreStartActivationError(err)
 	}
 	if !databasePattern.MatchString(dsn) {
-		return DeploymentApplication{}, fmt.Errorf("unsupported deployment database DSN %q", dsn)
+		return DeploymentApplication{}, markPreStartActivationError(fmt.Errorf("unsupported deployment database DSN %q", dsn))
 	}
 	if len(changed) == 0 {
-		return DeploymentApplication{}, errors.New("deployment activation requires changed components")
+		return DeploymentApplication{}, markPreStartActivationError(errors.New("deployment activation requires changed components"))
+	}
+	if _, err := p.deploymentRuntimeEnvFile(deployment, dsn); err != nil {
+		return DeploymentApplication{}, markPreStartActivationError(err)
 	}
 	images := map[Component]Image{ComponentGateway: deployment.Gateway, ComponentFrontend: deployment.Frontend, ComponentBackend: deployment.Backend}
 	for _, component := range []Component{ComponentGateway, ComponentFrontend, ComponentBackend} {
 		if _, err := p.runner.Run(ctx, "docker", "image", "tag", images[component].ID, p.deploymentRuntimeImageTag(component)); err != nil {
-			return DeploymentApplication{}, commandFailure("bind target "+string(component)+" image", err)
+			return DeploymentApplication{}, markPreStartActivationError(commandFailure("bind target "+string(component)+" image", err))
 		}
 	}
 	ordered := make([]string, 0, len(changed))
@@ -494,16 +497,16 @@ func (p *DockerPlatform) Fresh(ctx context.Context) (bool, error) {
 
 func (p *DockerPlatform) Activate(ctx context.Context, image Image, dsn string) (Application, error) {
 	if err := validateImage(image); err != nil {
-		return Application{}, err
+		return Application{}, markPreStartActivationError(err)
 	}
 	if !databasePattern.MatchString(dsn) {
-		return Application{}, fmt.Errorf("unsupported activation database DSN %q", dsn)
+		return Application{}, markPreStartActivationError(fmt.Errorf("unsupported activation database DSN %q", dsn))
 	}
 	if _, err := p.runtimeEnvFile(dsn); err != nil {
-		return Application{}, err
+		return Application{}, markPreStartActivationError(err)
 	}
 	if _, err := p.runner.Run(ctx, "docker", "image", "tag", image.ID, p.runtimeImageTag()); err != nil {
-		return Application{}, commandFailure("bind target runtime image", err)
+		return Application{}, markPreStartActivationError(commandFailure("bind target runtime image", err))
 	}
 	if _, err := p.runCompose(ctx, dsn, "stop", "xboard-go"); err != nil {
 		return Application{}, commandFailure("stop active application", err)
@@ -868,4 +871,23 @@ func commandFailure(stage string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("%s failed: %w", stage, err)
+}
+
+type preStartActivationError struct {
+	err error
+}
+
+func (e preStartActivationError) Error() string { return e.err.Error() }
+func (e preStartActivationError) Unwrap() error { return e.err }
+
+func markPreStartActivationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return preStartActivationError{err: err}
+}
+
+func isPreStartActivationError(err error) bool {
+	var target preStartActivationError
+	return errors.As(err, &target)
 }

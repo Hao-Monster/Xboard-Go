@@ -420,13 +420,70 @@ jobs:
           mkdir -p artifacts
           docker save "xboard-go:$REVISION" | gzip -1 > artifacts/xboard-go-linux-amd64.tar.gz
           install_dir="$RUNNER_TEMP/xboard-go-pr-smoke"
+          cleanup_install_smoke() {
+            if [ -f "$install_dir/.env" ] && [ -f "$install_dir/compose.yaml" ]; then
+              docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" down --volumes || true
+            fi
+          }
+          trap cleanup_install_smoke EXIT
           XBOARD_INSTALL_DIR="$install_dir" XBOARD_PROJECT=xboard-go-pr-smoke \
             XBOARD_PORT=18083 XBOARD_BIND_ADDRESS=127.0.0.1 XBOARD_PANEL_URL=http://127.0.0.1:18083 \
             XBOARD_ADMIN_EMAIL=smoke@example.test XBOARD_REVISION="$REVISION" \
             XBOARD_IMAGE_ARCHIVE="$PWD/artifacts/xboard-go-linux-amd64.tar.gz" bash deploy/install.sh
           curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
           curl --fail --silent http://127.0.0.1:18083/ > /dev/null
-          docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" down --volumes
+      - name: Validate compose.local.yaml topology and startup smoke
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cleanup_local_compose() {
+            XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+              docker compose -p xboard-go-local-smoke -f compose.local.yaml \
+              --profile maintenance --profile e2e --profile coordination down --volumes --remove-orphans || true
+          }
+          trap cleanup_local_compose EXIT
+          mkdir -p .local
+          chmod 0700 .local
+          password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          redis_password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "::add-mask::$redis_password"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          printf '%s' "$redis_password" > .local/redis-password.txt
+          chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt .local/redis-password.txt
+          XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+            docker compose -p xboard-go-local-smoke -f compose.local.yaml \
+            --profile maintenance --profile e2e --profile coordination config --format json |
+            jq -e '
+              .services["xboard-go"] != null and
+              .services.maintenance != null and
+              .services.mailpit != null and
+              .services["captcha-stub"] != null and
+              .services.redis != null and
+              ([.services[] | select(.read_only != true or ((.cap_drop // []) | index("ALL") == null) or ((.security_opt // []) | index("no-new-privileges:true") == null))] | length == 0) and
+              ([.services[] | (.ports // [])[] | select(.host_ip != "127.0.0.1")] | length == 0) and
+              ((.services["xboard-go"].ports // []) | any(.host_ip == "127.0.0.1" and (.target | tonumber) == 8080 and (.published | tostring) == "18084")) and
+              ((.services.mailpit.ports // []) | any(.host_ip == "127.0.0.1" and (.target | tonumber) == 8025 and (.published | tostring) == "18085")) and
+              ((.services["xboard-go"].volumes // []) | any(.type == "volume" and .source == "xboard-go-data" and .target == "/var/lib/xboard")) and
+              ((.services.maintenance.volumes // []) | any(.type == "volume" and .source == "xboard-go-data" and .target == "/var/lib/xboard")) and
+              ((.services.maintenance.volumes // []) | any(.type == "volume" and .source == "xboard-go-backups" and .target == "/var/lib/xboard-backups")) and
+              ((.services["captcha-stub"].volumes // []) | any(.type == "bind" and .target == "/test/captcha-stub.mjs" and .read_only == true)) and
+              ((.services.redis.volumes // []) | any(.type == "bind" and .target == "/run-local-redis.sh" and .read_only == true)) and
+              ((.services.redis.volumes // []) | any(.type == "bind" and .target == "/healthcheck-local-redis.sh" and .read_only == true))
+            ' > /dev/null
+          XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+            docker compose -p xboard-go-local-smoke -f compose.local.yaml up -d --no-build
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18084/healthz > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18084/healthz > /dev/null
+          curl --fail --silent http://127.0.0.1:18084/ > /dev/null
 
   split-runtime:
     needs: detect-changes

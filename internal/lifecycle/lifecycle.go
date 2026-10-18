@@ -212,6 +212,17 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 			activationErr = fmt.Errorf("record successful upgrade: %w", err)
 		}
 	}
+	if isPreStartActivationError(activationErr) {
+		state.Status = StatusAutoRolledBack
+		state.UpdatedAt = o.now().UTC()
+		state.ActiveDSN = current.DSN
+		state.Failure = safeFailure(activationErr)
+		operationErr := fmt.Errorf("upgrade failed before candidate start; previous application preserved: %w", activationErr)
+		if err := o.journal.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedResult("lifecycle.upgrade", current, &state), operationErr
+	}
 	// A candidate may have accepted writes or run background jobs before failing.
 	// An online pre-upgrade snapshot is a recovery artifact, not a lossless rollback.
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
@@ -251,7 +262,7 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 	if state.Previous == nil || state.Target == nil {
 		return Result{}, errors.New("rollback state is missing its previous or target image")
 	}
-	if current.Image.ID != state.Target.ID {
+	if current.Image.ID != state.Target.ID && (state.Status != StatusTargetFailed || current.Image.ID != state.Previous.ID) {
 		return Result{}, fmt.Errorf("rollback target image mismatch: active %s, recorded target image %s", current.Image.ID, state.Target.ID)
 	}
 	if state.ActiveDSN != "" && current.DSN != state.ActiveDSN {

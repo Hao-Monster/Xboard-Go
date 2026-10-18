@@ -3,7 +3,8 @@
 import argparse
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import posixpath
 import re
 import shutil
 import socket
@@ -78,6 +79,109 @@ def inspect_containers(docker_host=None):
     if not ids:
         return []
     return json.loads(docker_cmd(['inspect', *ids], docker_host=docker_host).stdout)
+
+
+def _norm_posix(path_value: str | Path) -> PurePosixPath:
+    return PurePosixPath(posixpath.normpath(str(path_value).replace('\\', '/')))
+
+
+def container_mount_paths(container: dict) -> set[str]:
+    paths: set[str] = set()
+    for mount_list in (
+        container.get('Mounts') or [],
+        (container.get('HostConfig') or {}).get('Mounts') or [],
+    ):
+        for m in mount_list:
+            if isinstance(m, dict):
+                src = m.get('Source')
+                if isinstance(src, str) and src.strip():
+                    paths.add(src.strip())
+    for bind in (container.get('HostConfig') or {}).get('Binds') or []:
+        if not isinstance(bind, str) or ':' not in bind:
+            continue
+        if re.match(r'^[A-Za-z]:[\\/]', bind):
+            parts = bind.split(':', 2)
+            host_src = f'{parts[0]}:{parts[1]}' if len(parts) >= 2 else ''
+        else:
+            host_src = bind.split(':', 1)[0].strip()
+        if host_src.startswith('/') or '/' in host_src or '\\' in host_src:
+            paths.add(host_src)
+    return paths
+
+
+def container_compose_paths(container: dict) -> set[str]:
+    paths: set[str] = set()
+    labels = (container.get('Config') or {}).get('Labels') or {}
+    if isinstance(labels, dict):
+        working_dir = labels.get('com.docker.compose.project.working_dir')
+        if isinstance(working_dir, str) and working_dir.strip():
+            paths.add(working_dir.strip())
+        config_files = labels.get('com.docker.compose.project.config_files')
+        if isinstance(config_files, str) and config_files.strip():
+            for cfg in config_files.split(','):
+                if cfg.strip():
+                    paths.add(cfg.strip())
+    return paths
+
+
+def container_host_paths(container: dict) -> set[str]:
+    return container_mount_paths(container) | container_compose_paths(container)
+
+
+def protected_app_entries_for_host_paths(
+    host_paths: set[str],
+    apps_root: Path,
+    entries: list[Path] | None = None,
+    *,
+    allow_exact_root_protection: bool = False,
+) -> set[str]:
+    protected: set[str] = set()
+    if not host_paths:
+        return protected
+    root_candidates = {_norm_posix(apps_root)}
+    try:
+        root_candidates.add(_norm_posix(apps_root.resolve(strict=False)))
+    except OSError:
+        pass
+    all_src_candidates: set[PurePosixPath] = set()
+    for raw in host_paths:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        src_candidates = {_norm_posix(raw.strip())}
+        try:
+            src_candidates.add(_norm_posix(Path(raw.strip()).resolve(strict=False)))
+        except OSError:
+            pass
+        all_src_candidates.update(src_candidates)
+        for root_p in root_candidates:
+            for src_p in src_candidates:
+                if src_p == root_p:
+                    if allow_exact_root_protection:
+                        if entries is not None:
+                            return {e.name for e in entries}
+                        protected.add('*')
+                elif src_p.is_relative_to(root_p):
+                    rel_parts = src_p.relative_to(root_p).parts
+                    if rel_parts and rel_parts[0] not in ('', '.', '..'):
+                        protected.add(rel_parts[0])
+    if entries is not None:
+        if '*' in protected:
+            return {e.name for e in entries}
+        for entry in entries:
+            if entry.name in protected:
+                continue
+            entry_candidates = {_norm_posix(entry)}
+            try:
+                entry_candidates.add(_norm_posix(entry.resolve(strict=False)))
+            except OSError:
+                pass
+            if any(
+                src_p == entry_p or src_p.is_relative_to(entry_p)
+                for entry_p in entry_candidates
+                for src_p in all_src_candidates
+            ):
+                protected.add(entry.name)
+    return protected
 
 
 def active_systemd_release_shas(unit_paths):
@@ -320,6 +424,8 @@ def run_development_host(mode: str):
         'wechatproduct_backend',
         'wechatproduct_edge',
     }
+    protected_mount_paths = set()
+    protected_compose_paths = set()
 
     candidate_containers = []
     for c in containers:
@@ -333,6 +439,8 @@ def run_development_host(mode: str):
             protected_cids.add(cid)
             protected_images.add(c['Image'])
             protected_refs.add(c['Config']['Image'])
+            protected_mount_paths.update(container_mount_paths(c))
+            protected_compose_paths.update(container_compose_paths(c))
             for m in c.get('Mounts', []):
                 if m.get('Name'):
                     protected_volumes.add(m['Name'])
@@ -385,9 +493,11 @@ def run_development_host(mode: str):
         rl_prot_imgs = set()
         rl_prot_refs = {'xboard-legacy-parity:8065164', 'xboard-go:ci-base-3784c0a'}
         for c in rl_containers:
-            if c.get('State', {}).get('Running'):
+            if c.get('State', {}).get('Running') or c.get('State', {}).get('Restarting'):
                 rl_prot_imgs.add(c['Image'])
                 rl_prot_refs.add(c['Config']['Image'])
+                protected_mount_paths.update(container_mount_paths(c))
+                protected_compose_paths.update(container_compose_paths(c))
             elif mode == 'cleanup':
                 docker_cmd(['container', 'rm', '-f', c['Id']], docker_host=rl_host, check=False)
         ci_rl, ri_rl = prune_unreferenced_images(rl_prot_imgs, rl_prot_refs, mode, docker_host=rl_host)
@@ -408,7 +518,24 @@ def run_development_host(mode: str):
     cand_app_dirs = []
     removed_app_dirs = 0
     if apps_root.is_dir() and not apps_root.is_symlink():
-        for entry in sorted(apps_root.iterdir()):
+        app_entries = sorted(apps_root.iterdir())
+        protected_apps.update(
+            protected_app_entries_for_host_paths(
+                protected_mount_paths,
+                apps_root,
+                app_entries,
+                allow_exact_root_protection=True,
+            )
+        )
+        protected_apps.update(
+            protected_app_entries_for_host_paths(
+                protected_compose_paths,
+                apps_root,
+                app_entries,
+                allow_exact_root_protection=False,
+            )
+        )
+        for entry in app_entries:
             if entry.name in protected_apps:
                 continue
             if STALE_APPS_ENTRY_RE.search(entry.name):
@@ -435,7 +562,24 @@ def run_development_host(mode: str):
             keep_freedom.add(p.name)
         for p in sorted(freedom_dir.glob('compose.yaml.pre-*'), key=lambda x: (x.stat().st_mtime, x.name), reverse=True)[:1]:
             keep_freedom.add(p.name)
-        for item in sorted(freedom_dir.iterdir()):
+        freedom_entries = sorted(freedom_dir.iterdir())
+        keep_freedom.update(
+            protected_app_entries_for_host_paths(
+                protected_mount_paths,
+                freedom_dir,
+                freedom_entries,
+                allow_exact_root_protection=True,
+            )
+        )
+        keep_freedom.update(
+            protected_app_entries_for_host_paths(
+                protected_compose_paths,
+                freedom_dir,
+                freedom_entries,
+                allow_exact_root_protection=False,
+            )
+        )
+        for item in freedom_entries:
             if item.name in keep_freedom or item.name.startswith('.deployment-failed'):
                 continue
             cand_freedom_items += 1

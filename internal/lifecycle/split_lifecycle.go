@@ -184,6 +184,17 @@ func (orchestrator *DeploymentOrchestrator) Upgrade(ctx context.Context, manifes
 			activationErr = fmt.Errorf("record successful deployment upgrade: %w", err)
 		}
 	}
+	if isPreStartActivationError(activationErr) {
+		state.Status = StatusAutoRolledBack
+		state.UpdatedAt = orchestrator.now().UTC()
+		state.ActiveDSN = current.DSN
+		state.Failure = safeFailure(activationErr)
+		operationErr := fmt.Errorf("deployment upgrade failed before candidate start; previous deployment preserved: %w", activationErr)
+		if err := orchestrator.store.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedDeploymentResult("lifecycle.deployment.upgrade", current, &state), operationErr
+	}
 	state.Status = StatusTargetFailed
 	state.UpdatedAt = orchestrator.now().UTC()
 	if backendChanged {
@@ -271,7 +282,10 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if err := validateDeploymentApplicationIdentity(current); err != nil {
 		return DeploymentResult{}, err
 	}
-	if !sameDeploymentImages(current.Deployment, *state.Target) {
+	matchesTarget := sameDeploymentImages(current.Deployment, *state.Target)
+	matchesObserved := state.ObservedDeployment != nil && sameDeploymentImages(current.Deployment, *state.ObservedDeployment)
+	matchesPreviousOnFailure := (state.Status == StatusTargetFailed || (state.Status == StatusRollbackFailed && state.RollbackPhase == "restore")) && sameDeploymentImages(current.Deployment, *state.Previous)
+	if !matchesTarget && !matchesObserved && !matchesPreviousOnFailure {
 		return DeploymentResult{}, errors.New("active deployment does not match the recorded rollback target")
 	}
 	if state.ActiveDSN != "" && current.DSN != state.ActiveDSN {
@@ -284,7 +298,7 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 		}
 		recoveryDSN, err = orchestrator.restoreDeploymentBackup(ctx, &state)
 		if err != nil {
-			return orchestrator.rollbackFailure(ctx, "lifecycle.deployment.rollback", state, "restore", DeploymentApplication{}, errors.New("explicit rollback"), err)
+			return orchestrator.rollbackFailure(ctx, "lifecycle.deployment.rollback", state, "restore", current, errors.New("explicit rollback"), err)
 		}
 	}
 	application, err := orchestrator.platform.ActivateDeployment(ctx, *state.Previous, recoveryDSN, state.Changed)
@@ -326,11 +340,12 @@ func (orchestrator *DeploymentOrchestrator) restoreDeploymentBackup(ctx context.
 }
 
 func (orchestrator *DeploymentOrchestrator) rollbackFailure(ctx context.Context, action string, state DeploymentState, phase string, application DeploymentApplication, targetErr, rollbackErr error) (DeploymentResult, error) {
+	priorObserved := state.ObservedDeployment
 	state.Status = StatusRollbackFailed
 	state.UpdatedAt = orchestrator.now().UTC()
 	state.RollbackPhase = phase
 	state.ObservedDeployment = nil
-	if phase == "activate" {
+	if phase == "activate" || phase == "restore" {
 		observed := application
 		if validateDeploymentApplicationIdentity(observed) != nil {
 			if current, err := orchestrator.platform.CurrentDeployment(ctx); err == nil && validateDeploymentApplicationIdentity(current) == nil {
@@ -339,10 +354,23 @@ func (orchestrator *DeploymentOrchestrator) rollbackFailure(ctx context.Context,
 		}
 		if validateDeploymentApplicationIdentity(observed) == nil {
 			dep := observed.Deployment
+			if dep.SourceRevision == "" {
+				switch {
+				case state.Target != nil && sameDeploymentImages(dep, *state.Target):
+					dep.SourceRevision = state.Target.SourceRevision
+				case state.Previous != nil && sameDeploymentImages(dep, *state.Previous):
+					dep.SourceRevision = state.Previous.SourceRevision
+				case priorObserved != nil && sameDeploymentImages(dep, *priorObserved):
+					dep.SourceRevision = priorObserved.SourceRevision
+				}
+			}
+			observed.Deployment = dep
 			state.ObservedDeployment = &dep
-			state.ActiveDSN = observed.DSN
+			if phase == "activate" {
+				state.ActiveDSN = observed.DSN
+			}
 			application = observed
-		} else {
+		} else if phase == "activate" {
 			state.RollbackPhase = "unknown"
 		}
 	}
