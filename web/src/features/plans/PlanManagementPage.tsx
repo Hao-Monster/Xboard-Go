@@ -363,6 +363,7 @@ export function PlanManagementPage({ api }: { api: PlansAPI }) {
           onClose={() => setEditing(undefined)}
           onGroupCreated={(group) => {
             invalidateAdminData("groups");
+            invalidateAfterMutation();
             setGroups((cur) => cur.some((item) => item.id === group.id) ? cur : [...cur, group]);
           }}
           onSaved={(saved) => {

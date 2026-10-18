@@ -122,6 +122,10 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
     .filter((pkg) => !skipDirectSet.has(pkg))
     .sort();
 
+  const skippedHeavyPackages = [...directTestSet]
+    .filter((pkg) => skipDirectSet.has(pkg))
+    .sort();
+
   const compileOnlyPackages = [...transitiveImporters]
     .filter((pkg) => !directTestSet.has(pkg))
     .sort();
@@ -129,6 +133,7 @@ export function resolveAffectedGoPackages(graph, rawFiles, options = {}) {
   return {
     directTestPackages,
     compileOnlyPackages,
+    skippedHeavyPackages,
     unmappedGoFiles: unmappedGoFiles.sort()
   };
 }
@@ -170,7 +175,7 @@ function main() {
 
   const graph = loadRepoGoGraph();
   const files = getChangedFiles();
-  const { directTestPackages, compileOnlyPackages, unmappedGoFiles } = resolveAffectedGoPackages(
+  const { directTestPackages, compileOnlyPackages, skippedHeavyPackages, unmappedGoFiles } = resolveAffectedGoPackages(
     graph,
     files,
     { skipDirectPackages }
@@ -185,6 +190,7 @@ function main() {
     `Resolved affected Go packages:\n` +
       `  Direct test packages (${directTestPackages.length}): ${directTestPackages.join(", ") || "none"}\n` +
       `  Compile-check dependent packages (${compileOnlyPackages.length}): ${compileOnlyPackages.join(", ") || "none"}\n` +
+      `  Delegated to dedicated go-race shards (${skippedHeavyPackages.length}): ${skippedHeavyPackages.join(", ") || "none"}\n` +
       `  Unmapped Go files (${unmappedGoFiles.length}): ${unmappedGoFiles.join(", ") || "none"}\n`
   );
 
@@ -202,6 +208,12 @@ function main() {
 
   const allVetPackages = [...new Set([...directTestPackages, ...compileOnlyPackages])];
   if (allVetPackages.length === 0) {
+    if (skippedHeavyPackages.length > 0) {
+      process.stdout.write(
+        `\n[go-fast] All affected Go packages (${skippedHeavyPackages.join(", ")}) are covered by dedicated go-race shards; nothing left for go-fast.\n`
+      );
+      return;
+    }
     process.stderr.write(
       "\n[go-fast] ERROR: resolved zero Go packages to verify when go-fast was scheduled; refusing empty pass.\n"
     );

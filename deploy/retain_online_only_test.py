@@ -120,14 +120,43 @@ class RetainOnlineOnlyTests(unittest.TestCase):
         s2 = '2' * 40
         s3 = '3' * 40
         s4 = '4' * 40
+        s_notes = '5' * 40
+        s_tag = '6' * 40
         releases = [
-            {'id': 10, 'tag_name': 'v1.0.0', 'created_at': '2026-09-01T00:00:00Z'},
+            {
+                'id': 10,
+                'tag_name': 'v1.0.0',
+                'target_commitish': 'main',
+                'body': f'Official stable image: ghcr.io/example/xboard-go:v1.0.0\nSource: {s_notes}\n',
+                'created_at': '2026-09-01T00:00:00Z',
+            },
+            {
+                'id': 11,
+                'tag_name': 'v1.0.1',
+                'target_commitish': 'main',
+                'created_at': '2026-09-01T06:00:00Z',
+            },
+            {
+                'id': 12,
+                'tag_name': 'v2.0.0',
+                'draft': True,
+                'target_commitish': 'main',
+                'body': '',
+                'created_at': '2026-09-05T00:00:00Z',
+            },
             {'id': 1, 'tag_name': f'internal-{s1}', 'created_at': '2026-09-01T00:00:00Z'},
+            {'id': 5, 'tag_name': f'internal-{s_notes}', 'created_at': '2026-09-01T12:00:00Z'},
+            {'id': 6, 'tag_name': f'internal-{s_tag}', 'created_at': '2026-09-01T18:00:00Z'},
             {'id': 2, 'tag_name': f'internal-{s2}', 'created_at': '2026-09-02T00:00:00Z'},
             {'id': 3, 'tag_name': f'internal-{s3}', 'created_at': '2026-09-03T00:00:00Z'},
             {'id': 4, 'tag_name': f'internal-{s4}', 'created_at': '2026-09-04T00:00:00Z'},
         ]
-        superseded = retain.select_superseded_internal_releases(releases, {s1}, keep_latest=2)
+        superseded = retain.select_superseded_internal_releases(
+            releases,
+            {s1},
+            keep_latest=2,
+            resolve_tag_sha=lambda tag: {'v1.0.1': s_tag}.get(tag, ''),
+        )
         self.assertEqual([r['tag_name'] for r in superseded], [f'internal-{s2}'])
 
     def test_prune_unreferenced_images_untags_aliases_and_removes_unused(self):

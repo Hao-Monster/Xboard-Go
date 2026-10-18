@@ -10,10 +10,12 @@ import socket
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HEX40_RE = re.compile(r'^[0-9a-f]{40}$')
 HEX64_RE = re.compile(r'^[0-9a-f]{64}$')
+STABLE_RELEASE_SOURCE_RE = re.compile(r'(?m)^Source:\s*([0-9a-f]{40})\b')
 STALE_DEV_CONTAINER_RE = re.compile(
     r'^(?:xboard-go-(?:closeout|r006|d009|arch001|acceptance|func003|ver004|node006|golang-base|legacy-parity)(?:-|$)'
     r'|buildx_buildkit_xboard-go-'
@@ -527,14 +529,40 @@ def gh_api(path: str, *, method='GET', token: str):
         return json.loads(body.decode('utf-8')) if body else None
 
 
-def select_superseded_internal_releases(releases, keep_shas: set[str], keep_latest: int = 2):
+def extract_stable_release_sha(rel: dict, resolve_tag_sha=None) -> str:
+    target = (rel.get('target_commitish') or '').strip()
+    if HEX40_RE.match(target):
+        return target
+    body = rel.get('body') or ''
+    match = STABLE_RELEASE_SOURCE_RE.search(body)
+    if match:
+        return match.group(1)
+    if resolve_tag_sha is not None:
+        tag = (rel.get('tag_name') or '').strip()
+        resolved = (resolve_tag_sha(tag) or '').strip()
+        if HEX40_RE.match(resolved):
+            return resolved
+        raise RuntimeError(f'unable to resolve commit SHA for stable release {tag}')
+    return ''
+
+
+def select_superseded_internal_releases(
+    releases,
+    keep_shas: set[str],
+    keep_latest: int = 2,
+    resolve_tag_sha=None,
+):
     internal = []
+    protected_tags = {f'internal-{sha}' for sha in keep_shas if HEX40_RE.match(sha)}
     for rel in releases:
         tag = rel.get('tag_name', '')
         if re.fullmatch(r'internal-[0-9a-f]{40}', tag):
             internal.append(rel)
+        elif tag.startswith('v') and not rel.get('draft'):
+            target = extract_stable_release_sha(rel, resolve_tag_sha=resolve_tag_sha)
+            if HEX40_RE.match(target):
+                protected_tags.add(f'internal-{target}')
     internal.sort(key=lambda r: r.get('created_at') or '', reverse=True)
-    protected_tags = {f'internal-{sha}' for sha in keep_shas if HEX40_RE.match(sha)}
     for rel in internal[:keep_latest]:
         protected_tags.add(rel['tag_name'])
     return [rel for rel in internal if rel['tag_name'] not in protected_tags]
@@ -555,7 +583,16 @@ def run_github_releases(mode: str, repo: str, keep_shas: set[str], keep_latest: 
             break
         page += 1
 
-    candidates = select_superseded_internal_releases(releases, keep_shas, keep_latest=keep_latest)
+    def resolve_tag_sha(tag: str) -> str:
+        commit = gh_api(f"repos/{repo}/commits/{urllib.parse.quote(tag, safe='')}", token=token)
+        return (commit or {}).get('sha', '') if isinstance(commit, dict) else ''
+
+    candidates = select_superseded_internal_releases(
+        releases,
+        keep_shas,
+        keep_latest=keep_latest,
+        resolve_tag_sha=resolve_tag_sha,
+    )
     removed = 0
     if mode == 'cleanup':
         for rel in candidates:

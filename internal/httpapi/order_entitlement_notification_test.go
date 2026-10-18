@@ -509,4 +509,18 @@ func TestGiftCardRedeemNotifiesRuntimeNodes(t *testing.T) {
 	if len(coord.events) != 3 {
 		t.Fatalf("traffic + inviter coord events = %+v, want 3 total", coord.events)
 	}
+
+	// 4. Post-commit NotifyUserMutation succeeds even if caller HTTP request context was canceled.
+	canceledCtx, cancelReq := context.WithCancel(ctx)
+	cancelReq()
+	s.notifyEntitlementChange(canceledCtx, &store.EntitlementChange{
+		UserID:       user.ID,
+		PreviousUUID: user.UUID,
+		OldGroupID:   plan.GroupID,
+		NewGroupID:   plan.GroupID,
+	})
+	assertEntitlementDelta(t, newConn, "add", user.ID, user.UUID)
+	if len(coord.events) != 4 {
+		t.Fatalf("canceled-context notification coord events = %+v, want 4 total", coord.events)
+	}
 }

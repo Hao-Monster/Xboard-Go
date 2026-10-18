@@ -478,4 +478,30 @@ describe("purchase code order presentation", () => {
     expect(adminDataCache.consume("orders")).toBeUndefined();
     expect(adminDataCache.consume("users")).toBeUndefined();
   });
+
+  it("reconciles reopened OrderDetailDialog against recentOrderMutations when getOrder returns a stale pending snapshot", async () => {
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([pending]),
+      getOrder: vi.fn().mockResolvedValue(pending),
+      cancelOrder: vi.fn().mockResolvedValue({ ...pending, status: 2 }),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkOrderStatus: vi.fn(),
+      checkoutOrder: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(within(dialog).getByText("已取消")).toBeVisible());
+
+    // Close the modal (selected becomes null) and immediately reopen while getOrder still returns status 0
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const reopened = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(reopened).getByText("已取消")).toBeVisible();
+    expect(within(reopened).queryByRole("button", { name: "关闭订单" })).not.toBeInTheDocument();
+  });
 });

@@ -32,6 +32,14 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     onInitialHandledRef.current = onInitialHandled;
   }, [onInitialHandled]);
 
+  const reconcileSingleOrder = useCallback((item: Order): Order => {
+    const mutated = recentOrderMutations.current.get(item.id);
+    if (mutated !== undefined && isNewerOrderSnapshot(mutated.order, item)) {
+      return { ...item, ...mutated.order };
+    }
+    return item;
+  }, []);
+
   const reconcileLoadedOrders = useCallback((items: Order[], startedAtMutation: number, activeStatus: "" | OrderStatus) => {
     const merged = items.map((item) => {
       const mutated = recentOrderMutations.current.get(item.id);
@@ -64,7 +72,7 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     setError("");
     onInitialHandledRef.current?.();
     try {
-      const next = await api.getOrder(tradeNo);
+      const next = reconcileSingleOrder(await api.getOrder(tradeNo));
       if (id === detailRequest.current) {
         setSelected((current) => current?.trade_no === next.trade_no && !isNewerOrderSnapshot(next, current) ? current : next);
       }
@@ -73,7 +81,7 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     } finally {
       if (id === detailRequest.current) setDetailLoading(false);
     }
-  }, [api]);
+  }, [api, reconcileSingleOrder]);
 
   useEffect(() => {
     let active = true;
@@ -94,7 +102,8 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
     if (initialTradeNo === null) return;
     let active = true;
     const id = ++detailRequest.current;
-    void api.getOrder(initialTradeNo).then((result) => {
+    void api.getOrder(initialTradeNo).then((raw) => {
+      const result = reconcileSingleOrder(raw);
       if (active && id === detailRequest.current) {
         setSelected((current) => current?.trade_no === result.trade_no && !isNewerOrderSnapshot(result, current) ? current : result);
       }
@@ -109,7 +118,7 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
         }
       });
     return () => { active = false; };
-  }, [api, initialTradeNo]);
+  }, [api, initialTradeNo, reconcileSingleOrder]);
 
   const replace = useCallback((order: Order) => {
     const existingMutation = recentOrderMutations.current.get(order.id);

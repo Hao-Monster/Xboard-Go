@@ -226,6 +226,12 @@ test("analyzePrScope skips go_fast when only store or httpapi _test.go files are
   assert.equal(xboardCmdScope.go_race, "true");
   assert.equal(xboardCmdScope.go_fast, "false");
   assert.equal(xboardCmdScope.go_race_groups, JSON.stringify(["xboard"]));
+
+  const httpApiAndXboardScope = analyzePrScope(["internal/httpapi/server.go", "cmd/xboard/main.go"]);
+  assert.equal(httpApiAndXboardScope.tier, "L2");
+  assert.equal(httpApiAndXboardScope.go_race, "true");
+  assert.equal(httpApiAndXboardScope.go_fast, "false");
+  assert.equal(httpApiAndXboardScope.go_race_groups, JSON.stringify(["xboard", "services-a"]));
 });
 
 test("analyzePrScope classifies every tracked file in git ls-files without unknown_paths fallback", async () => {

@@ -445,6 +445,9 @@ export function analyzePrScope(rawFiles) {
     if (isHeavyDirectOnly && f.endsWith("_test.go")) {
       return false;
     }
+    if (f.startsWith("internal/httpapi/") && xboardTouched) {
+      return false;
+    }
     return true;
   });
 

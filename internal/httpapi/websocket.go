@@ -1596,8 +1596,12 @@ func uniquePositiveIDs(values []int64) []int64 {
 // NotifyUserMutation publishes an O(changed users) delta to every runtime node
 // in the old or new group. A full snapshot remains the reconnect baseline.
 func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUUID string, oldGroupID, newGroupID *int64, devicesCleared bool) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	notifyCtx := context.WithoutCancel(ctx)
 	if devicesCleared && h.deviceState != nil {
-		if _, err := h.deviceState.ClearUserDevices(ctx, []int64{userID}, h.now()); err != nil {
+		if _, err := h.deviceState.ClearUserDevices(notifyCtx, []int64{userID}, h.now()); err != nil {
 			h.logger.Warn("clear mutated user device state", "user_id", userID, "error", err)
 		}
 	}
@@ -1611,10 +1615,10 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 	if len(groupIDs) == 0 {
 		return
 	}
-	defer h.publishCoordination(ctx, nodecoord.Event{
+	defer h.publishCoordination(notifyCtx, nodecoord.Event{
 		Kind: nodecoord.EventRefreshGroups, GroupIDs: uniquePositiveIDs(groupIDs), DevicesCleared: devicesCleared,
 	})
-	targets, err := h.store.ListRuntimeNodeTargetsForGroups(ctx, groupIDs)
+	targets, err := h.store.ListRuntimeNodeTargetsForGroups(notifyCtx, groupIDs)
 	if err != nil {
 		h.logger.Warn("resolve websocket user delta targets", "user_id", userID, "error", err)
 		return
@@ -1627,7 +1631,7 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 		if connection == nil || !connection.hasNode(target.NodeID) {
 			continue
 		}
-		user, err := h.store.GetNodeRuntimeUser(ctx, target.NodeID, userID, now)
+		user, err := h.store.GetNodeRuntimeUser(notifyCtx, target.NodeID, userID, now)
 		action := "add"
 		users := []store.RuntimeUser{user}
 		if errors.Is(err, store.ErrNotFound) {
@@ -1647,7 +1651,7 @@ func (h *wsHub) NotifyUserMutation(ctx context.Context, userID int64, previousUU
 		for _, target := range targets {
 			nodeIDs = append(nodeIDs, target.NodeID)
 		}
-		h.notifyDeviceStatesToNodeIDs(ctx, nodeIDs)
+		h.notifyDeviceStatesToNodeIDs(notifyCtx, nodeIDs)
 	}
 }
 
