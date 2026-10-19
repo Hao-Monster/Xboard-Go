@@ -1,7 +1,7 @@
 name: Publish internal-test Docker installer
 on:
   push:
-    branches: [main, codex/ci-001-tiered-gates]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - '.docker/**'
@@ -88,3 +88,15 @@ jobs:
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$REVISION" --prerelease \
             --title "Internal test ${REVISION:0:12}" --notes-file release-notes.txt \
             install.sh compose.yaml SHA256SUMS xboard-go-linux-amd64.tar.gz
+      - name: Audit superseded internal-test pre-releases without deleting unverified production SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          python3 deploy/retain-online-only.py github-releases --mode audit \
+            --repo "$GITHUB_REPOSITORY" \
+            --keep-sha "$REVISION" \
+            --keep-sha "$main_sha" \
+            --keep-latest 2

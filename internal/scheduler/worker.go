@@ -9,7 +9,12 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 )
 
+type EntitlementNotifier interface {
+	NotifyEntitlementChange(context.Context, *store.EntitlementChange)
+}
+
 type Worker struct {
+	notifier                    EntitlementNotifier
 	store                       *store.Store
 	interval                    time.Duration
 	now                         func() time.Time
@@ -44,6 +49,9 @@ func NewWorker(database *store.Store, interval time.Duration, logger *slog.Logge
 	}
 	return &Worker{store: database, interval: interval, now: time.Now, logger: logger, tracker: tracker}
 }
+
+// SetEntitlementNotifier must be called before Run. A nil notifier is supported.
+func (w *Worker) SetEntitlementNotifier(notifier EntitlementNotifier) { w.notifier = notifier }
 
 func (w *Worker) Run(ctx context.Context) {
 	w.applyDue(ctx)
@@ -131,8 +139,11 @@ func (w *Worker) processCommissions(ctx context.Context, now time.Time) {
 		}
 		return
 	}
-	if result.Checked > 0 || result.Paid > 0 {
-		w.logger.Info("invitation commissions processed", "checked", result.Checked, "paid", result.Paid, "remaining", result.Remaining)
+	for _, item := range result.QuarantinedOrders {
+		w.logger.Warn("commission order quarantined", "order_id", item.OrderID, "reason", item.Reason)
+	}
+	if result.Checked > 0 || result.Paid > 0 || result.Quarantined > 0 {
+		w.logger.Info("invitation commissions processed", "checked", result.Checked, "paid", result.Paid, "quarantined", result.Quarantined, "remaining", result.Remaining)
 	}
 }
 
@@ -148,8 +159,16 @@ func (w *Worker) processOrders(ctx context.Context, now time.Time) {
 		}
 		return
 	}
-	if result.Cancelled > 0 || result.Completed > 0 {
-		w.logger.Info("orders reconciled", "cancelled", result.Cancelled, "completed", result.Completed, "remaining", result.Remaining)
+	if w.notifier != nil {
+		for i := range result.Changes {
+			w.notifier.NotifyEntitlementChange(ctx, &result.Changes[i])
+		}
+	}
+	for _, item := range result.QuarantinedOrders {
+		w.logger.Warn("stale order quarantined", "order_id", item.OrderID, "reason", item.Reason)
+	}
+	if result.Cancelled > 0 || result.Completed > 0 || result.Quarantined > 0 {
+		w.logger.Info("orders reconciled", "cancelled", result.Cancelled, "completed", result.Completed, "quarantined", result.Quarantined, "remaining", result.Remaining)
 	}
 }
 

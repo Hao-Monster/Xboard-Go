@@ -1,0 +1,1142 @@
+{
+  "schema_version": 1,
+  "title": "2026-10-14 BL-01 through BL-30 local repair ledger",
+  "recorded_at": "2026-10-16",
+  "baseline_sha": "07476e0229efd7ed326843c67dc611c7b1366c1a",
+  "branch": "codex/ci-001-tiered-gates",
+  "status": "batches_a_through_h_code_review_passed_and_committed",
+  "authorization": {
+    "local_changes_and_tests": true,
+    "local_commits": true,
+    "push": false,
+    "pull_request": false,
+    "deployment": false,
+    "production_operations": false
+  },
+  "plan": "docs/testing/bug-fix-a-plan-2026-10-14.md",
+  "decisions": {
+    "D-1": "Stage one: default 30 minute settlement grace; no late-payment money handling.",
+    "D-2": "User confirmed consume days-only general cards for permanent users; days have no effect and are recorded as zero.",
+    "D-3": "User approved schemaV69 scheduler_quarantine table migration (upgraded to schemaV70 in 938db89d028fe83886990495a855cd254a55aaa6 with retry_after/attempts/first_failed_at/last_failed_at) and per-item SAVEPOINT isolation for BL-17 and BL-18.",
+    "D-4": "User approved intentional deviations from legacy PHP bugs for BL-04 (expired cross-period assign OrderTypeNew), BL-07 (chained onetime upgrade surplus), and BL-11 (version-compatible synthetic info items).",
+    "D-5": "Use engineering-spec default: HWID headers plus 404 empty body; account quota 429/60; render busy 503/1. V2 unchanged.",
+    "D-6": "User approved rejecting non-minute-aligned enable_second/disable_second in ValidateLegacyNodesData (BL-22) with error containing node ID."
+  },
+  "bugs": [
+    {
+      "id": "BUG-20261014-01",
+      "review_id": "BL-01",
+      "priority": "P1",
+      "title": "权益写入后未正确通知在线节点（原 #2）",
+      "batch": "A",
+      "requirement_ids": [
+        "ORD-001",
+        "ORD-004",
+        "DIST-003",
+        "DIST-007",
+        "DIST-010",
+        "NODE-003"
+      ],
+      "work_item_ids": [
+        "VER-002",
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        },
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8",
+        "0fbd12141270f9709296d4bacf96bbdb2ec6e645"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-a-results-2026-10-14.md",
+        "docs/testing/bug-fix-a-evidence-2026-10-14.json"
+      ],
+      "review_rework_evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/review_rework"
+    },
+    {
+      "id": "BUG-20261014-02",
+      "review_id": "BL-02",
+      "priority": "P1",
+      "title": "超时取消未协调活跃外部支付尝试（原 #3）",
+      "batch": "A",
+      "requirement_ids": [
+        "ORD-002",
+        "ORD-004",
+        "PAY-001"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "ca77e35a2cdd9c44ce493f44b32e38decb7cbbb8"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-a-results-2026-10-14.md",
+        "docs/testing/bug-fix-a-evidence-2026-10-14.json"
+      ]
+    },
+    {
+      "id": "BUG-20261014-03",
+      "review_id": "BL-03",
+      "priority": "P1",
+      "title": "通用/盲盒天数奖励将永久订阅降为限时（原 #6）",
+      "batch": "A",
+      "requirement_ids": [
+        "GIFT-001",
+        "GIFT-002"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
+        "165c99ef00aa6a5eb44cfcddb7c4690a83407fb4"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-a-results-2026-10-14.md",
+        "docs/testing/bug-fix-a-evidence-2026-10-14.json"
+      ]
+    },
+    {
+      "id": "BUG-20261014-04",
+      "review_id": "BL-04",
+      "priority": "P2",
+      "title": "过期用户跨周期套餐派单仍按升级保留旧用量（原 #8）",
+      "batch": "C",
+      "requirement_ids": [
+        "ORD-001"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-05",
+      "review_id": "BL-05",
+      "priority": "P3",
+      "title": "分销列表扫描失败未显式关闭 Rows（原 #9，条件性资源缺陷）",
+      "batch": "C",
+      "requirement_ids": [
+        "DIST-006"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-06",
+      "review_id": "BL-06",
+      "priority": "P2",
+      "title": "流量感知折抵累计月份乘法缺少溢出保护（原 #10a，极端边界）",
+      "batch": "C",
+      "requirement_ids": [
+        "ORD-003"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-07",
+      "review_id": "BL-07",
+      "priority": "P2",
+      "title": "永久套餐链式升级遗漏上次转入的净折抵价值（原 #10b）",
+      "batch": "C",
+      "requirement_ids": [
+        "ORD-003"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-08",
+      "review_id": "BL-08",
+      "priority": "P1",
+      "title": "Legacy V1 配置下发绕过分销 HWID 门禁（原 #11b）",
+      "batch": "B",
+      "requirement_ids": [
+        "DIST-011",
+        "SUB-002"
+      ],
+      "work_item_ids": [
+        "VER-001",
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        },
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
+    },
+    {
+      "id": "BUG-20261014-09",
+      "review_id": "BL-09",
+      "priority": "P2",
+      "title": "仅走 Legacy V1 时遗漏领取/配置下发业务标记（原 #11c）",
+      "batch": "B",
+      "requirement_ids": [
+        "DIST-014"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
+    },
+    {
+      "id": "BUG-20261014-10",
+      "review_id": "BL-10",
+      "priority": "P2",
+      "title": "Legacy V1 有效请求未纳入成本限流/渲染并发控制（原 #11d）",
+      "batch": "B",
+      "requirement_ids": [
+        "SUB-002"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "d35449b9546481ae329426f5184ddcdb58538abb"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-b-results-2026-10-15.md",
+        "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+      ]
+    },
+    {
+      "id": "BUG-20261014-11",
+      "review_id": "BL-11",
+      "priority": "P3",
+      "title": "首节点兼容过滤连带移除虚拟订阅提示（原 #13）",
+      "batch": "F",
+      "requirement_ids": [
+        "SUB-003"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-f-plan-2026-10-16.md",
+        "docs/testing/bug-fix-f-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-12",
+      "review_id": "BL-12",
+      "priority": "P2",
+      "title": "Shadowrocket 的 Hysteria1 被输出成 Hysteria2 URI（原 #14a）",
+      "batch": "F",
+      "requirement_ids": [
+        "SUB-003"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-f-plan-2026-10-16.md",
+        "docs/testing/bug-fix-f-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-13",
+      "review_id": "BL-13",
+      "priority": "P2",
+      "title": "runtime 更新以本地连接为条件，跨实例漏完整同步（原 #16a）",
+      "batch": "E",
+      "requirement_ids": [
+        "NODE-003"
+      ],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-14",
+      "review_id": "BL-14",
+      "priority": "P2",
+      "title": "解绑释放失败时已移除节点不再进入清理列表（原 #16b）",
+      "batch": "E",
+      "requirement_ids": [
+        "NODE-003",
+        "NODE-006"
+      ],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d",
+        "938db89d028fe83886990495a855cd254a55aaa6",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-15",
+      "review_id": "BL-15",
+      "priority": "P3",
+      "title": "Access Token ID 与 Cookie Session ID 混用（原 #17a）",
+      "batch": "E",
+      "requirement_ids": [
+        "AUTH-003"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "7565b25d0923106b51199626ca7bbe9d23f7b44d"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-e-plan-2026-10-16.md",
+        "docs/testing/bug-fix-e-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-16",
+      "review_id": "BL-16",
+      "priority": "P2",
+      "title": "批量邮件 claim 后、发送前取消缺少终结路径（原 #18）",
+      "batch": "D",
+      "requirement_ids": [
+        "USER-002"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-17",
+      "review_id": "BL-17",
+      "priority": "P2",
+      "title": "佣金异常单反复回滚整批，缺少单笔隔离（原 #19.1）",
+      "batch": "D",
+      "requirement_ids": [
+        "INV-001"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
+        "938db89d028fe83886990495a855cd254a55aaa6",
+        "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-18",
+      "review_id": "BL-18",
+      "priority": "P2",
+      "title": "超时退款余额越界导致整批超时订单回滚（原 #19.2）",
+      "batch": "D",
+      "requirement_ids": [
+        "ORD-002",
+        "ORD-004"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
+        "938db89d028fe83886990495a855cd254a55aaa6",
+        "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+        "ff791c392af6302bd4807b03257fe2d21b71f333"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-19",
+      "review_id": "BL-19",
+      "priority": "P2",
+      "title": "backend 回滚失败的 journal 无法准确描述实际部署（原 #20）",
+      "batch": "G",
+      "requirement_ids": [
+        "OPS-002"
+      ],
+      "work_item_ids": [
+        "MIG-001",
+        "OPS-001",
+        "OPS-002"
+      ],
+      "issues": [
+        {
+          "number": 118,
+          "milestone": "M2",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        },
+        {
+          "number": 116,
+          "milestone": "M2",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        },
+        {
+          "number": 117,
+          "milestone": "M2",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-g-plan-2026-10-16.md",
+        "docs/testing/bug-fix-g-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-20",
+      "review_id": "BL-20",
+      "priority": "P2",
+      "title": "Telegram 第三次认领失联后没有租约自动终结（原 #21.1a）",
+      "batch": "D",
+      "requirement_ids": [
+        "OPS-001"
+      ],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "issues": [
+        {
+          "number": 123,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-21",
+      "review_id": "BL-21",
+      "priority": "P2",
+      "title": "Mailer/Telegram 批处理复用起始时间，后续租约已过期（原 #21.2）",
+      "batch": "D",
+      "requirement_ids": [
+        "OPS-001"
+      ],
+      "work_item_ids": [
+        "VER-005"
+      ],
+      "issues": [
+        {
+          "number": 123,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-d-plan-2026-10-16.md",
+        "docs/testing/bug-fix-d-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-22",
+      "review_id": "BL-22",
+      "priority": "P3",
+      "title": "导入接受秒级日窗，而运行时只支持整分钟（原 #22.1，导入边界）",
+      "batch": "G",
+      "requirement_ids": [
+        "SCH-002"
+      ],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-g-plan-2026-10-16.md",
+        "docs/testing/bug-fix-g-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-23",
+      "review_id": "BL-23",
+      "priority": "P2",
+      "title": "多层弹窗 Escape 先关闭底层，可能丢草稿（原 #24）",
+      "batch": "H",
+      "requirement_ids": [
+        "SCH-004"
+      ],
+      "work_item_ids": [
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+        "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
+        "09af58b9a57849e2183ca6ab09e189b1f09d8f51"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-24",
+      "review_id": "BL-24",
+      "priority": "P2",
+      "title": "用户列表快搜使首次权限组/套餐结果被丢弃（原 #25.1）",
+      "batch": "H",
+      "requirement_ids": [
+        "USER-002"
+      ],
+      "work_item_ids": [
+        "VER-001"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-25",
+      "review_id": "BL-25",
+      "priority": "P2",
+      "title": "礼品卡末页删除后留在空页且分页栏消失（原 #25.2）",
+      "batch": "H",
+      "requirement_ids": [
+        "GIFT-001"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+        "938db89d028fe83886990495a855cd254a55aaa6"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-26",
+      "review_id": "BL-26",
+      "priority": "P2",
+      "title": "用户订单详情旧请求覆盖最新选择（原 #25.3a）",
+      "batch": "H",
+      "requirement_ids": [
+        "ORD-002"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+        "c63aab689b5827387d03e0f8c48b461f8d8124c4"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-27",
+      "review_id": "BL-27",
+      "priority": "P2",
+      "title": "待支付筛选下取消订单仍保留在列表（原 #25.3b）",
+      "batch": "H",
+      "requirement_ids": [
+        "ORD-002"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-28",
+      "review_id": "BL-28",
+      "priority": "P3",
+      "title": "部分写操作未失效对应预取缓存（原 #25.4a）",
+      "batch": "H",
+      "requirement_ids": [
+        "USER-002",
+        "ORD-002"
+      ],
+      "work_item_ids": [
+        "VER-001",
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        },
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-29",
+      "review_id": "BL-29",
+      "priority": "P3",
+      "title": "弹窗内创建权限组后父表仍显示 #ID（原 #25.4b）",
+      "batch": "H",
+      "requirement_ids": [
+        "PLAN-001",
+        "NODE-001"
+      ],
+      "work_item_ids": [
+        "VER-001",
+        "VER-003"
+      ],
+      "issues": [
+        {
+          "number": 119,
+          "milestone": "M3",
+          "state_at_check": "NOT_CHECKED",
+          "note": "Existing acceptance mapping; no issue closure claimed."
+        },
+        {
+          "number": 121,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "b6c351e2c3c88dac3226460463ef2d35a140cdde"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-h-plan-2026-10-16.md",
+        "docs/testing/bug-fix-h-results-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "BUG-20261014-30",
+      "review_id": "BL-30",
+      "priority": "P2",
+      "title": "已结算订阅后续新续费行继承“已结算”展示（复查新增，非原 #1）",
+      "batch": "C",
+      "requirement_ids": [
+        "DIST-006",
+        "DIST-007",
+        "DIST-012"
+      ],
+      "work_item_ids": [
+        "VER-002"
+      ],
+      "issues": [
+        {
+          "number": 120,
+          "milestone": "M3 Release Candidate",
+          "state_at_check": "OPEN",
+          "note": "Existing acceptance mapping; no issue closure claimed.",
+          "checked_at": "2026-10-15"
+        }
+      ],
+      "status": "fixed_local_rereview_passed",
+      "fix_commits": [
+        "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+      ],
+      "evidence": [
+        "docs/testing/bug-fix-c-plan-2026-10-16.md",
+        "docs/testing/bug-fix-c-results-2026-10-16.md"
+      ]
+    }
+  ],
+  "report": "docs/testing/bug-fix-a-results-2026-10-14.md",
+  "historical_evidence_boundary": "Current A re-review is batch_a_rereview / rereview_2026_10_15; current B evidence is batch_b. Prior first-delivery and review_rework results are historical. A and unrelated preserved work were pushed through ec4593bd by earlier explicit user authorization. B has local commits only; no PR, merge, deployment or live acceptance.",
+  "evidence_boundary": "Batches A and B were pushed through ec4593bd and 5d771d22 by earlier explicit user authorizations. Current evidence for Batches C through H is recorded in batch_c through batch_h and code_review_2026_10_16. Prior first-delivery and review_rework results for Batch A remain historical. Batches C through H and subsequent review rework commits are locally verified and committed on codex/ci-001-tiered-gates; push, PR update, merge, deployment, and live acceptance remain pending explicit user authorization.",
+  "historical_implementation_sha": "9dfae293cfc81dd2f49490fb54ffbe14033d68a3",
+  "decision_sources": {
+    "D-2": {
+      "source": "Explicit user reply in this conversation to the batch A async question",
+      "verbatim": "允许兑换：消耗卡但天数不生效",
+      "effect": "Overrides engineering specification recommendation to reject days-only cards; consume normally and record effective days as zero."
+    }
+  },
+  "review_rework": {
+    "baseline_sha": "f6e31fc3dd71e11058461a28a8cec5606da8e931",
+    "status": "historical_local_rework_superseded_by_passed_batch_a_rereview",
+    "finding": "High: NULL users.uuid caused readEntitlementChangeTx to fail order completion.",
+    "resolution": "sql.NullString -> empty PreviousUUID; skip only empty-UUID remove; preserve add/device/coordination.",
+    "commit_binding": "This record is stored in the single appended rework commit; source SHA256 binds the exact tested content without a self-referential commit hash.",
+    "source_sha256": {
+      "internal/store/orders.go": "1c3224726a65bb377c7e368885c13c588eddc131deb06b8a059546ad288b312c",
+      "internal/store/orders_entitlement_change_test.go": "15e83290263bd90dbe9e3c232cd42b15701d7612ab10bade498c118fb8c98c6e",
+      "internal/httpapi/websocket.go": "cbbb8efb260c6df8624808c0daaf79ff0f6260396ea1c44eb1ca3535fd24bada",
+      "internal/httpapi/order_entitlement_notification_test.go": "5f8eef3a5840a4c827d6bce42bc8b4472c99e57923abc3d41a0dc341848eebf2"
+    },
+    "test_evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/review_rework",
+    "root_glob": {
+      "commands": [
+        "go test ./...",
+        "go vet ./...",
+        "go build ./..."
+      ],
+      "status": "NOT RUN",
+      "reason": "Ignored docs-dev/gift-card-qa-20261004/supplement still mixes package httpapi and package store. User accepted ./cmd/... ./internal/... as substitute.",
+      "historical_result": "Initial batch A actually attempted these commands and FAILED; historical results remain recorded, not relabeled."
+    },
+    "low_1": "Actual httpapi.New notifier interface test covers non-nil Context with WebSocket on/off. Worker first sweep waits for dependency initialization; cadence, clock and cancellation are unchanged."
+  },
+  "found_but_unfixed": [
+    {
+      "finding": "Gift card redemption changes traffic and other entitlements without notifying runtime nodes.",
+      "status": "fixed_local_verified",
+      "fix_commit": "a27718757c0e0a976e214b9526558bd74192a08c",
+      "scope": "Outside BL-03 permanent-day-reward fix; fixed and verified in internal/store/gift_cards.go and internal/httpapi/gift_card_handlers.go."
+    }
+  ],
+  "protected_frontend_work": {
+    "support_orders": {
+      "owner_thread": "01a13dcf-0b8c-7790-81af-8bc96aa31e6c",
+      "owner_title": "修复客服购买会话与订单发送",
+      "evidence": "docs/testing/purchase-support-handoff-2026-10-15.md and read-only task completion message",
+      "status": "Historical separate work; integrated in 07c129f6 and pushed through ec4593bd before B. No frontend modifications in B.",
+      "overlap": "UserOrdersPage.tsx overlapped BL-26/27 in H; Batch H integrated cleanly on top of 07c129f6 without reverting support_orders behavior."
+    },
+    "staged_shell": {
+      "files": [
+        "web/src/App.tsx",
+        "web/src/App.test.tsx",
+        "web/src/styles.css",
+        "docs/project/frontend-parity-2026-10-01.json"
+      ],
+      "purpose": "2026-10-12 removal of duplicate floating distributor entry",
+      "owner_status": "Historical staged state resolved by user-authorized preservation commit 746dd513; pushed through ec4593bd before B."
+    },
+    "historical_gate_before_batch_h": "A re-review passed; B locally verified pending user batch review. H not started; when authorized, adapt its scope on the already integrated frontend behavior without reverting prior work.",
+    "gate": "Batches A through H locally verified and re-review passed. Batch H adapted its scope on top of the integrated support_orders (07c129f6) and staged_shell (746dd513) frontend behavior without reverting prior work (implementation b6c351e2, rework 938db89d and ce46a242)."
+  },
+  "batch_a_rereview": {
+    "date": "2026-10-15",
+    "status": "passed",
+    "sha": "ec4593bde9b2573da36296bf84c58cf8cd7a3d84",
+    "evidence": "docs/testing/bug-fix-a-evidence-2026-10-14.json#/rereview_2026_10_15"
+  },
+  "batch_b": {
+    "baseline_sha": "ec4593bde9b2573da36296bf84c58cf8cd7a3d84",
+    "plan": "docs/testing/bug-fix-b-plan-2026-10-15.md",
+    "status": "local_verified_and_rereview_passed",
+    "authorization": "User requested A rereview, then B after pass. Local implementation/tests/commits only.",
+    "implementation_sha": "d35449b9546481ae329426f5184ddcdb58538abb",
+    "report": "docs/testing/bug-fix-b-results-2026-10-15.md",
+    "evidence": "docs/testing/bug-fix-b-evidence-2026-10-15.json"
+  },
+  "batch_c": {
+    "plan": "docs/testing/bug-fix-c-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-c-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "4416e436f61c0a2bbc87a32569bb29e1a783a668"
+  },
+  "batch_d": {
+    "plan": "docs/testing/bug-fix-d-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-d-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "fc4f7ffa6dacfe79be1a7fa2181f2b2711714b6a",
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "1a9d4b2111448ffe9978939398dfa49c6fad26be",
+      "ff791c392af6302bd4807b03257fe2d21b71f333"
+    ]
+  },
+  "batch_e": {
+    "plan": "docs/testing/bug-fix-e-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-e-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "7565b25d0923106b51199626ca7bbe9d23f7b44d",
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "ff791c392af6302bd4807b03257fe2d21b71f333"
+    ]
+  },
+  "batch_f": {
+    "plan": "docs/testing/bug-fix-f-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-f-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "1e91301c78f28f1c0bf0ca62143838554aa0106d"
+  },
+  "batch_g": {
+    "plan": "docs/testing/bug-fix-g-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-g-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "08aed6f3f8c4eb943a1f9655f2ad34f21d8d1fd2"
+  },
+  "batch_h": {
+    "plan": "docs/testing/bug-fix-h-plan-2026-10-16.md",
+    "report": "docs/testing/bug-fix-h-results-2026-10-16.md",
+    "status": "local_verified_and_rereview_passed",
+    "implementation_sha": "b6c351e2c3c88dac3226460463ef2d35a140cdde",
+    "rereview_rework_sha": "938db89d028fe83886990495a855cd254a55aaa6",
+    "additional_rework_shas": [
+      "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
+      "c63aab689b5827387d03e0f8c48b461f8d8124c4",
+      "09af58b9a57849e2183ca6ab09e189b1f09d8f51"
+    ]
+  },
+  "code_review_2026_10_16": {
+    "status": "passed_after_rework",
+    "rework_commit": "938db89d028fe83886990495a855cd254a55aaa6",
+    "codex_review_rework_commit": "ce46a242f7d88d030e9b3b70d692cc1ab2cba1fc",
+    "tech_lead_review_rework_commit": "b3deb666706263eb41bd0af6e12b55f99fb5cfef",
+    "tech_lead_rereview_rework_commit": "c63aab689b5827387d03e0f8c48b461f8d8124c4",
+    "geoip_probe_rework_commit": "8fd49fefdbd1c3e712879237c9a0f8d0e7011300",
+    "e2e_env_rework_commit": "3ef61ddba167057b2a0611de5465d4ba1cf7797a",
+    "geek_review_rework_commit": "09af58b9a57849e2183ca6ab09e189b1f09d8f51",
+    "findings_resolved": [
+      "BL-17/BL-18 (High): Aligned scheduler_quarantine schema and SQL with FIX_ENGINEERING_SPEC_2026-10-14.md (attempts, first_failed_at, last_failed_at, retry_after = now + 1h, auto-retry when retry_after <= now, and quarantine cleanup on successful retry), and added schemaV70 migration for existing v69 databases (scope/order_id/reason/quarantined_at).",
+      "BL-14 (Medium): Prevented notifyMachineNodes from short-circuiting remaining removedNodes when one ReleaseNodeIfOwned call errors; confirmed-released nodes clear devices immediately while failed nodes are registered into pendingReleases under hub.mu before clearNodeDevices and synchronized with concurrent unregisterAndClear.",
+      "BL-23 (Medium): Preserved parent Modal/Drawer Tab focus trap in overlayStack.ts when a child non-trapping overlay layer (such as NodeFilter) is open on top, and prevented Overlay.tsx unmount requestAnimationFrame from stealing focus when focus has already moved to another connected element.",
+      "BL-26 (Medium): Decoupled initialTradeNo consumption from stale detail response check in UserOrdersPage.tsx so an initial order superseded by manual selection does not re-open on parent re-renders.",
+      "CI/PR-Gate (Medium): Validated each shell script individually in pr-gate.yml bash -n loop, checked commit range git diff --check in governance, included SQLite schema/migration store entry points in detect-changes.mjs migration_drill scope, included deploy/compose.yaml in packagingTriggers, routed .docker/ and Dockerfile/.dockerignore to splitRuntimeTriggers with gateway/frontend/backend validation in pr-gate.yml, enforced non-empty affected Go package resolution and GeoIP fixture setup in go-fast, and executed modified web/e2e/*.spec.ts files in browser-smoke.",
+      "BL-25/BL-24 (Low): Extended GiftCardManagementPage.test.tsx BL-25 test to cover both template and code tabs, and aligned BL-24 test case name in docs/testing/bug-fix-h-results-2026-10-16.md."
+    ]
+  }
+}

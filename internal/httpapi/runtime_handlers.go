@@ -88,9 +88,8 @@ func (s *server) saveNodeRuntime(w http.ResponseWriter, r *http.Request) {
 			if node.MachineID != nil {
 				machineID = *node.MachineID
 			}
-			if s.hub.hasNode(nodeID) {
-				s.hub.NotifyNodeFull(r.Context(), machineID, nodeID)
-			} else if machineID > 0 {
+			s.hub.NotifyNodeFull(r.Context(), machineID, nodeID)
+			if machineID > 0 && !s.hub.hasNode(nodeID) {
 				s.hub.NotifyMachineNodes(r.Context(), machineID)
 			}
 		}

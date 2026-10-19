@@ -89,6 +89,34 @@ def image_manifest(directory, sha):
     return manifest
 
 
+def prune_previous_releases(ssh, directories, sha):
+    if not re.fullmatch('[0-9a-f]{40}', sha):
+        raise ValueError('An exact source SHA is required')
+    for kind, active_path in directories.items():
+        releases_root = str(Path(active_path).parent).replace('\\', '/')
+        script = (
+            'set -eu; '
+            'root=' + shlex.quote(releases_root) + '; '
+            'active=' + shlex.quote(sha) + '; '
+            'if [ -d "$root" ] && [ ! -L "$root" ]; then '
+            '  for entry in "$root"/*; do '
+            '    [ -e "$entry" ] || continue; '
+            '    name="$(basename "$entry")"; '
+            '    if [ "$name" != "$active" ] && printf "%s" "$name" | grep -Eq "^[0-9a-f]{40}$"; then '
+            '      rm -rf -- "$entry"; '
+            '    fi; '
+            '  done; '
+            'fi; '
+            'for img in $(docker image ls --format "{{.Repository}}:{{.Tag}}" "xboard-log-collector" 2>/dev/null || true); do '
+            '  if [ "$img" != "xboard-log-collector:$active" ] && [ "$img" != "xboard-log-collector:<none>" ]; then '
+            '    docker image rm "$img" >/dev/null 2>&1 || true; '
+            '  fi; '
+            'done; '
+            'docker image prune -f >/dev/null 2>&1 || true'
+        )
+        ssh(kind, script)
+
+
 def main():
     validate(os.environ, json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text()))
     sha = os.environ['LOGGING_SOURCE_SHA']
@@ -162,6 +190,7 @@ def main():
                 if attempt == 18:
                     raise
                 time.sleep(5)
+        prune_previous_releases(ssh, directories, sha)
         print('Private logging deployment complete: source=' + sha)
 
 

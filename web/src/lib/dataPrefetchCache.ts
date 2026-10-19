@@ -26,8 +26,8 @@ export class DataPrefetchCache {
       return entry.promise as Promise<T>;
     }
     const promise = fetcher().catch((err: unknown) => {
-      // Evict failed entries so the next access retries.
-      this.cache.delete(key);
+      // A superseded request must not evict a newer prefetch for the same key.
+      if (this.cache.get(key)?.promise === promise) this.cache.delete(key);
       throw err;
     });
     this.cache.set(key, { promise, expiresAt: now + ttlMs });
@@ -60,3 +60,20 @@ export class DataPrefetchCache {
 
 /** Singleton cache shared across the admin panel. */
 export const adminDataCache = new DataPrefetchCache();
+
+export type AdminDataDomain = "users" | "orders" | "plans" | "groups";
+
+const domainKeys: Record<AdminDataDomain, readonly string[]> = {
+  users: ["users"],
+  orders: ["orders"],
+  plans: ["plans", "orders"],
+  groups: ["plans"],
+};
+
+export function invalidateAdminData(...domains: AdminDataDomain[]): void {
+  for (const domain of domains) {
+    for (const key of domainKeys[domain]) {
+      adminDataCache.invalidate(key);
+    }
+  }
+}

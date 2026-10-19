@@ -556,3 +556,25 @@ it("distinguishes unavailable, no-push, and healthy nodes at the legacy five-min
   expect(nodeAvailability({ last_check_at: recent, last_push_at: stale }, now)).toBe("no-push");
   expect(nodeAvailability({ last_check_at: recent, last_push_at: recent }, now)).toBe("online");
 });
+
+it("syncs inline-created server groups from NodeDefinitionModal to NodeManagementPage state (BL-29)", async () => {
+  const createdGroup = { id: 99, name: "节点内新建分组", users_count: 0, server_count: 0, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z" };
+  const api = nodeAPI();
+  api.createServerGroup.mockResolvedValue(createdGroup);
+  const user = userEvent.setup();
+  render(<NodeManagementPage api={api} />);
+  await screen.findByText("SG VLESS");
+
+  await user.click(screen.getByRole("button", { name: "添加节点" }));
+  const modal = screen.getByRole("dialog", { name: "新建节点" });
+  await user.click(within(modal).getByRole("button", { name: "添加权限组" }));
+  const creator = screen.getByRole("dialog", { name: "创建权限组" });
+  await user.type(within(creator).getByLabelText("权限组名称"), "节点内新建分组");
+  await user.click(within(creator).getByRole("button", { name: "创建权限组" }));
+  await waitFor(() => expect(api.createServerGroup).toHaveBeenCalledWith("节点内新建分组"));
+
+  // Close the node modal without saving the node, then open the toolbar "权限组" filter
+  await user.click(within(modal).getByRole("button", { name: "关闭新建节点" }));
+  await user.click(screen.getByRole("button", { name: "权限组" }));
+  expect(screen.getByRole("checkbox", { name: "节点内新建分组" })).toBeVisible();
+});

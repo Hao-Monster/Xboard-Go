@@ -186,6 +186,23 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(record['buffer_bytes'], 12345)
         self.assertNotIn('private', str(record))
 
+    def test_prune_previous_releases_targets_both_hosts_and_preserves_active_sha(self):
+        calls = []
+        sha = 'a' * 40
+        directories = {
+            'central': '/home/bingo/apps/xboard-logs/releases/' + sha,
+            'production': '/opt/xboard-observability/releases/' + sha,
+        }
+        runner.prune_previous_releases(lambda kind, script: calls.append((kind, script)), directories, sha)
+        self.assertEqual([kind for kind, _ in calls], ['central', 'production'])
+        self.assertIn('/home/bingo/apps/xboard-logs/releases', calls[0][1])
+        self.assertIn('/opt/xboard-observability/releases', calls[1][1])
+        for _kind, script in calls:
+            self.assertIn('active=' + sha, script)
+            self.assertIn('xboard-log-collector:$active', script)
+        with self.assertRaises(ValueError):
+            runner.prune_previous_releases(lambda *_args: None, directories, 'invalid-sha')
+
 
 if __name__ == '__main__':
     unittest.main()

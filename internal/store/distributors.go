@@ -148,10 +148,16 @@ func (s *Store) CreateDistributorOrder(ctx context.Context, input CreateDistribu
 	if err != nil {
 		return DistributorOrder{}, err
 	}
+	change, err := readEntitlementChangeTx(ctx, tx, subscriberID)
+	if err != nil {
+		return DistributorOrder{}, err
+	}
+	change.OldGroupID = nil
 	created.Subscription.ClaimToken = claimToken
 	if err := tx.Commit(); err != nil {
 		return DistributorOrder{}, fmt.Errorf("commit distributor order: %w", err)
 	}
+	created.Change = &change
 	return created, nil
 }
 
@@ -256,6 +262,10 @@ func (s *Store) RenewDistributorOrder(ctx context.Context, input RenewDistributo
 	if err != nil {
 		return DistributorOrder{}, fmt.Errorf("read distributor renewal order id: %w", err)
 	}
+	change, err := readEntitlementChangeTx(ctx, tx, subscriberID)
+	if err != nil {
+		return DistributorOrder{}, err
+	}
 	if wasExpired {
 		systemMethod, err := readSystemTrafficResetMethod(ctx, tx)
 		if err != nil {
@@ -282,6 +292,7 @@ func (s *Store) RenewDistributorOrder(ctx context.Context, input RenewDistributo
 	if err := tx.Commit(); err != nil {
 		return DistributorOrder{}, fmt.Errorf("commit distributor renewal: %w", err)
 	}
+	renewed.Change = &change
 	return renewed, nil
 }
 

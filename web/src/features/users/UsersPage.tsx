@@ -26,7 +26,7 @@ import {
 } from "../../lib/api";
 import { secureRandomUUID } from "../../lib/random";
 import { AssignOrderDialog } from "../orders/OrderManagementPage";
-import { adminDataCache } from "../../lib/dataPrefetchCache";
+import { adminDataCache, invalidateAdminData } from "../../lib/dataPrefetchCache";
 
 type UsersAPI = Pick<AdminAPI,
   "listAdminUsers" | "getAdminUser" | "createAdminUser" | "generateAdminUsers" | "updateAdminUser" | "resetAdminUserPassword" |
@@ -91,7 +91,9 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
     // Consume prefetched user list if hover fired it first; groups/plans always fetch fresh
     const prefetchedUsers = adminDataCache.consume<{ items: AdminUser[]; total: number; page: number; page_size: number }>("users");
     const usersSource = prefetchedUsers ?? api.listAdminUsers(defaultUserQuery);
-    void Promise.allSettled([usersSource, api.listServerGroups(), api.listPlans()]).then(([pageResult, groupsResult, plansResult]) => {
+    void api.listServerGroups().then((value) => { if (active) { setGroups(value); setGroupError(""); } }).catch((reason: unknown) => { if (active) setGroupError(`权限组加载失败：${errorMessage(reason)}`); });
+    void api.listPlans().then((value) => { if (active) { setPlans(value); setPlanError(""); } }).catch((reason: unknown) => { if (active) setPlanError(`套餐加载失败：${errorMessage(reason)}`); });
+    void Promise.allSettled([usersSource]).then(([pageResult]) => {
       if (!active || version !== requestVersion.current) return;
       if (pageResult.status === "fulfilled") {
         setUsers(pageResult.value.items);
@@ -99,18 +101,6 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         setError("");
       } else {
         setError(errorMessage(pageResult.reason));
-      }
-      if (groupsResult.status === "fulfilled") {
-        setGroups(groupsResult.value);
-        setGroupError("");
-      } else {
-        setGroupError(`权限组加载失败：${errorMessage(groupsResult.reason)}`);
-      }
-      if (plansResult.status === "fulfilled") {
-        setPlans(plansResult.value);
-        setPlanError("");
-      } else {
-        setPlanError(`套餐加载失败：${errorMessage(plansResult.reason)}`);
       }
     }).finally(() => {
       if (active && version === requestVersion.current) setLoading(false);
@@ -456,10 +446,10 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
         <div className="pagination-footer user-pagination"><span>共 {total} 名用户，第 {page} / {pageCount} 页</span><label>每页<select aria-label="每页用户数" value={pageSize} disabled={loading} onChange={(event) => void runQuery({ ...appliedQuery, page: 1, page_size: Number(event.target.value) })}><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></label><div className="row-actions"><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: 1 })}>首页</button><button className="button ghost compact" disabled={loading || page <= 1} onClick={() => void runQuery({ ...appliedQuery, page: page - 1 })}>{translateAdmin("上一页")}</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: page + 1 })}>{translateAdmin("下一页")}</button><button className="button ghost compact" disabled={loading || page >= pageCount} onClick={() => void runQuery({ ...appliedQuery, page: pageCount })}>末页</button></div></div>
       </div>}
 
-    {creating && <UserGenerator api={api} plans={plans} onClose={() => setCreating(false)} onGenerated={() => void runQuery(appliedQuery)} />}
+    {creating && <UserGenerator api={api} plans={plans} onClose={() => setCreating(false)} onGenerated={() => { invalidateAdminData("users"); void runQuery(appliedQuery); }} />}
     {viewing !== null && <UserDetail api={api} account={viewing} onClose={() => setViewing(null)} />}
-    {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void runQuery(appliedQuery); }} />}
-    {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { setResetting(null); void runQuery(appliedQuery); }} />}
+    {editing !== null && <UserEditor api={api} groups={groups} plans={plans} account={editing} currentUserID={currentUserID} onClose={() => setEditing(null)} onSaved={() => { invalidateAdminData("users"); setEditing(null); void runQuery(appliedQuery); }} />}
+    {resetting !== null && <PasswordReset api={api} account={resetting} onClose={() => setResetting(null)} onSaved={() => { invalidateAdminData("users"); setResetting(null); void runQuery(appliedQuery); }} />}
 		{operating !== null && <UserOperationsDialog account={operating} currentUserID={currentUserID} onClose={() => setOperating(null)}
       onLifecycle={(action) => { setLifecycle({ account: operating, action }); setOperating(null); }}
 			onAssign={() => { setAssigning(operating); setOperating(null); }}
@@ -468,24 +458,24 @@ export function UsersPage({ api, currentUserID }: { api: UsersAPI; currentUserID
 			onRelated={(tab) => { setRelated({ account: operating, tab }); setOperating(null); }}
 			onTrafficReset={() => { setTrafficResetting(operating); setOperating(null); }} />}
 		{subscriptionResetting !== null && <SubscriptionSecurityReset api={api} account={subscriptionResetting}
-			onClose={() => setSubscriptionResetting(null)} onReset={() => void runQuery(appliedQuery)} />}
+			onClose={() => setSubscriptionResetting(null)} onReset={() => { invalidateAdminData("users"); void runQuery(appliedQuery); }} />}
 		{assigning !== null && <AssignOrderDialog api={null} plans={plans} initialEmail={assigning.email}
 			onAssign={(input) => api.assignAdminUserOrder(assigning.id, input)} onClose={() => setAssigning(null)}
-			onCreated={() => { setAssigning(null); void runQuery(appliedQuery); }} />}
+			onCreated={() => { invalidateAdminData("users", "orders"); setAssigning(null); void runQuery(appliedQuery); }} />}
 		{related !== null && <UserRelatedDialog api={api} account={related.account} initialTab={related.tab} onClose={() => setRelated(null)} />}
 		{trafficResetting !== null && <UserTrafficResetDialog api={api} account={trafficResetting} onClose={() => setTrafficResetting(null)}
-			onReset={() => void runQuery(appliedQuery)} />}
+			onReset={() => { invalidateAdminData("users"); void runQuery(appliedQuery); }} />}
     {mailing && <AdminUserBulkMailDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} initialScope={activeBulkScope}
       onClose={() => setMailing(false)} onQueued={(job) => { setMailing(false); setBulkMessage(`邮件任务已创建，共 ${job.total_count} 项。`); setBulkJobsOpen(true); }} />}
     {banning && <AdminUserBulkBanDialog api={api} selectedUserIDs={selectedUserIDs} query={appliedQuery} scope={activeBulkScope}
       onClose={() => setBanning(false)} onCompleted={(job) => {
-        setBanning(false); setSelectedUserIDs(new Set());
+        invalidateAdminData("users"); setBanning(false); setSelectedUserIDs(new Set());
         setBulkMessage(`批量封禁完成：成功 ${job.success_count} 项，跳过 ${job.skipped_count} 项。`);
         void runQuery(appliedQuery);
       }} />}
     {bulkJobsOpen && <AdminUserBulkJobsDialog api={api} onClose={() => setBulkJobsOpen(false)} />}
     {lifecycle && <UserLifecycleDialog api={api} account={lifecycle.account} action={lifecycle.action}
-      onClose={() => setLifecycle(null)} onSaved={() => { setLifecycle(null); void runQuery(appliedQuery); }} />}
+      onClose={() => setLifecycle(null)} onSaved={() => { invalidateAdminData("users"); setLifecycle(null); void runQuery(appliedQuery); }} />}
   </main>;
 }
 

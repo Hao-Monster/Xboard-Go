@@ -40,7 +40,7 @@ export function partitionGoPackages(packages) {
 }
 
 export function listGoPackages() {
-  const output = execFileSync("go", ["list", "./..."], {
+  const output = execFileSync("go", ["list", "./cmd/...", "./internal/...", "./tools/..."], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"]
   });

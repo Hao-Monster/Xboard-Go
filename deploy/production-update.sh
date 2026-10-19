@@ -18,7 +18,13 @@ exec 9>"$directory/.deployment.lock"
 flock -x 9
 old_revision="$(docker inspect "$container" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
 [[ "$old_revision" =~ ^[a-f0-9]{40}$ && "$old_revision" != "$revision" ]] || fail 'Invalid or already installed revision'
-snapshot() { docker inspect remnawave remnanode remnawave-db remnawave-redis caddy --format '{{.Name}} {{.Id}} {{.State.StartedAt}} {{.State.Running}}'; }
+snapshot() {
+  local node_ids
+  local protected=(remnawave remnawave-db remnawave-redis caddy)
+  node_ids="$(docker container ls -aq --filter 'name=^/remnanode$')" || return 1
+  if [[ -n "$node_ids" ]]; then protected+=(remnanode); fi
+  docker inspect "${protected[@]}" --format '{{.Name}} {{.Id}} {{.State.StartedAt}} {{.State.Running}}'
+}
 baseline="$(snapshot)"
 [[ "$baseline" != *' false'* ]] || fail 'Protected service is not running'
 compose=(docker compose -p "$project" --env-file "$directory/.env" --project-directory "$directory" -f "$directory/compose.yaml")
@@ -60,8 +66,8 @@ for expected in ('XBOARD_IMAGE=xboard-go:'+revision,'COMPOSE_PROJECT_NAME='+proj
 with sqlite3.connect(database.as_uri()+'?mode=ro',uri=True) as db:
     assert db.execute('PRAGMA user_version').fetchone()[0]==67, 'Database already migrated; refuse automatic recovery'
 PYINTERRUPTED
-  curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$old_revision/compose.yaml" -o "$work/interrupted-compose.yaml"
-  cmp "$work/interrupted-compose.yaml" "$directory/compose.yaml" || fail 'Interrupted Compose differs from published previous release'
+  curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://raw.githubusercontent.com/Hao-Monster/Xboard-Go/$old_revision/deploy/compose.yaml" -o "$work/interrupted-compose.yaml"
+  cmp "$work/interrupted-compose.yaml" "$directory/compose.yaml" || fail 'Interrupted Compose differs from previous revision source'
   "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 app </dev/null
   curl -fsS --max-time 15 http://127.0.0.1:7080/healthz > "$work/recovered-health.json"
   python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["status"]=="ok"' "$work/recovered-health.json"
@@ -101,8 +107,8 @@ PYNODE
   (cd "$work/selected-node" && grep ' install.sh$' SHA256SUMS | sha256sum -c -)
 fi
 base="https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$revision"
-curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://github.com/Hao-Monster/Xboard-Go/releases/download/internal-$old_revision/compose.yaml" -o "$work/compose.previous"
-cmp "$work/compose.previous" "$directory/compose.yaml" || fail 'Existing Compose differs from its published release'
+curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "https://raw.githubusercontent.com/Hao-Monster/Xboard-Go/$old_revision/deploy/compose.yaml" -o "$work/compose.previous"
+cmp "$work/compose.previous" "$directory/compose.yaml" || fail 'Existing Compose differs from its revision source'
 curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 "$base/compose.yaml" -o "$work/compose.next"
 printf '%s  %s\n' "$compose_digest" "$work/compose.next" | sha256sum --check --status
 curl -fLsS --retry 3 "$base/xboard-go-linux-amd64.tar.gz" -o "$work/image.tar.gz"
@@ -204,6 +210,7 @@ rollback() {
     exit 1
   fi
   if (( isolated )); then reconnect_proxy || exit 1; fi
+  docker image rm -f "xboard-go:$revision" >/dev/null 2>&1 || true
   printf 'Update failed; previous Xboard image restored. Backup: %s\n' "$backup" >&2
   if (( database_changed )); then printf 'Compatible data restored; failed data retained under %s/%s-failed\n' "$data_root" "$recovery" >&2; fi
   exit 1

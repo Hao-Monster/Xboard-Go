@@ -76,16 +76,43 @@ func shadowrocketLine(node PreparedNode) string {
 	case "trojan":
 		return generalTrojan(node, randomFingerprint)
 	case "hysteria":
-		values := []queryValue{{"fastopen", "1"}}
-		if sni := stringSetting(settings, "tls.server_name"); sni != "" {
-			values = append(values, queryValue{"peer", sni})
+		switch numberValue(nested(settings, "version")) {
+		case 1:
+			values := []queryValue{
+				{"auth", node.Password},
+				{"upmbps", nested(settings, "bandwidth.up")},
+				{"downmbps", nested(settings, "bandwidth.down")},
+				{"protocol", "udp"},
+				{"fastopen", "1"},
+			}
+			if sni := stringSetting(settings, "tls.server_name"); sni != "" {
+				values = append(values, queryValue{"peer", sni})
+			}
+			if boolSetting(settings, "obfs.open") {
+				values = append(values,
+					queryValue{"obfs", "xplus"},
+					queryValue{"obfsParam", stringSetting(settings, "obfs.password")},
+				)
+			}
+			values = append(values, queryValue{"insecure", boolSetting(settings, "tls.allow_insecure")})
+			if node.Ports != "" {
+				values = append(values, queryValue{"mport", node.Ports})
+			}
+			return fmt.Sprintf("hysteria://%s:%d?%s#%s\r\n", wrapAddress(node.Host), node.Port, buildQuery(values...), node.Name)
+		case 2:
+			values := []queryValue{{"fastopen", "1"}}
+			if sni := stringSetting(settings, "tls.server_name"); sni != "" {
+				values = append(values, queryValue{"peer", sni})
+			}
+			if boolSetting(settings, "obfs.open") {
+				values = append([]queryValue{{"obfs", defaultString(stringSetting(settings, "obfs.type"), "salamander")}}, values...)
+				values = append(values, queryValue{"obfs-password", stringSetting(settings, "obfs.password")})
+			}
+			values = append(values, queryValue{"insecure", boolSetting(settings, "tls.allow_insecure")})
+			return fmt.Sprintf("hysteria2://%s@%s:%d?%s#%s\r\n", node.Password, wrapAddress(node.Host), node.Port, buildQuery(values...), node.Name)
+		default:
+			return ""
 		}
-		if boolSetting(settings, "obfs.open") {
-			values = append([]queryValue{{"obfs", defaultString(stringSetting(settings, "obfs.type"), "salamander")}}, values...)
-			values = append(values, queryValue{"obfs-password", stringSetting(settings, "obfs.password")})
-		}
-		values = append(values, queryValue{"insecure", boolSetting(settings, "tls.allow_insecure")})
-		return fmt.Sprintf("hysteria2://%s@%s:%d?%s#%s\r\n", node.Password, wrapAddress(node.Host), node.Port, buildQuery(values...), node.Name)
 	case "tuic":
 		values := []queryValue{}
 		alpn := stringsSetting(settings, "alpn")

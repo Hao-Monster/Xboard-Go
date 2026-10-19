@@ -42,8 +42,7 @@ export default defineConfig({
               id.includes("features/clients") || id.includes("features/plugins")) {
             return "admin-content-pages";
           }
-          if (id.includes("features/coupons") || id.includes("features/giftcards") ||
-              id.includes("features/payments")) {
+          if (id.includes("features/coupons") || id.includes("features/payments")) {
             return "admin-finance-tools";
           }
           return null;

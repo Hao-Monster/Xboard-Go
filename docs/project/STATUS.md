@@ -155,6 +155,7 @@ Baseline: `M0` · as of 2026-09-08 · verification target `cb386f5535d52f38b7985
 | `OBS-010` | M3 | in_progress | [#318](https://github.com/Hao-Monster/Xboard-Go/issues/318) | 慢链路产物断点续传与完整摘要验证 |
 | `OBS-011` | M3 | in_progress | [#320](https://github.com/Hao-Monster/Xboard-Go/issues/320) | 规范化 Docker 内容身份中的等价默认字段 |
 | `DIST-001` | M3 | in_progress | [#331](https://github.com/Hao-Monster/Xboard-Go/issues/331) | 官方 stable 镜像发布与第三方更新契约 |
+| `CI-002` | M3 | in_progress | [#341](https://github.com/Hao-Monster/Xboard-Go/issues/341) | 实施快速迭代阶段智能 PR 门禁与分级检查 |
 
 ## Release gates
 

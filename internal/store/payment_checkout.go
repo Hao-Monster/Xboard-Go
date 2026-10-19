@@ -29,7 +29,7 @@ func (s *Store) StartPaymentCheckout(ctx context.Context, input StartPaymentChec
 	if err != nil {
 		return PaymentCheckoutStart{}, err
 	}
-	if order.Status != OrderStatusPending || order.TotalAmount <= 0 {
+	if order.Status != OrderStatusPending || order.TotalAmount <= 0 || !now.Before(order.CreatedAt.Add(orderTimeout)) {
 		return PaymentCheckoutStart{}, ErrOrderState
 	}
 	method, err := getPayment(ctx, tx, input.PaymentID)
@@ -314,7 +314,8 @@ func (s *Store) CompletePaymentWebhook(ctx context.Context, input CompletePaymen
 		order.HandlingAmount = &handlingAmount
 	}
 	order.UpdatedAt = now.UTC()
-	if err := completeOrderTx(ctx, tx, &order, input.ExternalID, now); err != nil {
+	change, err := completeOrderTx(ctx, tx, &order, input.ExternalID, now)
+	if err != nil {
 		return Order{}, err
 	}
 	if err := enqueueTelegramPaymentNotificationTx(ctx, tx, order, method, now); err != nil {
@@ -323,6 +324,7 @@ func (s *Store) CompletePaymentWebhook(ctx context.Context, input CompletePaymen
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete payment webhook: %w", err)
 	}
+	order.Change = &change
 	return order, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -125,7 +126,7 @@ func appendJournalRecord(path string, record any) error {
 		return fmt.Errorf("encode lifecycle state: %w", err)
 	}
 	payload = append(payload, '\n')
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, stateFileMode)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, stateFileMode)
 	if err != nil {
 		return fmt.Errorf("open lifecycle journal: %w", err)
 	}
@@ -140,6 +141,40 @@ func appendJournalRecord(path string, record any) error {
 	if info.Size()+int64(len(payload)) > maxJournalBytes {
 		return fmt.Errorf("lifecycle journal append would exceed %d bytes", maxJournalBytes)
 	}
+	history, err := io.ReadAll(io.LimitReader(file, maxJournalBytes+1))
+	if err != nil {
+		return fmt.Errorf("read lifecycle journal before append: %w", err)
+	}
+	if int64(len(history)) != info.Size() {
+		return errors.New("lifecycle journal changed while preparing append")
+	}
+	completeEnd := bytes.LastIndexByte(history, '\n') + 1
+	if len(history) != 0 && completeEnd == 0 {
+		return errors.New("lifecycle journal has no complete state record")
+	}
+	completeRecords := 0
+	for index, line := range bytes.Split(history[:completeEnd], []byte{'\n'}) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		if err := validateJournalRecord(line, record); err != nil {
+			return fmt.Errorf("validate lifecycle journal record %d before append: %w", index+1, err)
+		}
+		completeRecords++
+	}
+	if len(history) != 0 && completeRecords == 0 {
+		return errors.New("lifecycle journal has no complete state record")
+	}
+	// Callers hold the lifecycle operation lock. Only an unterminated suffix can
+	// be discarded; a complete bad record is evidence that requires inspection.
+	if completeEnd != len(history) {
+		if err := file.Truncate(int64(completeEnd)); err != nil {
+			return fmt.Errorf("truncate incomplete lifecycle journal tail: %w", err)
+		}
+	}
+	if _, err := file.Seek(int64(completeEnd), io.SeekStart); err != nil {
+		return fmt.Errorf("seek lifecycle journal append: %w", err)
+	}
 	if _, err := file.Write(payload); err != nil {
 		return fmt.Errorf("append lifecycle journal: %w", err)
 	}
@@ -147,6 +182,25 @@ func appendJournalRecord(path string, record any) error {
 		return fmt.Errorf("sync lifecycle journal: %w", err)
 	}
 	return nil
+}
+
+func validateJournalRecord(payload []byte, kind any) error {
+	switch kind.(type) {
+	case State:
+		var state State
+		if err := json.Unmarshal(payload, &state); err != nil {
+			return err
+		}
+		return validateState(state)
+	case DeploymentState:
+		var state DeploymentState
+		if err := json.Unmarshal(payload, &state); err != nil {
+			return err
+		}
+		return validateDeploymentState(state)
+	default:
+		return errors.New("unsupported lifecycle journal record type")
+	}
 }
 
 func (j *Journal) Load() (State, error) {

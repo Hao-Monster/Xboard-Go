@@ -35,12 +35,18 @@ type CommandRunner interface {
 type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, name string, arguments ...string) (CommandOutput, error) {
+	if err := ctx.Err(); err != nil {
+		return CommandOutput{}, markCommandNotStartedError(err)
+	}
 	command := exec.CommandContext(ctx, name, arguments...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	err := command.Run()
+	if err != nil && command.Process == nil && command.ProcessState == nil && ctx.Err() != nil {
+		err = markCommandNotStartedError(err)
+	}
 	return CommandOutput{Stdout: stdout.String(), Stderr: stderr.String()}, err
 }
 
@@ -374,18 +380,21 @@ func (p *DockerPlatform) FreshDeployment(ctx context.Context) (bool, error) {
 
 func (p *DockerPlatform) ActivateDeployment(ctx context.Context, deployment Deployment, dsn string, changed []Component) (DeploymentApplication, error) {
 	if err := validateDeployment(deployment); err != nil {
-		return DeploymentApplication{}, err
+		return DeploymentApplication{}, markPreStartActivationError(err)
 	}
 	if !databasePattern.MatchString(dsn) {
-		return DeploymentApplication{}, fmt.Errorf("unsupported deployment database DSN %q", dsn)
+		return DeploymentApplication{}, markPreStartActivationError(fmt.Errorf("unsupported deployment database DSN %q", dsn))
 	}
 	if len(changed) == 0 {
-		return DeploymentApplication{}, errors.New("deployment activation requires changed components")
+		return DeploymentApplication{}, markPreStartActivationError(errors.New("deployment activation requires changed components"))
+	}
+	if _, err := p.deploymentRuntimeEnvFile(deployment, dsn); err != nil {
+		return DeploymentApplication{}, markPreStartActivationError(err)
 	}
 	images := map[Component]Image{ComponentGateway: deployment.Gateway, ComponentFrontend: deployment.Frontend, ComponentBackend: deployment.Backend}
 	for _, component := range []Component{ComponentGateway, ComponentFrontend, ComponentBackend} {
 		if _, err := p.runner.Run(ctx, "docker", "image", "tag", images[component].ID, p.deploymentRuntimeImageTag(component)); err != nil {
-			return DeploymentApplication{}, commandFailure("bind target "+string(component)+" image", err)
+			return DeploymentApplication{}, markPreStartActivationError(commandFailure("bind target "+string(component)+" image", err))
 		}
 	}
 	ordered := make([]string, 0, len(changed))
@@ -399,8 +408,13 @@ func (p *DockerPlatform) ActivateDeployment(ctx context.Context, deployment Depl
 		arguments = append(arguments, "--no-deps")
 	}
 	arguments = append(arguments, ordered...)
+	preComposeCanceled := ctx.Err() != nil
 	if _, err := p.runDeploymentCompose(ctx, deployment, dsn, arguments...); err != nil {
-		return DeploymentApplication{}, commandFailure("activate target deployment", err)
+		failure := commandFailure("activate target deployment", err)
+		if preComposeCanceled || isCommandNotStartedError(err) {
+			return DeploymentApplication{}, markPreStartActivationError(failure)
+		}
+		return DeploymentApplication{}, failure
 	}
 	deadline := time.Now().Add(p.config.HealthTimeout)
 	for {
@@ -420,6 +434,13 @@ func (p *DockerPlatform) ActivateDeployment(ctx context.Context, deployment Depl
 		case <-timer.C:
 		}
 	}
+}
+
+func (p *DockerPlatform) StopDeployment(ctx context.Context) error {
+	if _, err := p.runner.Run(ctx, "docker", "container", "stop", "--time", "15", p.deploymentContainerName(ComponentBackend)); err != nil {
+		return commandFailure("stop deployment backend", err)
+	}
+	return nil
 }
 
 func (p *DockerPlatform) BackupDeployment(ctx context.Context, current DeploymentApplication, outputPath string) (backup.Manifest, error) {
@@ -487,19 +508,24 @@ func (p *DockerPlatform) Fresh(ctx context.Context) (bool, error) {
 
 func (p *DockerPlatform) Activate(ctx context.Context, image Image, dsn string) (Application, error) {
 	if err := validateImage(image); err != nil {
-		return Application{}, err
+		return Application{}, markPreStartActivationError(err)
 	}
 	if !databasePattern.MatchString(dsn) {
-		return Application{}, fmt.Errorf("unsupported activation database DSN %q", dsn)
+		return Application{}, markPreStartActivationError(fmt.Errorf("unsupported activation database DSN %q", dsn))
 	}
 	if _, err := p.runtimeEnvFile(dsn); err != nil {
-		return Application{}, err
+		return Application{}, markPreStartActivationError(err)
 	}
 	if _, err := p.runner.Run(ctx, "docker", "image", "tag", image.ID, p.runtimeImageTag()); err != nil {
-		return Application{}, commandFailure("bind target runtime image", err)
+		return Application{}, markPreStartActivationError(commandFailure("bind target runtime image", err))
 	}
+	preStopCanceled := ctx.Err() != nil
 	if _, err := p.runCompose(ctx, dsn, "stop", "xboard-go"); err != nil {
-		return Application{}, commandFailure("stop active application", err)
+		failure := commandFailure("stop active application", err)
+		if preStopCanceled || isCommandNotStartedError(err) {
+			return Application{}, markPreStartActivationError(failure)
+		}
+		return Application{}, failure
 	}
 	if _, err := p.runCompose(ctx, dsn, "up", "-d", "--no-build", "--force-recreate", "xboard-go"); err != nil {
 		return Application{}, commandFailure("start target application", err)
@@ -539,6 +565,13 @@ func (p *DockerPlatform) Activate(ctx context.Context, image Image, dsn string) 
 		case <-timer.C:
 		}
 	}
+}
+
+func (p *DockerPlatform) Stop(ctx context.Context) error {
+	if _, err := p.runner.Run(ctx, "docker", "container", "stop", "--time", "15", p.containerName()); err != nil {
+		return commandFailure("stop application", err)
+	}
+	return nil
 }
 
 func (p *DockerPlatform) Backup(ctx context.Context, current Application, outputPath string) (backup.Manifest, error) {
@@ -854,4 +887,42 @@ func commandFailure(stage string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("%s failed: %w", stage, err)
+}
+
+type commandNotStartedError struct {
+	err error
+}
+
+func (e commandNotStartedError) Error() string { return e.err.Error() }
+func (e commandNotStartedError) Unwrap() error { return e.err }
+
+func markCommandNotStartedError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return commandNotStartedError{err: err}
+}
+
+func isCommandNotStartedError(err error) bool {
+	var target commandNotStartedError
+	return errors.As(err, &target)
+}
+
+type preStartActivationError struct {
+	err error
+}
+
+func (e preStartActivationError) Error() string { return e.err.Error() }
+func (e preStartActivationError) Unwrap() error { return e.err }
+
+func markPreStartActivationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return preStartActivationError{err: err}
+}
+
+func isPreStartActivationError(err error) bool {
+	var target preStartActivationError
+	return errors.As(err, &target)
 }

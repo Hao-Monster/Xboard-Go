@@ -582,6 +582,11 @@ func (s *server) legacyUpdateAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var passwordHash *string
 	if input.Password != nil && *input.Password != "" {
+		release, ok := s.beginPasswordWork(w, true)
+		if !ok {
+			return
+		}
+		defer release()
 		hashed, hashErr := s.passwordHasher.Hash(*input.Password)
 		if hashErr != nil {
 			writeLegacyOrderFail(w, http.StatusInternalServerError, "用户更新失败")
@@ -727,6 +732,11 @@ func (s *server) createAdminUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查用户信息", fields)
 		return
 	}
+	release, ok := s.beginPasswordWork(w, false)
+	if !ok {
+		return
+	}
+	defer release()
 	passwordHash, err := s.passwordHasher.Hash(input.Password)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -1191,6 +1201,11 @@ func (s *server) updateAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var passwordHash *string
 	if input.Password != nil && *input.Password != "" {
+		release, ok := s.beginPasswordWork(w, false)
+		if !ok {
+			return
+		}
+		defer release()
 		hashed, err := s.passwordHasher.Hash(*input.Password)
 		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -1267,6 +1282,11 @@ func (s *server) resetAdminUserPassword(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请检查密码输入", fields)
 		return
 	}
+	release, ok := s.beginPasswordWork(w, false)
+	if !ok {
+		return
+	}
+	defer release()
 	passwordHash, err := s.passwordHasher.Hash(input.NewPassword)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)

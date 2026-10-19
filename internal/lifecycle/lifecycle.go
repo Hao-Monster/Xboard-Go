@@ -77,6 +77,7 @@ type Platform interface {
 	ResolveImage(context.Context, string) (Image, error)
 	Fresh(context.Context) (bool, error)
 	Activate(context.Context, Image, string) (Application, error)
+	Stop(context.Context) error
 	Backup(context.Context, Application, string) (backup.Manifest, error)
 	Restore(context.Context, Image, string, string, string) (backup.Manifest, error)
 }
@@ -205,67 +206,42 @@ func (o *Orchestrator) Upgrade(ctx context.Context, imageReference string) (Resu
 	if activationErr == nil {
 		state.Status = StatusUpgraded
 		state.UpdatedAt = o.now().UTC()
-		if err := o.journal.Append(state); err != nil {
-			return failedResult("lifecycle.upgrade", application, &state), err
+		if err := o.journal.Append(state); err == nil {
+			return Result{Status: "success", Action: "lifecycle.upgrade", Application: &application, State: &state}, nil
+		} else {
+			activationErr = fmt.Errorf("record successful upgrade: %w", err)
 		}
-		return Result{Status: "success", Action: "lifecycle.upgrade", Application: &application, State: &state}, nil
 	}
+	if isPreStartActivationError(activationErr) {
+		state.Status = StatusAutoRolledBack
+		state.UpdatedAt = o.now().UTC()
+		state.ActiveDSN = current.DSN
+		state.Failure = safeFailure(activationErr)
+		operationErr := fmt.Errorf("upgrade failed before candidate start; previous application preserved: %w", activationErr)
+		if err := o.journal.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedResult("lifecycle.upgrade", current, &state), operationErr
+	}
+	// A candidate may have accepted writes or run background jobs before failing.
+	// An online pre-upgrade snapshot is a recovery artifact, not a lossless rollback.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	stopErr := o.platform.Stop(cleanupCtx)
 	state.Status = StatusTargetFailed
 	state.UpdatedAt = o.now().UTC()
-	state.Failure = safeFailure(activationErr)
+	operationErr := fmt.Errorf("upgrade failed; current data and pre-upgrade backup retained; explicit recovery required: %w", activationErr)
+	if stopErr != nil {
+		operationErr = errors.Join(operationErr, fmt.Errorf("stop failed candidate: %w", stopErr))
+	} else {
+		application.Healthy = false
+		application.ContainerStatus = "exited"
+	}
+	state.Failure = safeFailure(operationErr)
 	if err := o.journal.Append(state); err != nil {
-		return failedResult("lifecycle.upgrade", application, &state), errors.Join(activationErr, err)
+		operationErr = errors.Join(operationErr, err)
 	}
-
-	restoredDSN := fmt.Sprintf("file:/var/lib/xboard/xboard-rollback-%s.db", lifecycleTimestamp(now))
-	restoredPath := strings.TrimPrefix(restoredDSN, "file:")
-	restoredAttachments, attachmentOutput, restoreErr := restoredAttachmentPaths(restoredDSN, manifest.FormatVersion)
-	var restoredManifest backup.Manifest
-	if restoreErr == nil {
-		restoredManifest, restoreErr = o.platform.Restore(ctx, current.Image, backupPath, restoredPath, attachmentOutput)
-	}
-	if restoreErr == nil && !reflect.DeepEqual(restoredManifest, manifest) {
-		restoreErr = fmt.Errorf(
-			"restored backup revision %q or manifest does not match the verified pre-upgrade backup revision %q",
-			restoredManifest.AppRevision, manifest.AppRevision,
-		)
-	}
-	if restoreErr != nil {
-		state.Status = StatusRollbackFailed
-		state.UpdatedAt = o.now().UTC()
-		state.RestoredPath = restoredPath
-		state.RestoredAttachments = restoredAttachments
-		state.Failure = safeFailure(restoreErr)
-		operationErr := fmt.Errorf("target failed (%v) and automatic database restore failed: %w", activationErr, restoreErr)
-		if appendErr := o.journal.Append(state); appendErr != nil {
-			operationErr = errors.Join(operationErr, appendErr)
-		}
-		return failedResult("lifecycle.upgrade", application, &state), operationErr
-	}
-	recovered, err := o.platform.Activate(ctx, current.Image, restoredDSN)
-	if err != nil {
-		state.Status = StatusRollbackFailed
-		state.UpdatedAt = o.now().UTC()
-		state.RestoredPath = restoredPath
-		state.RestoredAttachments = restoredAttachments
-		state.Failure = safeFailure(err)
-		operationErr := fmt.Errorf("target failed (%v) and restored previous image failed health validation: %w", activationErr, err)
-		if appendErr := o.journal.Append(state); appendErr != nil {
-			operationErr = errors.Join(operationErr, appendErr)
-		}
-		return failedResult("lifecycle.upgrade", recovered, &state), operationErr
-	}
-	state.Status = StatusAutoRolledBack
-	state.UpdatedAt = o.now().UTC()
-	state.ActiveDSN = restoredDSN
-	state.RestoredPath = restoredPath
-	state.RestoredAttachments = restoredAttachments
-	state.Failure = safeFailure(activationErr)
-	result := failedResult("lifecycle.upgrade", recovered, &state)
-	if err := o.journal.Append(state); err != nil {
-		return result, errors.Join(fmt.Errorf("upgrade target failed and was automatically rolled back: %w", activationErr), err)
-	}
-	return result, fmt.Errorf("upgrade target failed and was automatically rolled back: %w", activationErr)
+	return failedResult("lifecycle.upgrade", application, &state), operationErr
 }
 
 func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
@@ -273,21 +249,24 @@ func (o *Orchestrator) Rollback(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if state.Status != StatusUpgraded {
-		return Result{}, fmt.Errorf("rollback requires lifecycle status %q, found %q", StatusUpgraded, state.Status)
+	if state.Status != StatusUpgraded && state.Status != StatusTargetFailed {
+		return Result{}, fmt.Errorf("rollback requires lifecycle status %q or %q, found %q", StatusUpgraded, StatusTargetFailed, state.Status)
 	}
 	current, err := o.platform.Current(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := validateApplication(current); err != nil {
+	if err := validateApplicationIdentity(current); err != nil {
 		return Result{}, err
 	}
 	if state.Previous == nil || state.Target == nil {
 		return Result{}, errors.New("rollback state is missing its previous or target image")
 	}
-	if current.Image.ID != state.Target.ID {
+	if current.Image.ID != state.Target.ID && (state.Status != StatusTargetFailed || current.Image.ID != state.Previous.ID) {
 		return Result{}, fmt.Errorf("rollback target image mismatch: active %s, recorded target image %s", current.Image.ID, state.Target.ID)
+	}
+	if state.ActiveDSN != "" && current.DSN != state.ActiveDSN {
+		return Result{}, errors.New("active database DSN drifts from the lifecycle journal")
 	}
 	if state.BackupManifest == nil {
 		return Result{}, errors.New("rollback state is missing its verified backup manifest")

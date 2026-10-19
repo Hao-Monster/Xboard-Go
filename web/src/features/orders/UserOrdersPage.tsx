@@ -1,5 +1,5 @@
 import { GiftCardPurchaseDetails } from "./GiftCardPurchaseDetails";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Modal } from "../../components/Overlay";
 import type { Order, OrderStatus, PaymentCheckout, PurchaseChannels, UserPaymentMethod } from "../../lib/api";
@@ -21,62 +21,138 @@ export function UserOrdersPage({ api, initialTradeNo = null, onInitialHandled, o
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
   const [detailLoading, setDetailLoading] = useState(initialTradeNo !== null);
+  const listRequest = useRef(0);
+  const detailRequest = useRef(0);
+  const mutationSequence = useRef(0);
+  const recentOrderMutations = useRef(new Map<number, { seq: number; order: Order }>());
+  const statusRef = useRef<"" | OrderStatus>(status);
+  const onInitialHandledRef = useRef(onInitialHandled);
 
-  const load = useCallback(async (nextStatus: "" | OrderStatus = status) => {
+  useEffect(() => {
+    onInitialHandledRef.current = onInitialHandled;
+  }, [onInitialHandled]);
+
+  const reconcileSingleOrder = useCallback((item: Order): Order => {
+    const mutated = recentOrderMutations.current.get(item.id);
+    if (mutated !== undefined && isNewerOrderSnapshot(mutated.order, item)) {
+      return { ...item, ...mutated.order };
+    }
+    return item;
+  }, []);
+
+  const reconcileLoadedOrders = useCallback((items: Order[], startedAtMutation: number, activeStatus: "" | OrderStatus) => {
+    const merged = items.map((item) => {
+      const mutated = recentOrderMutations.current.get(item.id);
+      if (mutated === undefined || mutated.seq <= startedAtMutation || !isNewerOrderSnapshot(mutated.order, item)) {
+        return item;
+      }
+      return { ...item, ...mutated.order };
+    });
+    return activeStatus === "" ? merged : merged.filter((item) => item.status === activeStatus);
+  }, []);
+
+  const load = useCallback(async (nextStatus: "" | OrderStatus = statusRef.current) => {
+    const id = ++listRequest.current;
+    const startedAtMutation = mutationSequence.current;
     setLoading(true);
     setError("");
     try {
-      setOrders(await api.listOrders(nextStatus === "" ? undefined : nextStatus, 100));
+      const next = await api.listOrders(nextStatus === "" ? undefined : nextStatus, 100);
+      if (id === listRequest.current) setOrders(reconcileLoadedOrders(next, startedAtMutation, statusRef.current));
     } catch (cause) {
-      setError(messageOf(cause));
+      if (id === listRequest.current) setError(messageOf(cause));
     } finally {
-      setLoading(false);
+      if (id === listRequest.current) setLoading(false);
     }
-  }, [api, status]);
+  }, [api, reconcileLoadedOrders]);
 
   const open = useCallback(async (tradeNo: string) => {
+    const id = ++detailRequest.current;
     setDetailLoading(true);
     setError("");
+    onInitialHandledRef.current?.();
     try {
-      setSelected(await api.getOrder(tradeNo));
+      const next = reconcileSingleOrder(await api.getOrder(tradeNo));
+      if (id === detailRequest.current) {
+        setSelected((current) => current?.trade_no === next.trade_no && !isNewerOrderSnapshot(next, current) ? current : next);
+      }
     } catch (cause) {
-      setError(messageOf(cause));
+      if (id === detailRequest.current) setError(messageOf(cause));
     } finally {
-      setDetailLoading(false);
+      if (id === detailRequest.current) setDetailLoading(false);
     }
-  }, [api]);
+  }, [api, reconcileSingleOrder]);
 
   useEffect(() => {
     let active = true;
-    void api.listOrders(undefined, 100).then((result) => { if (active) setOrders(result); })
-      .catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
-      .finally(() => { if (active) setLoading(false); });
+    recentOrderMutations.current.clear();
+    const id = ++listRequest.current;
+    const startedAtMutation = mutationSequence.current;
+    void api.listOrders(undefined, 100).then((result) => {
+      if (active && id === listRequest.current) {
+        setOrders(reconcileLoadedOrders(result, startedAtMutation, statusRef.current));
+      }
+    })
+      .catch((cause: unknown) => { if (active && id === listRequest.current) setError(messageOf(cause)); })
+      .finally(() => { if (active && id === listRequest.current) setLoading(false); });
     return () => { active = false; };
-  }, [api]);
+  }, [api, reconcileLoadedOrders]);
 
   useEffect(() => {
     if (initialTradeNo === null) return;
     let active = true;
-    void api.getOrder(initialTradeNo).then((result) => { if (active) setSelected(result); })
-      .catch((cause: unknown) => { if (active) setError(messageOf(cause)); })
-      .finally(() => { if (active) { setDetailLoading(false); onInitialHandled?.(); } });
+    const id = ++detailRequest.current;
+    void api.getOrder(initialTradeNo).then((raw) => {
+      const result = reconcileSingleOrder(raw);
+      if (active && id === detailRequest.current) {
+        setSelected((current) => current?.trade_no === result.trade_no && !isNewerOrderSnapshot(result, current) ? current : result);
+      }
+    })
+      .catch((cause: unknown) => { if (active && id === detailRequest.current) setError(messageOf(cause)); })
+      .finally(() => {
+        if (active && id === detailRequest.current) {
+          setDetailLoading(false);
+        }
+        if (active) {
+          onInitialHandledRef.current?.();
+        }
+      });
     return () => { active = false; };
-  }, [api, initialTradeNo, onInitialHandled]);
+  }, [api, initialTradeNo, reconcileSingleOrder]);
 
   const replace = useCallback((order: Order) => {
-    setOrders((current) => current.map((item) => item.id === order.id ? { ...item, ...order } : item));
-    setSelected(order);
+    const existingMutation = recentOrderMutations.current.get(order.id);
+    const nextOrder = existingMutation !== undefined && !isNewerOrderSnapshot(order, existingMutation.order)
+      ? existingMutation.order
+      : order;
+    recentOrderMutations.current.set(order.id, { seq: ++mutationSequence.current, order: nextOrder });
+    setOrders((current) => {
+      const updated = current.map((item) =>
+        item.id === nextOrder.id && isNewerOrderSnapshot(nextOrder, item) ? { ...item, ...nextOrder } : item
+      );
+      return statusRef.current === "" ? updated : updated.filter((item) => item.status === statusRef.current);
+    });
+    setSelected((current) =>
+      current?.trade_no === nextOrder.trade_no && isNewerOrderSnapshot(nextOrder, current) ? nextOrder : current
+    );
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    detailRequest.current += 1;
+    setDetailLoading(false);
+    setSelected(null);
+    onInitialHandledRef.current?.();
   }, []);
 
   return <main className="page-shell resource-page order-page">
     <header className="page-header"><div><p className="eyebrow">Orders</p><h1>我的订单</h1><p className="muted">查看订单金额、支付状态与套餐开通结果。</p></div><button className="button secondary" disabled={loading} onClick={() => void load()}>{loading ? "正在刷新…" : "刷新"}</button></header>
-    <div className="ticket-status-tabs" role="group" aria-label="订单状态筛选">{([ ["", "全部"], [0, "待支付"], [1, "开通中"], [2, "已取消"], [3, "已完成"], [4, "已折抵"] ] as const).map(([value, label]) => <button key={String(value)} className={`button ${status === value ? "primary" : "secondary"}`} onClick={() => { setStatus(value); void load(value); }}>{label}</button>)}</div>
+    <div className="ticket-status-tabs" role="group" aria-label="订单状态筛选">{([ ["", "全部"], [0, "待支付"], [1, "开通中"], [2, "已取消"], [3, "已完成"], [4, "已折抵"] ] as const).map(([value, label]) => <button key={String(value)} className={`button ${status === value ? "primary" : "secondary"}`} onClick={() => { statusRef.current = value; setStatus(value); void load(value); }}>{label}</button>)}</div>
     {error !== "" && <div className="alert error resource-alert" role="alert"><span>{error}</span><button className="button ghost compact" onClick={() => void load()}>重试</button></div>}
     {detailLoading && <div className="alert" role="status">正在读取订单详情…</div>}
     {loading && orders.length === 0 ? <div className="empty-card">正在加载订单…</div> : orders.length === 0 ? <div className="empty-card">没有符合条件的订单。</div> : <section className="resource-table-wrap" aria-label="订单列表"><table className="resource-table"><thead><tr><th>订单号</th><th>套餐</th><th>类型 / 周期</th><th>金额</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}>
       <td data-label="订单号"><strong className="monospace">{order.trade_no}</strong></td><td data-label="套餐">{order.purchase_snapshot?.plan_name ?? order.plan?.name ?? `套餐 #${order.plan_id}`}</td><td data-label="类型 / 周期">{order.source === "gift_card_purchase" ? "兑换码购买" : orderTypeLabel(order.type)}<small className="muted">{periodLabel(order.period)}</small></td><td data-label="金额">{order.source === "gift_card_purchase" ? "外部金额未核验" : `¥${formatCents(order.total_amount)}`}{order.balance_amount > 0 && <small className="muted">余额支付 ¥{formatCents(order.balance_amount)}</small>}</td><td data-label="状态"><span className={`order-status status-${order.status}`}>{orderStatusLabel(order.status)}</span></td><td data-label="创建时间">{formatDate(order.created_at)}</td><td data-label="操作"><button className="button secondary compact" aria-label={`查看订单：${order.trade_no}`} onClick={() => void open(order.trade_no)}>订单详情</button></td>
     </tr>)}</tbody></table></section>}
-    {selected !== null && <OrderDetailDialog api={api} order={selected} onUpdated={replace} onClose={() => setSelected(null)} onRedeem={onRedeem} />}
+    {selected !== null && <OrderDetailDialog api={api} order={selected} onUpdated={replace} onClose={closeDetail} onRedeem={onRedeem} />}
   </main>;
 }
 
@@ -145,7 +221,7 @@ function OrderDetailDialog({ api, order, onUpdated, onClose, onRedeem }: { api: 
   return <Modal title="订单详情" onClose={onClose}><div className="modal-header"><div><p className="eyebrow">Order detail</p><h2>订单详情</h2></div><button className="icon-button" aria-label="关闭订单详情" onClick={onClose}>×</button></div>
     <GiftCardPurchaseDetails order={order} /><div className="detail-list order-detail-list"><div><span>订单号</span><strong className="monospace">{order.trade_no}</strong></div><div><span>套餐</span><strong>{order.purchase_snapshot?.plan_name ?? order.plan?.name ?? `#${order.plan_id}`}</strong></div><div><span>类型</span><strong>{order.source === "gift_card_purchase" ? "兑换码购买" : orderTypeLabel(order.type)} · {periodLabel(order.period)}</strong></div><div><span>状态</span><strong>{orderStatusLabel(order.status)}</strong></div><div><span>套餐标价</span><strong>¥{formatCents(order.original_amount)}</strong></div>{order.discount_amount > 0 && <div><span>优惠</span><strong>-¥{formatCents(order.discount_amount)}</strong></div>}{order.surplus_amount > 0 && <div><span>套餐折抵</span><strong>-¥{formatCents(order.surplus_amount)}</strong></div>}{order.balance_amount > 0 && <div><span>余额支付</span><strong>-¥{formatCents(order.balance_amount)}</strong></div>}<div><span>{order.source === "gift_card_purchase" ? "站内收款" : "待支付"}</span><strong>¥{formatCents(order.total_amount + (order.handling_amount ?? 0))}</strong></div><div><span>创建时间</span><strong>{formatDate(order.created_at)}</strong></div>{order.paid_at !== null && <div><span>支付时间</span><strong>{formatDate(order.paid_at)}</strong></div>}</div>
 	{order.source !== "gift_card_purchase" && order.status === 0 && order.total_amount > 0 && methodsLoading && <div className="alert" role="status">正在加载支付方式…</div>}
-	{order.source !== "gift_card_purchase" && order.status === 0 && order.total_amount > 0 && !methodsLoading && !methodsFailed && methods.length === 0 && <PurchaseAlternatives load={loadChannels} onRedeem={onRedeem} customerID={order.user_id} />}
+	{order.source !== "gift_card_purchase" && order.status === 0 && order.total_amount > 0 && !methodsLoading && !methodsFailed && methods.length === 0 && <PurchaseAlternatives load={loadChannels} onRedeem={onRedeem} customerID={order.user_id} order={{ tradeNo: order.trade_no, customerID: order.user_id, planName: order.purchase_snapshot?.plan_name ?? order.plan?.name ?? `套餐 #${order.plan_id}`, period: periodLabel(order.period), amount: order.total_amount + (order.handling_amount ?? 0) }} />}
 	{order.source !== "gift_card_purchase" && order.status === 0 && order.total_amount > 0 && methods.length > 0 && paymentResult === null && <fieldset className="settings-fieldset payment-checkout-methods"><legend>选择支付方式</legend>{methods.map((method) => { const fee = paymentHandlingFee(order.total_amount, method); return <label className="payment-method-option" key={method.id}><input aria-label={method.name} type="radio" name="payment_method" checked={paymentID === method.id} onChange={() => setPaymentID(method.id)} /><span><strong>{method.name}</strong><small className="muted">{method.payment}</small></span><span>{fee === 0 ? "免手续费" : `手续费 ¥${formatCents(fee)}`}</span></label>; })}<div className="order-total"><span>合计支付</span><strong>¥{formatCents(order.total_amount + selectedFee)}</strong></div></fieldset>}
     {order.source !== "gift_card_purchase" && order.status === 0 && order.total_amount === 0 && <div className="alert success" role="status">该订单无需在线支付，可直接开通。</div>}
 	{paymentResult !== null && <div className="payment-result" role="status">{paymentResult.type === 0 && paymentResult.qr_code !== undefined && <img src={paymentResult.qr_code} alt="支付二维码" />}<strong>{paymentResult.type === 0 ? "请扫码完成支付" : "支付订单已创建"}</strong><span>应付 ¥{formatCents(paymentResult.total_amount)}</span><a className="button primary" href={safePaymentURL(paymentResult.data)}>{paymentResult.type === 0 ? "在当前设备打开支付链接" : "前往支付"}</a><small className="muted">支付完成后可刷新订单查看结果；重复点击不会重复创建渠道订单。</small></div>}
@@ -161,4 +237,30 @@ export function formatCents(value: number): string { return `${Math.trunc(value 
 export function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false }); }
 function paymentHandlingFee(amount: number, method: UserPaymentMethod): number { return Number((BigInt(amount) * BigInt(method.handling_fee_basis_points) + 5_000n) / 10_000n + BigInt(method.handling_fee_fixed)); }
 function safePaymentURL(value: string): string { try { const parsed = new URL(value); return parsed.protocol === "https:" ? parsed.toString() : "#"; } catch { return "#"; } }
+function orderLifecycleRank(status: OrderStatus): number {
+  switch (status) {
+    case 0:
+      return 0;
+    case 1:
+      return 1;
+    case 3:
+      return 2;
+    case 2:
+    case 4:
+      return 3;
+  }
+}
+function isNewerOrderSnapshot(candidate: Order, baseline: Order): boolean {
+  const candidateRank = orderLifecycleRank(candidate.status);
+  const baselineRank = orderLifecycleRank(baseline.status);
+  if (candidateRank !== baselineRank) {
+    return candidateRank > baselineRank;
+  }
+  const candidateTime = Date.parse(candidate.updated_at);
+  const baselineTime = Date.parse(baseline.updated_at);
+  if (!Number.isNaN(candidateTime) && !Number.isNaN(baselineTime) && candidateTime !== baselineTime) {
+    return candidateTime > baselineTime;
+  }
+  return true;
+}
 function messageOf(cause: unknown): string { return cause instanceof Error ? cause.message : "订单请求失败"; }

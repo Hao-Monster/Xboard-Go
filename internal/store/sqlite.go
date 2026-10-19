@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 68
+const currentSchemaVersion = 70
 
 func CurrentSchemaVersion() int {
 	return currentSchemaVersion
@@ -495,6 +495,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("apply schema v68: %w", err)
 		}
 		version = 68
+	}
+	if version < 69 {
+		if _, err := tx.ExecContext(ctx, schemaV69SchedulerQuarantineLegacy); err != nil {
+			return fmt.Errorf("apply schema v69: %w", err)
+		}
+		version = 69
+	}
+	if version < 70 {
+		if err := applySchemaV70SchedulerQuarantine(ctx, tx); err != nil {
+			return fmt.Errorf("apply schema v70: %w", err)
+		}
+		version = 70
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
 		return fmt.Errorf("set schema version: %w", err)
@@ -2975,6 +2987,70 @@ func applySchemaV41(ctx context.Context, tx *sql.Tx) error {
 	}
 	if _, err := tx.ExecContext(ctx, schemaV41); err != nil {
 		return fmt.Errorf("add node_protocol_definitions.listen_address: %w", err)
+	}
+	return nil
+}
+
+const schemaV69SchedulerQuarantineLegacy = `
+CREATE TABLE IF NOT EXISTS scheduler_quarantine (
+    scope TEXT NOT NULL CHECK (scope IN ('commission_settlement', 'stale_order_cancel')),
+    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+    quarantined_at INTEGER NOT NULL CHECK (quarantined_at >= 0),
+    PRIMARY KEY (scope, order_id)
+) STRICT, WITHOUT ROWID;
+`
+
+const schemaV70SchedulerQuarantine = `
+CREATE TABLE IF NOT EXISTS scheduler_quarantine (
+    kind TEXT NOT NULL CHECK (kind IN ('commission', 'stale_order')),
+    entity_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+    attempts INTEGER NOT NULL CHECK (attempts >= 1),
+    first_failed_at INTEGER NOT NULL CHECK (first_failed_at >= 0),
+    last_failed_at INTEGER NOT NULL CHECK (last_failed_at >= first_failed_at),
+    retry_after INTEGER NOT NULL CHECK (retry_after >= last_failed_at),
+    PRIMARY KEY (kind, entity_id)
+) STRICT, WITHOUT ROWID;
+`
+
+func applySchemaV70SchedulerQuarantine(ctx context.Context, tx *sql.Tx) error {
+	var hasLegacyColumn bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM pragma_table_info('scheduler_quarantine') WHERE name = 'scope')
+	`).Scan(&hasLegacyColumn); err != nil {
+		return fmt.Errorf("inspect scheduler_quarantine schema: %w", err)
+	}
+	if !hasLegacyColumn {
+		_, err := tx.ExecContext(ctx, schemaV70SchedulerQuarantine)
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE scheduler_quarantine RENAME TO scheduler_quarantine_v69_legacy`); err != nil {
+		return fmt.Errorf("rename v69 scheduler_quarantine: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, schemaV70SchedulerQuarantine); err != nil {
+		return fmt.Errorf("create v70 scheduler_quarantine: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
+		SELECT CASE scope
+		           WHEN 'commission_settlement' THEN 'commission'
+		           WHEN 'stale_order_cancel' THEN 'stale_order'
+		       END,
+		       order_id,
+		       reason,
+		       1,
+		       quarantined_at,
+		       quarantined_at,
+		       quarantined_at + 3600
+		FROM scheduler_quarantine_v69_legacy
+		WHERE scope IN ('commission_settlement', 'stale_order_cancel')
+		  AND EXISTS (SELECT 1 FROM orders WHERE id = scheduler_quarantine_v69_legacy.order_id)
+	`); err != nil {
+		return fmt.Errorf("migrate v69 scheduler_quarantine rows: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TABLE scheduler_quarantine_v69_legacy`); err != nil {
+		return fmt.Errorf("drop v69 scheduler_quarantine backup: %w", err)
 	}
 	return nil
 }

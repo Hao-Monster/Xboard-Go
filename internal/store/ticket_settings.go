@@ -23,6 +23,8 @@ const (
 	maxTicketMailErrorRunes = 1_024
 	maxTicketMailAttempts   = 3
 	ticketMailThrottle      = 30 * time.Minute
+	maxExpiredMailClaims    = 100
+	unknownMailDelivery     = "mail delivery result unknown after worker restart"
 )
 
 func (s *Store) GetTicketSettings(ctx context.Context) (TicketSettings, error) {
@@ -117,6 +119,20 @@ func (s *Store) ClaimTicketMail(ctx context.Context, claimToken string, now time
 
 	var id int64
 	staleBefore := now.Add(-lease).Unix()
+	// A worker can disappear after claiming its last attempt but before recording
+	// the result. Finalize that uncertainty without scheduling a fourth delivery.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE ticket_mail_outbox
+		SET failed_at=?, claim_token=NULL, claimed_at=NULL, last_error=?, updated_at=?
+		WHERE id IN (
+			SELECT id FROM ticket_mail_outbox
+			WHERE sent_at IS NULL AND failed_at IS NULL AND attempt_count>=?
+			  AND claim_token IS NOT NULL AND claimed_at<=?
+			ORDER BY available_at,id LIMIT ?
+		)
+	`, now.Unix(), unknownMailDelivery, now.Unix(), maxTicketMailAttempts, staleBefore, maxExpiredMailClaims); err != nil {
+		return TicketMailJob{}, false, fmt.Errorf("recover exhausted ticket mail claims: %w", err)
+	}
 	err = tx.QueryRowContext(ctx, `
 		SELECT o.id
 		FROM ticket_mail_outbox o CROSS JOIN app_settings s
@@ -126,6 +142,9 @@ func (s *Store) ClaimTicketMail(ctx context.Context, claimToken string, now time
 		ORDER BY o.available_at, o.id LIMIT 1
 	`, now.Unix(), staleBefore).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		if err := tx.Commit(); err != nil {
+			return TicketMailJob{}, false, fmt.Errorf("commit ticket mail claim recovery: %w", err)
+		}
 		return TicketMailJob{}, false, nil
 	}
 	if err != nil {

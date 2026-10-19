@@ -119,6 +119,7 @@ func (s *Store) ListDistributorOrders(ctx context.Context, filter DistributorOrd
 	if err != nil {
 		return DistributorOrderPage{}, fmt.Errorf("list distributor orders: %w", err)
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var distributorEmail, planName string
 		order, err := scanOrderWithAdminFields(rows, &distributorEmail, &planName)
@@ -191,6 +192,7 @@ func (s *Store) enrichDistributorOrders(ctx context.Context, items []Distributor
 	if err != nil {
 		return nil, fmt.Errorf("batch enrich distributor orders: %w", err)
 	}
+	defer rows.Close()
 	enrichments := make(map[int64]*distributorOrderEnrichment, len(ids))
 	for rows.Next() {
 		value := &distributorOrderEnrichment{boundDevices: []string{}}
@@ -246,6 +248,7 @@ func (s *Store) enrichDistributorOrders(ctx context.Context, items []Distributor
 	if err != nil {
 		return nil, fmt.Errorf("batch list distributor device labels: %w", err)
 	}
+	defer deviceRows.Close()
 	for deviceRows.Next() {
 		var subscriptionID int64
 		var hwid string
@@ -284,7 +287,7 @@ func (s *Store) enrichDistributorOrders(ctx context.Context, items []Distributor
 		items[index].CanRenew = items[index].IsSubscriptionOrigin && value.entitlement.ExpiredAt != nil && !value.subscriberBanned &&
 			value.subscription.DeliveryStatus != DistributorDeliveryClosed && value.planRenew &&
 			(value.planShow || value.entitlement.ExpiredAt.After(now))
-		items[index].SettlementStatus = value.subscription.SettlementStatus
+		items[index].SettlementStatus = DistributorSettlementUnsettled
 		if items[index].Order.PaidAt != nil {
 			items[index].SettlementStatus = DistributorSettlementSettled
 		}

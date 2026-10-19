@@ -1,4 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+/// <reference types="node" />
+import { webcrypto } from "node:crypto";
+import { useState } from "react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +26,42 @@ const pending = {
 } satisfies Order;
 
 describe("UserOrdersPage", () => {
+  it("sends the selected order only after opening chat and waits for the rendered QR receipt", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const payable = { ...pending, total_amount: 1234, original_amount: 1234 };
+    const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn().mockResolvedValue({ revision: 1, card_store_url: "", chatwoot_base_url: "https://chat.example.test", chatwoot_website_token: "public_fixture" }) };
+    const user = userEvent.setup();
+    const view = render(<UserOrdersPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const open = await screen.findByRole("button", { name: "打开客服购买" });
+    expect(screen.queryByTitle("在线客服聊天")).not.toBeInTheDocument();
+    await user.click(open);
+    const frame = screen.getByTitle<HTMLIFrameElement>("在线客服聊天");
+    const target = frame.contentWindow!;
+    const post = vi.spyOn(target, "postMessage");
+    const receive = (data: string) => act(() => { window.dispatchEvent(new MessageEvent("message", { origin: "https://chat.example.test", source: target, data })); });
+    expect(post).not.toHaveBeenCalled();
+    receive(`chatwoot-widget:${JSON.stringify({ event: "loaded", config: { authToken: "qa.session.signature" } })}`);
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.stringContaining('"action":"purchase"'), "https://chat.example.test"));
+    const sent = post.mock.calls.find(([value]) => typeof value === "string" && value.includes('"action":"purchase"'))!;
+    const request = JSON.parse(String(sent[0]).slice("freedompost-handoff:".length));
+    expect(request.content).toContain(`订单号：${pending.trade_no}`);
+    expect(request.content).toContain("套餐：Premium");
+    expect(request.content).toContain("待付金额：¥12.34");
+    expect(screen.getByText("正在发送订单并等待微信二维码…")).toBeVisible();
+    expect(screen.queryByText("订单已发送，微信二维码已显示在会话中。")).not.toBeInTheDocument();
+    const receipt = `freedompost-handoff:${JSON.stringify({ ...request, ok: true, bindingId: "a".repeat(64), generation: "qa-generation", messageId: 101, qrMessageId: 102, rendered: true })}`;
+    receive(receipt);
+    expect(await screen.findByText("订单已发送，微信二维码已显示在会话中。")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "收起客服" }));
+    await user.click(screen.getByRole("button", { name: "打开客服购买" }));
+    receive(receipt);
+    expect(screen.queryByText("订单已发送，微信二维码已显示在会话中。")).not.toBeInTheDocument();
+    expect(api.checkoutOrder).not.toHaveBeenCalled();
+    expect(api.cancelOrder).not.toHaveBeenCalled();
+    view.unmount();
+    vi.unstubAllGlobals();
+  });
   it("only offers alternate purchases for a successfully loaded empty payment list without changing the order", async () => {
     const payable = { ...pending, total_amount: 1000, original_amount: 1000 };
     const api = { listOrders: vi.fn().mockResolvedValue([payable]), getOrder: vi.fn().mockResolvedValue(payable), listPaymentMethods: vi.fn().mockResolvedValue([]), checkoutOrder: vi.fn(), cancelOrder: vi.fn(), getPurchaseChannels: vi.fn().mockResolvedValue({ revision: 1, card_store_url: "https://cards.example.test", chatwoot_base_url: "", chatwoot_website_token: "" }) };
@@ -78,6 +117,76 @@ describe("UserOrdersPage", () => {
     await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith(payable.trade_no));
     expect(within(dialog).getByText("已取消")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "关闭订单" })).not.toBeInTheDocument();
+  });
+
+  it("does not resurrect a cancelled order when an earlier in-flight status-filtered list request resolves late", async () => {
+    const payable = { ...pending, original_amount: 1_000, total_amount: 1_000 };
+    const cancelled = { ...payable, status: 2 as const };
+    let resolveFilteredList!: (orders: Order[]) => void;
+    const delayedFilteredList = new Promise<Order[]>((resolve) => {
+      resolveFilteredList = resolve;
+    });
+    const api = {
+      listOrders: vi.fn()
+        .mockResolvedValueOnce([payable])
+        .mockReturnValueOnce(delayedFilteredList),
+      getOrder: vi.fn().mockResolvedValue(payable),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn().mockResolvedValue(cancelled)
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+
+    expect(await screen.findByText(payable.trade_no)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "待支付" }));
+    await user.click(screen.getByRole("button", { name: `查看订单：${payable.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith(payable.trade_no));
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单详情" }));
+
+    await act(async () => {
+      resolveFilteredList([payable]);
+      await delayedFilteredList;
+    });
+    expect(screen.queryByText(payable.trade_no)).not.toBeInTheDocument();
+    expect(screen.getByText("没有符合条件的订单。")).toBeVisible();
+  });
+
+  it("preserves a newer discounted server snapshot over an older local checkout completion", async () => {
+    const completed = { ...pending, status: 3 as const, paid_at: "2026-08-26T00:01:00Z", updated_at: "2026-08-26T00:01:00Z" };
+    const discounted = { ...completed, status: 4 as const, updated_at: "2026-08-26T00:02:00Z" };
+    let resolveFilteredList!: (orders: Order[]) => void;
+    const delayedFilteredList = new Promise<Order[]>((resolve) => {
+      resolveFilteredList = resolve;
+    });
+    const api = {
+      listOrders: vi.fn()
+        .mockResolvedValueOnce([pending])
+        .mockReturnValueOnce(delayedFilteredList),
+      getOrder: vi.fn().mockResolvedValue(pending),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn().mockResolvedValue(completed),
+      cancelOrder: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+
+    expect(await screen.findByText(pending.trade_no)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "已折抵" }));
+    await user.click(screen.getByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "立即开通" }));
+    await waitFor(() => expect(api.checkoutOrder).toHaveBeenCalledWith(pending.trade_no));
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单详情" }));
+
+    await act(async () => {
+      resolveFilteredList([discounted]);
+      await delayedFilteredList;
+    });
+    expect(await screen.findByText(discounted.trade_no)).toBeVisible();
+    expect(screen.getByText("已折抵", { selector: ".order-status" })).toBeVisible();
   });
 
   it("selects an enabled payment method, shows the exact fee, and exposes the created checkout safely", async () => {
@@ -222,6 +331,9 @@ describe("OrderManagementPage", () => {
 });
 
 
+import { adminDataCache } from "../../lib/dataPrefetchCache";
+import { deferred } from "../../test/deferred";
+
 describe("purchase code order presentation", () => {
   it.each(["user", "admin"])("shows fixed purchase rights and no free checkout for %s", async (role) => {
     const purchase = { ...pending, status: 3 as const, source: "gift_card_purchase" as const, gift_card_batch_no: "BATCH001", purchase_snapshot: { plan_id: 7, plan_name: "发码时的套餐", period: "onetime" as const, transfer_enable: 200 * 1073741824 }, user_email: "buyer@example.test", plan_name: "修改后的套餐", invite_user: null, commission_log: [], subscribe_url: null };
@@ -236,5 +348,160 @@ describe("purchase code order presentation", () => {
     expect(dialog.queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "标记已支付并开通" })).not.toBeInTheDocument();
     expect(api.checkoutOrder).not.toHaveBeenCalled(); expect(api.paidAdminOrder).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale detail responses and removes status-mismatched orders from filtered user list (BL-26, BL-27)", async () => {
+    const orderA: Order = { ...pending, id: 101, trade_no: "TRADE_A", status: 0 };
+    const orderB: Order = { ...pending, id: 102, trade_no: "TRADE_B", status: 0 };
+    const slowDetailA = deferred<Order>();
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([orderA, orderB]),
+      getOrder: vi.fn().mockImplementation((tradeNo: string) =>
+        tradeNo === "TRADE_A" ? slowDetailA.promise : Promise.resolve(orderB)
+      ),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn().mockResolvedValue({ ...orderB, status: 2 as const })
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+    expect(await screen.findByText("TRADE_A")).toBeVisible();
+
+    // Filter to "待支付" (status 0)
+    await user.click(screen.getByRole("button", { name: "待支付" }));
+    await waitFor(() => expect(api.listOrders).toHaveBeenLastCalledWith(0, 100));
+
+    // Click order A (slow), then click order B (fast)
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_A" }));
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_B" }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(dialog).getByText("TRADE_B")).toBeVisible();
+
+    // Now resolve slow detail A; it must NOT overwrite TRADE_B in the dialog
+    await act(async () => {
+      slowDetailA.resolve(orderA);
+      await slowDetailA.promise;
+    });
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).getByText("TRADE_B")).toBeVisible();
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).queryByText("TRADE_A")).not.toBeInTheDocument();
+
+    // Cancel TRADE_B while filtered by "待支付" (status 0): TRADE_B becomes status 2 ("已取消")
+    // so it must be removed from the filtered table while the detail modal updates to "已取消".
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(api.cancelOrder).toHaveBeenCalledWith("TRADE_B"));
+    expect(within(screen.getByRole("dialog", { name: "订单详情" })).getByText("已取消")).toBeVisible();
+    const table = screen.getByRole("region", { name: "订单列表" });
+    expect(within(table).queryByText("TRADE_B")).not.toBeInTheDocument();
+  });
+
+  it("consumes initialTradeNo even when superseded by manual selection so parent re-renders do not re-open it", async () => {
+    const orderA: Order = { ...pending, id: 101, trade_no: "TRADE_A", status: 0 };
+    const orderB: Order = { ...pending, id: 102, trade_no: "TRADE_B", status: 0 };
+    const slowInitialA = deferred<Order>();
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([orderA, orderB]),
+      getOrder: vi.fn().mockImplementation((tradeNo: string) =>
+        tradeNo === "TRADE_A" ? slowInitialA.promise : Promise.resolve(orderB)
+      ),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkoutOrder: vi.fn(),
+      cancelOrder: vi.fn()
+    };
+    function Harness() {
+      const [openOrderTradeNo, setOpenOrderTradeNo] = useState<string | null>("TRADE_A");
+      const [collapsed, setCollapsed] = useState(false);
+      return (
+        <div>
+          <button onClick={() => setCollapsed((v) => !v)}>切换导航 {String(collapsed)}</button>
+          <UserOrdersPage
+            api={api}
+            initialTradeNo={openOrderTradeNo}
+            onInitialHandled={() => setOpenOrderTradeNo(null)}
+          />
+        </div>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(await screen.findByText("TRADE_B")).toBeVisible();
+
+    // User manually opens TRADE_B before initialTradeNo TRADE_A resolves
+    await user.click(screen.getByRole("button", { name: "查看订单：TRADE_B" }));
+    const dialogB = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(dialogB).getByText("TRADE_B")).toBeVisible();
+
+    // Initial TRADE_A resolves late
+    await act(async () => {
+      slowInitialA.resolve(orderA);
+      await slowInitialA.promise;
+    });
+
+    // User closes TRADE_B dialog, then triggers parent re-render with fresh inline callback
+    await user.click(within(dialogB).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /切换导航/ }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+    expect(api.getOrder.mock.calls.map(([t]) => String(t))).toEqual(["TRADE_A", "TRADE_B"]);
+  });
+
+  it("invalidates both orders and users prefetch cache when assigning an order in OrderManagementPage (BL-28)", async () => {
+    adminDataCache.invalidate("orders");
+    adminDataCache.invalidate("users");
+    const paidPlan: Plan = { ...plan, prices: { monthly: 1000 } };
+    const api = {
+      listAdminOrders: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }),
+      getAdminOrder: vi.fn(),
+      assignOrder: vi.fn().mockResolvedValue(pending),
+      paidAdminOrder: vi.fn(),
+      cancelAdminOrder: vi.fn(),
+      updateAdminOrderCommissionStatus: vi.fn(),
+      listPlans: vi.fn().mockResolvedValue([paidPlan])
+    };
+    const user = userEvent.setup();
+    render(<OrderManagementPage api={api} />);
+    await screen.findByText("没有符合条件的订单。");
+
+    // Seed prefetch cache entries
+    void adminDataCache.prefetch("orders", () => Promise.resolve([{ items: [], total: 0, page: 1, page_size: 20 }, [paidPlan]]));
+    void adminDataCache.prefetch("users", () => Promise.resolve({ items: [], total: 0, page: 1, page_size: 20 }));
+    expect(adminDataCache.consume("orders")).toBeDefined();
+    expect(adminDataCache.consume("users")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "添加订单" }));
+    const dialog = screen.getByRole("dialog", { name: "订单分配" });
+    await user.type(within(dialog).getByLabelText("用户邮箱"), "buyer@example.test");
+    await user.selectOptions(within(dialog).getByLabelText("订阅计划"), String(paidPlan.id));
+    await user.selectOptions(within(dialog).getByLabelText("订单周期"), "monthly");
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.assignOrder).toHaveBeenCalled());
+    expect(adminDataCache.consume("orders")).toBeUndefined();
+    expect(adminDataCache.consume("users")).toBeUndefined();
+  });
+
+  it("reconciles reopened OrderDetailDialog against recentOrderMutations when getOrder returns a stale pending snapshot", async () => {
+    const api = {
+      listOrders: vi.fn().mockResolvedValue([pending]),
+      getOrder: vi.fn().mockResolvedValue(pending),
+      cancelOrder: vi.fn().mockResolvedValue({ ...pending, status: 2 }),
+      listPaymentMethods: vi.fn().mockResolvedValue([]),
+      checkOrderStatus: vi.fn(),
+      checkoutOrder: vi.fn()
+    };
+    const user = userEvent.setup();
+    render(<UserOrdersPage api={api} />);
+    await user.click(await screen.findByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const dialog = await screen.findByRole("dialog", { name: "订单详情" });
+    await user.click(within(dialog).getByRole("button", { name: "关闭订单" }));
+    await waitFor(() => expect(within(dialog).getByText("已取消")).toBeVisible());
+
+    // Close the modal (selected becomes null) and immediately reopen while getOrder still returns status 0
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "订单详情" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: `查看订单：${pending.trade_no}` }));
+    const reopened = await screen.findByRole("dialog", { name: "订单详情" });
+    expect(within(reopened).getByText("已取消")).toBeVisible();
+    expect(within(reopened).queryByRole("button", { name: "关闭订单" })).not.toBeInTheDocument();
   });
 });

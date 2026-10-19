@@ -49,6 +49,19 @@ func (s *Store) ClaimTelegramMessage(ctx context.Context, claimToken string, now
 	}
 
 	staleBefore := now.Add(-lease).Unix()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE telegram_message_outbox
+		SET failed_at=?,claim_token=NULL,claimed_at=NULL,
+		    last_error='delivery_result_unknown',updated_at=?
+		WHERE id IN (
+			SELECT o.id FROM telegram_message_outbox o
+			WHERE o.sent_at IS NULL AND o.failed_at IS NULL AND o.cancelled_at IS NULL
+			  AND o.attempt_count >= ? AND o.claimed_at IS NOT NULL AND o.claimed_at <= ?
+			ORDER BY o.claimed_at,o.id LIMIT 100
+		)
+	`, now.Unix(), now.Unix(), maxTelegramDeliveryAttempts, staleBefore); err != nil {
+		return TelegramDeliveryJob{}, false, fmt.Errorf("expire exhausted Telegram message claims: %w", err)
+	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `
 		SELECT o.id

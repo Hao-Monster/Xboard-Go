@@ -92,6 +92,7 @@ var requiredSchemaTables = []struct {
 	{"operational_daily_statistics", 63},
 	{"plan_visibility_users", 66},
 	{"legacy_user_history", 66},
+	{"scheduler_quarantine", 69},
 }
 
 var requiredSchemaColumns = map[string][]string{
@@ -442,6 +443,21 @@ func ValidateSchema(ctx context.Context, database schemaQueryer, schemaVersion i
 			return err
 		}
 		if err := validateDeclaredSchemaObjects(ctx, database, schemaV63OperationalLogs); err != nil {
+			return err
+		}
+	}
+	if schemaVersion >= 70 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"scheduler_quarantine": {"kind", "entity_id", "reason", "attempts", "first_failed_at", "last_failed_at", "retry_after"}}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV70SchedulerQuarantine); err != nil {
+			return err
+		}
+	} else if schemaVersion == 69 {
+		if err := validateRequiredSchemaColumns(ctx, database, schemaVersion, map[string][]string{"scheduler_quarantine": {"scope", "order_id", "reason", "quarantined_at"}}); err != nil {
+			return err
+		}
+		if err := validateDeclaredSchemaObjects(ctx, database, schemaV69SchedulerQuarantineLegacy); err != nil {
 			return err
 		}
 	}

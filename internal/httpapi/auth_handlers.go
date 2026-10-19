@@ -18,6 +18,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	defer attempt.releasePasswordWork()
 	credentials, err := s.newSessionCredentials()
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -46,6 +47,7 @@ func (s *server) legacyLogin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	defer attempt.releasePasswordWork()
 	token, name, err := newAccessTokenCredentials("")
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
@@ -66,11 +68,12 @@ func (s *server) legacyLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 type passwordLoginAttempt struct {
-	user           store.User
-	password       string
-	identityDigest []byte
-	attemptKey     string
-	now            time.Time
+	user                store.User
+	password            string
+	identityDigest      []byte
+	attemptKey          string
+	now                 time.Time
+	releasePasswordWork func()
 }
 
 func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Request, legacy bool) (passwordLoginAttempt, bool) {
@@ -118,6 +121,18 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 	if err == nil {
 		passwordHash = user.PasswordHash
 	}
+	release, ok := s.beginPasswordWork(w, false)
+	if !ok {
+		return passwordLoginAttempt{}, false
+	}
+	// On success the caller retains the slot through hash upgrade and any
+	// state-conflict retry. Every rejection here releases it immediately.
+	authenticated := false
+	defer func() {
+		if !authenticated {
+			release()
+		}
+	}()
 	passwordValid := s.passwordHasher.Verify(input.Password, passwordHash)
 	if err != nil || !passwordValid || user.Banned || user.AccountKind != store.AccountKindHuman {
 		if !s.recordPasswordLoginFailure(w, r, identityDigest[:], attemptKey, now) {
@@ -126,7 +141,8 @@ func (s *server) authenticatePasswordLogin(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误", nil)
 		return passwordLoginAttempt{}, false
 	}
-	return passwordLoginAttempt{user: user, password: input.Password, identityDigest: identityDigest[:], attemptKey: attemptKey, now: now}, true
+	authenticated = true
+	return passwordLoginAttempt{user: user, password: input.Password, identityDigest: identityDigest[:], attemptKey: attemptKey, now: now, releasePasswordWork: release}, true
 }
 
 func (s *server) completePasswordLogin(w http.ResponseWriter, r *http.Request, attempt passwordLoginAttempt, complete func(store.User, string, string) error) (store.User, bool) {
@@ -297,9 +313,16 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func currentCookieSessionID(session store.SessionUser) int64 {
+	if session.CredentialKind == store.CredentialKindCookieSession {
+		return session.SessionID
+	}
+	return 0
+}
+
 func (s *server) listAccountSessions(w http.ResponseWriter, r *http.Request) {
 	session, _ := sessionFromContext(r.Context())
-	sessions, err := s.store.ListActiveSessions(r.Context(), session.UserID, session.SessionID, s.now())
+	sessions, err := s.store.ListActiveSessions(r.Context(), session.UserID, currentCookieSessionID(session), s.now())
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -317,7 +340,7 @@ func (s *server) revokeAccountSession(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
-	if sessionID == session.SessionID {
+	if currentID := currentCookieSessionID(session); currentID > 0 && sessionID == currentID {
 		s.clearAuthCookies(w)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -475,6 +498,11 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 		handleStoreError(w, err)
 		return
 	}
+	release, ok := s.beginPasswordWork(w, false)
+	if !ok {
+		return
+	}
+	defer release()
 	if !s.passwordHasher.Verify(input.OldPassword, user.PasswordHash) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "current_password_invalid", "当前密码不正确", map[string]string{"old_password": "当前密码不正确"})
 		return
