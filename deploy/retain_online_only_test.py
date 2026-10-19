@@ -336,6 +336,314 @@ class RetainOnlineOnlyTests(unittest.TestCase):
 
         self.assertEqual(removed_paths, ['xboard-node-workspace', 'stale-image.tar'])
 
+    def test_run_development_host_protects_ancestor_bind_mounts_and_active_backup_files(self):
+        base_containers = [
+            {
+                'Id': 'c1',
+                'Name': '/xboard-go-freedom-app-1',
+                'Image': 'sha256:' + '1' * 64,
+                'Config': {
+                    'Image': 'xboard-go:active',
+                    'Labels': {
+                        'com.docker.compose.project.working_dir': '/home/bingo/apps/xboard-go-freedom',
+                        'com.docker.compose.project.config_files': '/home/bingo/apps/xboard-go-freedom/compose.yaml',
+                    },
+                },
+                'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c2',
+                'Name': '/xboard-log-collector-development-collector-1',
+                'Image': 'sha256:' + '2' * 64,
+                'Config': {'Image': 'xboard-log-collector:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c3',
+                'Name': '/xboard-logs-auth-1',
+                'Image': 'sha256:' + '3' * 64,
+                'Config': {'Image': 'caddy:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+            {
+                'Id': 'c4',
+                'Name': '/xboard-logs-victoria-logs-1',
+                'Image': 'sha256:' + '4' * 64,
+                'Config': {'Image': 'victoria-logs:active'},
+                'State': {'Running': True},
+                'Mounts': [],
+                'NetworkSettings': {'Networks': {}},
+            },
+        ]
+
+        apps_root = Path('/home/bingo/apps')
+        freedom_dir = apps_root / 'xboard-go-freedom'
+        fake_entries = [
+            freedom_dir,
+            apps_root / 'xboard-node-live',
+            apps_root / 'xboard-node-live2',
+            apps_root / 'xboard-node-workspace',
+        ]
+        env_old = freedom_dir / '.env.pre-old'
+        env_new = freedom_dir / '.env.pre-new'
+        compose_old = freedom_dir / 'compose.yaml.pre-old'
+        compose_new = freedom_dir / 'compose.yaml.pre-new'
+        fake_freedom_entries = [
+            freedom_dir / 'compose.yaml',
+            env_old,
+            env_new,
+            compose_old,
+            compose_new,
+            freedom_dir / 'live-data',
+            freedom_dir / 'stale.tar',
+        ]
+
+        class _FakeStat:
+            def __init__(self, mtime):
+                self.st_mtime = mtime
+
+        def fake_stat(self_path, *args, **kwargs):
+            if self_path.name.endswith('-new'):
+                return _FakeStat(200.0)
+            if self_path.name.endswith('-old'):
+                return _FakeStat(100.0)
+            return _FakeStat(50.0)
+
+        def fake_is_dir(self_path):
+            norm = retain._norm_posix(self_path)
+            return norm in {retain._norm_posix(apps_root), retain._norm_posix(freedom_dir)}
+
+        fake_file_norms = {retain._norm_posix(p) for p in fake_freedom_entries}
+
+        def fake_is_file(self_path):
+            return retain._norm_posix(self_path) in fake_file_norms
+
+        def fake_iterdir(self_path):
+            norm = retain._norm_posix(self_path)
+            if norm == retain._norm_posix(apps_root):
+                return iter(fake_entries)
+            if norm == retain._norm_posix(freedom_dir):
+                return iter(fake_freedom_entries)
+            return iter([])
+
+        def fake_glob(self_path, pattern):
+            norm = retain._norm_posix(self_path)
+            if norm == retain._norm_posix(freedom_dir):
+                if pattern == '.env.pre-*':
+                    return iter([env_old, env_new])
+                if pattern == 'compose.yaml.pre-*':
+                    return iter([compose_old, compose_new])
+            return iter([])
+
+        for mount_src, rootless in (
+            ('/home/bingo', False),
+            ('/home/bingo/apps', False),
+            ('/home/bingo', True),
+        ):
+            with self.subTest(mount_src=mount_src, rootless=rootless):
+                removed_robust = []
+                unlinked = []
+                extra_container = {
+                    'Id': 'c5',
+                    'Name': '/xboard-node-live-1',
+                    'Image': 'sha256:' + '5' * 64,
+                    'Config': {'Image': 'xboard-node:live'},
+                    'State': {'Running': True},
+                    'Mounts': [{'Type': 'bind', 'Source': mount_src, 'Destination': '/host'}],
+                    'NetworkSettings': {'Networks': {}},
+                }
+
+                def inspect_side_effect(docker_host=None):
+                    if docker_host:
+                        return [extra_container] if rootless else []
+                    return base_containers if rootless else [*base_containers, extra_container]
+
+                with (
+                    patch.object(retain.socket, 'gethostname', return_value='bingo'),
+                    patch.object(retain, 'disk_available_kib', return_value=1024),
+                    patch.object(retain, 'inspect_containers', side_effect=inspect_side_effect),
+                    patch.object(retain, 'check_http_health', return_value=None),
+                    patch.object(
+                        retain,
+                        'docker_cmd',
+                        return_value=subprocess.CompletedProcess(['docker'], 0, '', ''),
+                    ),
+                    patch.object(retain, 'prune_unreferenced_images', return_value=(0, 0)),
+                    patch.object(retain.os, 'getuid', create=True, return_value=1000),
+                    patch.object(Path, 'is_socket', return_value=rootless),
+                    patch.object(Path, 'is_dir', fake_is_dir),
+                    patch.object(Path, 'is_symlink', return_value=False),
+                    patch.object(Path, 'is_file', fake_is_file),
+                    patch.object(Path, 'stat', fake_stat),
+                    patch.object(Path, 'iterdir', fake_iterdir),
+                    patch.object(Path, 'glob', fake_glob),
+                    patch.object(
+                        Path,
+                        'unlink',
+                        side_effect=lambda self_p, *a, **kw: unlinked.append(retain._norm_posix(self_p).as_posix()),
+                        autospec=True,
+                    ),
+                    patch.object(
+                        retain,
+                        'remove_path_robust',
+                        side_effect=lambda target, parent_mount=None: removed_robust.append(
+                            retain._norm_posix(target).as_posix()
+                        ),
+                    ),
+                ):
+                    retain.run_development_host('cleanup')
+
+                self.assertEqual(removed_robust, [])
+                self.assertEqual(unlinked, [])
+
+        # Verify active .env.pre-old and compose.yaml.pre-old are preserved before prune_sorted_files
+        removed_robust = []
+        unlinked = []
+        active_backup_container = {
+            'Id': 'c5',
+            'Name': '/xboard-node-live-1',
+            'Image': 'sha256:' + '5' * 64,
+            'Config': {
+                'Image': 'xboard-node:live',
+                'Labels': {
+                    'com.docker.compose.project.working_dir': '/home/bingo/apps/xboard-go-freedom',
+                    'com.docker.compose.project.config_files': '/home/bingo/apps/xboard-go-freedom/compose.yaml.pre-old',
+                },
+            },
+            'State': {'Running': True},
+            'Mounts': [
+                {
+                    'Type': 'bind',
+                    'Source': '/home/bingo/apps/xboard-go-freedom/.env.pre-old',
+                    'Destination': '/app/.env',
+                }
+            ],
+            'NetworkSettings': {'Networks': {}},
+        }
+        with (
+            patch.object(retain.socket, 'gethostname', return_value='bingo'),
+            patch.object(retain, 'disk_available_kib', return_value=1024),
+            patch.object(retain, 'inspect_containers', return_value=[*base_containers, active_backup_container]),
+            patch.object(retain, 'check_http_health', return_value=None),
+            patch.object(
+                retain,
+                'docker_cmd',
+                return_value=subprocess.CompletedProcess(['docker'], 0, '', ''),
+            ),
+            patch.object(retain, 'prune_unreferenced_images', return_value=(0, 0)),
+            patch.object(retain.os, 'getuid', create=True, return_value=1000),
+            patch.object(Path, 'is_socket', return_value=False),
+            patch.object(Path, 'is_dir', fake_is_dir),
+            patch.object(Path, 'is_symlink', return_value=False),
+            patch.object(Path, 'is_file', fake_is_file),
+            patch.object(Path, 'stat', fake_stat),
+            patch.object(Path, 'iterdir', fake_iterdir),
+            patch.object(Path, 'glob', fake_glob),
+            patch.object(
+                Path,
+                'unlink',
+                side_effect=lambda self_p, *a, **kw: unlinked.append(retain._norm_posix(self_p).as_posix()),
+                autospec=True,
+            ),
+            patch.object(
+                retain,
+                'remove_path_robust',
+                side_effect=lambda target, parent_mount=None: removed_robust.append(
+                    retain._norm_posix(target).as_posix()
+                ),
+            ),
+        ):
+            retain.run_development_host('cleanup')
+
+        self.assertEqual(unlinked, [])
+        self.assertEqual(
+            removed_robust,
+            [
+                '/home/bingo/apps/xboard-node-live',
+                '/home/bingo/apps/xboard-node-live2',
+                '/home/bingo/apps/xboard-node-workspace',
+                '/home/bingo/apps/xboard-go-freedom/live-data',
+                '/home/bingo/apps/xboard-go-freedom/stale.tar',
+            ],
+        )
+
+        # Verify real filesystem unlink of unprotected .env.pre-stale does not raise FileNotFoundError
+        with tempfile.TemporaryDirectory() as tmp:
+            apps = Path(tmp) / 'apps'
+            freedom = apps / 'xboard-go-freedom'
+            freedom.mkdir(parents=True)
+            for name, mtime in (
+                ('.env.pre-stale', 50),
+                ('.env.pre-old', 100),
+                ('.env.pre-new', 200),
+                ('compose.yaml.pre-stale', 50),
+                ('compose.yaml.pre-old', 100),
+                ('compose.yaml.pre-new', 200),
+            ):
+                fp = freedom / name
+                fp.write_text('cfg', encoding='utf-8')
+                retain.os.utime(fp, (mtime, mtime))
+
+            real_active_container = {
+                'Id': 'c5',
+                'Name': '/xboard-node-live-1',
+                'Image': 'sha256:' + '5' * 64,
+                'Config': {
+                    'Image': 'xboard-node:live',
+                    'Labels': {
+                        'com.docker.compose.project.working_dir': str(freedom),
+                        'com.docker.compose.project.config_files': str(freedom / 'compose.yaml.pre-old'),
+                    },
+                },
+                'State': {'Running': True},
+                'Mounts': [
+                    {
+                        'Type': 'bind',
+                        'Source': str(freedom / '.env.pre-old'),
+                        'Destination': '/app/.env',
+                    }
+                ],
+                'NetworkSettings': {'Networks': {}},
+            }
+
+            def mapped_path(val):
+                if str(val) == '/home/bingo/apps':
+                    return apps
+                if str(val).startswith('/run/user/'):
+                    return Path(tmp) / 'no-docker.sock'
+                return Path(val)
+
+            with (
+                patch.object(retain.socket, 'gethostname', return_value='bingo'),
+                patch.object(retain, 'disk_available_kib', return_value=1024),
+                patch.object(retain, 'inspect_containers', return_value=[*base_containers, real_active_container]),
+                patch.object(retain, 'check_http_health', return_value=None),
+                patch.object(
+                    retain,
+                    'docker_cmd',
+                    return_value=subprocess.CompletedProcess(['docker'], 0, '', ''),
+                ),
+                patch.object(retain, 'prune_unreferenced_images', return_value=(0, 0)),
+                patch.object(retain.os, 'getuid', create=True, return_value=1000),
+                patch.object(retain, 'active_systemd_release_shas', return_value=set()),
+                patch.object(retain, 'remove_path_robust'),
+                patch.object(retain, 'Path', side_effect=mapped_path) as path_mock,
+            ):
+                path_mock.home.return_value = Path(tmp)
+                retain.run_development_host('cleanup')
+
+            remaining = sorted(p.name for p in freedom.iterdir())
+            self.assertEqual(
+                remaining,
+                ['.env.pre-new', '.env.pre-old', 'compose.yaml.pre-new', 'compose.yaml.pre-old'],
+            )
+
 
 if __name__ == '__main__':
     unittest.main()

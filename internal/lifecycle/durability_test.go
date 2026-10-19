@@ -583,3 +583,100 @@ func TestSplitRollbackRestoreFailureOnPreviousAllowsStatusAndRetry(t *testing.T)
 		t.Fatalf("retry Rollback() = (%#v, %v), want success StatusRolledBack", res, err)
 	}
 }
+
+type cancelAfterTagsRunner struct {
+	expectedTags    int
+	cancel          context.CancelFunc
+	tags            int
+	rejectedCompose int
+	composeExecuted int
+}
+
+func (r *cancelAfterTagsRunner) Run(ctx context.Context, name string, arguments ...string) (CommandOutput, error) {
+	if name == "docker" && len(arguments) >= 2 && arguments[0] == "image" && arguments[1] == "tag" {
+		r.tags++
+		if r.tags == r.expectedTags && r.cancel != nil {
+			r.cancel()
+		}
+		return CommandOutput{}, nil
+	}
+	if name == "docker" && len(arguments) >= 1 && arguments[0] == "compose" {
+		if err := ctx.Err(); err != nil {
+			r.rejectedCompose++
+			return CommandOutput{}, err
+		}
+		r.composeExecuted++
+		return CommandOutput{}, nil
+	}
+	return CommandOutput{}, errors.New("unexpected command")
+}
+
+func TestCancellationAfterTagsBeforeComposePreservesHealthyPrevious(t *testing.T) {
+	t.Run("combined", func(t *testing.T) {
+		previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
+		target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		docker, _ := newDockerTestPlatform(t)
+		runner := &cancelAfterTagsRunner{expectedTags: 1, cancel: cancel}
+		docker.runner = runner
+		platform := &preStartFailurePlatform{
+			fakePlatform: &fakePlatform{
+				current: healthyApplication(previous, defaultDatabaseDSN),
+				images:  map[string]Image{"candidate": target},
+			},
+			docker: docker,
+			target: target,
+		}
+		orchestrator := NewOrchestrator(platform, NewJournal(filepath.Join(t.TempDir(), "journal.jsonl")), time.Now)
+		result, err := orchestrator.Upgrade(ctx, "candidate")
+		if err == nil {
+			t.Fatal("expected pre-compose cancellation failure")
+		}
+		if runner.tags != 1 || runner.rejectedCompose != 1 || runner.composeExecuted != 0 {
+			t.Fatalf("tags=%d rejectedCompose=%d composeExecuted=%d", runner.tags, runner.rejectedCompose, runner.composeExecuted)
+		}
+		if !platform.current.Healthy || platform.stops != 0 {
+			t.Fatalf("pre-start cancellation stopped healthy previous application: stops=%d healthy=%v", platform.stops, platform.current.Healthy)
+		}
+		if result.State == nil || result.State.Status != StatusAutoRolledBack {
+			t.Fatalf("state = %#v, want %q", result.State, StatusAutoRolledBack)
+		}
+	})
+
+	t.Run("split", func(t *testing.T) {
+		previous := resolvedTestDeployment(strings.Repeat("a", 40), "1", "2", "3")
+		target := previous
+		target.SourceRevision = strings.Repeat("b", 40)
+		target.Backend = Image{ID: "sha256:" + strings.Repeat("4", 64), Revision: target.SourceRevision}
+		target.ID = deploymentFingerprint(target.Gateway, target.Frontend, target.Backend)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		docker, _ := newDockerTestPlatform(t)
+		runner := &cancelAfterTagsRunner{expectedTags: 3, cancel: cancel}
+		docker.runner = runner
+		platform := &splitPreStartFailurePlatform{
+			fakeDeploymentPlatform: &fakeDeploymentPlatform{
+				current:        DeploymentApplication{Deployment: previous, DSN: defaultDatabaseDSN, Healthy: true},
+				resolved:       target,
+				backupManifest: testBackupManifest(previous.Backend.Revision),
+			},
+			docker: docker,
+			target: target,
+		}
+		orchestrator := NewDeploymentOrchestrator(platform, &memoryDeploymentStateStore{}, time.Now)
+		result, err := orchestrator.Upgrade(ctx, manifestForDeployment(target))
+		if err == nil {
+			t.Fatal("expected pre-compose cancellation failure")
+		}
+		if runner.tags != 3 || runner.rejectedCompose != 1 || runner.composeExecuted != 0 {
+			t.Fatalf("tags=%d rejectedCompose=%d composeExecuted=%d", runner.tags, runner.rejectedCompose, runner.composeExecuted)
+		}
+		if !platform.current.Healthy || platform.stops != 0 {
+			t.Fatalf("pre-start cancellation stopped healthy previous application: stops=%d healthy=%v", platform.stops, platform.current.Healthy)
+		}
+		if result.State == nil || result.State.Status != StatusAutoRolledBack {
+			t.Fatalf("state = %#v, want %q", result.State, StatusAutoRolledBack)
+		}
+	})
+}

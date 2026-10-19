@@ -114,13 +114,19 @@ def container_compose_paths(container: dict) -> set[str]:
     labels = (container.get('Config') or {}).get('Labels') or {}
     if isinstance(labels, dict):
         working_dir = labels.get('com.docker.compose.project.working_dir')
-        if isinstance(working_dir, str) and working_dir.strip():
-            paths.add(working_dir.strip())
+        working_dir_str = working_dir.strip() if isinstance(working_dir, str) and working_dir.strip() else ''
+        if working_dir_str:
+            paths.add(working_dir_str)
         config_files = labels.get('com.docker.compose.project.config_files')
         if isinstance(config_files, str) and config_files.strip():
             for cfg in config_files.split(','):
-                if cfg.strip():
-                    paths.add(cfg.strip())
+                cfg_str = cfg.strip()
+                if not cfg_str:
+                    continue
+                if working_dir_str and not posixpath.isabs(cfg_str.replace('\\', '/')) and not re.match(r'^[A-Za-z]:[\\/]', cfg_str):
+                    paths.add(posixpath.join(working_dir_str.replace('\\', '/'), cfg_str.replace('\\', '/')))
+                else:
+                    paths.add(cfg_str)
     return paths
 
 
@@ -133,7 +139,7 @@ def protected_app_entries_for_host_paths(
     apps_root: Path,
     entries: list[Path] | None = None,
     *,
-    allow_exact_root_protection: bool = False,
+    allow_exact_root_protection: bool = True,
 ) -> set[str]:
     protected: set[str] = set()
     if not host_paths:
@@ -155,7 +161,7 @@ def protected_app_entries_for_host_paths(
         all_src_candidates.update(src_candidates)
         for root_p in root_candidates:
             for src_p in src_candidates:
-                if src_p == root_p:
+                if src_p == root_p or (allow_exact_root_protection and root_p.is_relative_to(src_p)):
                     if allow_exact_root_protection:
                         if entries is not None:
                             return {e.name for e in entries}
@@ -176,7 +182,9 @@ def protected_app_entries_for_host_paths(
             except OSError:
                 pass
             if any(
-                src_p == entry_p or src_p.is_relative_to(entry_p)
+                src_p == entry_p
+                or src_p.is_relative_to(entry_p)
+                or (allow_exact_root_protection and entry_p.is_relative_to(src_p))
                 for entry_p in entry_candidates
                 for src_p in all_src_candidates
             ):
@@ -195,9 +203,20 @@ def active_systemd_release_shas(unit_paths):
     return shas
 
 
-def prune_sorted_files(files, keep_count, mode):
+def prune_sorted_files(files, keep_count, mode, *, protected_names=None):
+    protected_raw = set(protected_names or ())
+    if '*' in protected_raw:
+        return 0, 0
+    protected_strs = {str(x) for x in protected_raw}
+    protected_posix = {_norm_posix(x) for x in protected_raw if str(x).strip()}
     ordered = sorted(files, key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
-    candidates = ordered[keep_count:]
+    candidates = [
+        item
+        for item in ordered[keep_count:]
+        if item.name not in protected_strs
+        and str(item) not in protected_strs
+        and _norm_posix(item) not in protected_posix
+    ]
     removed = 0
     if mode == 'cleanup':
         for item in candidates:
@@ -315,6 +334,11 @@ def run_production_host(mode: str):
     protected_cids = {by_name[name]['Id'] for name in protected_names}
     protected_images = {by_name[name]['Image'] for name in protected_names}
     protected_refs = {by_name[name]['Config']['Image'] for name in protected_names}
+    prod_mount_paths: set[str] = set()
+    prod_compose_paths: set[str] = set()
+    for name in protected_names:
+        prod_mount_paths.update(container_mount_paths(by_name[name]))
+        prod_compose_paths.update(container_compose_paths(by_name[name]))
 
     candidate_containers = []
     for c in containers:
@@ -342,7 +366,24 @@ def run_production_host(mode: str):
     cand_obs_dirs = []
     removed_obs_dirs = 0
     if obs_releases.is_dir() and not obs_releases.is_symlink():
-        for entry in sorted(obs_releases.iterdir()):
+        obs_entries = sorted(obs_releases.iterdir())
+        active_shas.update(
+            protected_app_entries_for_host_paths(
+                prod_mount_paths,
+                obs_releases,
+                obs_entries,
+                allow_exact_root_protection=True,
+            )
+        )
+        active_shas.update(
+            protected_app_entries_for_host_paths(
+                prod_compose_paths,
+                obs_releases,
+                obs_entries,
+                allow_exact_root_protection=False,
+            )
+        )
+        for entry in obs_entries:
             if HEX40_RE.match(entry.name) and entry.name not in active_shas:
                 cand_obs_dirs.append(entry)
                 if mode == 'cleanup':
@@ -354,9 +395,30 @@ def run_production_host(mode: str):
     cand_files = 0
     removed_files = 0
     if app_dir.is_dir() and not app_dir.is_symlink():
-        c1, r1 = prune_sorted_files(list(app_dir.glob('.env.before-*')), 1, mode)
-        c2, r2 = prune_sorted_files(list(app_dir.glob('compose.before-*.yaml')), 1, mode)
-        c3, r3 = prune_sorted_files(list(app_dir.glob('*.failure.log')), 0, mode)
+        env_before_files = list(app_dir.glob('.env.before-*'))
+        compose_before_files = list(app_dir.glob('compose.before-*.yaml'))
+        failure_log_files = list(app_dir.glob('*.failure.log'))
+        prod_app_candidates = sorted(
+            {p.name: p for p in (*env_before_files, *compose_before_files, *failure_log_files)}.values(),
+            key=lambda p: p.name,
+        )
+        protected_prod_files = (
+            protected_app_entries_for_host_paths(
+                prod_mount_paths,
+                app_dir,
+                prod_app_candidates,
+                allow_exact_root_protection=True,
+            )
+            | protected_app_entries_for_host_paths(
+                prod_compose_paths,
+                app_dir,
+                prod_app_candidates,
+                allow_exact_root_protection=False,
+            )
+        )
+        c1, r1 = prune_sorted_files(env_before_files, 1, mode, protected_names=protected_prod_files)
+        c2, r2 = prune_sorted_files(compose_before_files, 1, mode, protected_names=protected_prod_files)
+        c3, r3 = prune_sorted_files(failure_log_files, 0, mode, protected_names=protected_prod_files)
         cand_files += c1 + c2 + c3
         removed_files += r1 + r2 + r3
 
@@ -549,38 +611,53 @@ def run_development_host(mode: str):
     cand_freedom_items = 0
     removed_freedom_items = 0
     if freedom_dir.is_dir() and not freedom_dir.is_symlink():
-        c1, r1 = prune_sorted_files(list(freedom_dir.glob('.env.pre-*')), 1, mode)
-        c2, r2 = prune_sorted_files(list(freedom_dir.glob('compose.yaml.pre-*')), 1, mode)
-        cand_freedom_items += c1 + c2
-        removed_freedom_items += r1 + r2
+        env_pre_files = list(freedom_dir.glob('.env.pre-*'))
+        compose_pre_files = list(freedom_dir.glob('compose.yaml.pre-*'))
+        freedom_entries_initial = sorted(freedom_dir.iterdir())
+        all_freedom_entries = sorted(
+            {p.name: p for p in (*freedom_entries_initial, *env_pre_files, *compose_pre_files)}.values(),
+            key=lambda p: p.name,
+        )
+        protected_freedom_entries = (
+            protected_app_entries_for_host_paths(
+                protected_mount_paths,
+                freedom_dir,
+                all_freedom_entries,
+                allow_exact_root_protection=True,
+            )
+            | protected_app_entries_for_host_paths(
+                protected_compose_paths,
+                freedom_dir,
+                all_freedom_entries,
+                allow_exact_root_protection=False,
+            )
+        )
         keep_freedom = {
             '.env', 'compose.yaml', 'compose.observability.yaml',
             '.deployment.lock', '.secrets', 'node-releases',
             'nginx.conf', 'cloudflared.yml',
         }
-        for p in sorted(freedom_dir.glob('.env.pre-*'), key=lambda x: (x.stat().st_mtime, x.name), reverse=True)[:1]:
+        keep_freedom.update(protected_freedom_entries)
+        for p in sorted(env_pre_files, key=lambda x: (x.stat().st_mtime, x.name), reverse=True)[:1]:
             keep_freedom.add(p.name)
-        for p in sorted(freedom_dir.glob('compose.yaml.pre-*'), key=lambda x: (x.stat().st_mtime, x.name), reverse=True)[:1]:
+        for p in sorted(compose_pre_files, key=lambda x: (x.stat().st_mtime, x.name), reverse=True)[:1]:
             keep_freedom.add(p.name)
+        pruned_pre_file_names = {
+            p.name
+            for p in (*env_pre_files, *compose_pre_files)
+            if p.is_file() or p.is_symlink()
+        }
+        c1, r1 = prune_sorted_files(env_pre_files, 1, mode, protected_names=protected_freedom_entries)
+        c2, r2 = prune_sorted_files(compose_pre_files, 1, mode, protected_names=protected_freedom_entries)
+        cand_freedom_items += c1 + c2
+        removed_freedom_items += r1 + r2
         freedom_entries = sorted(freedom_dir.iterdir())
-        keep_freedom.update(
-            protected_app_entries_for_host_paths(
-                protected_mount_paths,
-                freedom_dir,
-                freedom_entries,
-                allow_exact_root_protection=True,
-            )
-        )
-        keep_freedom.update(
-            protected_app_entries_for_host_paths(
-                protected_compose_paths,
-                freedom_dir,
-                freedom_entries,
-                allow_exact_root_protection=False,
-            )
-        )
         for item in freedom_entries:
-            if item.name in keep_freedom or item.name.startswith('.deployment-failed'):
+            if (
+                item.name in keep_freedom
+                or item.name in pruned_pre_file_names
+                or item.name.startswith('.deployment-failed')
+            ):
                 continue
             cand_freedom_items += 1
             if mode == 'cleanup':
@@ -607,7 +684,24 @@ def run_development_host(mode: str):
         active_log_shas.add(collector_img.split(':', 1)[1])
     logs_releases = apps_root / 'xboard-logs/releases'
     if logs_releases.is_dir() and not logs_releases.is_symlink():
-        for entry in sorted(logs_releases.iterdir()):
+        log_release_entries = sorted(logs_releases.iterdir())
+        active_log_shas.update(
+            protected_app_entries_for_host_paths(
+                protected_mount_paths,
+                logs_releases,
+                log_release_entries,
+                allow_exact_root_protection=True,
+            )
+        )
+        active_log_shas.update(
+            protected_app_entries_for_host_paths(
+                protected_compose_paths,
+                logs_releases,
+                log_release_entries,
+                allow_exact_root_protection=False,
+            )
+        )
+        for entry in log_release_entries:
             if HEX40_RE.match(entry.name) and entry.name not in active_log_shas:
                 cand_freedom_items += 1
                 if mode == 'cleanup':
