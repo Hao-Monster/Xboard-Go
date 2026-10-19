@@ -14,7 +14,7 @@ readonly captcha_image='xboard-node-parity:24.18.0-ae91dcc111a6'
 readonly captcha_image_source_index_digest='sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573'
 readonly captcha_image_platform_manifest_digest='sha256:5301bbf5e8046148348b1dea15436326f43c579031f8d76654a631225bdfe467'
 readonly captcha_image_id='sha256:77343b9c9fae9d567dbbb308eed6ac08564ef29663b6f09e7183b0a7c94f0c73'
-readonly go_bin='/home/bingo/.local/toolchains/go1.26.8/bin'
+readonly go_bin='/home/bingo/.local/toolchains/go1.26.9/bin'
 readonly node_bin='/home/bingo/apps/xboard-go-tools/node-v24.20.0-linux-x64/bin'
 export PATH="$node_bin:$go_bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export GOTOOLCHAIN=local
@@ -155,8 +155,8 @@ validate_build_inputs() {
       exit 2
     }
   done
-  [[ "$(command -v go)" == "$go_bin/go" && "$(go env GOVERSION)" == go1.26.8 ]] || {
-    echo 'the reviewed bingo-dev Go 1.26.8 toolchain is unavailable' >&2
+  [[ "$(command -v go)" == "$go_bin/go" && "$(go env GOVERSION)" == go1.26.9 ]] || {
+    echo 'the reviewed bingo-dev Go 1.26.9 toolchain is unavailable' >&2
     exit 2
   }
   [[ "$(command -v node)" == "$node_bin/node" && "$(node --version)" == v24.20.0 ]] || {

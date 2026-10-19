@@ -37,9 +37,9 @@ HEAD, so an arbitrary revision label cannot be attached to dirty source. The
 candidate binary is built with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64`, and its
 Go version/build metadata are retained in the run evidence.
 
-This workstation's WSL environment may not have Go 1.26.8. Do not download a
+This workstation's WSL environment may not have Go 1.26.9. Do not download a
 replacement automatically. Instead either run with an already verified Go
-1.26.8 toolchain, or supply a precompiled Linux binary and a strict manifest:
+1.26.9 toolchain, or supply a precompiled Linux binary and a strict manifest:
 
 ```bash
 export LOCAL_PARITY_PREBUILT_XBOARD=/absolute/path/to/xboard-linux-amd64
@@ -54,7 +54,7 @@ binary_sha256=<lowercase-64-character-sha256>
 goos=linux
 goarch=amd64
 cgo_enabled=0
-go_version=go1.26.8
+go_version=go1.26.9
 ```
 
 `start` verifies the manifest against the clean current HEAD and the actual

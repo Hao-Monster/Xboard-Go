@@ -237,8 +237,8 @@ validate_prebuilt_manifest() {
     echo 'prebuilt manifest source_commit or binary_sha256 has an invalid format' >&2
     exit 2
   fi
-  if [[ "${manifest[source_commit]}" != "$expected_revision" || "${manifest[goos]}" != linux || "${manifest[goarch]}" != amd64 || "${manifest[cgo_enabled]}" != 0 || "${manifest[go_version]}" != go1.26.8 ]]; then
-    echo 'prebuilt manifest does not describe the required clean revision, linux/amd64, CGO_ENABLED=0, Go 1.26.8 artifact' >&2
+  if [[ "${manifest[source_commit]}" != "$expected_revision" || "${manifest[goos]}" != linux || "${manifest[goarch]}" != amd64 || "${manifest[cgo_enabled]}" != 0 || "${manifest[go_version]}" != go1.26.9 ]]; then
+    echo 'prebuilt manifest does not describe the required clean revision, linux/amd64, CGO_ENABLED=0, Go 1.26.9 artifact' >&2
     exit 2
   fi
 
@@ -328,7 +328,7 @@ build_candidate() {
     cp "$LOCAL_PARITY_PREBUILT_MANIFEST" "$evidence_dir/prebuilt-manifest.env"
     printf 'prebuilt_xboard_sha256=%s\nprebuilt_manifest=%s\nprebuilt_manifest_sha256=%s\n' "$PREBUILT_BINARY_SHA256" "$LOCAL_PARITY_PREBUILT_MANIFEST" "$PREBUILT_MANIFEST_SHA256" >>"$evidence_dir/source-identity.txt"
   else
-    test "$(go env GOVERSION)" = 'go1.26.8'
+    test "$(go env GOVERSION)" = 'go1.26.9'
     {
       go version
       CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -X main.buildRevision=${revision}" -o "$run_dir/image-context/xboard" ./cmd/xboard
