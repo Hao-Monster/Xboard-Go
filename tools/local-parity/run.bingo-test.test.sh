@@ -96,7 +96,7 @@ while IFS='|' read -r action run_id project overlay base base_id legacy go_path 
   [[ "$base" == xboard-go:gpt55-user-2e1713c69dfc-offline ]]
   [[ "$base_id" == sha256:0e19640a157c07392250caadd0321cceced1f8c214a1cdf5156536058bfddfb5 ]]
   [[ "$legacy" == xboard-legacy-parity:8065164 ]]
-  [[ "$go_path" == /home/bingo/.local/toolchains/go1.26.8/bin/go ]]
+  [[ "$go_path" == /home/bingo/.local/toolchains/go1.26.9/bin/go ]]
   [[ "$node_path" == /home/bingo/apps/xboard-go-tools/node-v24.20.0-linux-x64/bin/node ]]
   [[ "$gotoolchain" == local ]]
   [[ "$goproxy" == off ]]
