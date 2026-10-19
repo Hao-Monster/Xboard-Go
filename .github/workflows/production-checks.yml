@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
       - name: Detect changed files and compute execution scope
@@ -83,7 +83,7 @@ jobs:
         if: needs.detect-changes.outputs.supply_chain == 'true'
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: needs.detect-changes.outputs.supply_chain == 'true'
         with:
           node-version: 24
@@ -138,7 +138,7 @@ jobs:
           allow-licenses: Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MPL-2.0, Python-2.0, Unicode-3.0, Zlib, 0BSD, CC0-1.0, Unlicense, LicenseRef-scancode-google-patent-license-golang
       - name: Upload supply-chain evidence
         if: needs.detect-changes.outputs.supply_chain == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: supply-chain-${{ github.sha }}
           path: artifacts/
@@ -196,7 +196,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: steps.check.outputs.should_run == 'true'
         with:
           node-version: 24
@@ -245,7 +245,7 @@ jobs:
           -count=1
       - name: Upload grouped Go coverage
         if: steps.check.outputs.should_run == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-coverage-${{ matrix.group }}-${{ github.sha }}
           path: coverage-${{ matrix.group }}.out
@@ -313,7 +313,7 @@ jobs:
         run: .github/scripts/check-real-client-compat.sh artifacts/client-compat
       - name: Upload real-client compatibility evidence
         if: needs.detect-changes.outputs.real_client_compat == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: real-client-compat-${{ github.sha }}
           path: artifacts/client-compat/
@@ -355,7 +355,7 @@ jobs:
         if: needs.detect-changes.outputs.run_web == 'true'
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: needs.detect-changes.outputs.run_web == 'true'
         with:
           node-version: 24
@@ -398,7 +398,7 @@ jobs:
         if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: needs.detect-changes.outputs.run_browser_smoke == 'true'
         with:
           node-version: 24
@@ -445,7 +445,7 @@ jobs:
         if: needs.detect-changes.outputs.packaged_browser == 'true'
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: needs.detect-changes.outputs.packaged_browser == 'true'
         with:
           node-version: 24
@@ -560,7 +560,7 @@ jobs:
         if: needs.detect-changes.outputs.split_runtime == 'true'
         with:
           package_json_file: web/package.json
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: needs.detect-changes.outputs.split_runtime == 'true'
         with:
           node-version: 24
