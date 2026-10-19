@@ -15,10 +15,17 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 [[ "$(uname -m)" == x86_64 ]] || fail 'Unsupported architecture'
 for tool in docker curl python3 openssl sha256sum ss; do command -v "$tool" >/dev/null || fail "Missing prerequisite: $tool"; done
 docker compose version >/dev/null
+snapshot() {
+  local node_ids
+  local protected=(remnawave remnawave-db remnawave-redis caddy)
+  node_ids="$(docker container ls -aq --filter 'name=^/remnanode$')" || return 1
+  if [[ -n "$node_ids" ]]; then protected+=(remnanode); fi
+  docker inspect "${protected[@]}" --format '{{.Name}} {{.Id}} {{.State.StartedAt}} {{.State.Running}}'
+}
 # A later release may be inspected while the existing instance remains healthy.
 if [[ "$mode" == inspect && -d "$directory" && ! -L "$directory" ]]; then
   [[ "$(docker inspect "${project}-app-1" --format '{{index .Config.Labels "com.docker.compose.project"}} {{.State.Health.Status}}')" == "$project healthy" ]] || fail 'Existing installation is not the expected healthy Xboard instance'
-  existing_states="$(docker inspect remnawave remnanode remnawave-db remnawave-redis caddy --format '{{.State.Running}}')"
+  existing_states="$(snapshot)"
   [[ "$existing_states" != *false* ]] || fail 'A protected service is not running'
   curl -fsS --max-time 15 "$origin/healthz" >/dev/null
   printf 'Read-only preflight passed: existing Xboard and protected services are healthy.\n'
@@ -44,9 +51,6 @@ config=pathlib.Path(sys.argv[1]).read_text()
 if re.search(r'(?<![A-Za-z0-9.-])'+re.escape(sys.argv[2])+r'(?![A-Za-z0-9.-])',config):
  raise SystemExit('Domain already appears in Caddy configuration; refusing route takeover')
 PY
-snapshot() {
-  docker inspect remnawave remnanode remnawave-db remnawave-redis caddy --format '{{.Name}} {{.Id}} {{.State.StartedAt}} {{.State.Running}}'
-}
 baseline="$(snapshot)"
 [[ "$baseline" != *' false'* ]] || fail 'An existing protected service is not running'
 [[ "$(docker inspect caddy --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')" == "$caddy_file" ]] || fail 'Unexpected Caddy mount'
