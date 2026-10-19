@@ -78,7 +78,7 @@ class ResourceBoundaryTests(unittest.TestCase):
                 paths = [root / name for name in ("containers.json", "network.json", "volume.json")]
                 for path, value in zip(paths, ([app, proxy], [network], [volume])): path.write_text(json.dumps(value))
                 code = heredoc("PYBOUNDARY")
-                if os.name == "nt": code = "import os,stat\nos.geteuid=lambda: 0\nstat.S_IWOTH=0\n" + code
+                if os.name == "nt" or os.geteuid() != 0: code = "import os,stat\nos.geteuid=lambda: 0\nstat.S_IWOTH=0\n" + code
                 result = subprocess.run([sys.executable, "-", *(str(path) for path in paths), project, str(root / "data-root"), str(root / "aliases")], input=code, text=True, capture_output=True)
                 self.assertEqual(result.returncode == 0, invalid is None, result.stderr)
                 self.assertEqual((root / "xboard.db").read_text(), "db")

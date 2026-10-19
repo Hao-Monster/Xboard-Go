@@ -88,9 +88,10 @@ type ShutdownWaiter interface {
 }
 
 type lifecycleHandler struct {
-	handler            http.Handler
-	webSocketDrainDone <-chan struct{}
-	authTelemetryDone  <-chan struct{}
+	notifyEntitlementChange func(context.Context, *store.EntitlementChange)
+	handler                 http.Handler
+	webSocketDrainDone      <-chan struct{}
+	authTelemetryDone       <-chan struct{}
 }
 
 func (h *lifecycleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -826,11 +827,11 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("/api/v1/admin/{adminPath}", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	root.Handle("/api/v1/admin/{adminPath}/", api.dynamicModernAdminPath(protectedAdmin))
 
-	handler := api.requestDiagnostics(api.securityHeaders(api.recoverPanic(root)))
+	handler := api.withClientIP(api.requestDiagnostics(api.securityHeaders(api.recoverPanic(root))))
 	if !dependencies.WebSocketEnabled && authTelemetryDone == nil {
 		return handler
 	}
-	lifecycle := &lifecycleHandler{handler: handler, authTelemetryDone: authTelemetryDone}
+	lifecycle := &lifecycleHandler{handler: handler, authTelemetryDone: authTelemetryDone, notifyEntitlementChange: api.notifyEntitlementChange}
 	if dependencies.WebSocketEnabled {
 		lifecycle.webSocketDrainDone = api.hub.drainDone
 	}

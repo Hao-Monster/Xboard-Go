@@ -52,8 +52,10 @@ fresh-install, restart and non-overwrite smoke test. These are **internal-test
 prereleases**, not claims of business acceptance. The installer is for fresh
 instances; it never runs an automatic upgrade or migration against an existing
 installation. Existing development deployments continue through `Legacy parity`,
-which includes database-aware rollback. The obsolete image-only manual
-`Deploy development server` workflow has been removed.
+which stops a failed candidate and preserves current data plus its pre-upgrade
+backup for explicit recovery. It does not automatically restore an old database
+snapshot. The obsolete image-only manual `Deploy development server` workflow
+has been removed.
 
 ## Local container
 
@@ -303,11 +305,13 @@ rootless containers.
 An upgrade requires the active container to be healthy. Before stopping it,
 the tool creates and verifies an online `.xbbackup`, records the exact current
 and target image IDs plus the verified backup manifest, then starts the target
-and verifies its health, revision, database DSN, and image ID. A failed target
-health check automatically starts the previous image against a newly restored
-database file; the failed upgraded database is retained for diagnosis rather
-than overwritten. `status` remains usable when the container is stopped or
-unhealthy so that the recorded state can be inspected.
+and verifies its health, revision, database DSN, and image ID. Once target
+activation has been attempted, a failure stops the application and retains the
+current database/WAL, attachments, configuration, and pre-upgrade backup. It does
+not restore the old snapshot or restart the previous image automatically, since
+the target may already have accepted writes or run background jobs. A failure to
+stop is reported explicitly. `status` remains usable when the container is
+stopped or unhealthy so that the recorded state can be inspected.
 
 ```bash
 go run ./cmd/xboard-lifecycle upgrade \
@@ -324,12 +328,17 @@ go run ./cmd/xboard-lifecycle rollback \
   --compose-file compose.local.yaml
 ```
 
-Explicit rollback restores the snapshot taken immediately before the last
-successful upgrade. Writes accepted after that snapshot are not part of the
-restored active database; they remain in the non-overwritten upgraded database
-for diagnosis or deliberate reconciliation. A failed fresh install likewise
-leaves its project container, volume, and audit state in place for inspection,
-and a repeated install is refused until the operator explicitly removes those
+Explicit rollback accepts a recorded `upgraded` or `target_failed` state and
+restores its verified pre-upgrade snapshot. The target may be stopped or
+unhealthy, but its image and database identity must still match the journal.
+Writes accepted after that snapshot are not part of the restored active
+database; they remain in the non-overwritten upgraded database for diagnosis or
+deliberate reconciliation. Obtain explicit recovery authorization before using
+this data-loss-prone option in a shared environment. See
+[lifecycle failure recovery](docs/operations/lifecycle-recovery.md) for the
+failure marker and recovery boundaries. A failed fresh install likewise leaves
+its project container, volume, and audit state in place for inspection, and a
+repeated install is refused until the operator explicitly removes those
 project-scoped resources.
 
 Lifecycle state is an append-only, Git-ignored journal under
@@ -337,8 +346,10 @@ Lifecycle state is an append-only, Git-ignored journal under
 paths and manifests, timestamps, and outcomes, but no credentials or business
 rows. On POSIX hosts the tool restricts its state directories to `0700` and
 files to `0600`; on Windows it retains the inherited ACL of the operator-owned
-state directory. Use an operator-owned `--env-file` for non-default local ports
-or Compose settings.
+state directory. Under the operation lock, the next append validates complete
+history and repairs only an unterminated trailing record; complete corruption
+is rejected without silently discarding history. Use an operator-owned
+`--env-file` for non-default local ports or Compose settings.
 
 Each Compose project receives its own runtime image tag, so isolated local
 lifecycle operations cannot retag another project's pending container image.
@@ -378,8 +389,9 @@ unexpected local image ID, title, license, or revision, and manifests larger
 than 64 KiB. It binds all three verified IDs to project-scoped runtime tags
 before changing containers. Component-only upgrades recreate only the changed
 containers. A backend change first creates and verifies a database backup; a
-failed activation restores that backup and the precise previous three-image
-combination.
+failed activation stops the backend and retains the current data and backup
+for explicit recovery. A failed frontend- or gateway-only change can return to
+the precise previous component combination without restoring the database.
 
 ```bash
 go run ./cmd/xboard-lifecycle install --topology split \

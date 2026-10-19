@@ -503,6 +503,9 @@ func ValidateLegacyNodesData(input LegacyNodesImport) error {
 			if item.Timezone != "Asia/Singapore" || item.EnableSecond == nil || item.DisableSecond == nil || *item.EnableSecond < 0 || *item.EnableSecond > 86399 || *item.DisableSecond < 0 || *item.DisableSecond > 86399 || *item.EnableSecond == *item.DisableSecond {
 				return fmt.Errorf("%w: invalid daily activation schedule", ErrInvalidInput)
 			}
+			if *item.EnableSecond%60 != 0 || *item.DisableSecond%60 != 0 {
+				return fmt.Errorf("%w: daily activation schedule for node %d must be minute-aligned", ErrInvalidInput, item.NodeID)
+			}
 		} else if item.ScheduleType == "once" {
 			if item.Timezone != "" || item.EnableAt == nil || item.DisableAt == nil || *item.EnableAt >= *item.DisableAt {
 				return fmt.Errorf("%w: invalid once activation schedule", ErrInvalidInput)

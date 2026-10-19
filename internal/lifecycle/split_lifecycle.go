@@ -32,6 +32,8 @@ type DeploymentState struct {
 	ActiveDSN           string           `json:"active_database_dsn,omitempty"`
 	RestoredPath        string           `json:"restored_path,omitempty"`
 	RestoredAttachments string           `json:"restored_attachment_path,omitempty"`
+	RollbackPhase       string           `json:"rollback_phase,omitempty"`
+	ObservedDeployment  *Deployment      `json:"observed_deployment,omitempty"`
 	Failure             string           `json:"failure,omitempty"`
 }
 
@@ -47,6 +49,7 @@ type DeploymentPlatform interface {
 	ResolveDeployment(context.Context, DeploymentManifest) (Deployment, error)
 	FreshDeployment(context.Context) (bool, error)
 	ActivateDeployment(context.Context, Deployment, string, []Component) (DeploymentApplication, error)
+	StopDeployment(context.Context) error
 	BackupDeployment(context.Context, DeploymentApplication, string) (backup.Manifest, error)
 	RestoreDeployment(context.Context, Image, string, string, string) (backup.Manifest, error)
 }
@@ -175,28 +178,52 @@ func (orchestrator *DeploymentOrchestrator) Upgrade(ctx context.Context, manifes
 	if activationErr == nil {
 		state.Status = StatusUpgraded
 		state.UpdatedAt = orchestrator.now().UTC()
-		if err := orchestrator.store.Append(state); err != nil {
-			return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), err
+		if err := orchestrator.store.Append(state); err == nil {
+			return DeploymentResult{Status: "success", Action: "lifecycle.deployment.upgrade", Application: &application, State: &state}, nil
+		} else {
+			activationErr = fmt.Errorf("record successful deployment upgrade: %w", err)
 		}
-		return DeploymentResult{Status: "success", Action: "lifecycle.deployment.upgrade", Application: &application, State: &state}, nil
+	}
+	if isPreStartActivationError(activationErr) {
+		state.Status = StatusAutoRolledBack
+		state.UpdatedAt = orchestrator.now().UTC()
+		state.ActiveDSN = current.DSN
+		state.Failure = safeFailure(activationErr)
+		operationErr := fmt.Errorf("deployment upgrade failed before candidate start; previous deployment preserved: %w", activationErr)
+		if err := orchestrator.store.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedDeploymentResult("lifecycle.deployment.upgrade", current, &state), operationErr
 	}
 	state.Status = StatusTargetFailed
 	state.UpdatedAt = orchestrator.now().UTC()
+	if backendChanged {
+		// Backend startup includes migrations and workers; reverting a snapshot can
+		// discard writes even if the candidate never passed its health checks.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		stopErr := orchestrator.platform.StopDeployment(cleanupCtx)
+		operationErr := fmt.Errorf("deployment upgrade failed; current data and pre-upgrade backup retained; explicit recovery required: %w", activationErr)
+		if stopErr != nil {
+			operationErr = errors.Join(operationErr, fmt.Errorf("stop failed backend: %w", stopErr))
+		} else {
+			application.Healthy = false
+		}
+		state.Failure = safeFailure(operationErr)
+		if err := orchestrator.store.Append(state); err != nil {
+			operationErr = errors.Join(operationErr, err)
+		}
+		return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), operationErr
+	}
 	state.Failure = safeFailure(activationErr)
 	if err := orchestrator.store.Append(state); err != nil {
 		return failedDeploymentResult("lifecycle.deployment.upgrade", application, &state), errors.Join(activationErr, err)
 	}
 
 	recoveryDSN := current.DSN
-	if backendChanged {
-		recoveryDSN, err = orchestrator.restoreDeploymentBackup(ctx, &state)
-		if err != nil {
-			return orchestrator.rollbackFailure("lifecycle.deployment.upgrade", state, application, activationErr, err)
-		}
-	}
 	recovered, recoveryErr := orchestrator.platform.ActivateDeployment(ctx, current.Deployment, recoveryDSN, changed)
 	if recoveryErr != nil {
-		return orchestrator.rollbackFailure("lifecycle.deployment.upgrade", state, recovered, activationErr, recoveryErr)
+		return orchestrator.rollbackFailure(ctx, "lifecycle.deployment.upgrade", state, "activate", recovered, activationErr, recoveryErr)
 	}
 	state.Status = StatusAutoRolledBack
 	state.UpdatedAt = orchestrator.now().UTC()
@@ -224,6 +251,9 @@ func (orchestrator *DeploymentOrchestrator) reconcileCurrentDeployment(applicati
 	}
 	expected := expectedDeploymentForState(state)
 	if expected == nil {
+		if state.Status == StatusRollbackFailed && state.RollbackPhase == "unknown" {
+			return DeploymentState{}, false, errors.New("lifecycle rollback failed in unknown state; manual recovery required (see docs/operations/lifecycle-recovery.md)")
+		}
 		return DeploymentState{}, false, errors.New("lifecycle journal does not identify the expected active deployment")
 	}
 	if !sameDeploymentImages(application.Deployment, *expected) {
@@ -241,8 +271,9 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if err != nil {
 		return DeploymentResult{}, err
 	}
-	if state.Status != StatusUpgraded || state.Previous == nil || state.Target == nil || len(state.Changed) == 0 {
-		return DeploymentResult{}, fmt.Errorf("deployment rollback requires complete lifecycle status %q", StatusUpgraded)
+	canRollback := state.Status == StatusUpgraded || state.Status == StatusTargetFailed || (state.Status == StatusRollbackFailed && state.RollbackPhase == "restore")
+	if !canRollback || state.Previous == nil || state.Target == nil || len(state.Changed) == 0 {
+		return DeploymentResult{}, fmt.Errorf("deployment rollback requires complete lifecycle status %q or %q", StatusUpgraded, StatusTargetFailed)
 	}
 	current, err := orchestrator.platform.CurrentDeployment(ctx)
 	if err != nil {
@@ -251,7 +282,10 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 	if err := validateDeploymentApplicationIdentity(current); err != nil {
 		return DeploymentResult{}, err
 	}
-	if !sameDeploymentImages(current.Deployment, *state.Target) {
+	matchesTarget := sameDeploymentImages(current.Deployment, *state.Target)
+	matchesObserved := state.ObservedDeployment != nil && sameDeploymentImages(current.Deployment, *state.ObservedDeployment)
+	matchesPreviousOnFailure := (state.Status == StatusTargetFailed || (state.Status == StatusRollbackFailed && state.RollbackPhase == "restore")) && sameDeploymentImages(current.Deployment, *state.Previous)
+	if !matchesTarget && !matchesObserved && !matchesPreviousOnFailure {
 		return DeploymentResult{}, errors.New("active deployment does not match the recorded rollback target")
 	}
 	if state.ActiveDSN != "" && current.DSN != state.ActiveDSN {
@@ -264,16 +298,18 @@ func (orchestrator *DeploymentOrchestrator) Rollback(ctx context.Context) (Deplo
 		}
 		recoveryDSN, err = orchestrator.restoreDeploymentBackup(ctx, &state)
 		if err != nil {
-			return orchestrator.rollbackFailure("lifecycle.deployment.rollback", state, DeploymentApplication{}, errors.New("explicit rollback"), err)
+			return orchestrator.rollbackFailure(ctx, "lifecycle.deployment.rollback", state, "restore", current, errors.New("explicit rollback"), err)
 		}
 	}
 	application, err := orchestrator.platform.ActivateDeployment(ctx, *state.Previous, recoveryDSN, state.Changed)
 	if err != nil {
-		return orchestrator.rollbackFailure("lifecycle.deployment.rollback", state, application, errors.New("explicit rollback"), err)
+		return orchestrator.rollbackFailure(ctx, "lifecycle.deployment.rollback", state, "activate", application, errors.New("explicit rollback"), err)
 	}
 	state.Status = StatusRolledBack
 	state.UpdatedAt = orchestrator.now().UTC()
 	state.ActiveDSN = recoveryDSN
+	state.RollbackPhase = ""
+	state.ObservedDeployment = nil
 	state.Failure = ""
 	if err := orchestrator.store.Append(state); err != nil {
 		return failedDeploymentResult("lifecycle.deployment.rollback", application, &state), err
@@ -303,9 +339,41 @@ func (orchestrator *DeploymentOrchestrator) restoreDeploymentBackup(ctx context.
 	return restoredDSN, nil
 }
 
-func (orchestrator *DeploymentOrchestrator) rollbackFailure(action string, state DeploymentState, application DeploymentApplication, targetErr, rollbackErr error) (DeploymentResult, error) {
+func (orchestrator *DeploymentOrchestrator) rollbackFailure(ctx context.Context, action string, state DeploymentState, phase string, application DeploymentApplication, targetErr, rollbackErr error) (DeploymentResult, error) {
+	priorObserved := state.ObservedDeployment
 	state.Status = StatusRollbackFailed
 	state.UpdatedAt = orchestrator.now().UTC()
+	state.RollbackPhase = phase
+	state.ObservedDeployment = nil
+	if phase == "activate" || phase == "restore" {
+		observed := application
+		if validateDeploymentApplicationIdentity(observed) != nil {
+			if current, err := orchestrator.platform.CurrentDeployment(ctx); err == nil && validateDeploymentApplicationIdentity(current) == nil {
+				observed = current
+			}
+		}
+		if validateDeploymentApplicationIdentity(observed) == nil {
+			dep := observed.Deployment
+			if dep.SourceRevision == "" {
+				switch {
+				case state.Target != nil && sameDeploymentImages(dep, *state.Target):
+					dep.SourceRevision = state.Target.SourceRevision
+				case state.Previous != nil && sameDeploymentImages(dep, *state.Previous):
+					dep.SourceRevision = state.Previous.SourceRevision
+				case priorObserved != nil && sameDeploymentImages(dep, *priorObserved):
+					dep.SourceRevision = priorObserved.SourceRevision
+				}
+			}
+			observed.Deployment = dep
+			state.ObservedDeployment = &dep
+			if phase == "activate" {
+				state.ActiveDSN = observed.DSN
+			}
+			application = observed
+		} else if phase == "activate" {
+			state.RollbackPhase = "unknown"
+		}
+	}
 	state.Failure = safeFailure(rollbackErr)
 	operationErr := fmt.Errorf("target deployment failed (%v) and rollback failed: %w", targetErr, rollbackErr)
 	if err := orchestrator.store.Append(state); err != nil {
@@ -349,6 +417,19 @@ func validateDeploymentState(state DeploymentState) error {
 	if state.Target != nil {
 		if err := validateDeployment(*state.Target); err != nil {
 			return fmt.Errorf("validate target deployment: %w", err)
+		}
+	}
+	if state.ObservedDeployment != nil {
+		if err := validateDeployment(*state.ObservedDeployment); err != nil {
+			return fmt.Errorf("validate observed deployment: %w", err)
+		}
+	}
+	if state.RollbackPhase != "" {
+		if state.Status != StatusRollbackFailed {
+			return fmt.Errorf("rollback phase %q is only valid for %q", state.RollbackPhase, StatusRollbackFailed)
+		}
+		if state.RollbackPhase != "restore" && state.RollbackPhase != "activate" && state.RollbackPhase != "unknown" {
+			return fmt.Errorf("invalid deployment rollback phase %q", state.RollbackPhase)
 		}
 	}
 	seen := map[Component]bool{}
@@ -399,8 +480,20 @@ func expectedDeploymentForState(state DeploymentState) *Deployment {
 	switch state.Status {
 	case StatusInstallPrepared, StatusInstalled, StatusInstallFailed, StatusPrepared, StatusUpgraded, StatusTargetFailed:
 		return state.Target
-	case StatusAutoRolledBack, StatusRolledBack, StatusRollbackFailed:
+	case StatusAutoRolledBack, StatusRolledBack:
 		return state.Previous
+	case StatusRollbackFailed:
+		if state.ObservedDeployment != nil {
+			return state.ObservedDeployment
+		}
+		switch state.RollbackPhase {
+		case "restore":
+			return state.Target
+		case "unknown":
+			return nil
+		default:
+			return state.Previous
+		}
 	default:
 		return nil
 	}

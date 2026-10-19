@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { adminDataCache } from "../../lib/dataPrefetchCache";
 import type { Order, Plan, PlanOffer, ServerGroup } from "../../lib/api";
 import { PlanCatalogPage } from "./PlanCatalogPage";
 import { PlanManagementPage } from "./PlanManagementPage";
@@ -138,7 +139,50 @@ describe("PlanManagementPage", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("月付价格无效");
     expect(api.createPlan).not.toHaveBeenCalled();
   });
+
+  it("retains inline-created server groups when initial load finishes late and invalidates plans prefetch cache (BL-29)", async () => {
+    adminDataCache.invalidate("plans");
+    const createdGroup: ServerGroup = { id: 99, name: "新创建的分组", users_count: 0, server_count: 0, created_at: "2026-08-26T00:00:00Z", updated_at: "2026-08-26T00:00:00Z" };
+    let resolveInitialGroups!: (value: ServerGroup[]) => void;
+    const initialGroupsPromise = new Promise<ServerGroup[]>((resolve) => {
+      resolveInitialGroups = resolve;
+    });
+    const listServerGroups = vi.fn()
+      .mockReturnValueOnce(initialGroupsPromise)
+      .mockResolvedValue([group, createdGroup]);
+    const api = {
+      ...planAPI([plan]),
+      listServerGroups,
+      createServerGroup: vi.fn().mockResolvedValue(createdGroup)
+    };
+    const user = userEvent.setup();
+    render(<PlanManagementPage api={api} />);
+
+    void adminDataCache.prefetch("plans", () => Promise.resolve([[plan], [group]]));
+    expect(adminDataCache.consume("plans")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "添加套餐" }));
+    const editor = screen.getByRole("dialog", { name: "添加套餐" });
+    await user.click(within(editor).getByRole("button", { name: "添加分组" }));
+    const creator = screen.getByRole("dialog", { name: "创建权限组" });
+    await user.type(within(creator).getByLabelText("权限组名称"), "新创建的分组");
+    await user.click(within(creator).getByRole("button", { name: "创建权限组" }));
+    await waitFor(() => expect(api.createServerGroup).toHaveBeenCalledWith("新创建的分组"));
+    expect(adminDataCache.consume("plans")).toBeUndefined();
+    expect(listServerGroups).toHaveBeenCalledTimes(2);
+
+    // Late resolution of pre-creation initial load must not overwrite createdGroup
+    resolveInitialGroups([group]);
+    await screen.findByText("Pro");
+
+    // Close the plan editor without saving the plan, then reopen "添加套餐"
+    await user.click(within(editor).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "添加套餐" }));
+    const reopened = screen.getByRole("dialog", { name: "添加套餐" });
+    expect(within(reopened).getByRole("option", { name: "新创建的分组" })).toBeInTheDocument();
+  });
 });
+
 
 describe("PlanCatalogPage", () => {
   it("renders unlimited capacity without the legacy false sold-out label", async () => {

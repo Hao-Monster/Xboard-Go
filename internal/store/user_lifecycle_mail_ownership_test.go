@@ -167,7 +167,10 @@ func TestUserLifecycleMailOwnershipMigrationOnlyBackfillsProvenLatestReset(t *te
 			t.Fatalf("reset queued=%t err=%v", queued, err)
 		}
 	}
-	if _, _, err := db.UpdateAdminUser(ctx, user.ID, UpdateAdminUserInput{Revision: user.Revision, Email: "renamed-reset-owner@example.test"}, now.Add(2*time.Minute)); err != nil {
+	// Reproduce a pre-upgrade rename that retained its reset challenge. The
+	// current mutation API now revokes that challenge, so it cannot construct
+	// this historical migration fixture. Keep the ownership assertions below.
+	if _, err := db.db.ExecContext(ctx, `UPDATE users SET email=?,admin_revision=admin_revision+1,updated_at=? WHERE id=?`, "renamed-reset-owner@example.test", now.Add(2*time.Minute).Unix(), user.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.db.ExecContext(ctx, `INSERT INTO registration_email_mail_outbox(email_digest,recipient,app_name,available_at,failed_at,created_at,updated_at) VALUES(zeroblob(32),?,'Legacy',?,?,?,?)`, user.Email, now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {

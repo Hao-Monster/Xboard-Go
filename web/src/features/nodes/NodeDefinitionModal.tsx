@@ -6,6 +6,7 @@ import { Modal } from "../../components/Overlay";
 import type {
   AdminNode, AdminNodeDefinition, AdminNodeDefinitionInput, AdminNodeParentOption, Machine, RoutingRule, ServerGroup
 } from "../../lib/api";
+import { invalidateAdminData } from "../../lib/dataPrefetchCache";
 import "./node-definition.css";
 import { NodeFilter } from "./NodeFilter";
 import { NodeGroupCreator } from "./NodeGroupCreator";
@@ -29,6 +30,7 @@ interface Props {
   routes: RoutingRule[];
   onClose: () => void;
   onSaved: () => void;
+  onGroupCreated?: (group: ServerGroup) => void;
 }
 
 const protocols = [
@@ -61,7 +63,7 @@ const networkTemplates: Record<string, Array<{ label: string; value: Record<stri
   } }]
 };
 
-export function NodeDefinitionModal({ api, node, machines, groups, routes, onClose, onSaved, initialMachineID }: Props) {
+export function NodeDefinitionModal({ api, node, machines, groups, routes, onClose, onSaved, onGroupCreated, initialMachineID }: Props) {
   const [addedGroups, setAddedGroups] = useState<ServerGroup[]>([]);
   const availableGroups = [...groups, ...addedGroups.filter(group => !groups.some(existing => existing.id === group.id))];
   const [rawDefinition, setRawDefinition] = useState<AdminNodeDefinition | null>(null);
@@ -506,7 +508,7 @@ export function NodeDefinitionModal({ api, node, machines, groups, routes, onClo
 
 
               <div className="field-block">
-                <div className="node-group-field-heading"><span>{translateAdmin("权限组")}</span>{api.createServerGroup && <NodeGroupCreator onOpenChange={setGroupCreating} create={name => api.createServerGroup!(name)} onCreated={group => { setAddedGroups(current => [...current, group]); setInput(current => ({...current, group_ids: [...current.group_ids, group.id]})); }} />}</div>
+                <div className="node-group-field-heading"><span>{translateAdmin("权限组")}</span>{api.createServerGroup && <NodeGroupCreator onOpenChange={setGroupCreating} create={name => api.createServerGroup!(name)} onCreated={group => { invalidateAdminData("groups"); setAddedGroups(current => [...current, group]); onGroupCreated?.(group); setInput(current => ({...current, group_ids: [...current.group_ids, group.id]})); }} />}</div>
                 <div className="chips-picker-wrapper">
                   <div className="chips-list">
                     {input.group_ids.length === 0 ? (

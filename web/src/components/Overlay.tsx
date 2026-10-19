@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { focusableElements, useOverlayLayer } from "./overlayStack";
 
 interface DrawerProps {
   title: string;
@@ -79,78 +80,43 @@ function useDialogFocus(
   onClose: () => void,
   restoreFocusRef?: RefObject<HTMLElement | null>
 ) {
-  const closeRef = useRef(onClose);
-  useEffect(() => {
-    closeRef.current = onClose;
-  }, [onClose]);
+  useOverlayLayer({ active, onEscape: onClose, trapRef: ref });
 
   useEffect(() => {
+    const activeAtMount = document.activeElement;
     const opener = restoreFocusRef?.current
-      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+      ?? (activeAtMount instanceof HTMLElement ? activeAtMount : null);
+    const container = ref.current;
     const frame = window.requestAnimationFrame(() => {
-      const container = ref.current;
+      const currentContainer = ref.current;
       // A fast keyboard or pointer user may reach the dialog before this frame.
       // Do not steal that focus and redirect their following keystrokes.
-      if (container !== null && !container.contains(document.activeElement)) {
-        focusableElements(container)[0]?.focus();
+      if (currentContainer !== null && !currentContainer.contains(document.activeElement)) {
+        focusableElements(currentContainer)[0]?.focus();
       }
     });
     return () => {
       window.cancelAnimationFrame(frame);
       // The parent drawer may still be inert during this cleanup. Restore on the
-      // next frame, after React has committed the overlay stack change.
+      // next frame, after React has committed the overlay stack change, unless
+      // focus has moved to a new connected element since the dialog mounted.
       window.requestAnimationFrame(() => {
-        if (opener?.isConnected === true) {
+        const active = document.activeElement;
+        const focusIsUnset =
+          active === null ||
+          active === document.body ||
+          active === document.documentElement ||
+          active === activeAtMount ||
+          !active.isConnected ||
+          (container !== null && container.contains(active));
+        if (focusIsUnset && opener?.isConnected === true) {
           opener.focus();
         }
       });
     };
   }, [ref, restoreFocusRef]);
-
-  useEffect(() => {
-    if (!active) {
-      return undefined;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        closeRef.current();
-        return;
-      }
-      if (event.key !== "Tab") {
-        return;
-      }
-      const elements = focusableElements(ref.current);
-      if (elements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [active, ref]);
 }
 
-function focusableElements(container: HTMLElement | null): HTMLElement[] {
-  if (container === null) {
-    return [];
-  }
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
-}
 
 function overlayRoot(): HTMLElement {
   const existing = document.getElementById("overlay-root");

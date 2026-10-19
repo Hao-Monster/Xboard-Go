@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net"
@@ -84,7 +85,7 @@ const (
 func nodeRequestAddresses(r *http.Request, trustedProxies []netip.Prefix) (string, string) {
 	peerAddress, ok := parseNodePeerAddress(r.RemoteAddr)
 	if !ok {
-		peer := requestIP(r)
+		peer := requestPeerIP(r)
 		return peer, peer
 	}
 	peerAddress = peerAddress.Unmap().WithZone("")
@@ -238,7 +239,26 @@ func (l *attemptLimiter) removeExpired(now time.Time) {
 	}
 }
 
+type clientIPContextKey struct{}
+
+// Resolve once at the HTTP boundary without rewriting RemoteAddr: node
+// authentication still needs its independent transport-peer limits.
+func (s *server) withClientIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client, _ := nodeRequestAddresses(r, s.trustedProxyPrefixes)
+		ctx := context.WithValue(r.Context(), clientIPContextKey{}, client)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func requestIP(r *http.Request) string {
+	if client, ok := r.Context().Value(clientIPContextKey{}).(string); ok {
+		return client
+	}
+	return requestPeerIP(r)
+}
+
+func requestPeerIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil {
 		if address := net.ParseIP(host); address != nil {

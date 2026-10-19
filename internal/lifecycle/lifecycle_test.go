@@ -148,7 +148,7 @@ func TestInstallFailureIsRecordedForDiagnosis(t *testing.T) {
 	}
 }
 
-func TestUpgradeFailureAutomaticallyRestoresPreviousImageAndDatabase(t *testing.T) {
+func TestUpgradeFailureStopsCandidateAndPreservesDatabase(t *testing.T) {
 	previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
 	target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
 	platform := &fakePlatform{
@@ -161,15 +161,14 @@ func TestUpgradeFailureAutomaticallyRestoresPreviousImageAndDatabase(t *testing.
 	orchestrator := NewOrchestrator(platform, journal, func() time.Time { return fixed })
 
 	result, err := orchestrator.Upgrade(context.Background(), "candidate")
-	if err == nil || !strings.Contains(err.Error(), "automatically rolled back") {
+	if err == nil || !strings.Contains(err.Error(), "explicit recovery required") {
 		t.Fatalf("Upgrade() result = %#v error = %v", result, err)
 	}
 	wantActions := []string{
 		"current", "resolve:candidate",
 		"backup:/var/lib/xboard-backups/lifecycle-20260825T080000.000000000Z-aaaaaaaaaaaa.xbbackup",
 		"activate:" + target.ID + ":file:/var/lib/xboard/xboard.db",
-		"restore:" + previous.ID + ":/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db:",
-		"activate:" + previous.ID + ":file:/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db",
+		"stop",
 	}
 	if !reflect.DeepEqual(platform.actions, wantActions) {
 		t.Fatalf("actions = %#v, want %#v", platform.actions, wantActions)
@@ -178,15 +177,15 @@ func TestUpgradeFailureAutomaticallyRestoresPreviousImageAndDatabase(t *testing.
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
-	if state.Status != StatusAutoRolledBack || state.ActiveDSN != "file:/var/lib/xboard/xboard-rollback-20260825T080000.000000000Z.db" {
+	if state.Status != StatusTargetFailed || state.ActiveDSN != defaultDatabaseDSN || state.RestoredPath != "" {
 		t.Fatalf("state = %#v", state)
 	}
-	if state.Failure != "target health check failed" {
+	if !strings.Contains(state.Failure, "target health check failed") {
 		t.Fatalf("failure = %q", state.Failure)
 	}
 }
 
-func TestRollbackRequiresTheRecordedHealthyTarget(t *testing.T) {
+func TestRollbackRequiresTheRecordedTargetIdentity(t *testing.T) {
 	previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
 	target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
 	journal := NewJournal(filepath.Join(t.TempDir(), "state.jsonl"))
@@ -248,22 +247,22 @@ func TestSuccessfulUpgradeCanBeExplicitlyRolledBack(t *testing.T) {
 	}
 }
 
-func TestUpgradeRejectsARestoreFromTheWrongRevision(t *testing.T) {
+func TestUpgradeRejectsBackupFromWrongRevisionBeforeActivation(t *testing.T) {
 	previous := Image{ID: "sha256:" + strings.Repeat("1", 64), Revision: strings.Repeat("a", 40)}
 	target := Image{ID: "sha256:" + strings.Repeat("2", 64), Revision: strings.Repeat("b", 40)}
 	platform := &fakePlatform{
-		current:         healthyApplication(previous, defaultDatabaseDSN),
-		images:          map[string]Image{"candidate": target},
-		activateErrors:  map[string]error{target.ID: errors.New("target failed")},
-		restoreManifest: backup.Manifest{AppRevision: strings.Repeat("c", 40)},
+		current:        healthyApplication(previous, defaultDatabaseDSN),
+		images:         map[string]Image{"candidate": target},
+		activateErrors: map[string]error{target.ID: errors.New("target failed")},
+		backupManifest: backup.Manifest{AppRevision: strings.Repeat("c", 40)},
 	}
 	orchestrator := NewOrchestrator(platform, NewJournal(filepath.Join(t.TempDir(), "state.jsonl")), time.Now)
 
-	if _, err := orchestrator.Upgrade(context.Background(), "candidate"); err == nil || !strings.Contains(err.Error(), "restored backup revision") {
+	if _, err := orchestrator.Upgrade(context.Background(), "candidate"); err == nil || !strings.Contains(err.Error(), "backup revision") {
 		t.Fatalf("Upgrade() error = %v", err)
 	}
-	if slicesContainPrefix(platform.actions, "activate:"+previous.ID) {
-		t.Fatalf("previous image activated against an unverified restore: %#v", platform.actions)
+	if slicesContainPrefix(platform.actions, "activate:") || slicesContain(platform.actions, "stop") {
+		t.Fatalf("active application changed before backup verification: %#v", platform.actions)
 	}
 }
 
@@ -339,6 +338,11 @@ func (f *fakePlatform) ResolveImage(_ context.Context, reference string) (Image,
 }
 
 func (f *fakePlatform) Fresh(context.Context) (bool, error) { return true, nil }
+
+func (f *fakePlatform) Stop(context.Context) error {
+	f.actions = append(f.actions, "stop")
+	return nil
+}
 
 func (f *fakePlatform) Activate(_ context.Context, image Image, dsn string) (Application, error) {
 	f.actions = append(f.actions, "activate:"+image.ID+":"+dsn)

@@ -1,8 +1,5 @@
 name: Deploy production internal test
 on:
-  push:
-    branches: [codex/ci-001-tiered-gates]
-    paths: ['.github/workflows/deploy-production-internal.yml', 'deploy/production-*']
   workflow_dispatch:
     inputs:
       mode:

@@ -19,6 +19,7 @@ it("accepts only the configured frame and resumes the same customer's conversati
   send("https://chat.example.test", frame.contentWindow);
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(post).toHaveBeenCalledWith(expect.stringContaining('"event":"config-set"'), "https://chat.example.test");
+  expect(post).toHaveBeenCalledWith(expect.stringContaining('"directConversation":true'), "https://chat.example.test");
   expect(frame).toHaveAttribute("src", url);
   expect(screen.getByRole("link")).toHaveAttribute("href", `${url}&cw_conversation=fixture.session.signature`);
   view.unmount();

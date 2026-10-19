@@ -11,7 +11,7 @@ import (
 
 func TestTelegramCommandSchemaMigratesAndRejectsInvalidQueueRows(t *testing.T) {
 	database := newTestStore(t)
-	if CurrentSchemaVersion() != 68 {
+	if CurrentSchemaVersion() != 70 {
 		t.Fatalf("CurrentSchemaVersion()=%d, want current schema", CurrentSchemaVersion())
 	}
 	for _, name := range []string{

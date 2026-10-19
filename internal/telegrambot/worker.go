@@ -28,6 +28,7 @@ type Worker struct {
 	cipher   *appsettings.Cipher
 	sender   MessageSender
 	interval time.Duration
+	now      func() time.Time
 	logger   *slog.Logger
 }
 
@@ -38,7 +39,7 @@ func NewWorker(database *store.Store, cipherBox *appsettings.Cipher, sender Mess
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: database, cipher: cipherBox, sender: sender, interval: interval, logger: logger}
+	return &Worker{store: database, cipher: cipherBox, sender: sender, interval: interval, now: time.Now, logger: logger}
 }
 
 func (worker *Worker) Run(ctx context.Context) {
@@ -48,7 +49,7 @@ func (worker *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(worker.interval)
 	defer ticker.Stop()
 	for {
-		worker.runBatch(ctx, time.Now())
+		worker.runBatch(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -57,9 +58,24 @@ func (worker *Worker) Run(ctx context.Context) {
 	}
 }
 
-func (worker *Worker) runBatch(ctx context.Context, now time.Time) {
+func (worker *Worker) currentNow() time.Time {
+	if worker != nil && worker.now != nil {
+		return worker.now()
+	}
+	return time.Now()
+}
+
+func (worker *Worker) finishNow(claimNow, startedAt time.Time) time.Time {
+	elapsed := worker.currentNow().Sub(startedAt)
+	if elapsed <= 0 {
+		return claimNow
+	}
+	return claimNow.Add(elapsed)
+}
+
+func (worker *Worker) runBatch(ctx context.Context) {
 	for index := 0; index < maxTelegramDeliveryBatch; index++ {
-		worked, err := worker.RunOnce(ctx, now)
+		worked, err := worker.RunOnce(ctx, worker.currentNow())
 		if err != nil {
 			worker.logger.Warn("deliver queued Telegram message", "error", err)
 		}
@@ -83,13 +99,14 @@ func (worker *Worker) RunOnce(ctx context.Context, now time.Time) (bool, error) 
 }
 
 func (worker *Worker) deliverClaimed(ctx context.Context, job store.TelegramDeliveryJob, claimToken string, now time.Time) (bool, error) {
+	startedAt := worker.currentNow()
 	if worker.cipher == nil {
-		return true, worker.recordFailure(ctx, job, claimToken, now)
+		return true, worker.recordFailure(ctx, job, claimToken, worker.finishNow(now, startedAt))
 	}
 	botToken, err := worker.cipher.DecryptFor(appsettings.TelegramBotTokenPurpose, job.BotTokenCipher)
 	if err != nil || !ValidBotToken(botToken) {
 		zeroSecret(botToken)
-		return true, worker.recordFailure(ctx, job, claimToken, now)
+		return true, worker.recordFailure(ctx, job, claimToken, worker.finishNow(now, startedAt))
 	}
 	active, err := worker.store.OutboxClaimActive(ctx, "telegram", job.ID, claimToken)
 	if err != nil || !active {
@@ -99,9 +116,9 @@ func (worker *Worker) deliverClaimed(ctx context.Context, job store.TelegramDeli
 	err = worker.sender.SendMessage(ctx, botToken, job.ChatID, job.Text)
 	zeroSecret(botToken)
 	if err != nil {
-		return true, worker.recordFailure(ctx, job, claimToken, now)
+		return true, worker.recordFailure(ctx, job, claimToken, worker.finishNow(now, startedAt))
 	}
-	if err := worker.store.CompleteTelegramMessage(ctx, job.ID, claimToken, now); err != nil {
+	if err := worker.store.CompleteTelegramMessage(ctx, job.ID, claimToken, worker.finishNow(now, startedAt)); err != nil {
 		return true, fmt.Errorf("complete Telegram delivery: %w", err)
 	}
 	return true, nil

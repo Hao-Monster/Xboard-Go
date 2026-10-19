@@ -111,7 +111,7 @@ jobs:
             --tag "$XBOARD_GO_IMAGE" \
             .local/image-context
           test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$XBOARD_GO_IMAGE")" = "$TARGET_SHA"
-      - name: Deploy to development server (freedom) with atomic rollback
+      - name: Deploy to development server (freedom) with failure data preservation
         if: success()
         env:
           TARGET_SHA: ${{ needs.authorize.outputs.sha }}
@@ -131,10 +131,14 @@ jobs:
 
           # 3. Deploy remotely on bingo-dev as user bingo
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "REVISION=${TARGET_SHA} bash -s" <<'REMOTE'
-          set -euo pipefail
+          set -Eeuo pipefail
           cd /home/bingo/apps/xboard-go-freedom
           exec 9>.deployment.lock
           flock -x 9
+          if [[ -e .deployment-failed || -L .deployment-failed ]]; then
+            echo 'Previous deployment needs explicit recovery; inspect .deployment-failed before retrying.' >&2
+            exit 1
+          fi
           if [[ -f compose.observability.yaml ]]; then
             test ! -L compose.observability.yaml
             export COMPOSE_FILE=compose.yaml:compose.observability.yaml
@@ -146,28 +150,33 @@ jobs:
           backup_suffix="pre-${REVISION}-$(date -u +%Y%m%dT%H%M%SZ)"
           cp -p compose.yaml "compose.yaml.${backup_suffix}"
           cp -p .env ".env.${backup_suffix}"
-          # SQLite schema upgrades require a database rollback point, not only an image.
+          # This online snapshot is for explicit recovery, not lossless automatic rollback.
           database_backup="/var/lib/xboard-backups/${backup_suffix}.xbbackup"
           docker compose exec -T app /xboard backup create --attachment-root "" --output "$database_backup" </dev/null >/dev/null
 
-          rollback() {
-            trap - ERR
-            echo "[-] Deployment failed! Rolling back to ${previous}..."
-            docker compose stop app
-            cp -p "compose.yaml.${backup_suffix}" compose.yaml
-            cp -p ".env.${backup_suffix}" .env
-            restored_database="/var/lib/xboard/rollback-${backup_suffix}.db"
-            docker compose run --rm --no-deps app backup restore --input "$database_backup" --output "$restored_database" </dev/null >/dev/null
-            # Keep the failed candidate database intact for diagnosis.
-            sed -i "s#XBOARD_DATABASE_DSN: .*#XBOARD_DATABASE_DSN: file:${restored_database}#" compose.yaml
-            docker compose up -d --no-build app
+          activation_started=0
+          preserve_failed_deployment() {
+            trap - ERR INT TERM HUP
+            echo '[-] Deployment failed; current database/WAL, configuration and backup retained. Explicit recovery required.' >&2
+            if ! printf 'phase=failed\n' >> .deployment-failed; then
+              echo '[-] Could not update the deployment failure marker.' >&2
+            fi
+            if [[ "$activation_started" -eq 1 ]]; then
+              if ! docker compose stop app; then
+                echo '[-] Failed to stop the candidate; inspect the running application immediately.' >&2
+              fi
+            fi
             exit 1
           }
-          trap 'rollback' ERR
+          trap preserve_failed_deployment ERR INT TERM HUP
+          # Persist before mutation so an interrupted run cannot be silently retried.
+          printf 'revision=%s\nprevious=%s\nbackup=%s\nphase=prepared\n' "$REVISION" "$previous" "$database_backup" > .deployment-failed
+          chmod 600 .deployment-failed
 
           sed -i "s/^XBOARD_GO_REVISION=.*/XBOARD_GO_REVISION=${REVISION}/" .env
           # Existing release volume is retained; serve the verified bundle from this image.
           sed -i 's#^\([[:space:]]*XBOARD_NODE_RELEASE_ROOT:\).*#\1 /usr/share/xboard/node-releases#' compose.yaml
+          activation_started=1
           docker compose up -d --no-build app
 
           echo "Waiting for container healthcheck..."
@@ -180,36 +189,47 @@ jobs:
               break
             elif [ "$status" = "unhealthy" ]; then
               echo "[-] Container reported unhealthy!"
-              rollback
+              preserve_failed_deployment
             fi
             sleep 2
           done
 
           if [ "$healthy" -ne 1 ]; then
             echo "[-] Container health check timed out!"
-            rollback
+            preserve_failed_deployment
           fi
 
           echo "Testing loopback endpoint 127.0.0.1:18082/healthz..."
-          curl --fail --silent --show-error http://127.0.0.1:18082/healthz >/dev/null
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 http://127.0.0.1:18082/healthz >/dev/null
           test "$(docker inspect xboard-go-freedom-app-1 --format '{{.Config.Image}}')" = "xboard-go:${REVISION}"
 
+          # Public checks share the same failure boundary; they must not bypass
+          # stop-and-preserve after the candidate has already accepted requests.
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 https://freedom.openal.uk/healthz >/dev/null
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 https://freedom.openal.uk/api/v2/node/releases/v1.14.4 >/dev/null
+          rm .deployment-failed
           echo "Deployment successful for revision: ${REVISION}"
-          trap - ERR
+          trap - ERR INT TERM HUP
           REMOTE
 
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new bingo@127.0.0.1 "python3 - development-host --mode cleanup" < deploy/retain-online-only.py
           rm -f ~/.ssh/deploy_key
-      - name: Verify public HTTPS endpoint
-        if: success()
-        run: |
-          echo "Verifying public HTTPS endpoint..."
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/healthz >/dev/null
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://freedom.openal.uk/ >/dev/null
-          curl --fail --silent --show-error https://freedom.openal.uk/api/v2/node/releases/v1.14.4 >/dev/null
-          echo "Public HTTPS smoke verification SUCCESS!"
-      - name: Remove temporary deployment key
+      - name: Remove temporary deployment key and converge runner workspace
         if: always()
-        run: rm -f ~/.ssh/deploy_key
+        working-directory: ${{ github.workspace }}
+        env:
+          CANDIDATE_DIRECTORY: candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          TARGET_SHA: ${{ needs.authorize.outputs.sha }}
+          XBOARD_GO_IMAGE: xboard-go:legacy-parity-${{ needs.authorize.outputs.sha }}
+        run: |
+          rm -f ~/.ssh/deploy_key
+          docker image rm "$XBOARD_GO_IMAGE" "xboard-go:${TARGET_SHA}" 2>/dev/null || true
+          if [[ -f "$CANDIDATE_DIRECTORY/deploy/retain-online-only.py" ]]; then
+            python3 "$CANDIDATE_DIRECTORY/deploy/retain-online-only.py" runner-host --mode cleanup --workspace "$GITHUB_WORKSPACE" || true
+          fi
+          chmod -R u+rwX "$CANDIDATE_DIRECTORY" 2>/dev/null || true
+          rm -rf "$CANDIDATE_DIRECTORY"
 
   logging-validate:
     needs: authorize
@@ -302,3 +322,7 @@ jobs:
         run: |
           cd "$LOGGING_CANDIDATE"
           python3 deploy/logging-runner.py
+      - name: Remove temporary logging workspace and artifact cache
+        if: always()
+        run: |
+          rm -rf "${LOGGING_CANDIDATE:-}" "${{ runner.temp }}/log-collector-${{ github.run_id }}-${{ github.run_attempt }}"

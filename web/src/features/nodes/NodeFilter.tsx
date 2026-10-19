@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useOverlayLayer } from "../../components/overlayStack";
 import "./node-filter.css";
 
 export function NodeFilter({
@@ -22,6 +23,15 @@ export function NodeFilter({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useOverlayLayer({
+    open: isOpen && !disabled,
+    active: isOpen && !disabled,
+    onEscape: () => {
+      setIsOpen(false);
+      buttonRef.current?.focus();
+    },
+  });
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -35,21 +45,12 @@ export function NodeFilter({
       }
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-        buttonRef.current?.focus();
-      }
-    };
-
     document.addEventListener("mousedown", handleOutsideClick);
     document.addEventListener("pointerdown", handleOutsideClick);
-    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("pointerdown", handleOutsideClick);
-      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen]);
 
@@ -100,13 +101,6 @@ export function NodeFilter({
           aria-label={`${label}筛选`}
           className="node-filter-dialog"
           tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              setIsOpen(false);
-              buttonRef.current?.focus();
-            }
-          }}
         >
           <div className="node-filter-search-container">
             <input

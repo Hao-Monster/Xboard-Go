@@ -74,7 +74,7 @@ export function TicketDetailDialog({ ticketID, administrator = false, load, repl
 
   const canReply = ticket !== null && (administrator || ticket.status === 0);
   return <>
-    <Modal title="工单详情" onClose={onClose}>
+    <Modal title="工单详情" onClose={onClose} suspended={confirmingClose}>
       <div className="modal-header">
         <div><h2>工单详情</h2>{ticket !== null && <p className="muted small">#{ticket.id} · {ticket.user_email ?? ticket.subject}</p>}</div>
         <button className="icon-button" aria-label="关闭工单详情" onClick={onClose}>×</button>

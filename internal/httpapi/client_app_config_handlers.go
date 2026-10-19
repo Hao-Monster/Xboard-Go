@@ -21,7 +21,14 @@ func (s *server) legacyClientAppConfigV1(w http.ResponseWriter, r *http.Request)
 	}
 	var source []store.SubscriptionNode
 	var err error
+	var hwid store.DistributorHWIDAuthorization
 	if account.AvailableAt(s.now()) && account.GroupID != nil {
+		var release func()
+		hwid, release, ok = s.admitSubscriptionDelivery(w, r, account)
+		if !ok {
+			return
+		}
+		defer release()
 		source, err = s.store.ListSubscriptionNodes(r.Context(), *account.GroupID)
 		if err != nil {
 			handleStoreError(w, err)
@@ -38,6 +45,10 @@ func (s *server) legacyClientAppConfigV1(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.logger.Error("render legacy client app configuration", "user_id", account.ID, "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)
+		return
+	}
+	if err := s.markSubscriptionConfigIssued(r.Context(), hwid); err != nil {
+		handleStoreError(w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store, private")

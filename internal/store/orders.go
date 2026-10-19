@@ -619,10 +619,11 @@ func (s *Store) AssignOrder(ctx context.Context, input AssignOrderInput, now tim
 		OriginalAmount: input.TotalAmount, TotalAmount: input.TotalAmount, Status: OrderStatusPending,
 		SurplusOrderIDs: []int64{}, CommissionStatus: &commissionStatus, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}
+	activeSubscription := !user.expiredAt.Valid || user.expiredAt.Int64 > now.Unix()
 	switch {
 	case period == "reset_traffic":
 		order.Type = OrderTypeResetTraffic
-	case user.planID.Valid && user.planID.Int64 != input.PlanID:
+	case user.planID.Valid && user.planID.Int64 != input.PlanID && activeSubscription:
 		order.Type = OrderTypeUpgrade
 	case user.planID.Valid && user.planID.Int64 == input.PlanID && user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix():
 		order.Type = OrderTypeRenewal
@@ -787,12 +788,14 @@ func (s *Store) CompleteOrder(ctx context.Context, tradeNo, callbackNo string, n
 	if order.Status == OrderStatusCompleted {
 		return order, nil
 	}
-	if err := completeOrderTx(ctx, tx, &order, callbackNo, now); err != nil {
+	change, err := completeOrderTx(ctx, tx, &order, callbackNo, now)
+	if err != nil {
 		return Order{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete order: %w", err)
 	}
+	order.Change = &change
 	return order, nil
 }
 
@@ -815,14 +818,31 @@ func (s *Store) CompletePendingOrder(ctx context.Context, tradeNo, callbackNo st
 	if order.Status != OrderStatusPending {
 		return Order{}, ErrOrderState
 	}
-	if err := completeOrderTx(ctx, tx, &order, callbackNo, now); err != nil {
+	change, err := completeOrderTx(ctx, tx, &order, callbackNo, now)
+	if err != nil {
 		return Order{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Order{}, fmt.Errorf("commit complete pending order: %w", err)
 	}
+	order.Change = &change
 	return order, nil
 }
+
+const paymentSettlementGrace = 30 * time.Minute
+const schedulerQuarantineBackoff = time.Hour
+
+var errRefundBalanceLimit = fmt.Errorf("%w: refund_balance_limit_exceeded", ErrConflict)
+
+// Selection and Remaining must agree so protected payments do not keep a sweep busy.
+const staleOrderPredicate = `WHERE (o.status = 1 OR (o.status = 0 AND o.created_at <= ? AND (
+    o.created_at <= ? OR NOT EXISTS (
+        SELECT 1 FROM payment_checkout_attempts a WHERE a.order_id = o.id AND (
+            (a.status = 0 AND a.updated_at > ?) OR (a.status = 1 AND a.updated_at > ?))))))
+    AND NOT EXISTS (
+        SELECT 1 FROM scheduler_quarantine q
+        WHERE q.kind = 'stale_order' AND q.entity_id = o.id AND q.retry_after > ?
+    )`
 
 func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int) (StaleOrderBatchResult, error) {
 	if limit < 1 || limit > maxOrderBatchSize || now.Unix() < 0 {
@@ -834,11 +854,16 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		return StaleOrderBatchResult{}, fmt.Errorf("begin stale order batch: %w", err)
 	}
 	defer tx.Rollback()
-	cutoff := now.Add(-orderTimeout).Unix()
+	cutoffs := []any{
+		now.Add(-orderTimeout).Unix(),
+		now.Add(-orderTimeout - paymentSettlementGrace).Unix(),
+		now.Add(-paymentCheckoutLease).Unix(),
+		now.Add(-paymentSettlementGrace).Unix(),
+		now.Unix(),
+	}
 	rows, err := tx.QueryContext(ctx, orderSelect+`
-		WHERE o.status = 1 OR (o.status = 0 AND o.created_at <= ?)
-		ORDER BY o.created_at, o.id LIMIT ?
-	`, cutoff, limit)
+		`+staleOrderPredicate+` ORDER BY o.created_at, o.id LIMIT ?
+	`, append(cutoffs, limit)...)
 	if err != nil {
 		return StaleOrderBatchResult{}, fmt.Errorf("list stale orders: %w", err)
 	}
@@ -858,11 +883,47 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		return StaleOrderBatchResult{}, fmt.Errorf("iterate stale orders: %w", err)
 	}
 	result := StaleOrderBatchResult{}
+	retryAfterUnix := now.Add(schedulerQuarantineBackoff).Unix()
 	for index := range orders {
 		order := &orders[index]
 		if order.Status == OrderStatusPending {
+			if _, err := tx.ExecContext(ctx, `SAVEPOINT sp_item`); err != nil {
+				return StaleOrderBatchResult{}, fmt.Errorf("create stale order savepoint: %w", err)
+			}
 			if err := cancelOrderTx(ctx, tx, order, now); err != nil {
-				return StaleOrderBatchResult{}, err
+				if !errors.Is(err, errRefundBalanceLimit) {
+					return StaleOrderBatchResult{}, err
+				}
+				if _, rbErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT sp_item`); rbErr != nil {
+					return StaleOrderBatchResult{}, fmt.Errorf("rollback stale order savepoint: %w", rbErr)
+				}
+				if _, relErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); relErr != nil {
+					return StaleOrderBatchResult{}, fmt.Errorf("release stale order savepoint after rollback: %w", relErr)
+				}
+				const quarantineReason = "refund_balance_limit_exceeded"
+				if _, qErr := tx.ExecContext(ctx, `
+					INSERT INTO scheduler_quarantine (kind, entity_id, reason, attempts, first_failed_at, last_failed_at, retry_after)
+					VALUES ('stale_order', ?, ?, 1, ?, ?, ?)
+					ON CONFLICT (kind, entity_id) DO UPDATE SET
+						reason = excluded.reason,
+						attempts = scheduler_quarantine.attempts + 1,
+						last_failed_at = excluded.last_failed_at,
+						retry_after = excluded.retry_after
+				`, order.ID, quarantineReason, now.Unix(), now.Unix(), retryAfterUnix); qErr != nil {
+					return StaleOrderBatchResult{}, fmt.Errorf("quarantine stale order %d: %w", order.ID, qErr)
+				}
+				result.Quarantined++
+				result.QuarantinedOrders = append(result.QuarantinedOrders, SchedulerQuarantineEvent{
+					OrderID: order.ID,
+					Reason:  quarantineReason,
+				})
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT sp_item`); err != nil {
+				return StaleOrderBatchResult{}, fmt.Errorf("release stale order savepoint: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM scheduler_quarantine WHERE kind = 'stale_order' AND entity_id = ?`, order.ID); err != nil {
+				return StaleOrderBatchResult{}, fmt.Errorf("clear stale order quarantine %d: %w", order.ID, err)
 			}
 			result.Cancelled++
 			continue
@@ -871,14 +932,15 @@ func (s *Store) ProcessStaleOrders(ctx context.Context, now time.Time, limit int
 		if callback == "" {
 			callback = order.TradeNo
 		}
-		if err := completeOrderTx(ctx, tx, order, callback, now); err != nil {
+		change, err := completeOrderTx(ctx, tx, order, callback, now)
+		if err != nil {
 			return StaleOrderBatchResult{}, err
 		}
+		result.Changes = append(result.Changes, change)
 		result.Completed++
 	}
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM orders WHERE status = 1 OR (status = 0 AND created_at <= ?)
-	`, cutoff).Scan(&result.Remaining); err != nil {
+		SELECT COUNT(*) FROM orders o `+staleOrderPredicate, cutoffs...).Scan(&result.Remaining); err != nil {
 		return StaleOrderBatchResult{}, fmt.Errorf("count stale orders: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -900,6 +962,13 @@ func cancelOrderTx(ctx context.Context, tx *sql.Tx, order *Order, now time.Time)
 		return ErrOrderState
 	}
 	if order.BalanceAmount > 0 {
+		var currentBalance int64
+		if err := tx.QueryRowContext(ctx, `SELECT balance FROM users WHERE id = ?`, order.UserID).Scan(&currentBalance); err != nil {
+			return fmt.Errorf("read user balance for refund: %w", err)
+		}
+		if order.BalanceAmount > maxOrderMoneyCents-currentBalance {
+			return errRefundBalanceLimit
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE users SET balance = balance + ?, updated_at = ? WHERE id = ?
 		`, order.BalanceAmount, now.Unix(), order.UserID); err != nil {
@@ -924,25 +993,29 @@ func hasActivePaymentCheckoutTx(ctx context.Context, tx *sql.Tx, orderID int64) 
 	return active, nil
 }
 
-func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo string, now time.Time) error {
+func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo string, now time.Time) (EntitlementChange, error) {
 	if order.Status != OrderStatusPending && order.Status != OrderStatusProcessing {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	user, err := readOrderUser(ctx, tx, order.UserID)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
+	}
+	change, err := readEntitlementChangeTx(ctx, tx, user.id)
+	if err != nil {
+		return EntitlementChange{}, err
 	}
 	plan, err := getPlan(ctx, tx, order.PlanID, now)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	settings, err := readOrderSettings(ctx, tx)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	beforeJSON, err := marshalEntitlementSnapshot(user)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 
 	paidAt := now.UTC()
@@ -958,14 +1031,14 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 		WHERE id = ? AND status IN (0, 1)
 	`, paidAt.Unix(), callbackNo, now.Unix(), order.ID)
 	if err != nil {
-		return fmt.Errorf("mark order processing: %w", err)
+		return EntitlementChange{}, fmt.Errorf("mark order processing: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("count processing order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("count processing order: %w", err)
 	}
 	if changed != 1 {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	if order.SurplusCredit > 0 {
 		user.balance += order.SurplusCredit
@@ -973,13 +1046,13 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	if len(order.SurplusOrderIDs) > 0 {
 		for _, orderID := range order.SurplusOrderIDs {
 			if orderID < 1 {
-				return fmt.Errorf("invalid surplus order ID in order %d", order.ID)
+				return EntitlementChange{}, fmt.Errorf("invalid surplus order ID in order %d", order.ID)
 			}
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE orders SET status = 4, updated_at = ?
 				WHERE id = ? AND user_id = ? AND status = 3 AND period <> 'reset_traffic'
 			`, now.Unix(), orderID, order.UserID); err != nil {
-				return fmt.Errorf("discount surplus order: %w", err)
+				return EntitlementChange{}, fmt.Errorf("discount surplus order: %w", err)
 			}
 		}
 	}
@@ -998,7 +1071,7 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	default:
 		months, valid := orderPeriodMonths[order.Period]
 		if !valid {
-			return fmt.Errorf("%w: invalid stored order period", ErrInvalidInput)
+			return EntitlementChange{}, fmt.Errorf("%w: invalid stored order period", ErrInvalidInput)
 		}
 		if order.Type == OrderTypeUpgrade {
 			user.expiredAt = sql.NullInt64{Int64: now.Unix(), Valid: true}
@@ -1037,7 +1110,7 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	}
 	var systemResetMethod int
 	if err := tx.QueryRowContext(ctx, `SELECT traffic_reset_method FROM app_settings WHERE id = 1`).Scan(&systemResetMethod); err != nil {
-		return fmt.Errorf("read order traffic reset method: %w", err)
+		return EntitlementChange{}, fmt.Errorf("read order traffic reset method: %w", err)
 	}
 	var expiry *time.Time
 	if user.expiredAt.Valid {
@@ -1055,31 +1128,31 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 		user.trafficDownload, nullableSQLInt(user.expiredAt), user.speedLimit, user.deviceLimit,
 		nullableSQLInt(user.nextResetAt), nullableSQLInt(user.lastResetAt), user.resetCount, user.balance,
 		now.Unix(), user.id); err != nil {
-		return fmt.Errorf("apply order entitlement: %w", err)
+		return EntitlementChange{}, fmt.Errorf("apply order entitlement: %w", err)
 	}
 	afterJSON, err := marshalEntitlementSnapshot(user)
 	if err != nil {
-		return err
+		return EntitlementChange{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO order_entitlement_events (order_id, user_id, event_type, before_json, after_json, applied_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, order.ID, order.UserID, orderTypeEventName(order.Type), string(beforeJSON), string(afterJSON), now.Unix()); err != nil {
-		return fmt.Errorf("record order entitlement: %w", err)
+		return EntitlementChange{}, fmt.Errorf("record order entitlement: %w", err)
 	}
 	completed, err := tx.ExecContext(ctx, `
 		UPDATE orders SET status = 3, entitlement_expired_at_before = ?, entitlement_expired_at_after = ?, updated_at = ?
 		WHERE id = ? AND status = 1
 	`, nullableTimeUnix(beforeExpiry), nullableSQLInt(user.expiredAt), now.Unix(), order.ID)
 	if err != nil {
-		return fmt.Errorf("complete order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("complete order: %w", err)
 	}
 	completedCount, err := completed.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("count completed order: %w", err)
+		return EntitlementChange{}, fmt.Errorf("count completed order: %w", err)
 	}
 	if completedCount != 1 {
-		return ErrOrderState
+		return EntitlementChange{}, ErrOrderState
 	}
 	order.Status = OrderStatusCompleted
 	order.PaidAt = &paidAt
@@ -1087,7 +1160,8 @@ func completeOrderTx(ctx context.Context, tx *sql.Tx, order *Order, callbackNo s
 	order.EntitlementExpiredAtBefore = beforeExpiry
 	order.EntitlementExpiredAtAfter = nullableUnixTime(user.expiredAt)
 	order.UpdatedAt = now.UTC()
-	return nil
+	change.NewGroupID = nullableInt64Pointer(user.groupID)
+	return change, nil
 }
 
 func validateOrderPurchase(user orderUserState, plan Plan, period string, now time.Time) error {
@@ -1123,7 +1197,7 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 	if !user.expiredAt.Valid {
 		var id, paid int64
 		err := tx.QueryRowContext(ctx, `
-			SELECT id, total_amount + balance_amount FROM orders
+			SELECT id, total_amount + balance_amount + surplus_amount - surplus_credit FROM orders
 			WHERE user_id = ? AND period = 'onetime' AND source = 'online' AND status = 3 ORDER BY id DESC LIMIT 1
 		`, user.id).Scan(&id, &paid)
 		if errors.Is(err, sql.ErrNoRows) || paid <= 0 || user.transferEnable <= 0 {
@@ -1188,20 +1262,27 @@ func calculateOrderSurplus(ctx context.Context, tx *sql.Tx, user orderUserState,
 		order.SurplusOrderIDs = ids
 		return nil
 	}
-	numerator, denominator := remainingSeconds, totalSeconds
+	numerator, denominator := big.NewInt(remainingSeconds), big.NewInt(totalSeconds)
 	if trafficAware {
 		currentPlan, err := getPlan(ctx, tx, user.planID.Int64, now)
 		if err != nil {
 			return err
 		}
-		totalTraffic := currentPlan.TransferEnableGiB * int64(monthSum) * bytesPerGiB
-		used := minInt64(totalTraffic, user.trafficUpload+user.trafficDownload)
-		trafficRemaining := maxInt64(0, totalTraffic-used)
-		if fractionLess(trafficRemaining, totalTraffic, numerator, denominator) {
+		totalTraffic := new(big.Int).Mul(big.NewInt(currentPlan.TransferEnableGiB), big.NewInt(int64(monthSum)))
+		totalTraffic.Mul(totalTraffic, big.NewInt(bytesPerGiB))
+		used := big.NewInt(safeTrafficTotal(user.trafficUpload, user.trafficDownload))
+		if used.Cmp(totalTraffic) > 0 {
+			used.Set(totalTraffic)
+		}
+		trafficRemaining := new(big.Int).Sub(totalTraffic, used)
+		if trafficRemaining.Sign() < 0 {
+			trafficRemaining.SetInt64(0)
+		}
+		if fractionLessBig(trafficRemaining, totalTraffic, numerator, denominator) {
 			numerator, denominator = trafficRemaining, totalTraffic
 		}
 	}
-	order.SurplusAmount = mulDivFloor(amountSum, numerator, denominator)
+	order.SurplusAmount = mulDivFloorBig(amountSum, numerator, denominator)
 	order.SurplusOrderIDs = ids
 	return nil
 }
@@ -1532,8 +1613,15 @@ func mulDivFloor(value, numerator, denominator int64) int64 {
 	if value <= 0 || numerator <= 0 || denominator <= 0 {
 		return 0
 	}
-	product := new(big.Int).Mul(big.NewInt(value), big.NewInt(numerator))
-	product.Quo(product, big.NewInt(denominator))
+	return mulDivFloorBig(value, big.NewInt(numerator), big.NewInt(denominator))
+}
+
+func mulDivFloorBig(value int64, numerator, denominator *big.Int) int64 {
+	if value <= 0 || numerator == nil || denominator == nil || numerator.Sign() <= 0 || denominator.Sign() <= 0 {
+		return 0
+	}
+	product := new(big.Int).Mul(big.NewInt(value), numerator)
+	product.Quo(product, denominator)
 	if !product.IsInt64() || product.Int64() > maxOrderMoneyCents {
 		return maxOrderMoneyCents
 	}
@@ -1544,8 +1632,18 @@ func fractionLess(leftNumerator, leftDenominator, rightNumerator, rightDenominat
 	if leftDenominator <= 0 {
 		return true
 	}
-	left := new(big.Int).Mul(big.NewInt(leftNumerator), big.NewInt(rightDenominator))
-	right := new(big.Int).Mul(big.NewInt(rightNumerator), big.NewInt(leftDenominator))
+	return fractionLessBig(big.NewInt(leftNumerator), big.NewInt(leftDenominator), big.NewInt(rightNumerator), big.NewInt(rightDenominator))
+}
+
+func fractionLessBig(leftNumerator, leftDenominator, rightNumerator, rightDenominator *big.Int) bool {
+	if leftDenominator == nil || leftDenominator.Sign() <= 0 {
+		return true
+	}
+	if rightDenominator == nil || rightDenominator.Sign() <= 0 {
+		return false
+	}
+	left := new(big.Int).Mul(leftNumerator, rightDenominator)
+	right := new(big.Int).Mul(rightNumerator, leftDenominator)
 	return left.Cmp(right) < 0
 }
 
@@ -1581,4 +1679,18 @@ func attachOrderPlans(ctx context.Context, database interface {
 
 func escapeOrderLike(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+// Snapshot identity and groups inside the same transaction as the entitlement write.
+func readEntitlementChangeTx(ctx context.Context, tx *sql.Tx, userID int64) (EntitlementChange, error) {
+	change := EntitlementChange{UserID: userID}
+	var previousUUID sql.NullString
+	var group sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT uuid, group_id FROM users WHERE id = ?`, userID).Scan(&previousUUID, &group); err != nil {
+		return EntitlementChange{}, fmt.Errorf("read entitlement change identity: %w", err)
+	}
+	change.PreviousUUID = previousUUID.String
+	change.OldGroupID = nullableInt64Pointer(group)
+	change.NewGroupID = nullableInt64Pointer(group)
+	return change, nil
 }

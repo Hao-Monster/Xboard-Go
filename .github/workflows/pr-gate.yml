@@ -1,0 +1,604 @@
+name: Smart PR Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited, milestoned, demilestoned]
+  push:
+    branches: [codex/ci-001-tiered-gates]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tier: ${{ steps.detect.outputs.tier }}
+      reason: ${{ steps.detect.outputs.reason }}
+      scope_json: ${{ steps.detect.outputs.scope_json }}
+      ci_deploy: ${{ steps.detect.outputs.ci_deploy }}
+      go_fast: ${{ steps.detect.outputs.go_fast }}
+      go_race: ${{ steps.detect.outputs.go_race }}
+      go_race_groups: ${{ steps.detect.outputs.go_race_groups }}
+      backend_all: ${{ steps.detect.outputs.backend_all }}
+      backend_store: ${{ steps.detect.outputs.backend_store }}
+      backend_xboard: ${{ steps.detect.outputs.backend_xboard }}
+      backend_services_a: ${{ steps.detect.outputs.backend_services_a }}
+      backend_services_b: ${{ steps.detect.outputs.backend_services_b }}
+      backend_remainder: ${{ steps.detect.outputs.backend_remainder }}
+      web_fast: ${{ steps.detect.outputs.web_fast }}
+      web_full: ${{ steps.detect.outputs.web_full }}
+      browser_smoke: ${{ steps.detect.outputs.browser_smoke }}
+      supply_chain: ${{ steps.detect.outputs.supply_chain }}
+      migration_drill: ${{ steps.detect.outputs.migration_drill }}
+      real_client_compat: ${{ steps.detect.outputs.real_client_compat }}
+      packaging_smoke: ${{ steps.detect.outputs.packaging_smoke }}
+      split_runtime: ${{ steps.detect.outputs.split_runtime }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Verify classifier and gate contract unit tests
+        run: node --test .github/scripts/*.test.mjs
+      - name: Compute smart risk tier and affected scope
+        id: detect
+        run: node .github/scripts/detect-changes.mjs --mode pr
+
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting and whitespace
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          if [ -n "$PR_BASE_SHA" ]; then
+            git diff --check "${PR_BASE_SHA}..HEAD"
+          elif git rev-parse --verify origin/main >/dev/null 2>&1 && [ "$(git merge-base origin/main HEAD)" != "$(git rev-parse HEAD)" ]; then
+            git diff --check "origin/main...HEAD"
+          elif [ -n "$PUSH_BEFORE_SHA" ] && ! [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "${PUSH_BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git diff --check "${PUSH_BEFORE_SHA}..HEAD"
+          elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            git diff --check HEAD~1..HEAD
+          fi
+      - name: Validate project governance baseline
+        run: go run ./cmd/projectctl check
+      - name: Validate pull request metadata
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          milestone="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" --jq '.milestone.title // ""')"
+          go run ./cmd/projectctl pr-check --event "$GITHUB_EVENT_PATH" --milestone "$milestone"
+
+  ci-deploy-check:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ci_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate shell scripts and run deploy unit tests
+        run: |
+          set -euo pipefail
+          for script in deploy/*.sh .github/scripts/*.sh tools/local-parity/*.sh; do
+            bash -n "$script"
+          done
+          python3 -m unittest discover -s deploy -p "*test*.py"
+          python3 -m unittest discover -s deploy/observability -p "*test*.py"
+          python3 -m unittest discover -s deploy/self-hosted -p "*test*.py"
+
+  go-fast:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go_fast == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Fetch pinned legacy Ip2Region test fixture when geoip is tested
+        run: |
+          set -euo pipefail
+          needs_geoip="$(node .github/scripts/resolve-affected-go-pkgs.mjs --skip-heavy-groups --check-geoip)"
+          if [ "$needs_geoip" = "true" ]; then
+            fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
+              --output "$fixture" \
+              https://raw.githubusercontent.com/zoujingli/ip2region/a031c359620c22889fac7b998409fdcdef76a69c/ip2region.xdb
+            printf '%s  %s\n' \
+              '5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469' \
+              "$fixture" | sha256sum --check --strict
+            printf 'XBOARD_TEST_LEGACY_IP2REGION_XDB=%s\n' "$fixture" >> "$GITHUB_ENV"
+          fi
+      - name: Run Go dependency-graph incremental tests and caller compile checks
+        run: node .github/scripts/resolve-affected-go-pkgs.mjs --run --skip-heavy-groups
+
+  go-race:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go_race == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJson(needs.detect-changes.outputs.go_race_groups) }}
+    env:
+      XBOARD_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+    services:
+      redis:
+        image: redis:8.4.2-alpine@sha256:e1b6db24cb4fdd89f4bc9be09f671ea3bec92fbd7042554f76c34aa2be9b59ad
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Fetch pinned legacy Ip2Region test fixture
+        if: matrix.group == 'remainder'
+        run: |
+          fixture="$RUNNER_TEMP/xboard-go-ip2region-v2.0.8.xdb"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
+            --output "$fixture" \
+            https://raw.githubusercontent.com/zoujingli/ip2region/a031c359620c22889fac7b998409fdcdef76a69c/ip2region.xdb
+          printf '%s  %s\n' \
+            '5555fd1aab63e06096d9ee2a4187e93b8451e650b77ce4138a26eb9cf4d81469' \
+            "$fixture" | sha256sum --check --strict
+          printf 'XBOARD_TEST_LEGACY_IP2REGION_XDB=%s\n' "$fixture" >> "$GITHUB_ENV"
+      - name: Vet and test Go package group with race detector
+        env:
+          GO_TEST_GROUP: ${{ matrix.group }}
+        run: |
+          mapfile -t packages < <(node .github/scripts/go-test-groups.mjs "$GO_TEST_GROUP")
+          go vet "${packages[@]}"
+          go test -race -timeout=25m "${packages[@]}"
+
+  web-fast:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web_fast == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install locked web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+      - name: Run incremental web typecheck, lint, related unit tests, and build
+        run: |
+          set -euo pipefail
+          pnpm --dir web typecheck
+          mapfile -t changed_web < <(node -e '
+            import("node:fs").then((fs) =>
+              import("./.github/scripts/detect-changes.mjs").then((m) => {
+                for (const f of m.getChangedFiles()) {
+                  if (f.startsWith("web/") && /\.(ts|tsx|js|mjs|cjs)$/.test(f) && fs.existsSync(f)) {
+                    console.log(f.slice(4));
+                  }
+                }
+              })
+            );
+          ')
+          if [ "${#changed_web[@]}" -gt 0 ]; then
+            pnpm --dir web exec eslint --max-warnings 0 --no-warn-ignored "${changed_web[@]}"
+            pnpm --dir web exec vitest related --run --passWithNoTests "${changed_web[@]}"
+          fi
+          pnpm --dir web build
+
+  web-full:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web_full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web typecheck
+      - run: pnpm --dir web lint
+      - run: pnpm --dir web test
+      - run: pnpm --dir web build
+
+  browser-smoke:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.browser_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web build
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Run Playwright browser smoke suite and any modified E2E specs
+        run: |
+          set -euo pipefail
+          run_and_verify_spec() {
+            local spec="$1"
+            local report_file="$RUNNER_TEMP/playwright-report-$(basename "$spec" .spec.ts).json"
+            rm -f "$report_file"
+            PLAYWRIGHT_JSON_OUTPUT_NAME="$report_file" \
+              pnpm --dir web exec playwright test "$spec" --project chromium --reporter=list,json
+            node .github/scripts/detect-changes.mjs --verify-playwright-report "$report_file" "$spec"
+          }
+          pnpm --dir web exec playwright test e2e/admin-navigation.spec.ts e2e/registration.spec.ts --project chromium
+          mapfile -t regular_specs < <(node .github/scripts/detect-changes.mjs --list-e2e-regular)
+          for spec in "${regular_specs[@]}"; do
+            run_and_verify_spec "$spec"
+          done
+          mapfile -t packaged_specs < <(node .github/scripts/detect-changes.mjs --list-e2e-packaged)
+          if [ "${#packaged_specs[@]}" -gt 0 ]; then
+            cleanup_packaged() {
+              docker compose -f compose.local.yaml --profile e2e down -v --remove-orphans || true
+            }
+            trap cleanup_packaged EXIT
+            mkdir -p .local
+            password="$(openssl rand -hex 24)"
+            settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+            printf '%s' "$password" > .local/bootstrap-password.txt
+            printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+            export XBOARD_GO_REVISION="${{ github.sha }}"
+            export XBOARD_E2E_ADMIN_PATH="e2e-admin-secure"
+            export XBOARD_LEGACY_ADMIN_PATH="e2e-admin-secure"
+            export XBOARD_CAPTCHA_ALLOW_INSECURE="true"
+            export XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL="http://captcha-stub:4199/recaptcha"
+            export XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL="http://captcha-stub:4199/recaptcha-v3"
+            export XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL="http://captcha-stub:4199/turnstile"
+            docker compose -f compose.local.yaml --profile e2e up --build --wait
+            export XBOARD_E2E_BASE_URL="http://127.0.0.1:7080"
+            export XBOARD_E2E_EXTERNAL_SERVER="true"
+            export XBOARD_E2E_ADMIN_EMAIL="admin@xboard-go.local"
+            export XBOARD_E2E_ADMIN_PASSWORD="$password"
+            export XBOARD_E2E_MAILPIT_URL="http://127.0.0.1:7082"
+            for spec in "${packaged_specs[@]}"; do
+              docker compose -f compose.local.yaml --profile e2e restart xboard-go
+              docker compose -f compose.local.yaml --profile e2e up -d --no-build --wait xboard-go
+              run_and_verify_spec "$spec"
+            done
+          fi
+
+  supply-chain:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.supply_chain == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - name: Check Go licenses and vulnerabilities
+        run: |
+          go run github.com/google/go-licenses/v2@v2.0.1 check --include_tests --ignore github.com/Hao-Monster/Xboard-Go ./cmd/... ./internal/...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./cmd/... ./internal/...
+      - name: Check web production dependency licenses and vulnerabilities
+        run: |
+          mkdir -p artifacts
+          pnpm --dir web licenses list --prod --json > artifacts/web-production-licenses.json
+          node .github/scripts/check-production-licenses.mjs artifacts/web-production-licenses.json
+          pnpm --dir web audit --audit-level high
+
+  migration-drill:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.migration_drill == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Reconcile and roll back representative legacy migration
+        run: >-
+          go test -timeout=10m ./internal/testdata/legacy/drill
+          -run TestRepresentativeLegacyMigrationDrill -count=1 -v
+
+  real-client-compat:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.real_client_compat == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate generated subscriptions with pinned real clients
+        run: .github/scripts/check-real-client-compat.sh artifacts/client-compat
+
+  packaging-smoke:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.packaging_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build exact Docker image and verify fresh-install smoke
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash -n deploy/install.sh
+          docker build --build-arg APP_REVISION="$REVISION" --tag "xboard-go:$REVISION" .
+          mkdir -p artifacts
+          docker save "xboard-go:$REVISION" | gzip -1 > artifacts/xboard-go-linux-amd64.tar.gz
+          install_dir="$RUNNER_TEMP/xboard-go-pr-smoke"
+          cleanup_install_smoke() {
+            if [ -f "$install_dir/.env" ] && [ -f "$install_dir/compose.yaml" ]; then
+              docker compose --env-file "$install_dir/.env" --project-directory "$install_dir" -f "$install_dir/compose.yaml" down --volumes || true
+            fi
+          }
+          trap cleanup_install_smoke EXIT
+          XBOARD_INSTALL_DIR="$install_dir" XBOARD_PROJECT=xboard-go-pr-smoke \
+            XBOARD_PORT=18083 XBOARD_BIND_ADDRESS=127.0.0.1 XBOARD_PANEL_URL=http://127.0.0.1:18083 \
+            XBOARD_ADMIN_EMAIL=smoke@example.test XBOARD_REVISION="$REVISION" \
+            XBOARD_IMAGE_ARCHIVE="$PWD/artifacts/xboard-go-linux-amd64.tar.gz" bash deploy/install.sh
+          curl --fail --silent http://127.0.0.1:18083/healthz > /dev/null
+          curl --fail --silent http://127.0.0.1:18083/ > /dev/null
+      - name: Validate compose.local.yaml topology and startup smoke
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cleanup_local_compose() {
+            XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+              docker compose -p xboard-go-local-smoke -f compose.local.yaml \
+              --profile maintenance --profile e2e --profile coordination down --volumes --remove-orphans || true
+          }
+          trap cleanup_local_compose EXIT
+          mkdir -p .local
+          chmod 0700 .local
+          password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          redis_password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "::add-mask::$redis_password"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          printf '%s' "$redis_password" > .local/redis-password.txt
+          chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt .local/redis-password.txt
+          XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+            docker compose -p xboard-go-local-smoke -f compose.local.yaml \
+            --profile maintenance --profile e2e --profile coordination config --format json |
+            jq -e '
+              .services["xboard-go"] != null and
+              .services.maintenance != null and
+              .services.mailpit != null and
+              .services["captcha-stub"] != null and
+              .services.redis != null and
+              ([.services[] | select(.read_only != true or ((.cap_drop // []) | index("ALL") == null) or ((.security_opt // []) | index("no-new-privileges:true") == null))] | length == 0) and
+              ([.services[] | (.ports // [])[] | select(.host_ip != "127.0.0.1")] | length == 0) and
+              ((.services["xboard-go"].ports // []) | any(.host_ip == "127.0.0.1" and (.target | tonumber) == 8080 and (.published | tostring) == "18084")) and
+              ((.services.mailpit.ports // []) | any(.host_ip == "127.0.0.1" and (.target | tonumber) == 8025 and (.published | tostring) == "18085")) and
+              ((.services["xboard-go"].volumes // []) | any(.type == "volume" and .source == "xboard-go-data" and .target == "/var/lib/xboard")) and
+              ((.services.maintenance.volumes // []) | any(.type == "volume" and .source == "xboard-go-data" and .target == "/var/lib/xboard")) and
+              ((.services.maintenance.volumes // []) | any(.type == "volume" and .source == "xboard-go-backups" and .target == "/var/lib/xboard-backups")) and
+              ((.services["captcha-stub"].volumes // []) | any(.type == "bind" and .target == "/test/captcha-stub.mjs" and .read_only == true)) and
+              ((.services.redis.volumes // []) | any(.type == "bind" and .target == "/run-local-redis.sh" and .read_only == true)) and
+              ((.services.redis.volumes // []) | any(.type == "bind" and .target == "/healthcheck-local-redis.sh" and .read_only == true))
+            ' > /dev/null
+          XBOARD_GO_IMAGE="xboard-go:$REVISION" XBOARD_GO_PORT=18084 XBOARD_MAILPIT_PORT=18085 \
+            docker compose -p xboard-go-local-smoke -f compose.local.yaml up -d --no-build
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18084/healthz > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:18084/healthz > /dev/null
+          curl --fail --silent http://127.0.0.1:18084/ > /dev/null
+
+  split-runtime:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.split_runtime == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      XBOARD_GO_REVISION: ${{ github.sha }}
+      XBOARD_E2E_ADMIN_PATH: e2e-admin-secure
+      XBOARD_LEGACY_ADMIN_PATH: e2e-admin-secure
+      XBOARD_CAPTCHA_ALLOW_INSECURE: "true"
+      XBOARD_CAPTCHA_RECAPTCHA_VERIFY_URL: http://captcha-stub:4199/recaptcha
+      XBOARD_CAPTCHA_RECAPTCHA_V3_VERIFY_URL: http://captcha-stub:4199/recaptcha-v3
+      XBOARD_CAPTCHA_TURNSTILE_VERIFY_URL: http://captcha-stub:4199/turnstile
+      XBOARD_WEBSOCKET_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Validate split deployment topology invariants
+        run: |
+          node --test .github/scripts/check-split-topology.test.mjs
+          docker compose -f compose.split.yaml config --format json |
+            node .github/scripts/check-split-topology.mjs
+      - name: Build exact split images
+        run: |
+          set -euo pipefail
+          mkdir -p .local
+          chmod 0700 .local
+          password="$(openssl rand -hex 24)"
+          settings_key="$(openssl rand -base64 32 | tr -d '\n')"
+          echo "::add-mask::$password"
+          printf '%s' "$password" > .local/bootstrap-password.txt
+          printf '%s' "$settings_key" > .local/settings-encryption-key.txt
+          chmod 0444 .local/bootstrap-password.txt .local/settings-encryption-key.txt
+          docker compose -f compose.split.yaml build gateway frontend backend
+          for image in xboard-go-gateway:local xboard-go-frontend:local xboard-go-backend:local; do
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$GITHUB_SHA"
+          done
+      - name: Start split application and verify routing boundaries
+        run: |
+          set -euo pipefail
+          docker compose -f compose.split.yaml --profile e2e up -d --no-build --wait
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/)" = 200
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/wrong-admin-path)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/frontend-healthz)" = 404
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:7080/gateway-healthz)" = 200
+          asset="$(curl --fail --silent http://127.0.0.1:7080/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -n1)"
+          test -n "$asset"
+          curl --fail --silent --head "http://127.0.0.1:7080$asset" |
+            grep -qi '^cache-control: public, max-age=31536000, immutable'
+          for service in gateway frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '.[0].HostConfig.ReadonlyRootfs == true and
+                (.[0].HostConfig.CapDrop | index("ALL") != null) and
+                (.[0].HostConfig.SecurityOpt | index("no-new-privileges:true") != null)' >/dev/null
+          done
+          for service in frontend backend; do
+            docker compose -f compose.split.yaml ps -q "$service" |
+              xargs docker inspect |
+              jq -e '((.[0].HostConfig.PortBindings // {}) | length) == 0' >/dev/null
+          done
+      - name: Capture split container logs on failure
+        if: failure()
+        run: docker compose -f compose.split.yaml --profile e2e logs --no-color
+      - name: Stop split application
+        if: always()
+        run: |
+          docker compose -f compose.split.yaml --profile e2e down --volumes
+          chmod 0600 .local/bootstrap-password.txt .local/settings-encryption-key.txt 2>/dev/null || true
+
+  pr-gate:
+    name: pr-gate
+    needs:
+      - detect-changes
+      - governance
+      - ci-deploy-check
+      - go-fast
+      - go-race
+      - web-fast
+      - web-full
+      - browser-smoke
+      - supply-chain
+      - migration-drill
+      - real-client-compat
+      - packaging-smoke
+      - split-runtime
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Verify tiered PR gate contract
+        env:
+          PR_SCOPE_JSON: ${{ needs.detect-changes.outputs.scope_json }}
+          RESULT_DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          RESULT_GOVERNANCE: ${{ needs.governance.result }}
+          RESULT_CI_DEPLOY: ${{ needs.ci-deploy-check.result }}
+          RESULT_GO_FAST: ${{ needs.go-fast.result }}
+          RESULT_GO_RACE: ${{ needs.go-race.result }}
+          RESULT_WEB_FAST: ${{ needs.web-fast.result }}
+          RESULT_WEB_FULL: ${{ needs.web-full.result }}
+          RESULT_BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
+          RESULT_SUPPLY_CHAIN: ${{ needs.supply-chain.result }}
+          RESULT_MIGRATION_DRILL: ${{ needs.migration-drill.result }}
+          RESULT_REAL_CLIENT_COMPAT: ${{ needs.real-client-compat.result }}
+          RESULT_PACKAGING_SMOKE: ${{ needs.packaging-smoke.result }}
+          RESULT_SPLIT_RUNTIME: ${{ needs.split-runtime.result }}
+        run: node .github/scripts/verify-pr-gate.mjs

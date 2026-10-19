@@ -45,7 +45,7 @@ func TestRunRejectsInvalidCommandsBeforeDockerAccess(t *testing.T) {
 
 func TestEncodeResultPreservesFailedMachineResultAndExitError(t *testing.T) {
 	var output bytes.Buffer
-	operationErr := errors.New("upgrade failed after safe automatic rollback")
+	operationErr := errors.New("upgrade failed; current data retained; explicit recovery required")
 	result := lifecycle.Result{Status: "failed", Action: "lifecycle.upgrade"}
 	if err := encodeResult(&output, result, operationErr); !errors.Is(err, operationErr) {
 		t.Fatalf("encodeResult() error = %v", err)
@@ -57,7 +57,7 @@ func TestEncodeResultPreservesFailedMachineResultAndExitError(t *testing.T) {
 
 func TestEncodeDeploymentResultPreservesFailedMachineResultAndExitError(t *testing.T) {
 	var output bytes.Buffer
-	operationErr := errors.New("split deployment failed after safe automatic rollback")
+	operationErr := errors.New("split deployment failed; current data retained; explicit recovery required")
 	result := lifecycle.DeploymentResult{Status: "failed", Action: "lifecycle.deployment.upgrade"}
 	if err := encodeDeploymentResult(&output, result, operationErr); !errors.Is(err, operationErr) {
 		t.Fatalf("encodeDeploymentResult() error = %v", err)

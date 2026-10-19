@@ -22,10 +22,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type wsTestSyncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *wsTestSyncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *wsTestSyncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestR014WebSocketGracefulDrainSignalsRestartAndRejectsLateAdmission(t *testing.T) {
 	database := cloneHTTPAPITestDatabase(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	var logs bytes.Buffer
+	var logs wsTestSyncBuffer
 	handler := New(Dependencies{
 		Context: ctx, Store: database, PasswordHasher: newHTTPAPITestPasswordHasher(), Now: fixedNow,
 		PanelURL: "https://panel.example.test", AllowedOrigins: []string{"https://panel.example.test"},

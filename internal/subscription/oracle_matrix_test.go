@@ -338,3 +338,87 @@ func TestOracleClientCompatibilityBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestBL12ShadowrocketHysteriaV1AndV2URIs(t *testing.T) {
+	uuid := "11111111-2222-4333-8444-555555555555"
+	v1Full := PreparedNode{
+		ID:       101,
+		Type:     "hysteria",
+		Name:     "Hysteria 1 Full",
+		Host:     "hy1.example.test",
+		Port:     443,
+		Ports:    "20000-30000",
+		Password: uuid,
+		ProtocolSettings: map[string]any{
+			"version": float64(1),
+			"tls": map[string]any{
+				"server_name":    "hy1.example",
+				"allow_insecure": false,
+			},
+			"bandwidth": map[string]any{
+				"up":   float64(50),
+				"down": float64(100),
+			},
+			"obfs": map[string]any{
+				"open":     true,
+				"type":     "xplus",
+				"password": "obfs-secret",
+			},
+		},
+	}
+	wantV1Full := "hysteria://hy1.example.test:443?auth=11111111-2222-4333-8444-555555555555&upmbps=50&downmbps=100&protocol=udp&fastopen=1&peer=hy1.example&obfs=xplus&obfsParam=obfs-secret&insecure=0&mport=20000-30000#Hysteria 1 Full\r\n"
+	if got := shadowrocketLine(v1Full); got != wantV1Full {
+		t.Fatalf("shadowrocketLine(v1Full) = %q, want %q", got, wantV1Full)
+	}
+
+	v1Minimal := PreparedNode{
+		ID:       102,
+		Type:     "hysteria",
+		Name:     "Hysteria 1 Minimal",
+		Host:     "2001:db8::1",
+		Port:     8443,
+		Password: uuid,
+		ProtocolSettings: map[string]any{
+			"version": float64(1),
+			"tls": map[string]any{
+				"allow_insecure": true,
+			},
+		},
+	}
+	wantV1Minimal := "hysteria://[2001:db8::1]:8443?auth=11111111-2222-4333-8444-555555555555&protocol=udp&fastopen=1&insecure=1#Hysteria 1 Minimal\r\n"
+	if got := shadowrocketLine(v1Minimal); got != wantV1Minimal {
+		t.Fatalf("shadowrocketLine(v1Minimal) = %q, want %q", got, wantV1Minimal)
+	}
+
+	v2Node := PreparedNode{
+		ID:       45,
+		Type:     "hysteria",
+		Name:     "Hysteria 2",
+		Host:     "hysteria.example.test",
+		Port:     443,
+		Password: uuid,
+		ProtocolSettings: map[string]any{
+			"version":   float64(2),
+			"tls":       map[string]any{"server_name": "hy.example"},
+			"bandwidth": map[string]any{"up": float64(100), "down": float64(200)},
+			"obfs":      map[string]any{"open": true, "type": "salamander", "password": "secret"},
+		},
+	}
+	wantV2 := "hysteria2://11111111-2222-4333-8444-555555555555@hysteria.example.test:443?obfs=salamander&fastopen=1&peer=hy.example&obfs-password=secret&insecure=0#Hysteria 2\r\n"
+	if got := shadowrocketLine(v2Node); got != wantV2 {
+		t.Fatalf("shadowrocketLine(v2Node) = %q, want %q", got, wantV2)
+	}
+
+	invalidVersion := PreparedNode{
+		ID:               103,
+		Type:             "hysteria",
+		Name:             "Hysteria Invalid",
+		Host:             "hy-invalid.example.test",
+		Port:             443,
+		Password:         uuid,
+		ProtocolSettings: map[string]any{"version": float64(3)},
+	}
+	if got := shadowrocketLine(invalidVersion); got != "" {
+		t.Fatalf("shadowrocketLine(invalidVersion) = %q, want empty string", got)
+	}
+}

@@ -234,6 +234,31 @@ func revokeAllCredentialsTx(ctx context.Context, tx *sql.Tx, userID int64, now t
 	`, now.Unix(), now.Unix(), userID); err != nil {
 		return fmt.Errorf("revoke access tokens: %w", err)
 	}
+	// Links and reset challenges can mint fresh credentials. Invalidate them
+	// in the same transaction as the account change, including mail already
+	// claimed by a worker; a delivered message must no longer be redeemable.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE login_link_mail_outbox
+		SET cancelled_at = ?, token_cipher = NULL, claim_token = NULL, claimed_at = NULL,
+		    last_error = 'account credentials changed', updated_at = ?
+		WHERE user_id = ? AND sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL
+	`, now.Unix(), now.Unix(), userID); err != nil {
+		return fmt.Errorf("cancel revoked login link mail: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE password_reset_mail_outbox
+		SET cancelled_at = ?, code_cipher = NULL, claim_token = NULL, claimed_at = NULL,
+		    last_error = 'account credentials changed', updated_at = ?
+		WHERE user_id = ? AND sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL
+	`, now.Unix(), now.Unix(), userID); err != nil {
+		return fmt.Errorf("cancel revoked password reset mail: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM login_link_tokens WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("revoke login links: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM password_reset_challenges WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("revoke password reset challenges: %w", err)
+	}
 	return nil
 }
 

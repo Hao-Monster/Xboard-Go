@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const dedicatedStore = [
@@ -44,7 +44,9 @@ const sharedBackendTriggers = [
   "internal/model/",
   "internal/database/",
   "internal/ratelimit/",
-  "internal/devicestate/"
+  "internal/devicestate/",
+  "internal/nodecoord/",
+  "internal/settings/"
 ];
 
 const dependencyTriggers = [
@@ -55,19 +57,27 @@ const dependencyTriggers = [
 ];
 
 const splitRuntimeTriggers = [
+  "Dockerfile",
+  ".dockerignore",
+  ".docker/",
   "compose.split.yaml",
   "Dockerfile.split",
-  ".github/scripts/check-split-topology"
+  ".github/scripts/check-split-topology",
+  "internal/webui/"
 ];
 
 const packagingTriggers = [
   "Dockerfile",
+  ".dockerignore",
   "compose.yaml",
-  "compose.local.yaml"
+  "compose.local.yaml",
+  "deploy/compose.yaml",
+  "deploy/install.sh"
 ];
 
 const highRiskFrontendTriggers = [
   "web/src/App.tsx",
+  "web/src/main.tsx",
   "web/src/lib/",
   "web/src/features/auth/",
   "web/src/features/settings/",
@@ -97,8 +107,80 @@ const fullRegressionDependencyTriggers = [
   "web/pnpm-lock.yaml"
 ];
 
+const docExactFiles = new Set([
+  "AGENTS.md",
+  "README.md",
+  "LICENSE",
+  ".gitignore",
+  ".gitattributes",
+  ".gitleaksignore",
+  ".env.example",
+  ".github/pull_request_template.md"
+]);
+
+const docPrefixes = [
+  "docs/",
+  "docs- box/",
+  ".github/ISSUE_TEMPLATE/"
+];
+
+const ciDeployExactFiles = new Set([
+  "Makefile",
+  ".githooks/pre-commit",
+  ".githooks/pre-push",
+  ".github/dependabot.yml",
+  ".github/client-compatibility.json"
+]);
+
+const ciDeployPrefixes = [
+  ".github/workflows/",
+  ".github/scripts/",
+  "deploy/",
+  "tools/",
+  ".githooks/"
+];
+
+const coreWebExactFiles = new Set([
+  "web/package.json",
+  "web/pnpm-lock.yaml",
+  "web/index.html",
+  "web/src/App.tsx",
+  "web/src/main.tsx"
+]);
+
+const coreWebPrefixes = [
+  "web/vite.config",
+  "web/tsconfig",
+  "web/eslint.config",
+  "web/playwright",
+  "web/scripts/",
+  "web/src/lib/",
+  "web/src/routes/",
+  "web/src/auth/",
+  "web/src/features/auth/",
+  "web/src/features/settings/",
+  "web/e2e/"
+];
+
 function matchesPrefix(file, prefixes) {
   return prefixes.some((prefix) => file === prefix || file.startsWith(prefix));
+}
+
+export function isDocOrGovernanceFile(file) {
+  if (docExactFiles.has(file)) return true;
+  if (matchesPrefix(file, docPrefixes)) return true;
+  if (file.endsWith(".md") && !file.startsWith("web/") && !file.startsWith("internal/") && !file.startsWith("cmd/")) {
+    return true;
+  }
+  return false;
+}
+
+export function isCiOrDeployFile(file) {
+  return ciDeployExactFiles.has(file) || matchesPrefix(file, ciDeployPrefixes);
+}
+
+export function isCoreWebFile(file) {
+  return coreWebExactFiles.has(file) || matchesPrefix(file, coreWebPrefixes);
 }
 
 function fullRegressionResult() {
@@ -196,7 +278,8 @@ export function analyzeChangeSet(rawFiles) {
         f.startsWith("internal/httpapi/") ||
         f.startsWith("internal/clientcatalog/") ||
         f.startsWith(".github/scripts/clientcompat/") ||
-        f === ".github/scripts/check-real-client-compat.sh"
+        f === ".github/scripts/check-real-client-compat.sh" ||
+        f === ".github/client-compatibility.json"
     );
 
   const frontend = files.some((f) => f.startsWith("web/"));
@@ -249,25 +332,289 @@ export function analyzeChangeSet(rawFiles) {
   };
 }
 
-export function getChangedFiles(env = process.env) {
+/**
+ * Smart risk-tiered PR gate analyzer (L0 -> L1 -> L2 -> L3).
+ * Fail-closed on empty diff or unrecognized paths.
+ */
+export function analyzePrScope(rawFiles) {
+  const files = (rawFiles ?? [])
+    .map((f) => f.trim().replace(/\\/g, "/"))
+    .filter((f) => f !== "");
+
+  if (files.length === 0) {
+    return {
+      tier: "L3",
+      reason: "empty_diff_fail_closed",
+      unknown_paths: "true",
+      ci_deploy: "true",
+      go_fast: "false",
+      go_race: "true",
+      go_race_groups: JSON.stringify(["store", "xboard", "services-a", "services-b", "remainder"]),
+      backend_all: "true",
+      backend_store: "true",
+      backend_xboard: "true",
+      backend_services_a: "true",
+      backend_services_b: "true",
+      backend_remainder: "true",
+      web_fast: "false",
+      web_full: "true",
+      browser_smoke: "true",
+      supply_chain: "true",
+      migration_drill: "true",
+      real_client_compat: "true",
+      packaging_smoke: "true",
+      split_runtime: "true"
+    };
+  }
+
+  let hasUnknown = false;
+  for (const f of files) {
+    const known =
+      isDocOrGovernanceFile(f) ||
+      isCiOrDeployFile(f) ||
+      f.startsWith("cmd/") ||
+      f.startsWith("internal/") ||
+      f.startsWith("web/") ||
+      f.endsWith(".go") ||
+      matchesPrefix(f, dependencyTriggers) ||
+      matchesPrefix(f, packagingTriggers) ||
+      matchesPrefix(f, splitRuntimeTriggers);
+    if (!known) {
+      hasUnknown = true;
+    }
+  }
+
+  const ciDeploy = files.some((f) => isCiOrDeployFile(f));
+  const supplyChain = files.some((f) => matchesPrefix(f, dependencyTriggers));
+  const packagingSmoke = files.some((f) => matchesPrefix(f, packagingTriggers));
+  const splitRuntime = files.some((f) => matchesPrefix(f, splitRuntimeTriggers));
+
+  const migrationSchemaStoreFiles = new Set([
+    "internal/store/sqlite.go",
+    "internal/store/commission_withdrawals.go",
+    "internal/store/gift_card_purchase.go",
+    "internal/store/plan_visibility.go",
+    "internal/store/purchase_channels.go"
+  ]);
+
+  const migrationDrill = files.some(
+    (f) =>
+      f.startsWith("internal/testdata/legacy/") ||
+      f.startsWith("internal/legacymigration/") ||
+      f.startsWith("internal/store/migrate") ||
+      f.startsWith("internal/store/schema") ||
+      f.startsWith("internal/store/legacy") ||
+      migrationSchemaStoreFiles.has(f)
+  );
+
+  const realClientCompat = files.some(
+    (f) =>
+      f.startsWith("internal/subscription/") ||
+      f.startsWith("internal/clientcatalog/") ||
+      f.startsWith("internal/httpapi/subscription") ||
+      f.startsWith("internal/httpapi/client") ||
+      f.startsWith(".github/scripts/clientcompat/") ||
+      f === ".github/scripts/check-real-client-compat.sh" ||
+      f === ".github/client-compatibility.json"
+  );
+
+  const sharedBackendCore =
+    hasUnknown ||
+    files.some((f) => matchesPrefix(f, sharedBackendTriggers));
+
+  const storeTouched =
+    sharedBackendCore ||
+    files.some((f) => matchesPrefix(f, dedicatedStore));
+
+  const httpApiTouched =
+    sharedBackendCore ||
+    files.some((f) => f.startsWith("internal/httpapi/"));
+
+  const xboardTouched =
+    sharedBackendCore ||
+    files.some((f) => matchesPrefix(f, dedicatedXboard));
+
+  // go_fast is needed when non-shared Go packages are modified, or when non-test files in store/httpapi
+  // are modified (so upstream callers of store/httpapi get compile-checked).
+  const hasGoFastWork = files.some((f) => {
+    const isGoRelated = f.endsWith(".go") || f.startsWith("cmd/") || f.startsWith("internal/");
+    if (!isGoRelated) return false;
+    if (f.startsWith("internal/testdata/legacy/drill/")) return false;
+    if (matchesPrefix(f, dedicatedXboard)) return false;
+    const isHeavyDirectOnly = f.startsWith("internal/store/") || f.startsWith("internal/httpapi/");
+    if (isHeavyDirectOnly && f.endsWith("_test.go")) {
+      return false;
+    }
+    if (f.startsWith("internal/httpapi/") && xboardTouched) {
+      return false;
+    }
+    return true;
+  });
+
+  const goRace = sharedBackendCore || storeTouched || httpApiTouched || xboardTouched;
+  const goFast = hasGoFastWork && !sharedBackendCore;
+
+  const backendAll = sharedBackendCore;
+  const backendStore = sharedBackendCore || storeTouched;
+  const backendXboard = sharedBackendCore || xboardTouched;
+  const backendServicesA = sharedBackendCore || httpApiTouched;
+  const backendServicesB = sharedBackendCore;
+  const backendRemainder = sharedBackendCore;
+
+  const goRaceGroups = [];
+  if (backendStore) goRaceGroups.push("store");
+  if (backendXboard) goRaceGroups.push("xboard");
+  if (backendServicesA) goRaceGroups.push("services-a");
+  if (backendServicesB) goRaceGroups.push("services-b");
+  if (backendRemainder) goRaceGroups.push("remainder");
+
+  const hasAnyWeb = files.some((f) => f.startsWith("web/"));
+  const hasCoreWeb = hasUnknown || files.some((f) => isCoreWebFile(f));
+  const webFull = hasCoreWeb;
+  const webFast = hasAnyWeb && !hasCoreWeb;
+
+  const browserSmoke =
+    hasUnknown ||
+    files.some((f) => matchesPrefix(f, highRiskFrontendTriggers)) ||
+    files.some((f) => f.startsWith("internal/httpapi/"));
+
+  const hasL3Gate =
+    hasUnknown ||
+    sharedBackendCore ||
+    supplyChain ||
+    migrationDrill ||
+    realClientCompat ||
+    packagingSmoke ||
+    splitRuntime;
+
+  const hasL2Gate =
+    goRace ||
+    webFull ||
+    browserSmoke;
+
+  const hasL1Gate =
+    ciDeploy ||
+    goFast ||
+    webFast;
+
+  let tier = "L0";
+  let reason = "docs_or_governance_only";
+  if (hasL3Gate) {
+    tier = "L3";
+    reason = hasUnknown ? "unknown_path_conservative_escalation" : "high_risk_foundation_or_runtime_boundary";
+  } else if (hasL2Gate) {
+    tier = "L2";
+    reason = "cross_module_core_or_route_boundary";
+  } else if (hasL1Gate) {
+    tier = "L1";
+    reason = "localized_leaf_incremental_scope";
+  }
+
+  return {
+    tier,
+    reason,
+    unknown_paths: String(hasUnknown),
+    ci_deploy: String(ciDeploy),
+    go_fast: String(goFast),
+    go_race: String(goRace),
+    go_race_groups: JSON.stringify(goRaceGroups),
+    backend_all: String(backendAll),
+    backend_store: String(backendStore),
+    backend_xboard: String(backendXboard),
+    backend_services_a: String(backendServicesA),
+    backend_services_b: String(backendServicesB),
+    backend_remainder: String(backendRemainder),
+    web_fast: String(webFast),
+    web_full: String(webFull),
+    browser_smoke: String(browserSmoke),
+    supply_chain: String(supplyChain),
+    migration_drill: String(migrationDrill),
+    real_client_compat: String(realClientCompat),
+    packaging_smoke: String(packagingSmoke),
+    split_runtime: String(splitRuntime)
+  };
+}
+
+function readGithubEventPayload(env = process.env) {
+  const eventPath = env.GITHUB_EVENT_PATH ?? "";
+  if (!eventPath) return null;
+  try {
+    return JSON.parse(readFileSync(eventPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function defaultGitExec(args) {
+  return execFileSync("git", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+}
+
+function isMainRef(env = process.env, event = null) {
+  const ref = env.GITHUB_REF || event?.ref || "";
+  const refName = env.GITHUB_REF_NAME || "";
+  return ref === "refs/heads/main" || refName === "main";
+}
+
+export function resolveGitRevisionMeta(
+  env = process.env,
+  payload = null,
+  gitExec = defaultGitExec
+) {
+  const event = payload ?? readGithubEventPayload(env);
+  let mergeSha = env.GITHUB_SHA ?? "";
+  try {
+    mergeSha = gitExec(["rev-parse", "HEAD"]).trim();
+  } catch {
+    // ignore
+  }
+  let baseSha = event?.pull_request?.base?.sha ?? "";
+  if (!baseSha && !isMainRef(env, event)) {
+    try {
+      const mergeBase = gitExec(["merge-base", "origin/main", "HEAD"]).trim();
+      if (mergeBase && mergeBase !== mergeSha) {
+        baseSha = mergeBase;
+      }
+    } catch {
+      // Fall back to push before SHA when origin/main is unavailable
+    }
+  }
+  if (!baseSha) {
+    baseSha = env.GITHUB_EVENT_BEFORE ?? event?.before ?? "";
+  }
+  const headSha =
+    event?.pull_request?.head?.sha ??
+    mergeSha;
+  return { base_sha: baseSha, head_sha: headSha, merge_sha: mergeSha };
+}
+
+export function getChangedFiles(
+  env = process.env,
+  payload = null,
+  gitExec = defaultGitExec
+) {
   const eventName = env.GITHUB_EVENT_NAME ?? "";
+  const event = payload ?? readGithubEventPayload(env);
 
   if (eventName === "pull_request") {
     const baseRef = env.GITHUB_BASE_REF ?? "main";
+    // When running on refs/pull/<N>/merge, HEAD^1 is the exact base commit merged into HEAD
     try {
-      const output = execFileSync(
-        "git",
-        ["diff", "--name-only", `origin/${baseRef}...HEAD`],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-      );
+      gitExec(["rev-parse", "--verify", "HEAD^2"]);
+      const mergedDiff = gitExec(["diff", "--name-only", "HEAD^1..HEAD"]);
+      const files = mergedDiff.split(/\r?\n/).filter((f) => f.trim() !== "");
+      if (files.length > 0) return files;
+    } catch {
+      // Not a synthetic merge commit; fall through to origin/${baseRef}...HEAD
+    }
+    try {
+      const output = gitExec(["diff", "--name-only", `origin/${baseRef}...HEAD`]);
       return output.split(/\r?\n/).filter((f) => f.trim() !== "");
     } catch {
       try {
-        const fallback = execFileSync(
-          "git",
-          ["diff", "--name-only", "HEAD~1...HEAD"],
-          { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-        );
+        const fallback = gitExec(["diff", "--name-only", "HEAD~1...HEAD"]);
         return fallback.split(/\r?\n/).filter((f) => f.trim() !== "");
       } catch {
         return [];
@@ -275,14 +622,23 @@ export function getChangedFiles(env = process.env) {
     }
   }
 
-  const before = env.GITHUB_EVENT_BEFORE ?? "";
+  // On non-main branches (e.g., push to codex/ci-001-tiered-gates in pr-gate.yml),
+  // always evaluate the full branch diff against origin/main when ahead of origin/main
+  // so that concurrency cancel-in-progress on rapid pushes never downgrades the gate tier.
+  if (!isMainRef(env, event)) {
+    try {
+      const branchDiff = gitExec(["diff", "--name-only", "origin/main...HEAD"]);
+      const files = branchDiff.split(/\r?\n/).filter((f) => f.trim() !== "");
+      if (files.length > 0) return files;
+    } catch {
+      // Fall through to push before..HEAD when origin/main is unavailable
+    }
+  }
+
+  const before = env.GITHUB_EVENT_BEFORE || event?.before || "";
   if (before && before !== "0000000000000000000000000000000000000000") {
     try {
-      const output = execFileSync(
-        "git",
-        ["diff", "--name-only", `${before}..HEAD`],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
-      );
+      const output = gitExec(["diff", "--name-only", `${before}..HEAD`]);
       return output.split(/\r?\n/).filter((f) => f.trim() !== "");
     } catch {
       // Fallback below
@@ -290,13 +646,64 @@ export function getChangedFiles(env = process.env) {
   }
 
   try {
-    const output = execFileSync("git", ["diff", "--name-only", "HEAD~1..HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"]
-    });
+    const output = gitExec(["diff", "--name-only", "HEAD~1..HEAD"]);
     return output.split(/\r?\n/).filter((f) => f.trim() !== "");
   } catch {
     return [];
+  }
+}
+
+export const BASELINE_SMOKE_E2E_SPECS = [
+  "e2e/admin-navigation.spec.ts",
+  "e2e/registration.spec.ts"
+];
+
+export function resolveModifiedE2eSpecs(
+  rawFiles,
+  existsFn = (p) => existsSync(p),
+  readFn = (p) => readFileSync(p, "utf8")
+) {
+  const baselineSet = new Set(BASELINE_SMOKE_E2E_SPECS);
+  const regularSet = new Set();
+  const packagedSet = new Set();
+
+  for (const raw of rawFiles ?? []) {
+    const f = raw.trim().replace(/\\/g, "/");
+    if (!f.startsWith("web/e2e/") || !f.endsWith(".spec.ts") || !existsFn(f)) {
+      continue;
+    }
+    const rel = f.slice(4);
+    if (baselineSet.has(rel)) {
+      continue;
+    }
+    const content = readFn(f);
+    if (/XBOARD_E2E_MAILPIT_URL|XBOARD_E2E_EXTERNAL_SERVER/.test(content)) {
+      packagedSet.add(rel);
+    } else {
+      regularSet.add(rel);
+    }
+  }
+
+  return {
+    baselineSpecs: [...BASELINE_SMOKE_E2E_SPECS],
+    regularSpecs: [...regularSet].sort(),
+    packagedSpecs: [...packagedSet].sort()
+  };
+}
+
+export function assertPlaywrightReportNotAllSkipped(reportJson, specName) {
+  const parsed = typeof reportJson === "string" ? JSON.parse(reportJson) : reportJson;
+  const stats = parsed?.stats;
+  if (!stats || typeof stats.expected !== "number") {
+    throw new Error(`Invalid Playwright JSON report for ${specName}`);
+  }
+  if ((stats.unexpected ?? 0) > 0) {
+    throw new Error(`Playwright spec ${specName} had ${stats.unexpected} unexpected failure(s)`);
+  }
+  if (stats.expected <= 0) {
+    throw new Error(
+      `Playwright spec ${specName} executed 0 passing tests (skipped=${stats.skipped ?? 0}); refusing all-skipped pass`
+    );
   }
 }
 
@@ -309,14 +716,44 @@ export function writeGithubOutputs(results, outputPath) {
 }
 
 function main() {
+  if (process.argv.includes("--list-e2e-regular")) {
+    const { regularSpecs } = resolveModifiedE2eSpecs(getChangedFiles());
+    for (const spec of regularSpecs) {
+      process.stdout.write(`${spec}\n`);
+    }
+    return;
+  }
+
+  if (process.argv.includes("--list-e2e-packaged")) {
+    const { packagedSpecs } = resolveModifiedE2eSpecs(getChangedFiles());
+    for (const spec of packagedSpecs) {
+      process.stdout.write(`${spec}\n`);
+    }
+    return;
+  }
+
+  const verifyIdx = process.argv.indexOf("--verify-playwright-report");
+  if (verifyIdx >= 0) {
+    const reportPath = process.argv[verifyIdx + 1] ?? "";
+    const specName = process.argv[verifyIdx + 2] ?? reportPath;
+    assertPlaywrightReportNotAllSkipped(readFileSync(reportPath, "utf8"), specName);
+    return;
+  }
+
+  const modeArgIdx = process.argv.indexOf("--mode");
+  const mode = modeArgIdx >= 0 ? process.argv[modeArgIdx + 1] : "production";
+  const revMeta = resolveGitRevisionMeta();
   const files = getChangedFiles();
+  process.stdout.write(
+    `Revision context: base=${revMeta.base_sha || "n/a"} head=${revMeta.head_sha || "n/a"} merge=${revMeta.merge_sha || "n/a"}\n`
+  );
   process.stdout.write(`Detected changed files (${files.length}):\n`);
   for (const f of files) {
     process.stdout.write(`  - ${f}\n`);
   }
 
-  const results = analyzeChangeSet(files);
-  process.stdout.write("Computed change scope:\n");
+  const results = mode === "pr" ? analyzePrScope(files) : analyzeChangeSet(files);
+  process.stdout.write(`Computed change scope (mode=${mode}):\n`);
   for (const [key, val] of Object.entries(results)) {
     process.stdout.write(`  ${key}: ${val}\n`);
   }
@@ -324,6 +761,10 @@ function main() {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
     writeGithubOutputs(results, outputPath);
+    if (mode === "pr") {
+      const scopePayload = { ...results, ...revMeta };
+      appendFileSync(outputPath, `scope_json=${JSON.stringify(scopePayload)}\n`, { encoding: "utf8" });
+    }
   }
 }
 

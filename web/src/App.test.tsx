@@ -119,6 +119,15 @@ describe("App public identity bootstrap", () => {
     expect(confirm).toHaveBeenNthCalledWith(1, "客户端版本有未保存的修改，确认离开并放弃这些修改吗？");
     expect(screen.getByRole("heading", { name: "APP设置" })).toBeVisible();
 
+    await user.clear(version);
+    await user.type(version, "4.8.1");
+    confirm.mockClear();
+    confirm.mockReturnValueOnce(false).mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "插件管理" }));
+    fireEvent.change(version, { target: { value: "5.0.1" } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("客户端版本有未保存的修改，确认离开并放弃这些修改吗？"));
+    expect(screen.getByRole("heading", { name: "APP设置" })).toBeVisible();
+
     await user.click(screen.getByRole("button", { name: "插件管理" }));
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(await screen.findByRole("heading", { name: "插件管理" })).toBeVisible();
@@ -500,6 +509,8 @@ describe("App public identity bootstrap", () => {
   });
 
   it("renders categorized navigation groups in the administrator sidebar", async () => {
+    // Navigation assertions should not depend on a cold Vite chunk transform.
+    await import("./features/distributor/AdminDistributorPage");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (path.endsWith("/api/v1/guest/comm/config")) return Promise.resolve(jsonResponse(200, { status: "success", data: {
@@ -543,7 +554,12 @@ describe("App public identity bootstrap", () => {
     expect(within(searchDialog).queryByRole("button", { name: "套餐管理" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "搜索菜单和功能" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "分销管理快捷入口" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "分销管理快捷入口" })).not.toBeInTheDocument();
+    const distributors = within(sidebar).getByRole("button", { name: "分销管理" });
+    await userEvent.click(distributors);
+    expect(await screen.findByRole("heading", { name: "分销管理" })).toBeVisible();
+    expect(distributors).toHaveAttribute("aria-current", "page");
+    expect(window.location.hash).toBe("#/finance/distributor");
     const group = within(sidebar).getByRole("button", { name: "系统管理 菜单" });
     await userEvent.click(group);
     expect(group).toHaveAttribute("aria-expanded", "false");

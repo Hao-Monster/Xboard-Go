@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -75,45 +74,11 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	if !s.subscriptionRequests.take(strconv.FormatInt(account.ID, 10), s.now()) {
-		s.runtimeTracker.MarkSubscriptionRateLimited()
-		w.Header().Set("Cache-Control", "no-store, private")
-		w.Header().Set("Retry-After", "60")
-		writeAPIError(w, http.StatusTooManyRequests, "subscription_rate_limited", "订阅请求过于频繁，请稍后重试", nil)
+	hwid, release, ok := s.admitSubscriptionDelivery(w, r, account)
+	if !ok {
 		return
 	}
-	select {
-	case s.subscriptionRenderSlots <- struct{}{}:
-		defer func() { <-s.subscriptionRenderSlots }()
-	default:
-		s.runtimeTracker.MarkSubscriptionBusy()
-		w.Header().Set("Cache-Control", "no-store, private")
-		w.Header().Set("Retry-After", "1")
-		writeAPIError(w, http.StatusServiceUnavailable, "subscription_busy", "订阅服务繁忙，请稍后重试", nil)
-		return
-	}
-	s.runtimeTracker.BeginSubscriptionRender()
-	defer s.runtimeTracker.EndSubscriptionRender()
-	hwid, err := s.store.AuthorizeDistributorHWID(r.Context(), store.AuthorizeDistributorHWIDInput{
-		SubscriberUserID: account.ID, HWID: r.Header.Get("x-hwid"), DeviceOS: r.Header.Get("x-device-os"),
-		OSVersion: r.Header.Get("x-ver-os"), DeviceModel: r.Header.Get("x-device-model"),
-		UserAgent: r.UserAgent(), IPAddress: requestIP(r),
-	}, s.now())
-	if err != nil {
-		handleStoreError(w, err)
-		return
-	}
-	setDistributorHWIDHeaders(w, hwid)
-	if !hwid.Allowed {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if hwid.SubscriptionID > 0 {
-		if err := s.store.MarkDistributorSubscriptionClaimed(r.Context(), hwid.SubscriptionID, requestIP(r), r.UserAgent(), s.now()); err != nil {
-			handleStoreError(w, err)
-			return
-		}
-	}
+	defer release()
 
 	config := store.SubscriptionRenderConfig{}
 	if loadedConfig != nil {
@@ -145,9 +110,11 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 		types = ""
 	}
 	filtered := subscription.FilterNodes(prepared, types, r.URL.Query().Get("filter"))
+	rejectedByRequestFilter := len(prepared) - len(filtered)
+	filtered = subscription.CompatibleNodes(filtered, client)
 	filtered = subscription.PresentNodes(account, filtered, subscription.PrepareOptions{
 		ShowInfo: config.ShowInfo, ShowProtocol: config.ShowProtocol,
-		RejectedByRequestFilter: len(prepared) - len(filtered), NextResetAt: account.NextResetAt, Now: s.now(),
+		RejectedByRequestFilter: rejectedByRequestFilter, NextResetAt: account.NextResetAt, Now: s.now(),
 	})
 	appURL := strings.TrimRight(config.AppURL, "/")
 	if appURL == "" {
@@ -193,11 +160,11 @@ func (s *server) serveClientSubscription(w http.ResponseWriter, r *http.Request,
 	for name, value := range response.Headers {
 		w.Header().Set(name, value)
 	}
+	if err := s.markSubscriptionConfigIssued(r.Context(), hwid); err != nil {
+		handleStoreError(w, err)
+		return
+	}
 	if hwid.SubscriptionID > 0 {
-		if err := s.store.MarkDistributorConfigIssued(r.Context(), hwid.SubscriptionID, s.now()); err != nil {
-			handleStoreError(w, err)
-			return
-		}
 		if hwid.OriginalTradeNo != "" {
 			title := "订单号：" + hwid.OriginalTradeNo
 			w.Header().Set("profile-title", "base64:"+base64.StdEncoding.EncodeToString([]byte(title)))

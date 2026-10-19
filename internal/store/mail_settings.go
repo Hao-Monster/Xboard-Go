@@ -238,6 +238,18 @@ func (s *Store) ClaimSubscriptionReminder(ctx context.Context, claimToken string
 	defer tx.Rollback()
 	var id int64
 	staleBefore := now.Add(-lease).Unix()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE subscription_reminder_outbox
+		SET failed_at=?, claim_token=NULL, claimed_at=NULL, last_error=?, updated_at=?
+		WHERE id IN (
+			SELECT id FROM subscription_reminder_outbox
+			WHERE sent_at IS NULL AND failed_at IS NULL AND cancelled_at IS NULL
+			  AND attempt_count>=? AND claim_token IS NOT NULL AND claimed_at<=?
+			ORDER BY available_at,id LIMIT ?
+		)
+	`, now.Unix(), unknownMailDelivery, now.Unix(), maxReminderAttempts, staleBefore, maxExpiredMailClaims); err != nil {
+		return SubscriptionReminderJob{}, false, fmt.Errorf("recover exhausted subscription reminder claims: %w", err)
+	}
 	err = tx.QueryRowContext(ctx, `
 		SELECT o.id FROM subscription_reminder_outbox o CROSS JOIN app_settings s
 		WHERE s.id = 1 AND s.smtp_enabled = 1 AND s.remind_mail_enable = 1
@@ -247,6 +259,9 @@ func (s *Store) ClaimSubscriptionReminder(ctx context.Context, claimToken string
 		ORDER BY o.available_at, o.id LIMIT 1
 	`, now.Unix(), staleBefore).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		if err := tx.Commit(); err != nil {
+			return SubscriptionReminderJob{}, false, fmt.Errorf("commit subscription reminder claim recovery: %w", err)
+		}
 		return SubscriptionReminderJob{}, false, nil
 	}
 	if err != nil {

@@ -203,6 +203,9 @@ func (service *Service) RunMailOnce(ctx context.Context, now time.Time) (bool, e
 	if service == nil || service.store == nil {
 		return false, errors.New("bulk operations service is unavailable")
 	}
+	if _, err := service.store.ReapCancellingAdminUserBulkMail(ctx, now, mailClaimLease); err != nil {
+		return false, err
+	}
 	claimToken := uuid.NewString()
 	claimed, ok, err := service.store.ClaimAdminUserBulkMail(ctx, claimToken, now, mailClaimLease)
 	if err != nil || !ok {
@@ -246,6 +249,9 @@ func (service *Service) RunMailOnce(ctx context.Context, now time.Time) (bool, e
 	}
 	if !active {
 		configuration.Password = ""
+		if _, err := service.store.ReleaseCancelledAdminUserBulkMailClaim(ctx, claimed.JobID, claimed.Sequence, claimToken, now); err != nil {
+			return true, fmt.Errorf("release cancelled bulk mail claim: %w", err)
+		}
 		return true, nil
 	}
 	if err := service.sender.Send(ctx, configuration, message); err != nil {

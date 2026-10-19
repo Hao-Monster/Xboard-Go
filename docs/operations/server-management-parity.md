@@ -45,13 +45,16 @@ A main push triggers the lightweight CI dispatch, then the existing authorized
 `workflow_run` runner builds and deploys the exact source SHA to bingo-dev.
 Automated regression and CodeQL are not deployment prerequisites. Container health,
 release SHA and public reachability are checked to detect an unsuccessful deployment.
-The previous image/configuration and a database snapshot are retained for rollback.
-On startup failure the pipeline stops the candidate, restores the predeployment
-database into a new file, points the previous compose configuration to that file,
-and starts the previous image. The failed candidate database is preserved. This is
-necessary because the previous binary rejects schema 64. Recovery restores the
-snapshot point; it must not be used as a later rollback after accepting new writes
-without a data-reconciliation decision. User performs business acceptance.
+The previous image/configuration and a database snapshot are retained for explicit
+recovery. Once candidate activation has been attempted, any deployment check
+failure stops the candidate and preserves the current database/WAL and configuration;
+it does not restore the old snapshot or restart the old image automatically.
+The failure marker prevents another automatic deployment before recovery is resolved.
+An older binary may reject the upgraded schema (including the schema 64 transition),
+so neither an image-only fallback nor a snapshot restore is an automatic safe option.
+Explicit snapshot recovery can discard accepted post-snapshot writes and requires
+authorization plus a data-reconciliation decision; see
+[lifecycle failure recovery](lifecycle-recovery.md). User performs business acceptance.
 Original gates are preserved under `production-gates-backup/`; Production checks and
 CodeQL are manual only, not an automatic production release policy.
 

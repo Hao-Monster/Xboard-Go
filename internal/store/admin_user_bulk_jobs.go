@@ -716,6 +716,120 @@ func (s *Store) finishAdminUserBulkMail(ctx context.Context, jobID string, seque
 	return nil
 }
 
+func (s *Store) ReleaseCancelledAdminUserBulkMailClaim(ctx context.Context, jobID string, sequence int64, claimToken string, now time.Time) (bool, error) {
+	if _, err := uuid.Parse(jobID); err != nil || sequence < 1 || len(strings.TrimSpace(claimToken)) < 8 {
+		return false, ErrInvalidInput
+	}
+	now = now.UTC()
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin release cancelled administrator bulk mail claim: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE admin_user_bulk_targets
+		SET status='cancelled', claim_token=NULL, claimed_at=NULL, processed_at=?
+		WHERE job_id=? AND sequence=? AND status='processing' AND claim_token=?
+		  AND EXISTS (
+			  SELECT 1 FROM admin_user_bulk_jobs j
+			  WHERE j.id=admin_user_bulk_targets.job_id AND j.status IN ('cancelling', 'cancelled')
+		  )
+	`, now.Unix(), jobID, sequence, claimToken)
+	if err != nil {
+		return false, fmt.Errorf("release cancelled administrator bulk mail target: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count released administrator bulk mail target: %w", err)
+	}
+	if changed == 0 {
+		return false, nil
+	}
+	if err := refreshAdminUserBulkJobTx(ctx, tx, jobID, now); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit released administrator bulk mail claim: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Store) ReapCancellingAdminUserBulkMail(ctx context.Context, now time.Time, lease time.Duration) (bool, error) {
+	if lease <= 0 || now.Unix() < 0 {
+		return false, ErrInvalidInput
+	}
+	now = now.UTC()
+	defer s.lockWrite()()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin reap cancelling administrator bulk mail: %w", err)
+	}
+	defer tx.Rollback()
+
+	staleBefore := now.Add(-lease).Unix()
+	reapedResult, err := tx.ExecContext(ctx, `
+		UPDATE admin_user_bulk_targets
+		SET status='failed', claim_token=NULL, claimed_at=NULL,
+		    last_error='mail delivery result unknown after cancellation', processed_at=?
+		WHERE status='processing' AND claimed_at<=?
+		  AND job_id IN (
+			  SELECT id FROM admin_user_bulk_jobs WHERE kind='mail' AND status='cancelling'
+		  )
+	`, now.Unix(), staleBefore)
+	if err != nil {
+		return false, fmt.Errorf("reap stale cancelling administrator bulk mail targets: %w", err)
+	}
+	reapedTargets, err := reapedResult.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count reaped cancelling administrator bulk mail targets: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id FROM admin_user_bulk_jobs
+		WHERE kind='mail' AND status='cancelling'
+		ORDER BY created_at, id LIMIT 100
+	`)
+	if err != nil {
+		return false, fmt.Errorf("list cancelling administrator bulk mail jobs: %w", err)
+	}
+	jobIDs := make([]string, 0, 8)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return false, fmt.Errorf("scan cancelling administrator bulk mail job: %w", err)
+		}
+		jobIDs = append(jobIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return false, fmt.Errorf("close cancelling administrator bulk mail jobs: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate cancelling administrator bulk mail jobs: %w", err)
+	}
+	if len(jobIDs) == 0 && reapedTargets == 0 {
+		return false, nil
+	}
+	settledJobs := 0
+	for _, jobID := range jobIDs {
+		if err := refreshAdminUserBulkJobTx(ctx, tx, jobID, now); err != nil {
+			return false, err
+		}
+		var status string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM admin_user_bulk_jobs WHERE id=?`, jobID).Scan(&status); err != nil {
+			return false, err
+		}
+		if status == AdminUserBulkStatusCancelled {
+			settledJobs++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit reap cancelling administrator bulk mail: %w", err)
+	}
+	return reapedTargets > 0 || settledJobs > 0, nil
+}
+
 func (s *Store) CancelAdminUserBulkJob(ctx context.Context, jobID string, administratorID int64, now time.Time) (AdminUserBulkJob, error) {
 	if _, err := uuid.Parse(jobID); err != nil || administratorID < 1 {
 		return AdminUserBulkJob{}, ErrInvalidInput

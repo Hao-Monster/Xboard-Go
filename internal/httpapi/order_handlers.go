@@ -102,6 +102,7 @@ func (s *server) checkoutUserOrder(w http.ResponseWriter, r *http.Request) {
 		handleOrderError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), order.Change)
 	writeSuccess(w, http.StatusOK, order)
 }
 
@@ -268,10 +269,12 @@ func (s *server) paidAdminOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tradeNo := r.PathValue("tradeNo")
-	if _, err := s.store.CompletePendingOrder(r.Context(), tradeNo, "manual_operation", s.now()); err != nil {
+	completed, err := s.store.CompletePendingOrder(r.Context(), tradeNo, "manual_operation", s.now())
+	if err != nil {
 		handleOrderError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), completed.Change)
 	order, err := s.readAdminOrderDetail(r.Context(), tradeNo)
 	if err != nil {
 		handleOrderError(w, err)
@@ -603,10 +606,12 @@ func (s *server) legacyPaidAdminOrder(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := s.store.CompletePendingOrder(r.Context(), tradeNo, "manual_operation", s.now()); err != nil {
+	completed, err := s.store.CompletePendingOrder(r.Context(), tradeNo, "manual_operation", s.now())
+	if err != nil {
 		writeLegacyAdminOrderError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), completed.Change)
 	writeLegacySuccess(w, http.StatusOK, true)
 }
 
@@ -807,6 +812,7 @@ func (s *server) legacyCreateOrder(w http.ResponseWriter, r *http.Request) {
 			writeLegacyDistributorError(w, err)
 			return
 		}
+		s.notifyEntitlementChange(r.Context(), order.Change)
 		writeLegacySuccess(w, http.StatusOK, order.Order.TradeNo)
 		return
 	}
@@ -905,10 +911,12 @@ func (s *server) legacyCheckoutUserOrder(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, map[string]any{"type": checkout.Type, "data": checkout.Data})
 		return
 	}
-	if _, err := s.store.CompleteOrder(r.Context(), order.TradeNo, order.TradeNo, s.now()); err != nil {
+	completed, err := s.store.CompleteOrder(r.Context(), order.TradeNo, order.TradeNo, s.now())
+	if err != nil {
 		writeLegacyOrderStoreError(w, err)
 		return
 	}
+	s.notifyEntitlementChange(r.Context(), completed.Change)
 	writeJSON(w, http.StatusOK, map[string]any{"type": -1, "data": true})
 }
 

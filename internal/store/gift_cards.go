@@ -159,8 +159,9 @@ type RedeemGiftCardInput struct {
 }
 
 type GiftCardUsage struct {
-	OrderTradeNo               string         `json:"order_trade_no,omitempty"`
-	ID                         int64          `json:"id"`
+	Changes                    []EntitlementChange `json:"-"`
+	OrderTradeNo               string              `json:"order_trade_no,omitempty"`
+	ID                         int64               `json:"id"`
 	CodeID                     int64          `json:"code_id"`
 	Code                       string         `json:"code,omitempty"`
 	TemplateID                 int64          `json:"template_id"`
@@ -773,6 +774,16 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 		upload, download := user.trafficUpload, user.trafficDownload
 		trafficResetUploadBefore, trafficResetDownloadBefore = &upload, &download
 	}
+	userChange, err := readEntitlementChangeTx(ctx, tx, user.id)
+	if err != nil {
+		return GiftCardUsage{}, err
+	}
+	userRuntimeChanged := preview.Template.Type == GiftCardTypePurchase ||
+		preview.Template.Type == GiftCardTypePlan ||
+		preview.Rewards.TransferEnable > 0 ||
+		preview.Rewards.DeviceLimit > 0 ||
+		(preview.Rewards.ResetTraffic && user.planID.Valid) ||
+		(preview.Rewards.ExpireDays > 0 && !(user.planID.Valid && !user.expiredAt.Valid))
 	orderTradeNo := ""
 	if preview.Template.Type == GiftCardTypePurchase {
 		orderTradeNo, err = applyGiftPurchase(ctx, tx, &user, preview, now)
@@ -782,6 +793,11 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 	if err != nil {
 		return GiftCardUsage{}, err
 	}
+	var changes []EntitlementChange
+	if userRuntimeChanged {
+		userChange.NewGroupID = nullableInt64Pointer(user.groupID)
+		changes = append(changes, userChange)
+	}
 	inviterReward := GiftCardReward{}
 	var inviterID *int64
 	if user.inviteUserID.Valid && preview.Template.Limits.InviteRewardBasisPoints > 0 {
@@ -790,6 +806,13 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 		inviterReward, err = applyGiftCardInviterReward(ctx, tx, value, preview.Rewards, preview.Template.Limits.InviteRewardBasisPoints, now)
 		if err != nil {
 			return GiftCardUsage{}, err
+		}
+		if inviterReward.TransferEnable > 0 {
+			inviterChange, err := readEntitlementChangeTx(ctx, tx, value)
+			if err != nil {
+				return GiftCardUsage{}, err
+			}
+			changes = append(changes, inviterChange)
 		}
 	}
 	inviterJSON, err := json.Marshal(inviterReward)
@@ -822,7 +845,7 @@ func (s *Store) RedeemGiftCard(ctx context.Context, input RedeemGiftCardInput, n
 	if err := tx.Commit(); err != nil {
 		return GiftCardUsage{}, fmt.Errorf("commit gift card redemption: %w", err)
 	}
-	return GiftCardUsage{OrderTradeNo: orderTradeNo, ID: usageID, CodeID: preview.Code.ID, Code: preview.Code.Code, TemplateID: preview.Template.ID,
+	return GiftCardUsage{Changes: changes, OrderTradeNo: orderTradeNo, ID: usageID, CodeID: preview.Code.ID, Code: preview.Code.Code, TemplateID: preview.Template.ID,
 		TemplateName: preview.Template.Name, UserID: input.UserID, InviterID: inviterID, Rewards: preview.Rewards,
 		InviterRewards: inviterReward, UserLevelAtUse: nullableInt64Pointer(userLevelAtUse), UserPlanID: nullableInt64Pointer(user.planID), Multiplier: multiplier,
 		IPAddress: input.IPAddress, UserAgent: input.UserAgent, TrafficResetUploadBefore: trafficResetUploadBefore,
@@ -1330,6 +1353,11 @@ func checkGiftCard(ctx context.Context, database interface {
 	if err != nil {
 		return GiftCardPreview{}, err
 	}
+	// Permanent subscriptions cannot gain days. Persist and display only the reward
+	// that takes effect; D-2 explicitly allows consuming even a days-only card.
+	if (template.Type == GiftCardTypeGeneral || template.Type == GiftCardTypeMystery) && user.planID.Valid && !user.expiredAt.Valid {
+		reward.ExpireDays = 0
+	}
 	return GiftCardPreview{Template: template, Code: codeRecord, Rewards: reward}, conditionErr
 }
 
@@ -1573,6 +1601,7 @@ func applyGiftCardReward(ctx context.Context, tx *sql.Tx, user *giftCardUserStat
 			return fmt.Errorf("apply gift card plan: %w", err)
 		}
 		user.planID = sql.NullInt64{Int64: plan.ID, Valid: true}
+		user.groupID = pointerToNullInt64(plan.GroupID)
 		return nil
 	}
 	if user.balance > maxGiftCardMoney-reward.Balance || user.transferEnable > maxGiftCardTransfer-reward.TransferEnable ||
@@ -1581,10 +1610,10 @@ func applyGiftCardReward(ctx context.Context, tx *sql.Tx, user *giftCardUserStat
 	}
 	baseExpiry := now
 	if user.expiredAt.Valid && user.expiredAt.Int64 > now.Unix() {
-		baseExpiry = time.Unix(user.expiredAt.Int64, 0)
+		baseExpiry = time.Unix(user.expiredAt.Int64, 0).In(now.Location())
 	}
 	expiry := user.expiredAt
-	if reward.ExpireDays > 0 {
+	if reward.ExpireDays > 0 && !(user.planID.Valid && !user.expiredAt.Valid) {
 		expiry = sql.NullInt64{Int64: baseExpiry.AddDate(0, 0, reward.ExpireDays).Unix(), Valid: true}
 	}
 	upload, download := user.trafficUpload, user.trafficDownload
