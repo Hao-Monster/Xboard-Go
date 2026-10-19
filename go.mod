@@ -1,6 +1,6 @@
 module github.com/Hao-Monster/Xboard-Go
 
-go 1.26.8
+go 1.26.9
 
 require (
 	github.com/google/uuid v1.6.0
@@ -10,9 +10,9 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/yuin/goldmark v1.8.6
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/crypto v0.56.0
-	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sys v0.48.0
 	modernc.org/sqlite v1.58.0
 	rsc.io/qr v0.2.0
 )
