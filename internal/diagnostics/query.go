@@ -709,30 +709,34 @@ func osIsTimeout(err error) bool {
 
 // StorageHealthResponse records the health status reported by VictoriaLogs/guard.
 type StorageHealthResponse struct {
-	SchemaVersion   int      `json:"schema_version"`
-	PanelScope      string   `json:"panel_scope"`
-	StorageID       string   `json:"storage_id"`
-	State           string   `json:"state"`
-	ReasonCodes     []string `json:"reason_codes"`
-	CheckedAtUTC    string   `json:"checked_at_utc"`
-	CheckAgeSeconds int64    `json:"check_age_seconds"`
+	SchemaVersion      int      `json:"schema_version"`
+	PanelScope         string   `json:"panel_scope"`
+	StorageID          string   `json:"storage_id"`
+	State              string   `json:"state"`
+	ReasonCodes        []string `json:"reason_codes"`
+	CheckedAtUTC       string   `json:"checked_at_utc"`
+	CheckAgeSeconds    int64    `json:"check_age_seconds"`
+	Latched            bool     `json:"latched,omitempty"`
+	DataUsedBytes      int64    `json:"data_used_bytes,omitempty"`
+	DataAvailableBytes int64    `json:"data_available_bytes,omitempty"`
+	RootAvailableBytes int64    `json:"root_available_bytes,omitempty"`
 }
 
-// CheckHealth queries the storage health endpoint and validates readiness.
-func (c *StorageClient) CheckHealth(ctx context.Context, endpoint, username, password, expectedScope string) error {
+// GetHealth fetches the detailed storage health status from the guard endpoint.
+func (c *StorageClient) GetHealth(ctx context.Context, endpoint, username, password string) (StorageHealthResponse, error) {
 	if endpoint == "" {
-		return ErrStorageNotConfigured
+		return StorageHealthResponse{}, ErrStorageNotConfigured
 	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return fmt.Errorf("%w: invalid storage endpoint URL", ErrStorageNotConfigured)
+		return StorageHealthResponse{}, fmt.Errorf("%w: invalid storage endpoint URL", ErrStorageNotConfigured)
 	}
 	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/diagnostics/health"
 	healthURL := parsed.String()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
-		return err
+		return StorageHealthResponse{}, err
 	}
 	if username != "" || password != "" {
 		req.SetBasicAuth(username, password)
@@ -740,20 +744,30 @@ func (c *StorageClient) CheckHealth(ctx context.Context, endpoint, username, pas
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDiagnosticsStorageNotReady, err)
+		return StorageHealthResponse{}, fmt.Errorf("%w: %v", ErrDiagnosticsStorageNotReady, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: status %d", ErrDiagnosticsStorageNotReady, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusServiceUnavailable {
+		return StorageHealthResponse{}, fmt.Errorf("%w: upstream status %d", ErrDiagnosticsStorageNotReady, resp.StatusCode)
 	}
 
 	var health StorageHealthResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&health); err != nil {
-		return fmt.Errorf("%w: invalid health json", ErrDiagnosticsStorageNotReady)
+		return StorageHealthResponse{}, fmt.Errorf("%w: invalid health json", ErrDiagnosticsStorageNotReady)
 	}
 
-	if health.State != "ready" || (expectedScope != "" && health.PanelScope != expectedScope) || health.CheckAgeSeconds > 60 {
+	return health, nil
+}
+
+// CheckHealth queries the storage health endpoint and validates readiness.
+func (c *StorageClient) CheckHealth(ctx context.Context, endpoint, username, password, expectedScope string) error {
+	health, err := c.GetHealth(ctx, endpoint, username, password)
+	if err != nil {
+		return err
+	}
+
+	if health.State != "ready" || (expectedScope != "" && health.PanelScope != expectedScope) || health.CheckAgeSeconds > 60 || health.Latched {
 		return ErrDiagnosticsStorageNotReady
 	}
 	return nil

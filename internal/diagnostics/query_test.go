@@ -3,6 +3,8 @@ package diagnostics_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -344,6 +346,92 @@ func TestStorageClient(t *testing.T) {
 		_, err := client.Query(ctx, server.URL, "", "", "trigger_503")
 		if err == nil || !strings.Contains(err.Error(), "upstream status 503") {
 			t.Fatalf("expected 503 upstream error, got: %v", err)
+		}
+	})
+}
+
+func TestStorageClient_Health(t *testing.T) {
+	mux := http.NewServeMux()
+	var (
+		state       = "ready"
+		latched     = false
+		checkAgeSec = int64(10)
+		panelScope  = "scope-valid"
+		returnCode  = http.StatusOK
+	)
+
+	mux.HandleFunc("/diagnostics/health", func(w http.ResponseWriter, r *http.Request) {
+		user, pass, _ := r.BasicAuth()
+		if user != "user" || pass != "pass" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(returnCode)
+		json.NewEncoder(w).Encode(diagnostics.StorageHealthResponse{
+			SchemaVersion:      1,
+			PanelScope:         panelScope,
+			StorageID:          "store-1234",
+			State:              state,
+			ReasonCodes:        []string{"healthy"},
+			CheckedAtUTC:       "2026-10-25T00:00:00Z",
+			CheckAgeSeconds:    checkAgeSec,
+			Latched:            latched,
+			DataUsedBytes:      10 * 1024 * 1024 * 1024,
+			DataAvailableBytes: 20 * 1024 * 1024 * 1024,
+			RootAvailableBytes: 80 * 1024 * 1024 * 1024,
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := diagnostics.NewStorageClient()
+	ctx := context.Background()
+
+	t.Run("get_health_and_check_health_ok", func(t *testing.T) {
+		h, err := client.GetHealth(ctx, server.URL, "user", "pass")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if h.State != "ready" || h.PanelScope != "scope-valid" || h.DataUsedBytes == 0 || h.Latched {
+			t.Errorf("unexpected health: %+v", h)
+		}
+
+		if err := client.CheckHealth(ctx, server.URL, "user", "pass", "scope-valid"); err != nil {
+			t.Fatalf("expected CheckHealth to succeed, got: %v", err)
+		}
+	})
+
+	t.Run("check_health_latched_rejected", func(t *testing.T) {
+		latched = true
+		defer func() { latched = false }()
+		err := client.CheckHealth(ctx, server.URL, "user", "pass", "scope-valid")
+		if !errors.Is(err, diagnostics.ErrDiagnosticsStorageNotReady) {
+			t.Fatalf("expected ErrDiagnosticsStorageNotReady, got: %v", err)
+		}
+	})
+
+	t.Run("check_health_stale_rejected", func(t *testing.T) {
+		checkAgeSec = 65
+		defer func() { checkAgeSec = 10 }()
+		err := client.CheckHealth(ctx, server.URL, "user", "pass", "scope-valid")
+		if !errors.Is(err, diagnostics.ErrDiagnosticsStorageNotReady) {
+			t.Fatalf("expected ErrDiagnosticsStorageNotReady, got: %v", err)
+		}
+	})
+
+	t.Run("check_health_scope_mismatch_rejected", func(t *testing.T) {
+		err := client.CheckHealth(ctx, server.URL, "user", "pass", "other-scope")
+		if !errors.Is(err, diagnostics.ErrDiagnosticsStorageNotReady) {
+			t.Fatalf("expected ErrDiagnosticsStorageNotReady on scope mismatch, got: %v", err)
+		}
+	})
+
+	t.Run("check_health_auth_failure", func(t *testing.T) {
+		err := client.CheckHealth(ctx, server.URL, "wrong", "pass", "scope-valid")
+		if !errors.Is(err, diagnostics.ErrDiagnosticsStorageNotReady) {
+			t.Fatalf("expected ErrDiagnosticsStorageNotReady on 401, got: %v", err)
 		}
 	})
 }
