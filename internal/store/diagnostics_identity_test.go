@@ -107,7 +107,7 @@ func TestResolveDiagnosticsCustomerByOrder(t *testing.T) {
 	// user 2002: subscriber under distributor
 	_, err = database.db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, account_kind, is_distributor, distributor_name, subscription_token, created_at, updated_at)
-		VALUES 
+		VALUES
 			(1001, 'direct_customer@example.com', 'hash', 'human', 0, NULL, '11111111111111111111111111111111', 100, 100),
 			(50,   'distributor@example.com',     'hash', 'human', 1, 'Distributor Partner', '22222222222222222222222222222222', 100, 100),
 			(2002, 'subscriber@example.com',      'hash', 'internal_subscription', 0, NULL, '33333333333333333333333333333333', 100, 100)
@@ -123,7 +123,7 @@ func TestResolveDiagnosticsCustomerByOrder(t *testing.T) {
 	// Order 9004: Broken distributor order (missing subscriber relation)
 	_, err = database.db.ExecContext(ctx, `
 		INSERT INTO orders (id, user_id, plan_id, period, trade_no, original_amount, total_amount, type, status, created_at, updated_at)
-		VALUES 
+		VALUES
 			(9001, 1001, ?, 'monthly', '2026101800010000000000001', 10000, 10000, 1, 3, 100, 100),
 			(9002, 50,   ?, 'monthly', '2026101800010000000000002', 10000, 10000, 1, 3, 100, 100)
 	`, planID, planID)

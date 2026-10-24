@@ -281,7 +281,7 @@ func (s *Store) ResolveDiagnosticsCustomerByOrder(ctx context.Context, input Dia
 	}
 
 	query := `
-		SELECT 
+		SELECT
 			o.id,
 			o.trade_no,
 			o.status,
