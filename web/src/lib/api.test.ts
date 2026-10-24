@@ -446,3 +446,44 @@ describe("APIClient gift card contracts", () => {
     ]);
   });
 });
+
+describe("APIClient diagnostics contracts", () => {
+  it("routes all diagnostics operations to the expected endpoints with CSRF and payload contracts", async () => {
+    const requests: Array<{ path: string; method: string; body?: unknown; csrf: string | null }> = [];
+    document.cookie = "xboard_csrf=diag-csrf; path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+      requests.push({
+        path: raw,
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined,
+        csrf: headers.get("X-CSRF-Token")
+      });
+      return Promise.resolve(new Response(JSON.stringify({ status: "success", data: {} }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+
+    const api = new APIClient();
+    await api.initDiagnosticsScope("00000000-0000-4000-8000-000000000001");
+    await api.lookupDiagnosticsOrder({ trade_no: "QA-DIAG-001" });
+    await api.queryDiagnosticsOrder({ trade_no: "QA-DIAG-001", domain: "example.com", limit: 50 });
+    await api.connectionDiagnosticsOrder({ trade_no: "QA-DIAG-001", node_id: 1, runtime_id: "rt1", connection_id: "c1" });
+    await api.startDiagnosticsSession({ trade_no: "QA-DIAG-001", idempotency_key: "idemp-1" });
+    await api.stopDiagnosticsSession({ trade_no: "QA-DIAG-001", session_id: "sess-1", idempotency_key: "idemp-2" });
+    await api.getDiagnosticsSessionStatus({ trade_no: "QA-DIAG-001" });
+    await api.getDiagnosticsSettings();
+    await api.updateDiagnosticsSettings({ query_endpoint: "http://vl:9428", query_username: "admin" });
+
+    expect(requests).toEqual([
+      { path: "/api/v1/admin/diagnostics/initialize", method: "POST", body: { scope: "00000000-0000-4000-8000-000000000001" }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/lookup", method: "POST", body: { trade_no: "QA-DIAG-001" }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/query", method: "POST", body: { trade_no: "QA-DIAG-001", domain: "example.com", limit: 50 }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/connection", method: "POST", body: { trade_no: "QA-DIAG-001", node_id: 1, runtime_id: "rt1", connection_id: "c1" }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/start", method: "POST", body: { trade_no: "QA-DIAG-001", idempotency_key: "idemp-1" }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/stop", method: "POST", body: { trade_no: "QA-DIAG-001", session_id: "sess-1", idempotency_key: "idemp-2" }, csrf: "diag-csrf" },
+      { path: "/api/v1/admin/order/diagnostics/status?trade_no=QA-DIAG-001", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/diagnostics/settings", method: "GET", body: undefined, csrf: null },
+      { path: "/api/v1/admin/diagnostics/settings", method: "PUT", body: { query_endpoint: "http://vl:9428", query_username: "admin" }, csrf: "diag-csrf" }
+    ]);
+  });
+});

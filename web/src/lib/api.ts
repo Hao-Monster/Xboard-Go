@@ -1789,7 +1789,251 @@ export interface PurchaseChannelsAdminAPI {
   updatePurchaseChannels: (input: PurchaseChannels) => Promise<PurchaseChannels>;
 }
 
-export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficResetAPI>, Partial<PurchaseChannelsAdminAPI> {
+export interface DiagnosticsScopeResponse {
+  panel_scope: string;
+  created: boolean;
+}
+
+export interface DiagnosticsOrderLookupResponse {
+  order_id: number;
+  trade_no: string;
+  order_status: number;
+  order_type: string;
+  customer_display_name: string;
+  subscription_name: string;
+  diagnostic_id: string;
+}
+
+export interface DiagnosticsQueryFilters {
+  from?: string;
+  to?: string;
+  node_id?: number;
+  domain?: string;
+  domain_match?: "contains" | "exact" | "suffix";
+  trace_id?: string;
+  has_error?: boolean;
+  reason_code?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface DiagnosticsNodeCoverage {
+  node_id: number;
+  capability: "supported" | "unsupported";
+  collector: "healthy" | "unknown" | "degraded";
+  known_dropped_events: number | null;
+}
+
+export interface DiagnosticsCoverage {
+  state: "full" | "partial" | "unknown" | "complete" | "delayed";
+  reasons: string[];
+  nodes: DiagnosticsNodeCoverage[];
+}
+
+export interface ConnectionSummary {
+  node_id: number;
+  runtime_id: string;
+  connection_id: string;
+  target_id: number;
+  diagnostic_id: string;
+  observed_protocol: string;
+  observed_domain: string;
+  domain_source: string;
+  selected_target_address: string;
+  selected_target_port: number;
+  socket_peer: string;
+  transport_state: string;
+  has_error: boolean;
+  last_error_stage: string;
+  last_reason_code: string;
+  error_stages: string[];
+  reason_codes: string[];
+  span_status: string;
+  start_time: string;
+  last_event_time: string;
+  event_count: number;
+  bytes_in: number;
+  bytes_out: number;
+  has_stack: boolean;
+  stack_capture_kind: string;
+  payload_truncated: boolean;
+}
+
+export interface DiagnosticsQueryResponse {
+  diagnostic_id: string;
+  snapshot_id: string;
+  as_of: string;
+  items: ConnectionSummary[];
+  next_cursor: string | null;
+  truncated: boolean;
+  scan_truncated: boolean;
+  coverage: DiagnosticsCoverage;
+}
+
+export interface DiagnosticsConnectionEvent {
+  schema_version?: number;
+  event_time?: string;
+  event_id?: string;
+  event_family?: "connection" | "resolver_operation" | "node";
+  panel_scope?: string;
+  node_id?: number;
+  runtime_id?: string;
+  event?: string;
+  connection_id?: string;
+  seq?: number;
+  diagnostic_id?: string;
+  target_id?: number;
+  span_name?: string;
+  span_status?: string;
+  span_duration_ms?: number;
+  span_parent_span_id?: string;
+  span_id?: string;
+  span_links?: string[];
+  resolver_operation_id?: string;
+  operation_seq?: number;
+  transport_state?: string;
+  has_error?: boolean;
+  stage?: string;
+  reason_code?: string;
+  error_message?: string;
+  last_error_stage?: string;
+  last_reason_code?: string;
+  observed_domain?: string;
+  domain_source?: string;
+  node_resolution?: string;
+  dns_server?: string;
+  dns_transport?: string;
+  dns_rcode?: string;
+  dns_answers?: string[];
+  selected_target_address?: string;
+  selected_target_port?: number;
+  socket_peer?: string;
+  exception_stack?: string[];
+  stack_capture_kind?: string;
+  payload_truncated?: boolean;
+  [key: string]: unknown;
+}
+
+export interface DiagnosticsConnectionResponse {
+  diagnostic_id: string;
+  node_id: number;
+  runtime_id: string;
+  connection_id: string;
+  events: DiagnosticsConnectionEvent[];
+  dns_exchange: DiagnosticsConnectionEvent[];
+}
+
+export interface DiagnosticsNodeAckRecord {
+  node_id: number;
+  effective: boolean;
+  effective_revision: number;
+  effective_deadline: string;
+  ack_received_at: string;
+  rejection_reason?: string;
+}
+
+export interface DiagnosticsSession {
+  session_id: string;
+  diagnostic_id: string;
+  operator_id: number;
+  state: "pending" | "partial" | "active" | "stopping" | "expired";
+  issued_at: string;
+  expires_at: string;
+  revision: number;
+  enabled: boolean;
+  target_node_ids: number[];
+  node_acks: Record<string, DiagnosticsNodeAckRecord>;
+}
+
+export interface StartDiagnosticsSessionResponse {
+  session_id: string;
+  diagnostic_id: string;
+  order_id: number;
+  state: "pending" | "partial" | "active" | "stopping" | "expired";
+  issued_at: string;
+  expires_at: string;
+  revision: number;
+  target_node_ids: number[];
+  node_acks?: Record<string, DiagnosticsNodeAckRecord>;
+}
+
+export interface DiagnosticsStatusResponse {
+  order_id: number;
+  trade_no: string;
+  diagnostic_id: string;
+  has_session: boolean;
+  session?: DiagnosticsSession;
+  coverage: DiagnosticsCoverage;
+}
+
+export interface AdminDiagnosticsSettingsResponse {
+  panel_scope: string;
+  query_endpoint: string;
+  query_username: string;
+  has_query_password: boolean;
+  has_cursor_signing_secret: boolean;
+  storage_generation: number;
+  initialized: boolean;
+}
+
+export interface UpdateDiagnosticsSettingsInput {
+  query_endpoint: string;
+  query_username: string;
+  query_password?: string;
+  cursor_signing_secret?: string;
+  storage_generation?: number;
+  panel_scope?: string;
+}
+
+export interface DiagnosticsAdminAPI {
+  initDiagnosticsScope: (scope?: string) => Promise<DiagnosticsScopeResponse>;
+  lookupDiagnosticsOrder: (input: { trade_no?: string; order_id?: number }) => Promise<DiagnosticsOrderLookupResponse>;
+  queryDiagnosticsOrder: (input: {
+    trade_no?: string;
+    order_id?: number;
+    diagnostic_id?: string;
+    from?: string;
+    to?: string;
+    node_id?: number;
+    domain?: string;
+    domain_match?: "contains" | "exact" | "suffix";
+    trace_id?: string;
+    has_error?: boolean;
+    reason_code?: string;
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }) => Promise<DiagnosticsQueryResponse>;
+  connectionDiagnosticsOrder: (input: {
+    trade_no?: string;
+    order_id?: number;
+    diagnostic_id?: string;
+    node_id: number;
+    runtime_id: string;
+    connection_id: string;
+    signal?: AbortSignal;
+  }) => Promise<DiagnosticsConnectionResponse>;
+  startDiagnosticsSession: (input: {
+    trade_no?: string;
+    order_id?: number;
+    idempotency_key: string;
+  }) => Promise<StartDiagnosticsSessionResponse>;
+  stopDiagnosticsSession: (input: {
+    trade_no?: string;
+    order_id?: number;
+    session_id: string;
+    idempotency_key: string;
+  }) => Promise<DiagnosticsSession>;
+  getDiagnosticsSessionStatus: (input: {
+    trade_no?: string;
+    order_id?: number;
+    signal?: AbortSignal;
+  }) => Promise<DiagnosticsStatusResponse>;
+  getDiagnosticsSettings: () => Promise<AdminDiagnosticsSettingsResponse>;
+  updateDiagnosticsSettings: (input: UpdateDiagnosticsSettingsInput) => Promise<AdminDiagnosticsSettingsResponse>;
+}
+
+export interface AdminAPI extends Partial<PlanAudienceAPI>, Partial<TrafficResetAPI>, Partial<PurchaseChannelsAdminAPI>, Partial<DiagnosticsAdminAPI> {
 
   getMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
   resetMachineToken: (machineID: number) => Promise<{ token: string; available: boolean }>;
@@ -1974,7 +2218,7 @@ export class APIError extends Error {
   }
 }
 
-export class APIClient implements AdminAPI {
+export class APIClient implements AdminAPI, DiagnosticsAdminAPI {
   async getPurchaseChannels(): Promise<PurchaseChannels> {
     return this.request<PurchaseChannels>("/api/v1/user/purchase-channels");
   }
@@ -3086,7 +3330,109 @@ export class APIClient implements AdminAPI {
     return this.request<ClientCatalogQR>(`/api/v1/client-catalog/qr?${query.toString()}`);
   }
 
-  private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
+  async initDiagnosticsScope(scope?: string): Promise<DiagnosticsScopeResponse> {
+    return this.request<DiagnosticsScopeResponse>("/api/v1/admin/diagnostics/initialize", {
+      method: "POST",
+      body: scope ? { scope } : {},
+    });
+  }
+
+  async lookupDiagnosticsOrder(input: { trade_no?: string; order_id?: number }): Promise<DiagnosticsOrderLookupResponse> {
+    return this.request<DiagnosticsOrderLookupResponse>("/api/v1/admin/order/diagnostics/lookup", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  async queryDiagnosticsOrder(input: {
+    trade_no?: string;
+    order_id?: number;
+    diagnostic_id?: string;
+    from?: string;
+    to?: string;
+    node_id?: number;
+    domain?: string;
+    domain_match?: "contains" | "exact" | "suffix";
+    trace_id?: string;
+    has_error?: boolean;
+    reason_code?: string;
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<DiagnosticsQueryResponse> {
+    const { signal, ...body } = input;
+    return this.request<DiagnosticsQueryResponse>("/api/v1/admin/order/diagnostics/query", {
+      method: "POST",
+      body,
+      signal,
+    });
+  }
+
+  async connectionDiagnosticsOrder(input: {
+    trade_no?: string;
+    order_id?: number;
+    diagnostic_id?: string;
+    node_id: number;
+    runtime_id: string;
+    connection_id: string;
+    signal?: AbortSignal;
+  }): Promise<DiagnosticsConnectionResponse> {
+    const { signal, ...body } = input;
+    return this.request<DiagnosticsConnectionResponse>("/api/v1/admin/order/diagnostics/connection", {
+      method: "POST",
+      body,
+      signal,
+    });
+  }
+
+  async startDiagnosticsSession(input: {
+    trade_no?: string;
+    order_id?: number;
+    idempotency_key: string;
+  }): Promise<StartDiagnosticsSessionResponse> {
+    return this.request<StartDiagnosticsSessionResponse>("/api/v1/admin/order/diagnostics/start", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  async stopDiagnosticsSession(input: {
+    trade_no?: string;
+    order_id?: number;
+    session_id: string;
+    idempotency_key: string;
+  }): Promise<DiagnosticsSession> {
+    return this.request<DiagnosticsSession>("/api/v1/admin/order/diagnostics/stop", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  async getDiagnosticsSessionStatus(input: {
+    trade_no?: string;
+    order_id?: number;
+    signal?: AbortSignal;
+  }): Promise<DiagnosticsStatusResponse> {
+    const query = new URLSearchParams();
+    if (input.order_id !== undefined && input.order_id > 0) query.set("order_id", String(input.order_id));
+    if (input.trade_no !== undefined && input.trade_no.trim() !== "") query.set("trade_no", input.trade_no.trim());
+    return this.request<DiagnosticsStatusResponse>(`/api/v1/admin/order/diagnostics/status?${query.toString()}`, {
+      signal: input.signal,
+    });
+  }
+
+  async getDiagnosticsSettings(): Promise<AdminDiagnosticsSettingsResponse> {
+    return this.request<AdminDiagnosticsSettingsResponse>("/api/v1/admin/diagnostics/settings");
+  }
+
+  async updateDiagnosticsSettings(input: UpdateDiagnosticsSettingsInput): Promise<AdminDiagnosticsSettingsResponse> {
+    return this.request<AdminDiagnosticsSettingsResponse>("/api/v1/admin/diagnostics/settings", {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  private async request<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal } = {}): Promise<T> {
     path = this.resolvePath(path);
     const method = options.method ?? "GET";
     const headers = new Headers({ Accept: "application/json" });
@@ -3105,7 +3451,8 @@ export class APIClient implements AdminAPI {
       method,
       headers,
       credentials: "same-origin",
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal
     });
     if (response.status === 204) {
       return undefined as T;
