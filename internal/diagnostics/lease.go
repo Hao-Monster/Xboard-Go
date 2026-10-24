@@ -20,6 +20,7 @@ const (
 	MaxSessionDuration    = 900 * time.Second // 15 minutes
 	SnapshotBindingTTL    = 60 * time.Second
 	IdempotencyTTL        = 24 * time.Hour
+	SessionTombstoneTTL   = 24 * time.Hour
 )
 
 var (
@@ -51,6 +52,24 @@ type Session struct {
 	State         SessionState            `json:"state"`
 	TargetNodeIDs []int64                 `json:"target_node_ids"`
 	NodeAcks      map[int64]NodeAckRecord `json:"node_acks"`
+}
+
+// Clone returns a deep copy of Session, isolating slices and maps from data races.
+func (s *Session) Clone() Session {
+	if s == nil {
+		return Session{}
+	}
+	cp := *s
+	if s.TargetNodeIDs != nil {
+		cp.TargetNodeIDs = append([]int64(nil), s.TargetNodeIDs...)
+	}
+	if s.NodeAcks != nil {
+		cp.NodeAcks = make(map[int64]NodeAckRecord, len(s.NodeAcks))
+		for k, v := range s.NodeAcks {
+			cp.NodeAcks[k] = v
+		}
+	}
+	return cp
 }
 
 // NodeAckRecord records the acknowledgement status reported by a node for a session.
@@ -208,7 +227,7 @@ func (s *MemoryLeaseService) StartSession(ctx context.Context, input StartSessio
 			return Session{}, false, ErrIdempotencyConflict
 		}
 		if existing, ok := s.sessions[input.DiagnosticID]; ok && existing.SessionID == entry.sessionID {
-			return *existing, false, nil
+			return existing.Clone(), false, nil
 		}
 	}
 
@@ -216,7 +235,15 @@ func (s *MemoryLeaseService) StartSession(ctx context.Context, input StartSessio
 	if existing, ok := s.sessions[input.DiagnosticID]; ok {
 		if existing.Enabled && now.Before(existing.ExpiresAt) {
 			// Idempotent start: return existing session without extending expires_at
-			return *existing, false, nil
+			if input.IdempotencyKey != "" {
+				s.idempotency[idempKey] = idempotencyEntry{
+					diagnosticID: input.DiagnosticID,
+					sessionID:    existing.SessionID,
+					expiresAt:    existing.ExpiresAt,
+					createdAt:    now,
+				}
+			}
+			return existing.Clone(), false, nil
 		}
 	}
 
@@ -262,7 +289,7 @@ func (s *MemoryLeaseService) StartSession(ctx context.Context, input StartSessio
 		}
 	}
 
-	return *sess, true, nil
+	return sess.Clone(), true, nil
 }
 
 // StopSession explicitly terminates a running diagnostic session.
@@ -281,7 +308,7 @@ func (s *MemoryLeaseService) StopSession(ctx context.Context, input StopSessionI
 	}
 
 	if !sess.Enabled {
-		return *sess, nil
+		return sess.Clone(), nil
 	}
 
 	s.controlVersion++
@@ -302,7 +329,7 @@ func (s *MemoryLeaseService) StopSession(ctx context.Context, input StopSessionI
 		sess.State = SessionStateStopped
 	}
 
-	return *sess, nil
+	return sess.Clone(), nil
 }
 
 // GetSession returns the current session status for a diagnostic ID.
@@ -314,7 +341,7 @@ func (s *MemoryLeaseService) GetSession(ctx context.Context, diagnosticID string
 	if !ok {
 		return Session{}, false, nil
 	}
-	return *sess, true, nil
+	return sess.Clone(), true, nil
 }
 
 // BuildNodeSnapshot generates an authoritative snapshot tailored for a specific node.
@@ -478,10 +505,13 @@ func (s *MemoryLeaseService) updateSessionState(sess *Session) {
 }
 
 func (s *MemoryLeaseService) cleanupExpired(now time.Time) {
-	for _, sess := range s.sessions {
+	for k, sess := range s.sessions {
 		if sess.Enabled && now.After(sess.ExpiresAt) {
 			sess.Enabled = false
 			sess.State = SessionStateExpired
+		}
+		if !sess.Enabled && now.Sub(sess.ExpiresAt) > SessionTombstoneTTL {
+			delete(s.sessions, k)
 		}
 	}
 	for k, b := range s.bindings {

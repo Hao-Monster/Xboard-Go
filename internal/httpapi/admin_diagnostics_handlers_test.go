@@ -895,4 +895,11 @@ func TestAdminDiagnosticsStorageHealthCheck(t *testing.T) {
 	if resReady.Code != http.StatusOK {
 		t.Fatalf("start with ready health status=%d body=%s", resReady.Code, resReady.Body)
 	}
+
+	// When health degrades back to "blocked", an idempotent repeat start for the existing session succeeds without failure
+	healthState = "blocked"
+	resIdempAfterDegrade := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"hk-2"}`, ord.ID))
+	if resIdempAfterDegrade.Code != http.StatusOK {
+		t.Fatalf("idempotent start after storage degradation must return existing session: status=%d body=%s", resIdempAfterDegrade.Code, resIdempAfterDegrade.Body)
+	}
 }

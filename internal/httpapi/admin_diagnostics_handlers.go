@@ -738,14 +738,20 @@ func (s *server) startDiagnosticsSession(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Design 5.3: Existing active session returns without extending expires_at and must not be blocked by transient storage health degradation.
+	existingSess, hasExisting, _ := s.diagnosticsLease.GetSession(r.Context(), ident.DiagnosticID)
+	isNewLease := !hasExisting || !existingSess.Enabled || s.now().After(existingSess.ExpiresAt)
+
 	// Read storage health before starting new lease if storage is configured
-	cfg, err := s.store.GetDiagnosticsServerConfig(r.Context())
-	if err == nil && strings.TrimSpace(cfg.QueryEndpoint) != "" {
-		healthCtx, healthCancel := context.WithTimeout(r.Context(), 1*time.Second)
-		defer healthCancel()
-		if err := s.diagnosticsClient.CheckHealth(healthCtx, cfg.QueryEndpoint, cfg.QueryUsername, string(cfg.QueryPasswordCipher), ident.PanelScope); err != nil {
-			handleDiagnosticsError(w, err)
-			return
+	if isNewLease {
+		cfg, err := s.store.GetDiagnosticsServerConfig(r.Context())
+		if err == nil && strings.TrimSpace(cfg.QueryEndpoint) != "" {
+			healthCtx, healthCancel := context.WithTimeout(r.Context(), 1*time.Second)
+			defer healthCancel()
+			if err := s.diagnosticsClient.CheckHealth(healthCtx, cfg.QueryEndpoint, cfg.QueryUsername, string(cfg.QueryPasswordCipher), ident.PanelScope); err != nil {
+				handleDiagnosticsError(w, err)
+				return
+			}
 		}
 	}
 

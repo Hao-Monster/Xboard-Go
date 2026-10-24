@@ -3,6 +3,7 @@ package diagnostics_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -231,5 +232,97 @@ func TestStopSession(t *testing.T) {
 	}
 	if len(snap.Sessions) != 0 {
 		t.Errorf("snapshot should not contain stopped session, got: %+v", snap.Sessions)
+	}
+}
+
+func TestSessionDeepCopyRaceSafety(t *testing.T) {
+	service := diagnostics.NewMemoryLeaseService()
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	sess, _, err := service.StartSession(ctx, diagnostics.StartSessionInput{
+		DiagnosticID:  "111111111111111111111111",
+		OperatorID:    1,
+		TargetNodeIDs: []int64{101, 102},
+		Now:           now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := service.BuildNodeSnapshot(ctx, "scope-1", 101, "rt1", "req-1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				s, ok, err := service.GetSession(ctx, sess.DiagnosticID)
+				if err == nil && ok {
+					for k, v := range s.NodeAcks {
+						_ = k
+						_ = v.Effective
+					}
+				}
+			}
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				_ = service.ProcessNodeAck(ctx, 101, "rt1", diagnostics.NodeAckPayload{
+					RequestID:      "req-1",
+					RuntimeID:      "rt1",
+					ControlEpoch:   snap.ControlEpoch,
+					ControlVersion: snap.ControlVersion,
+					Sessions: []diagnostics.NodeAckSessionPayload{
+						{SessionID: sess.SessionID, Revision: sess.Revision, Effective: true},
+					},
+				}, now)
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestSessionTombstoneCleanup(t *testing.T) {
+	service := diagnostics.NewMemoryLeaseService()
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	_, _, err := service.StartSession(ctx, diagnostics.StartSessionInput{
+		DiagnosticID:  "111111111111111111111111",
+		OperatorID:    1,
+		TargetNodeIDs: []int64{101},
+		Now:           now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session is active at now
+	_, found, err := service.GetSession(ctx, "111111111111111111111111")
+	if err != nil || !found {
+		t.Fatalf("expected session to be found, got found=%v err=%v", found, err)
+	}
+
+	// After 24h + 16m (> MaxSessionDuration + SessionTombstoneTTL), session should be purged by cleanupExpired
+	purgedTime := now.Add(diagnostics.MaxSessionDuration + diagnostics.SessionTombstoneTTL + time.Minute)
+	_, _ = service.BuildNodeSnapshot(ctx, "scope-1", 101, "rt1", "dummy-req", purgedTime)
+
+	_, foundAfterPurge, err := service.GetSession(ctx, "111111111111111111111111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foundAfterPurge {
+		t.Error("session should be purged from memory after tombstone TTL")
 	}
 }
