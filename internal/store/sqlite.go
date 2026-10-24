@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -19,10 +20,14 @@ func CurrentSchemaVersion() int {
 }
 
 type Store struct {
-	db                *sql.DB
-	writeMu           sync.Mutex
-	themeAppearanceMu sync.RWMutex
-	themeAppearance   themeAppearanceCacheEntry
+	db                     *sql.DB
+	writeMu                sync.Mutex
+	themeAppearanceMu      sync.RWMutex
+	themeAppearance        themeAppearanceCacheEntry
+	diagnosticsScopeMu     sync.RWMutex
+	diagnosticsScope       string
+	diagnosticsSchemaMu    sync.Mutex
+	diagnosticsSchemaReady atomic.Bool
 }
 
 func (s *Store) lockWrite() func() {
