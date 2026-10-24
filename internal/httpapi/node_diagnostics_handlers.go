@@ -200,29 +200,101 @@ func (s *server) handleNodeDiagnosticsCapabilities(w http.ResponseWriter, r *htt
 	writeSuccess(w, http.StatusOK, map[string]any{"saved": true})
 }
 
+type nodeDiagnosticsSnapshotRequest struct {
+	NodeID    int64  `json:"node_id,omitempty"`
+	RuntimeID string `json:"runtime_id"`
+	RequestID string `json:"request_id"`
+}
+
 func (s *server) nodeDiagnosticsSnapshotV1(w http.ResponseWriter, r *http.Request) {
-	s.handleNodeDiagnosticsControlUnavailable(w, r, false)
+	s.handleNodeDiagnosticsSnapshot(w, r, false)
 }
 
 func (s *server) nodeDiagnosticsSnapshotV2(w http.ResponseWriter, r *http.Request) {
-	s.handleNodeDiagnosticsControlUnavailable(w, r, true)
+	s.handleNodeDiagnosticsSnapshot(w, r, true)
+}
+
+func (s *server) handleNodeDiagnosticsSnapshot(w http.ResponseWriter, r *http.Request, isV2 bool) {
+	nodeID, ok := s.authenticateDiagnosticsNode(w, r, isV2)
+	if !ok {
+		return
+	}
+	if s.diagnosticsLease == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_control_unavailable", "诊断租约控制面尚未启用", nil)
+		return
+	}
+	panelScope := s.diagnosticsScopeForNode(r)
+	if panelScope == "" {
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_not_initialized", "客户连接诊断尚未完成 scope 初始化", nil)
+		return
+	}
+
+	var req nodeDiagnosticsSnapshotRequest
+	if !decodeJSONLimit(w, r, &req, maxNodeDiagnosticsBody) {
+		return
+	}
+	if req.NodeID != 0 && req.NodeID != nodeID {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "请求体 node_id 与认证节点不一致", nil)
+		return
+	}
+	if !nodeDiagnosticsRuntimeIDPattern.MatchString(req.RuntimeID) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "runtime_id 必须是 32 位小写 16 进制字符", nil)
+		return
+	}
+	if !nodeDiagnosticsRuntimeIDPattern.MatchString(req.RequestID) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "request_id 必须是 32 位小写 16 进制字符", nil)
+		return
+	}
+
+	snap, err := s.diagnosticsLease.BuildNodeSnapshot(r.Context(), panelScope, nodeID, req.RuntimeID, req.RequestID, s.now())
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	writeSuccess(w, http.StatusOK, snap)
 }
 
 func (s *server) nodeDiagnosticsAckV1(w http.ResponseWriter, r *http.Request) {
-	s.handleNodeDiagnosticsControlUnavailable(w, r, false)
+	s.handleNodeDiagnosticsAck(w, r, false)
 }
 
 func (s *server) nodeDiagnosticsAckV2(w http.ResponseWriter, r *http.Request) {
-	s.handleNodeDiagnosticsControlUnavailable(w, r, true)
+	s.handleNodeDiagnosticsAck(w, r, true)
 }
 
-// handleNodeDiagnosticsControlUnavailable serves snapshot/ACK until the authoritative lease service (D5)
-// exists. Returning a fabricated complete snapshot would let nodes revoke/accept leases from a fake epoch,
-// and acknowledging arbitrary ACKs would defeat forgery checks, so authenticated callers get an explicit
-// 503 that nodes must treat as a failed request (never as an empty authoritative snapshot).
-func (s *server) handleNodeDiagnosticsControlUnavailable(w http.ResponseWriter, r *http.Request, isV2 bool) {
-	if _, ok := s.authenticateDiagnosticsNode(w, r, isV2); !ok {
+func (s *server) handleNodeDiagnosticsAck(w http.ResponseWriter, r *http.Request, isV2 bool) {
+	nodeID, ok := s.authenticateDiagnosticsNode(w, r, isV2)
+	if !ok {
 		return
 	}
-	writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_control_unavailable", "诊断租约控制面尚未启用", nil)
+	if s.diagnosticsLease == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_control_unavailable", "诊断租约控制面尚未启用", nil)
+		return
+	}
+
+	var payload diagnostics.NodeAckPayload
+	if !decodeJSONLimit(w, r, &payload, maxNodeDiagnosticsBody) {
+		return
+	}
+	if !nodeDiagnosticsRuntimeIDPattern.MatchString(payload.RuntimeID) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "runtime_id 必须是 32 位小写 16 进制字符", nil)
+		return
+	}
+	if !nodeDiagnosticsRuntimeIDPattern.MatchString(payload.RequestID) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "request_id 必须是 32 位小写 16 进制字符", nil)
+		return
+	}
+
+	err := s.diagnosticsLease.ProcessNodeAck(r.Context(), nodeID, payload.RuntimeID, payload, s.now())
+	if err != nil {
+		if errors.Is(err, diagnostics.ErrSnapshotConflict) {
+			writeAPIError(w, http.StatusConflict, "snapshot_conflict", err.Error(), nil)
+			return
+		}
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	writeSuccess(w, http.StatusOK, map[string]any{"saved": true})
 }

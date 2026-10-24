@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
+	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
@@ -71,6 +72,7 @@ type wsHub struct {
 	deviceSyncMu      sync.Mutex
 	coordinator       nodecoord.Coordinator
 	deviceState       devicestate.Service
+	leaseService      diagnostics.LeaseService
 	registrationMu    [64]sync.Mutex
 }
 
@@ -1005,18 +1007,51 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 			c.hub.logger.Warn("save node diagnostics capability", "machine_id", c.machineID, "node_id", payload.NodeID, "error", err)
 		}
 		return nil
-	case "request.diagnostics", "diagnostics.ack":
+	case "request.diagnostics":
+		var req struct {
+			NodeID    int64  `json:"node_id"`
+			RuntimeID string `json:"runtime_id"`
+			RequestID string `json:"request_id"`
+		}
+		if err := json.Unmarshal(message.Data, &req); err != nil {
+			return nil
+		}
+		targetNodeID := nodeID
+		if !c.legacy {
+			if req.NodeID <= 0 || !c.hasNode(req.NodeID) {
+				return errors.New("request.diagnostics has an invalid node_id")
+			}
+			targetNodeID = req.NodeID
+		}
+		if c.hub.leaseService != nil {
+			panelScope, _ := c.hub.store.GetDiagnosticsScope(context.Background())
+			snap, err := c.hub.leaseService.BuildNodeSnapshot(context.Background(), panelScope, targetNodeID, req.RuntimeID, req.RequestID, c.hub.now())
+			if err == nil {
+				c.enqueue(wsEnvelope{
+					Event: "sync.diagnostics.snapshot",
+					Data:  snap,
+				})
+			}
+		}
+		return nil
+	case "diagnostics.ack":
+		var ack diagnostics.NodeAckPayload
+		if err := json.Unmarshal(message.Data, &ack); err != nil {
+			return nil
+		}
+		targetNodeID := nodeID
 		if !c.legacy {
 			var identity struct {
 				NodeID int64 `json:"node_id"`
 			}
-			if err := json.Unmarshal(message.Data, &identity); err != nil || !c.hasNode(identity.NodeID) {
-				return errors.New(message.Event + " has an invalid node_id")
+			if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID <= 0 || !c.hasNode(identity.NodeID) {
+				return errors.New("diagnostics.ack has an invalid node_id")
 			}
+			targetNodeID = identity.NodeID
 		}
-		// The authoritative lease service (D5) is not available yet. No snapshot is fabricated and
-		// no ACK is accepted; the node's request times out and must be treated as a failure, never
-		// as an empty authoritative snapshot.
+		if c.hub.leaseService != nil {
+			_ = c.hub.leaseService.ProcessNodeAck(context.Background(), targetNodeID, ack.RuntimeID, ack, c.hub.now())
+		}
 		return nil
 	default:
 		return nil
@@ -1187,6 +1222,39 @@ func nodesSyncEnvelope(snapshots []wsNodeSnapshot) wsEnvelope {
 		nodes = append(nodes, snapshot.summary)
 	}
 	return wsEnvelope{Event: "sync.nodes", Data: map[string]any{"nodes": nodes}}
+}
+
+func (h *wsHub) SetLeaseService(s diagnostics.LeaseService) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.leaseService = s
+}
+
+func (h *wsHub) NotifyDiagnosticsControl(ctx context.Context, epoch string, version int64) {
+	h.mu.RLock()
+	seen := make(map[*wsConnection]struct{})
+	for _, conn := range h.machines {
+		if conn != nil {
+			seen[conn] = struct{}{}
+		}
+	}
+	for _, conn := range h.nodes {
+		if conn != nil {
+			seen[conn] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+
+	envelope := wsEnvelope{
+		Event: "sync.diagnostics",
+		Data: map[string]any{
+			"control_epoch":   epoch,
+			"control_version": strconv.FormatInt(version, 10),
+		},
+	}
+	for conn := range seen {
+		conn.enqueue(envelope)
+	}
 }
 
 func (h *wsHub) NotifyMachineNodes(ctx context.Context, machineID int64) {

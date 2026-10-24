@@ -706,3 +706,55 @@ func osIsTimeout(err error) bool {
 	}
 	return false
 }
+
+// StorageHealthResponse records the health status reported by VictoriaLogs/guard.
+type StorageHealthResponse struct {
+	SchemaVersion   int      `json:"schema_version"`
+	PanelScope      string   `json:"panel_scope"`
+	StorageID       string   `json:"storage_id"`
+	State           string   `json:"state"`
+	ReasonCodes     []string `json:"reason_codes"`
+	CheckedAtUTC    string   `json:"checked_at_utc"`
+	CheckAgeSeconds int64    `json:"check_age_seconds"`
+}
+
+// CheckHealth queries the storage health endpoint and validates readiness.
+func (c *StorageClient) CheckHealth(ctx context.Context, endpoint, username, password, expectedScope string) error {
+	if endpoint == "" {
+		return ErrStorageNotConfigured
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("%w: invalid storage endpoint URL", ErrStorageNotConfigured)
+	}
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/diagnostics/health"
+	healthURL := parsed.String()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return err
+	}
+	if username != "" || password != "" {
+		req.SetBasicAuth(username, password)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDiagnosticsStorageNotReady, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: status %d", ErrDiagnosticsStorageNotReady, resp.StatusCode)
+	}
+
+	var health StorageHealthResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&health); err != nil {
+		return fmt.Errorf("%w: invalid health json", ErrDiagnosticsStorageNotReady)
+	}
+
+	if health.State != "ready" || (expectedScope != "" && health.PanelScope != expectedScope) || health.CheckAgeSeconds > 60 {
+		return ErrDiagnosticsStorageNotReady
+	}
+	return nil
+}

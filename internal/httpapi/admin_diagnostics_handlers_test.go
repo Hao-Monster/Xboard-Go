@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
 )
@@ -637,4 +638,261 @@ func TestAdminDiagnosticsInvalidCursor(t *testing.T) {
 		t.Fatalf("expected 422 for invalid cursor, got %d body=%s", res.Code, res.Body)
 	}
 	assertAPIErrorCode(t, res, http.StatusUnprocessableEntity, "cursor_invalid")
+}
+
+func TestAdminDiagnosticsStartSessionLifecycle(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	scope := "00000000-0000-4000-8000-000000000001"
+	if _, _, err := database.InitializeDiagnosticsScope(ctx, scope, now); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 10000})
+	buyer, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email:        "session_buyer@example.test",
+		PasswordHash: "hash_direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	order, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer.ID,
+		PlanID: plan.ID,
+		Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, order.TradeNo, "callback", now); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Missing order context (direct diagnostic_id only) rejected
+	badInput := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", `{"idempotency_key":"k1"}`)
+	assertAPIErrorCode(t, badInput, http.StatusUnprocessableEntity, "invalid_lookup_input")
+
+	// 2. Missing idempotency key rejected
+	noIdemp := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d}`, order.ID))
+	assertAPIErrorCode(t, noIdemp, http.StatusUnprocessableEntity, "validation_failed")
+
+	// 3. Successful Start Session
+	startPayload := fmt.Sprintf(`{"order_id":%d,"idempotency_key":"key-001"}`, order.ID)
+	res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", startPayload)
+	if res.Code != http.StatusOK {
+		t.Fatalf("start session status=%d body=%s", res.Code, res.Body)
+	}
+	var startResp struct {
+		Data startDiagnosticsSessionResponse `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &startResp); err != nil {
+		t.Fatalf("unmarshal start resp: %v", err)
+	}
+	sess := startResp.Data
+	if sess.SessionID == "" || sess.OrderID != order.ID || sess.State != diagnostics.SessionStatePending || sess.Revision != 1 {
+		t.Fatalf("unexpected start response: %+v", sess)
+	}
+	if sess.ExpiresAt.Sub(sess.IssuedAt) > diagnostics.MaxSessionDuration {
+		t.Fatalf("expires_at exceeded max duration: %v", sess.ExpiresAt.Sub(sess.IssuedAt))
+	}
+
+	// 4. Repeated start with same idempotency key and order returns existing session
+	repeatRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", startPayload)
+	if repeatRes.Code != http.StatusOK {
+		t.Fatalf("repeat start status=%d body=%s", repeatRes.Code, repeatRes.Body)
+	}
+	var repeatResp struct {
+		Data startDiagnosticsSessionResponse `json:"data"`
+	}
+	if err := json.Unmarshal(repeatRes.Body.Bytes(), &repeatResp); err != nil {
+		t.Fatalf("unmarshal repeat resp: %v", err)
+	}
+	if repeatResp.Data.SessionID != sess.SessionID || !repeatResp.Data.ExpiresAt.Equal(sess.ExpiresAt) {
+		t.Fatalf("idempotent start mismatch: original=%+v repeat=%+v", sess, repeatResp.Data)
+	}
+
+	// 5. Mismatched parameters with same idempotency key returns 409 idempotency_conflict
+	buyer2, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email:        "session_buyer_2@example.test",
+		PasswordHash: "hash_direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order2, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer2.ID,
+		PlanID: plan.ID,
+		Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, order2.TradeNo, "callback", now); err != nil {
+		t.Fatal(err)
+	}
+	conflictRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"key-001"}`, order2.ID))
+	assertAPIErrorCode(t, conflictRes, http.StatusConflict, "idempotency_conflict")
+
+	// 6. Query status of the active session
+	statusRes := admin.request(t, api, http.MethodGet, fmt.Sprintf("/api/v1/admin/admin/order/diagnostics/status?order_id=%d", order.ID), "")
+	if statusRes.Code != http.StatusOK {
+		t.Fatalf("status res code=%d body=%s", statusRes.Code, statusRes.Body)
+	}
+	var statusResp struct {
+		Data diagnosticsStatusResponse `json:"data"`
+	}
+	if err := json.Unmarshal(statusRes.Body.Bytes(), &statusResp); err != nil {
+		t.Fatalf("unmarshal status resp: %v", err)
+	}
+	if !statusResp.Data.HasSession || statusResp.Data.Session == nil || statusResp.Data.Session.SessionID != sess.SessionID {
+		t.Fatalf("expected active session in status: %+v", statusResp.Data)
+	}
+
+	// 7. Stop Session with wrong session_id returns 404
+	stopWrong := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/stop", fmt.Sprintf(`{"order_id":%d,"session_id":"wrong-session-id","idempotency_key":"stop-k1"}`, order.ID))
+	assertAPIErrorCode(t, stopWrong, http.StatusNotFound, "session_not_found")
+
+	// 8. Stop Session successfully
+	stopRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/stop", fmt.Sprintf(`{"order_id":%d,"session_id":%q,"idempotency_key":"stop-k1"}`, order.ID, sess.SessionID))
+	if stopRes.Code != http.StatusOK {
+		t.Fatalf("stop session status=%d body=%s", stopRes.Code, stopRes.Body)
+	}
+	var stopResp struct {
+		Data startDiagnosticsSessionResponse `json:"data"`
+	}
+	if err := json.Unmarshal(stopRes.Body.Bytes(), &stopResp); err != nil {
+		t.Fatalf("unmarshal stop resp: %v", err)
+	}
+	if stopResp.Data.Revision <= sess.Revision {
+		t.Fatalf("stop must advance revision: %d <= %d", stopResp.Data.Revision, sess.Revision)
+	}
+	if stopResp.Data.State != diagnostics.SessionStateStopped && stopResp.Data.State != diagnostics.SessionStateStopping {
+		t.Fatalf("expected stopped or stopping state, got %s", stopResp.Data.State)
+	}
+}
+
+func TestAdminDiagnosticsConcurrencyLimit(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	scope := "00000000-0000-4000-8000-000000000001"
+	if _, _, err := database.InitializeDiagnosticsScope(ctx, scope, now); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 10000})
+
+	// Start 10 sessions for 10 distinct customers
+	for i := 1; i <= 10; i++ {
+		buyer, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+			Email:        fmt.Sprintf("limit_buyer_%d@example.test", i),
+			PasswordHash: "hash_direct",
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ord, err := database.CreateOrder(ctx, store.CreateOrderInput{
+			UserID: buyer.ID,
+			PlanID: plan.ID,
+			Period: "monthly",
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.CompleteOrder(ctx, ord.TradeNo, "cb", now); err != nil {
+			t.Fatal(err)
+		}
+
+		res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"key-%d"}`, ord.ID, i))
+		if res.Code != http.StatusOK {
+			t.Fatalf("session %d status=%d body=%s", i, res.Code, res.Body)
+		}
+	}
+
+	// 11th customer session must hit limit
+	buyer11, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email:        "limit_buyer_11@example.test",
+		PasswordHash: "hash_direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ord11, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer11.ID,
+		PlanID: plan.ID,
+		Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, ord11.TradeNo, "cb", now); err != nil {
+		t.Fatal(err)
+	}
+
+	res11 := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"key-11"}`, ord11.ID))
+	assertAPIErrorCode(t, res11, http.StatusConflict, "lease_limit_reached")
+}
+
+func TestAdminDiagnosticsStorageHealthCheck(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	scope := "00000000-0000-4000-8000-000000000001"
+	if _, _, err := database.InitializeDiagnosticsScope(ctx, scope, now); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 10000})
+	buyer, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email:        "health_buyer@example.test",
+		PasswordHash: "hash_direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ord, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer.ID,
+		PlanID: plan.ID,
+		Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, ord.TradeNo, "cb", now); err != nil {
+		t.Fatal(err)
+	}
+
+	healthState := "blocked"
+	healthScope := scope
+	healthAge := int64(10)
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/diagnostics/health" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"schema_version":1,"panel_scope":%q,"storage_id":"st1","state":%q,"check_age_seconds":%d}`+"\n", healthScope, healthState, healthAge)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer healthServer.Close()
+
+	database.UpdateDiagnosticsServerConfig(ctx, healthServer.URL, "user", []byte("pwd"), []byte("secret"), 1, now)
+
+	// When health is "blocked", start session fails with diagnostics_storage_not_ready
+	resBlocked := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"hk-1"}`, ord.ID))
+	assertAPIErrorCode(t, resBlocked, http.StatusServiceUnavailable, "diagnostics_storage_not_ready")
+
+	// When health is "ready", start session succeeds
+	healthState = "ready"
+	resReady := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/start", fmt.Sprintf(`{"order_id":%d,"idempotency_key":"hk-2"}`, ord.ID))
+	if resReady.Code != http.StatusOK {
+		t.Fatalf("start with ready health status=%d body=%s", resReady.Code, resReady.Body)
+	}
 }

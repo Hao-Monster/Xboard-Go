@@ -181,6 +181,7 @@ type server struct {
 	telegramProvisionRequests  *requestLimiter
 	diagnosticsClient          *diagnostics.StorageClient
 	diagnosticsSnapshots       *diagnostics.SnapshotCache
+	diagnosticsLease           diagnostics.LeaseService
 	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 	ticketRegionResolver       ticketRegionResolver
 	deviceState                devicestate.Service
@@ -359,6 +360,7 @@ func New(dependencies Dependencies) http.Handler {
 		telegramBot:                dependencies.TelegramBot,
 		diagnosticsClient:          diagnostics.NewStorageClient(),
 		diagnosticsSnapshots:       diagnostics.NewSnapshotCache(),
+		diagnosticsLease:           diagnostics.NewMemoryLeaseService(),
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
@@ -373,6 +375,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)
+		if api.hub != nil {
+			api.hub.SetLeaseService(api.diagnosticsLease)
+		}
 	}
 	if dependencies.WebSocketEnabled {
 		if dependencies.NodeCoordinator != nil {
@@ -837,6 +842,9 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/lookup", api.lookupDiagnosticsOrder)
 	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/query", api.queryDiagnosticsOrder)
 	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/connection", api.connectionDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/start", api.startDiagnosticsSession)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/stop", api.stopDiagnosticsSession)
+	admin.HandleFunc("GET /api/v1/admin/order/diagnostics/status", api.getDiagnosticsSessionStatus)
 	admin.HandleFunc("GET /api/v1/admin/diagnostics/settings", api.getDiagnosticsSettings)
 	admin.HandleFunc("PUT /api/v1/admin/diagnostics/settings", api.updateDiagnosticsSettings)
 	// Authenticate before the audit wrapper so rejected administrator mutations

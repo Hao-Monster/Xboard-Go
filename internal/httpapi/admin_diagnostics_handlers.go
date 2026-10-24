@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -669,6 +670,261 @@ func (s *server) resolveCoverage(ctx context.Context) diagnosticsCoverageRespons
 	}
 }
 
+type startDiagnosticsSessionRequest struct {
+	OrderID        *int64  `json:"order_id,omitempty"`
+	TradeNo        *string `json:"trade_no,omitempty"`
+	IdempotencyKey string  `json:"idempotency_key"`
+}
+
+type startDiagnosticsSessionResponse struct {
+	SessionID     string                              `json:"session_id"`
+	DiagnosticID  string                              `json:"diagnostic_id"`
+	OrderID       int64                               `json:"order_id"`
+	State         diagnostics.SessionState            `json:"state"`
+	IssuedAt      time.Time                           `json:"issued_at"`
+	ExpiresAt     time.Time                           `json:"expires_at"`
+	Revision      int64                               `json:"revision"`
+	TargetNodeIDs []int64                             `json:"target_node_ids"`
+	NodeAcks      map[int64]diagnostics.NodeAckRecord `json:"node_acks,omitempty"`
+}
+
+type stopDiagnosticsSessionRequest struct {
+	OrderID        *int64  `json:"order_id,omitempty"`
+	TradeNo        *string `json:"trade_no,omitempty"`
+	SessionID      string  `json:"session_id"`
+	IdempotencyKey string  `json:"idempotency_key"`
+}
+
+type diagnosticsStatusResponse struct {
+	OrderID      int64                       `json:"order_id"`
+	TradeNo      string                      `json:"trade_no"`
+	DiagnosticID string                      `json:"diagnostic_id"`
+	HasSession   bool                        `json:"has_session"`
+	Session      *diagnostics.Session        `json:"session,omitempty"`
+	Coverage     diagnosticsCoverageResponse `json:"coverage"`
+}
+
+func (s *server) startDiagnosticsSession(w http.ResponseWriter, r *http.Request) {
+	var req startDiagnosticsSessionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	session, ok := r.Context().Value(sessionContextKey).(store.SessionUser)
+	if !ok || session.UserID <= 0 {
+		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "请先登录", nil)
+		return
+	}
+	adminID := session.UserID
+
+	hasOrder := (req.TradeNo != nil && strings.TrimSpace(*req.TradeNo) != "") || (req.OrderID != nil && *req.OrderID > 0)
+	if !hasOrder {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invalid_lookup_input", "输入参数无效（必须在 trade_no 与 order_id 中二选一）", nil)
+		return
+	}
+
+	idempKey := strings.TrimSpace(req.IdempotencyKey)
+	if idempKey == "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "idempotency_key 不能为空", nil)
+		return
+	}
+
+	ident, err := s.store.ResolveDiagnosticsCustomerByOrder(r.Context(), store.DiagnosticsOrderLookupInput{
+		TradeNo: req.TradeNo,
+		OrderID: req.OrderID,
+	})
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	// Read storage health before starting new lease if storage is configured
+	cfg, err := s.store.GetDiagnosticsServerConfig(r.Context())
+	if err == nil && strings.TrimSpace(cfg.QueryEndpoint) != "" {
+		healthCtx, healthCancel := context.WithTimeout(r.Context(), 1*time.Second)
+		defer healthCancel()
+		if err := s.diagnosticsClient.CheckHealth(healthCtx, cfg.QueryEndpoint, cfg.QueryUsername, string(cfg.QueryPasswordCipher), ident.PanelScope); err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+	}
+
+	var targetNodeIDs []int64
+	if ident.SubscriberUserID > 0 {
+		user, err := s.store.GetAdminUser(r.Context(), ident.SubscriberUserID)
+		if err == nil && user.GroupID != nil && *user.GroupID > 0 {
+			groupTargets, _ := s.store.ListRuntimeNodeTargetsForGroups(r.Context(), []int64{*user.GroupID})
+			for _, t := range groupTargets {
+				targetNodeIDs = append(targetNodeIDs, t.NodeID)
+			}
+		}
+	}
+	if len(targetNodeIDs) == 0 {
+		allTargets, err := s.store.ListAllRuntimeNodeTargets(r.Context())
+		if err == nil {
+			for _, t := range allTargets {
+				targetNodeIDs = append(targetNodeIDs, t.NodeID)
+			}
+		}
+	}
+
+	sess, isNew, err := s.diagnosticsLease.StartSession(r.Context(), diagnostics.StartSessionInput{
+		DiagnosticID:   ident.DiagnosticID,
+		OperatorID:     adminID,
+		IdempotencyKey: idempKey,
+		TargetNodeIDs:  targetNodeIDs,
+		Now:            s.now(),
+	})
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	if isNew && s.hub != nil {
+		s.hub.NotifyDiagnosticsControl(r.Context(), s.diagnosticsLease.ControlEpoch(), s.diagnosticsLease.ControlVersion())
+	}
+
+	writeSuccess(w, http.StatusOK, startDiagnosticsSessionResponse{
+		SessionID:     sess.SessionID,
+		DiagnosticID:  sess.DiagnosticID,
+		OrderID:       ident.OrderID,
+		State:         sess.State,
+		IssuedAt:      sess.IssuedAt,
+		ExpiresAt:     sess.ExpiresAt,
+		Revision:      sess.Revision,
+		TargetNodeIDs: sess.TargetNodeIDs,
+		NodeAcks:      sess.NodeAcks,
+	})
+}
+
+func (s *server) stopDiagnosticsSession(w http.ResponseWriter, r *http.Request) {
+	var req stopDiagnosticsSessionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	session, ok := r.Context().Value(sessionContextKey).(store.SessionUser)
+	if !ok || session.UserID <= 0 {
+		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "请先登录", nil)
+		return
+	}
+	adminID := session.UserID
+
+	hasOrder := (req.TradeNo != nil && strings.TrimSpace(*req.TradeNo) != "") || (req.OrderID != nil && *req.OrderID > 0)
+	if !hasOrder {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invalid_lookup_input", "输入参数无效（必须在 trade_no 与 order_id 中二选一）", nil)
+		return
+	}
+
+	cleanSessionID := strings.TrimSpace(req.SessionID)
+	if cleanSessionID == "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "session_id 不能为空", nil)
+		return
+	}
+
+	ident, err := s.store.ResolveDiagnosticsCustomerByOrder(r.Context(), store.DiagnosticsOrderLookupInput{
+		TradeNo: req.TradeNo,
+		OrderID: req.OrderID,
+	})
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	existing, found, err := s.diagnosticsLease.GetSession(r.Context(), ident.DiagnosticID)
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+	if !found || existing.SessionID != cleanSessionID {
+		writeAPIError(w, http.StatusNotFound, "session_not_found", "诊断会话不存在或不属于该订单客户", nil)
+		return
+	}
+
+	sess, err := s.diagnosticsLease.StopSession(r.Context(), diagnostics.StopSessionInput{
+		DiagnosticID:   ident.DiagnosticID,
+		SessionID:      cleanSessionID,
+		OperatorID:     adminID,
+		IdempotencyKey: req.IdempotencyKey,
+		Now:            s.now(),
+	})
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	if s.hub != nil {
+		s.hub.NotifyDiagnosticsControl(r.Context(), s.diagnosticsLease.ControlEpoch(), s.diagnosticsLease.ControlVersion())
+	}
+
+	writeSuccess(w, http.StatusOK, startDiagnosticsSessionResponse{
+		SessionID:     sess.SessionID,
+		DiagnosticID:  sess.DiagnosticID,
+		OrderID:       ident.OrderID,
+		State:         sess.State,
+		IssuedAt:      sess.IssuedAt,
+		ExpiresAt:     sess.ExpiresAt,
+		Revision:      sess.Revision,
+		TargetNodeIDs: sess.TargetNodeIDs,
+		NodeAcks:      sess.NodeAcks,
+	})
+}
+
+func (s *server) getDiagnosticsSessionStatus(w http.ResponseWriter, r *http.Request) {
+	session, ok := r.Context().Value(sessionContextKey).(store.SessionUser)
+	if !ok || session.UserID <= 0 {
+		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "请先登录", nil)
+		return
+	}
+
+	var orderID *int64
+	var tradeNo *string
+	if rawID := r.URL.Query().Get("order_id"); rawID != "" {
+		id, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil || id < 1 {
+			writeAPIError(w, http.StatusUnprocessableEntity, "invalid_lookup_input", "order_id 必须是正整数", nil)
+			return
+		}
+		orderID = &id
+	}
+	if tn := strings.TrimSpace(r.URL.Query().Get("trade_no")); tn != "" {
+		tradeNo = &tn
+	}
+	if orderID == nil && tradeNo == nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invalid_lookup_input", "必须提供 order_id 或 trade_no", nil)
+		return
+	}
+
+	ident, err := s.store.ResolveDiagnosticsCustomerByOrder(r.Context(), store.DiagnosticsOrderLookupInput{
+		TradeNo: tradeNo,
+		OrderID: orderID,
+	})
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	coverage := s.resolveCoverage(r.Context())
+	sess, found, err := s.diagnosticsLease.GetSession(r.Context(), ident.DiagnosticID)
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	resp := diagnosticsStatusResponse{
+		OrderID:      ident.OrderID,
+		TradeNo:      ident.TradeNo,
+		DiagnosticID: ident.DiagnosticID,
+		HasSession:   found,
+		Coverage:     coverage,
+	}
+	if found {
+		resp.Session = &sess
+	}
+
+	writeSuccess(w, http.StatusOK, resp)
+}
+
 func handleDiagnosticsError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, diagnostics.ErrInvalidLookupInput):
@@ -681,12 +937,20 @@ func handleDiagnosticsError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_not_initialized", "客户连接诊断尚未完成 scope 初始化", nil)
 	case errors.Is(err, diagnostics.ErrInvalidPanelScope):
 		writeAPIError(w, http.StatusServiceUnavailable, "invalid_panel_scope", "diagnostics panel_scope 配置非法", nil)
+	case errors.Is(err, diagnostics.ErrDiagnosticsStorageNotReady):
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_not_ready", "诊断日志存储未就绪或健康检查失败", nil)
 	case errors.Is(err, diagnostics.ErrStorageNotConfigured):
 		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_not_configured", "诊断存储查询端点尚未配置", nil)
 	case errors.Is(err, diagnostics.ErrStorageUnavailable):
 		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_unavailable", "诊断日志存储后端服务不可用", nil)
 	case errors.Is(err, diagnostics.ErrStorageTimeout):
 		writeAPIError(w, http.StatusGatewayTimeout, "diagnostics_storage_timeout", "诊断日志存储查询超时", nil)
+	case errors.Is(err, diagnostics.ErrLeaseLimitReached):
+		writeAPIError(w, http.StatusConflict, "lease_limit_reached", "活跃诊断会话已达系统上限（最多10个）", nil)
+	case errors.Is(err, diagnostics.ErrIdempotencyConflict):
+		writeAPIError(w, http.StatusConflict, "idempotency_conflict", "相同幂等键绑定了不同的诊断参数", nil)
+	case errors.Is(err, diagnostics.ErrSnapshotConflict):
+		writeAPIError(w, http.StatusConflict, "snapshot_conflict", "租约快照冲突或不合法", nil)
 	case errors.Is(err, diagnostics.ErrCursorExpired):
 		writeAPIError(w, http.StatusUnprocessableEntity, "cursor_expired", "查询快照游标已过期，请刷新重新查询", nil)
 	case errors.Is(err, diagnostics.ErrCursorInvalid):

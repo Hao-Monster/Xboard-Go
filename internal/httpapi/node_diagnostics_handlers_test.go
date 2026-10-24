@@ -269,13 +269,37 @@ func TestNodeDiagnosticsV1BootstrapCapabilitiesAndControlUnavailable(t *testing.
 		t.Fatalf("rejected reports must not overwrite stored capability: %+v", unchanged)
 	}
 
-	// Snapshot and ACK must authenticate first, then refuse explicitly until the lease service exists.
+	// Snapshot and ACK must authenticate first, then exercise authoritative lease service.
 	for _, path := range []string{"/api/v1/server/diagnostics/snapshot", "/api/v1/server/diagnostics/ack"} {
 		if response := agentRequest(api, http.MethodPost, path+query, "wrong-token-000000", `{}`); response.Code != http.StatusUnauthorized {
 			t.Fatalf("%s wrong token status=%d body=%s", path, response.Code, response.Body)
 		}
-		assertAPIErrorCode(t, agentRequest(api, http.MethodPost, path+query, legacyToken, `{"request_id":"44444444444444444444444444444444"}`),
-			http.StatusServiceUnavailable, "diagnostics_control_unavailable")
+	}
+	snapBody := fmt.Sprintf(`{"request_id":"44444444444444444444444444444444","runtime_id":%q}`, testDiagnosticsRuntimeID)
+	snapResp := agentRequest(api, http.MethodPost, "/api/v1/server/diagnostics/snapshot"+query, legacyToken, snapBody)
+	if snapResp.Code != http.StatusOK {
+		t.Fatalf("snapshot status=%d body=%s", snapResp.Code, snapResp.Body)
+	}
+	var snapData struct {
+		Data diagnostics.NodeSnapshotResponse `json:"data"`
+	}
+	if err := json.Unmarshal(snapResp.Body.Bytes(), &snapData); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if snapData.Data.PanelScope != panelScope || snapData.Data.RequestID != "44444444444444444444444444444444" || snapData.Data.RuntimeID != testDiagnosticsRuntimeID {
+		t.Fatalf("snapshot data = %+v", snapData.Data)
+	}
+
+	// ACK with unbound request_id returns 409 snapshot_conflict
+	unboundAck := fmt.Sprintf(`{"request_id":"55555555555555555555555555555555","runtime_id":%q,"control_epoch":%q,"control_version":%q,"sessions":[]}`, testDiagnosticsRuntimeID, snapData.Data.ControlEpoch, snapData.Data.ControlVersion)
+	assertAPIErrorCode(t, agentRequest(api, http.MethodPost, "/api/v1/server/diagnostics/ack"+query, legacyToken, unboundAck),
+		http.StatusConflict, "snapshot_conflict")
+
+	// Valid ACK with bound request_id returns 200
+	validAck := fmt.Sprintf(`{"request_id":"44444444444444444444444444444444","runtime_id":%q,"control_epoch":%q,"control_version":%q,"sessions":[]}`, testDiagnosticsRuntimeID, snapData.Data.ControlEpoch, snapData.Data.ControlVersion)
+	ackResp := agentRequest(api, http.MethodPost, "/api/v1/server/diagnostics/ack"+query, legacyToken, validAck)
+	if ackResp.Code != http.StatusOK {
+		t.Fatalf("ack status=%d body=%s", ackResp.Code, ackResp.Body)
 	}
 }
 
@@ -307,6 +331,10 @@ func TestNodeDiagnosticsV2StrictMachineIDValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if _, _, err := database.InitializeDiagnosticsScope(ctx, "00000000-0000-4000-8000-000000000005", now); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, endpoint := range []string{"bootstrap", "capabilities", "snapshot", "ack"} {
 		base := "/api/v2/server/diagnostics/" + endpoint
 		// Missing machine_id must be rejected outright, never downgraded to the legacy shared token path.
@@ -330,10 +358,33 @@ func TestNodeDiagnosticsV2StrictMachineIDValidation(t *testing.T) {
 	if err != nil || !found || saved.RuntimeID != testDiagnosticsRuntimeID {
 		t.Fatalf("v2 saved capability=%+v found=%v err=%v", saved, found, err)
 	}
+
+	// Malformed request_id is rejected
 	assertAPIErrorCode(t, agentRequest(api, http.MethodPost, "/api/v2/server/diagnostics/snapshot"+valid, token1, `{"request_id":"r"}`),
-		http.StatusServiceUnavailable, "diagnostics_control_unavailable")
-	assertAPIErrorCode(t, agentRequest(api, http.MethodPost, "/api/v2/server/diagnostics/ack"+valid, token1, `{}`),
-		http.StatusServiceUnavailable, "diagnostics_control_unavailable")
+		http.StatusUnprocessableEntity, "validation_failed")
+
+	v2SnapBody := fmt.Sprintf(`{"request_id":"66666666666666666666666666666666","runtime_id":%q}`, testDiagnosticsRuntimeID)
+	snapResp := agentRequest(api, http.MethodPost, "/api/v2/server/diagnostics/snapshot"+valid, token1, v2SnapBody)
+	if snapResp.Code != http.StatusOK {
+		t.Fatalf("v2 snapshot status=%d body=%s", snapResp.Code, snapResp.Body)
+	}
+	var v2Snap struct {
+		Data diagnostics.NodeSnapshotResponse `json:"data"`
+	}
+	if err := json.Unmarshal(snapResp.Body.Bytes(), &v2Snap); err != nil {
+		t.Fatalf("decode v2 snap: %v", err)
+	}
+
+	// ACK with unbound request_id returns snapshot_conflict
+	unboundAck := fmt.Sprintf(`{"request_id":"77777777777777777777777777777777","runtime_id":%q,"control_epoch":%q,"control_version":%q,"sessions":[]}`, testDiagnosticsRuntimeID, v2Snap.Data.ControlEpoch, v2Snap.Data.ControlVersion)
+	assertAPIErrorCode(t, agentRequest(api, http.MethodPost, "/api/v2/server/diagnostics/ack"+valid, token1, unboundAck),
+		http.StatusConflict, "snapshot_conflict")
+
+	// Valid ACK returns 200
+	validAck := fmt.Sprintf(`{"request_id":"66666666666666666666666666666666","runtime_id":%q,"control_epoch":%q,"control_version":%q,"sessions":[]}`, testDiagnosticsRuntimeID, v2Snap.Data.ControlEpoch, v2Snap.Data.ControlVersion)
+	if response := agentRequest(api, http.MethodPost, "/api/v2/server/diagnostics/ack"+valid, token1, validAck); response.Code != http.StatusOK {
+		t.Fatalf("v2 ack status=%d body=%s", response.Code, response.Body)
+	}
 }
 
 func TestNodeDiagnosticsWebSocketInteractions(t *testing.T) {
