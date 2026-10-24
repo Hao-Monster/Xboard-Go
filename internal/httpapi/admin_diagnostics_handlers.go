@@ -1,12 +1,24 @@
 package httpapi
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
+	"github.com/google/uuid"
+)
+
+var (
+	directDiagnosticIDRegex = regexp.MustCompile(`^[0-9a-f]{24}$`)
 )
 
 type initDiagnosticsScopeRequest struct {
@@ -52,9 +64,69 @@ type updateDiagnosticsSettingsRequest struct {
 	PanelScope          *string `json:"panel_scope,omitempty"`
 }
 
+type diagnosticsQueryRequest struct {
+	TradeNo      *string `json:"trade_no,omitempty"`
+	OrderID      *int64  `json:"order_id,omitempty"`
+	DiagnosticID *string `json:"diagnostic_id,omitempty"`
+
+	From        *string `json:"from,omitempty"`
+	To          *string `json:"to,omitempty"`
+	NodeID      *int64  `json:"node_id,omitempty"`
+	Domain      *string `json:"domain,omitempty"`
+	DomainMatch string  `json:"domain_match,omitempty"`
+	TraceID     *string `json:"trace_id,omitempty"`
+	HasError    *bool   `json:"has_error,omitempty"`
+	ReasonCode  *string `json:"reason_code,omitempty"`
+
+	Cursor string `json:"cursor,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+type diagnosticsQueryResponse struct {
+	DiagnosticID  string                          `json:"diagnostic_id"`
+	SnapshotID    string                          `json:"snapshot_id"`
+	AsOf          string                          `json:"as_of"`
+	Items         []diagnostics.ConnectionSummary `json:"items"`
+	NextCursor    *string                         `json:"next_cursor"`
+	Truncated     bool                            `json:"truncated"`
+	ScanTruncated bool                            `json:"scan_truncated"`
+	Coverage      diagnosticsCoverageResponse     `json:"coverage"`
+}
+
+type diagnosticsCoverageResponse struct {
+	State   string                    `json:"state"`
+	Reasons []string                  `json:"reasons"`
+	Nodes   []diagnosticsNodeCoverage `json:"nodes"`
+}
+
+type diagnosticsNodeCoverage struct {
+	NodeID             int64  `json:"node_id"`
+	Capability         string `json:"capability"` // supported, unsupported
+	Collector          string `json:"collector"`  // healthy, unknown, degraded
+	KnownDroppedEvents *int64 `json:"known_dropped_events"`
+}
+
+type diagnosticsConnectionRequest struct {
+	TradeNo      *string `json:"trade_no,omitempty"`
+	OrderID      *int64  `json:"order_id,omitempty"`
+	DiagnosticID *string `json:"diagnostic_id,omitempty"`
+
+	NodeID       int64  `json:"node_id"`
+	RuntimeID    string `json:"runtime_id"`
+	ConnectionID string `json:"connection_id"`
+}
+
+type diagnosticsConnectionResponse struct {
+	DiagnosticID string            `json:"diagnostic_id"`
+	NodeID       int64             `json:"node_id"`
+	RuntimeID    string            `json:"runtime_id"`
+	ConnectionID string            `json:"connection_id"`
+	Events       []json.RawMessage `json:"events"`
+	DNSExchange  []json.RawMessage `json:"dns_exchange"`
+}
+
 func (s *server) initDiagnosticsScope(w http.ResponseWriter, r *http.Request) {
 	var req initDiagnosticsScopeRequest
-	// Scope candidate is optional; empty JSON or empty scope generates a new UUIDv4
 	if r.ContentLength > 0 {
 		if !decodeJSON(w, r, &req) {
 			return
@@ -72,8 +144,6 @@ func (s *server) initDiagnosticsScope(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if created && s.hub != nil {
-		// panel_scope adds diagnostic_id to every runtime user; push a full resync so already-connected
-		// nodes hot-update the mapping instead of waiting for reconnect or the next pull interval.
 		s.hub.NotifyAllNodesFull(r.Context())
 	}
 
@@ -140,7 +210,6 @@ func (s *server) updateDiagnosticsSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Strictly prohibit altering panel_scope via general settings update
 	if req.PanelScope != nil && strings.TrimSpace(*req.PanelScope) != "" && strings.TrimSpace(*req.PanelScope) != cfg.PanelScope {
 		writeAPIError(w, http.StatusBadRequest, "panel_scope_immutable", "panel_scope 属于不可变全局权威标识，禁止在通用设置中修改", nil)
 		return
@@ -181,6 +250,425 @@ func (s *server) updateDiagnosticsSettings(w http.ResponseWriter, r *http.Reques
 	s.getDiagnosticsSettings(w, r)
 }
 
+func (s *server) resolveDiagnosticTarget(ctx context.Context, tradeNo *string, orderID *int64, diagnosticID *string) (string, string, *int64, error) {
+	hasOrder := (tradeNo != nil && strings.TrimSpace(*tradeNo) != "") || (orderID != nil && *orderID > 0)
+	hasDiag := diagnosticID != nil && strings.TrimSpace(*diagnosticID) != ""
+
+	if (hasOrder && hasDiag) || (!hasOrder && !hasDiag) {
+		return "", "", nil, diagnostics.ErrInvalidLookupInput
+	}
+
+	panelScope, err := s.store.GetDiagnosticsScope(ctx)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	if hasOrder {
+		ident, err := s.store.ResolveDiagnosticsCustomerByOrder(ctx, store.DiagnosticsOrderLookupInput{
+			TradeNo: tradeNo,
+			OrderID: orderID,
+		})
+		if err != nil {
+			return "", "", nil, err
+		}
+		oid := ident.OrderID
+		return panelScope, ident.DiagnosticID, &oid, nil
+	}
+
+	cleanDiag := strings.TrimSpace(strings.ToLower(*diagnosticID))
+	if !directDiagnosticIDRegex.MatchString(cleanDiag) {
+		return "", "", nil, diagnostics.ErrInvalidLookupInput
+	}
+	return panelScope, cleanDiag, nil, nil
+}
+
+func (s *server) queryDiagnosticsOrder(w http.ResponseWriter, r *http.Request) {
+	var req diagnosticsQueryRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	session, ok := r.Context().Value(sessionContextKey).(store.SessionUser)
+	if !ok || session.UserID <= 0 {
+		writeAPIError(w, http.StatusUnauthorized, "unauthenticated", "请先登录", nil)
+		return
+	}
+	adminID := session.UserID
+
+	panelScope, diagnosticID, orderID, err := s.resolveDiagnosticTarget(r.Context(), req.TradeNo, req.OrderID, req.DiagnosticID)
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	cfg, err := s.store.GetDiagnosticsServerConfig(r.Context())
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+	if strings.TrimSpace(cfg.QueryEndpoint) == "" {
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_not_configured", "诊断存储查询端点尚未配置", nil)
+		return
+	}
+
+	signingSecret := cfg.CursorSigningSecretCipher
+	if len(signingSecret) == 0 {
+		signingSecret = []byte(panelScope)
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = diagnostics.DefaultQueryPageSize
+	} else if limit > diagnostics.MaxQueryPageSize {
+		limit = diagnostics.MaxQueryPageSize
+	}
+
+	now := s.now()
+	var (
+		summaries     []diagnostics.ConnectionSummary
+		snapshotID    string
+		scanTruncated bool
+		truncated     bool
+		offset        int
+	)
+
+	if req.Cursor != "" {
+		cursorPayload, err := diagnostics.ParseAndVerifyCursor(
+			signingSecret,
+			req.Cursor,
+			adminID,
+			panelScope,
+			diagnosticID,
+			cfg.StorageGeneration,
+			now,
+		)
+		if err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+
+		items, snapTruncated, found := s.diagnosticsSnapshots.Get(adminID, cursorPayload.SnapshotID, now)
+		if !found {
+			writeAPIError(w, http.StatusUnprocessableEntity, "cursor_expired", "查询快照已过期，请刷新重新查询", nil)
+			return
+		}
+		summaries = items
+		snapshotID = cursorPayload.SnapshotID
+		offset = cursorPayload.Offset
+		truncated = snapTruncated
+	} else {
+		var filters diagnostics.QueryFilters
+		if req.From != nil && *req.From != "" {
+			if t, err := time.Parse(time.RFC3339Nano, *req.From); err == nil {
+				filters.From = t
+			} else if t, err := time.Parse(time.RFC3339, *req.From); err == nil {
+				filters.From = t
+			} else {
+				writeAPIError(w, http.StatusUnprocessableEntity, "invalid_query_filters", "from 时间格式无效", nil)
+				return
+			}
+		}
+		if req.To != nil && *req.To != "" {
+			if t, err := time.Parse(time.RFC3339Nano, *req.To); err == nil {
+				filters.To = t
+			} else if t, err := time.Parse(time.RFC3339, *req.To); err == nil {
+				filters.To = t
+			} else {
+				writeAPIError(w, http.StatusUnprocessableEntity, "invalid_query_filters", "to 时间格式无效", nil)
+				return
+			}
+		}
+		filters.NodeID = req.NodeID
+		filters.Domain = req.Domain
+		filters.DomainMatch = req.DomainMatch
+		filters.TraceID = req.TraceID
+		filters.HasError = req.HasError
+		filters.ReasonCode = req.ReasonCode
+
+		if err := filters.Normalize(now); err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+
+		logsql, err := diagnostics.EncodeLogsQL(panelScope, diagnosticID, filters)
+		if err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+
+		stream, err := s.diagnosticsClient.Query(
+			r.Context(),
+			cfg.QueryEndpoint,
+			cfg.QueryUsername,
+			string(cfg.QueryPasswordCipher),
+			logsql,
+		)
+		if err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+		defer stream.Close()
+
+		aggRes, err := diagnostics.AggregateConnectionEvents(stream, filters)
+		if err != nil {
+			handleDiagnosticsError(w, err)
+			return
+		}
+		scanTruncated = aggRes.ScanTruncated
+
+		snapshotID = uuid.NewString()
+		allSummaries := aggRes.Summaries
+		if len(allSummaries) > diagnostics.MaxSnapshotItems {
+			truncated = true
+			summaries = allSummaries[:diagnostics.MaxSnapshotItems]
+		} else {
+			summaries = allSummaries
+		}
+		s.diagnosticsSnapshots.Put(adminID, snapshotID, summaries, truncated, now)
+		offset = 0
+	}
+
+	var pageItems []diagnostics.ConnectionSummary
+	var nextCursor *string
+
+	if offset < len(summaries) {
+		end := offset + limit
+		if end > len(summaries) {
+			end = len(summaries)
+		}
+		pageItems = summaries[offset:end]
+		if end < len(summaries) {
+			newPayload := diagnostics.CursorPayload{
+				AdminID:           adminID,
+				OrderID:           orderID,
+				DiagnosticID:      diagnosticID,
+				PanelScope:        panelScope,
+				SnapshotID:        snapshotID,
+				StorageGeneration: cfg.StorageGeneration,
+				Offset:            end,
+				CreatedAt:         now,
+			}
+			if curStr, err := diagnostics.GenerateCursor(signingSecret, newPayload); err == nil {
+				nextCursor = &curStr
+			}
+		}
+	} else {
+		pageItems = []diagnostics.ConnectionSummary{}
+	}
+
+	coverage := s.resolveCoverage(r.Context())
+
+	writeSuccess(w, http.StatusOK, diagnosticsQueryResponse{
+		DiagnosticID:  diagnosticID,
+		SnapshotID:    snapshotID,
+		AsOf:          now.UTC().Format(time.RFC3339Nano),
+		Items:         pageItems,
+		NextCursor:    nextCursor,
+		Truncated:     truncated,
+		ScanTruncated: scanTruncated,
+		Coverage:      coverage,
+	})
+}
+
+func (s *server) connectionDiagnosticsOrder(w http.ResponseWriter, r *http.Request) {
+	var req diagnosticsConnectionRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	if req.NodeID <= 0 || strings.TrimSpace(req.RuntimeID) == "" || strings.TrimSpace(req.ConnectionID) == "" {
+		writeAPIError(w, http.StatusUnprocessableEntity, "invalid_connection_params", "node_id, runtime_id, connection_id 均不能为空", nil)
+		return
+	}
+
+	panelScope, diagnosticID, _, err := s.resolveDiagnosticTarget(r.Context(), req.TradeNo, req.OrderID, req.DiagnosticID)
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+
+	cfg, err := s.store.GetDiagnosticsServerConfig(r.Context())
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+	if strings.TrimSpace(cfg.QueryEndpoint) == "" {
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_not_configured", "诊断存储查询端点尚未配置", nil)
+		return
+	}
+
+	// Query events for this connection explicitly
+	// We mandate panel_scope, node_id, runtime_id, and connection_id to avoid scanning other tenants
+	connQuery := fmt.Sprintf(
+		`panel_scope:%q AND node_id:%d AND runtime_id:%q AND connection_id:%q | sort by seq asc | limit %d`,
+		panelScope,
+		req.NodeID,
+		req.RuntimeID,
+		req.ConnectionID,
+		diagnostics.MaxQueryReadLines,
+	)
+
+	stream, err := s.diagnosticsClient.Query(
+		r.Context(),
+		cfg.QueryEndpoint,
+		cfg.QueryUsername,
+		string(cfg.QueryPasswordCipher),
+		connQuery,
+	)
+	if err != nil {
+		handleDiagnosticsError(w, err)
+		return
+	}
+	defer stream.Close()
+
+	scanner := bufio.NewScanner(stream)
+	rawEvents := make([]json.RawMessage, 0)
+	dnsOpIDs := make(map[string]struct{})
+	connOwnerVerified := false
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		var item struct {
+			EventFamily         string   `json:"event_family"`
+			DiagnosticID        string   `json:"diagnostic_id"`
+			ResolverOperationID string   `json:"resolver_operation_id"`
+			SpanLinks           []string `json:"span_links"`
+		}
+		if err := json.Unmarshal(line, &item); err == nil {
+			if item.EventFamily == "connection" {
+				if item.DiagnosticID == diagnosticID {
+					connOwnerVerified = true
+				}
+				if item.ResolverOperationID != "" && len(dnsOpIDs) < diagnostics.MaxDNSOperationsPerConn {
+					dnsOpIDs[item.ResolverOperationID] = struct{}{}
+				}
+				for _, link := range item.SpanLinks {
+					if strings.HasPrefix(link, "dns.exchange:") && len(dnsOpIDs) < diagnostics.MaxDNSOperationsPerConn {
+						opID := strings.TrimPrefix(link, "dns.exchange:")
+						if opID != "" {
+							dnsOpIDs[opID] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+
+		itemCopy := make([]byte, len(line))
+		copy(itemCopy, line)
+		rawEvents = append(rawEvents, json.RawMessage(itemCopy))
+	}
+
+	// Verify that this connection actually belongs to the caller's diagnosticID
+	if len(rawEvents) > 0 && !connOwnerVerified {
+		writeAPIError(w, http.StatusForbidden, "forbidden_connection_access", "连接不属于当前诊断客户", nil)
+		return
+	}
+
+	dnsEvents := make([]json.RawMessage, 0)
+	if len(dnsOpIDs) > 0 {
+		var opConds []string
+		for opID := range dnsOpIDs {
+			opConds = append(opConds, fmt.Sprintf(`resolver_operation_id:%q`, opID))
+		}
+		dnsQuery := fmt.Sprintf(
+			`panel_scope:%q AND node_id:%d AND runtime_id:%q AND (%s) | sort by operation_seq asc | limit 1000`,
+			panelScope,
+			req.NodeID,
+			req.RuntimeID,
+			strings.Join(opConds, " OR "),
+		)
+
+		dnsStream, err := s.diagnosticsClient.Query(
+			r.Context(),
+			cfg.QueryEndpoint,
+			cfg.QueryUsername,
+			string(cfg.QueryPasswordCipher),
+			dnsQuery,
+		)
+		if err == nil {
+			defer dnsStream.Close()
+			dnsScanner := bufio.NewScanner(dnsStream)
+			for dnsScanner.Scan() {
+				line := dnsScanner.Bytes()
+				if len(bytes.TrimSpace(line)) == 0 {
+					continue
+				}
+				lineCopy := make([]byte, len(line))
+				copy(lineCopy, line)
+				dnsEvents = append(dnsEvents, json.RawMessage(lineCopy))
+			}
+		}
+	}
+
+	writeSuccess(w, http.StatusOK, diagnosticsConnectionResponse{
+		DiagnosticID: diagnosticID,
+		NodeID:       req.NodeID,
+		RuntimeID:    req.RuntimeID,
+		ConnectionID: req.ConnectionID,
+		Events:       rawEvents,
+		DNSExchange:  dnsEvents,
+	})
+}
+
+func (s *server) resolveCoverage(ctx context.Context) diagnosticsCoverageResponse {
+	targets, err := s.store.ListAllRuntimeNodeTargets(ctx)
+	if err != nil {
+		return diagnosticsCoverageResponse{
+			State:   "unknown",
+			Reasons: []string{"cannot_resolve_nodes"},
+			Nodes:   []diagnosticsNodeCoverage{},
+		}
+	}
+
+	hasUnsupported := false
+	nodes := make([]diagnosticsNodeCoverage, 0, len(targets))
+
+	for _, target := range targets {
+		cap, found, _ := s.store.GetNodeDiagnosticsCapability(ctx, target.NodeID)
+		isSupported := false
+		if found && cap.SchemaVersion > 0 {
+			for _, c := range cap.Capabilities {
+				if c == "connection.v1" {
+					isSupported = true
+					break
+				}
+			}
+		}
+
+		capStr := "unsupported"
+		if isSupported {
+			capStr = "supported"
+		} else {
+			hasUnsupported = true
+		}
+
+		zero := int64(0)
+		nodes = append(nodes, diagnosticsNodeCoverage{
+			NodeID:             target.NodeID,
+			Capability:         capStr,
+			Collector:          "healthy",
+			KnownDroppedEvents: &zero,
+		})
+	}
+
+	state := "full"
+	var reasons []string
+	if hasUnsupported || len(nodes) == 0 {
+		state = "partial"
+		reasons = append(reasons, "node_unsupported")
+	}
+
+	return diagnosticsCoverageResponse{
+		State:   state,
+		Reasons: reasons,
+		Nodes:   nodes,
+	}
+}
+
 func handleDiagnosticsError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, diagnostics.ErrInvalidLookupInput):
@@ -193,6 +681,18 @@ func handleDiagnosticsError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_not_initialized", "客户连接诊断尚未完成 scope 初始化", nil)
 	case errors.Is(err, diagnostics.ErrInvalidPanelScope):
 		writeAPIError(w, http.StatusServiceUnavailable, "invalid_panel_scope", "diagnostics panel_scope 配置非法", nil)
+	case errors.Is(err, diagnostics.ErrStorageNotConfigured):
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_not_configured", "诊断存储查询端点尚未配置", nil)
+	case errors.Is(err, diagnostics.ErrStorageUnavailable):
+		writeAPIError(w, http.StatusServiceUnavailable, "diagnostics_storage_unavailable", "诊断日志存储后端服务不可用", nil)
+	case errors.Is(err, diagnostics.ErrStorageTimeout):
+		writeAPIError(w, http.StatusGatewayTimeout, "diagnostics_storage_timeout", "诊断日志存储查询超时", nil)
+	case errors.Is(err, diagnostics.ErrCursorExpired):
+		writeAPIError(w, http.StatusUnprocessableEntity, "cursor_expired", "查询快照游标已过期，请刷新重新查询", nil)
+	case errors.Is(err, diagnostics.ErrCursorInvalid):
+		writeAPIError(w, http.StatusUnprocessableEntity, "cursor_invalid", "查询快照游标非法或签名不符", nil)
+	case errors.Is(err, diagnostics.ErrInvalidQueryFilters):
+		writeAPIError(w, http.StatusUnprocessableEntity, "invalid_query_filters", err.Error(), nil)
 	default:
 		recordDiagnosticError(w, err)
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误", nil)

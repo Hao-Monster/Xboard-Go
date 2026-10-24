@@ -20,6 +20,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
+	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/observability"
@@ -178,6 +179,8 @@ type server struct {
 	bulkOperations             *bulkops.Service
 	telegramBot                telegrambot.Client
 	telegramProvisionRequests  *requestLimiter
+	diagnosticsClient          *diagnostics.StorageClient
+	diagnosticsSnapshots       *diagnostics.SnapshotCache
 	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 	ticketRegionResolver       ticketRegionResolver
 	deviceState                devicestate.Service
@@ -354,6 +357,8 @@ func New(dependencies Dependencies) http.Handler {
 		attachments:                dependencies.Attachments,
 		bulkOperations:             dependencies.BulkOperations,
 		telegramBot:                dependencies.TelegramBot,
+		diagnosticsClient:          diagnostics.NewStorageClient(),
+		diagnosticsSnapshots:       diagnostics.NewSnapshotCache(),
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
@@ -830,6 +835,8 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/system/mail-failures", api.listTicketMailFailures)
 	admin.HandleFunc("POST /api/v1/admin/diagnostics/initialize", api.initDiagnosticsScope)
 	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/lookup", api.lookupDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/query", api.queryDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/connection", api.connectionDiagnosticsOrder)
 	admin.HandleFunc("GET /api/v1/admin/diagnostics/settings", api.getDiagnosticsSettings)
 	admin.HandleFunc("PUT /api/v1/admin/diagnostics/settings", api.updateDiagnosticsSettings)
 	// Authenticate before the audit wrapper so rejected administrator mutations

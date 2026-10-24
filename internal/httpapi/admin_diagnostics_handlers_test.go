@@ -354,3 +354,287 @@ func TestAdminDiagnosticsUnauthorizedAccess(t *testing.T) {
 		t.Fatalf("expected 403 for non-admin user access, got %d body=%s", userRes.Code, userRes.Body)
 	}
 }
+
+func TestAdminDiagnosticsQueryEndpointNotConfigured(t *testing.T) {
+	api, _ := newTestAPI(t)
+	admin := loginAdmin(t, api)
+
+	// Initialize scope
+	admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/diagnostics/initialize", "{}")
+
+	res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", `{"diagnostic_id":"111111111111111111111111"}`)
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when query endpoint not configured, got %d body=%s", res.Code, res.Body)
+	}
+	assertAPIErrorCode(t, res, http.StatusServiceUnavailable, "diagnostics_storage_not_configured")
+}
+
+func TestAdminDiagnosticsQueryWorkflow(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	// 1. Initialize scope
+	initRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/diagnostics/initialize", `{"scope":"00000000-0000-4000-8000-000000000001"}`)
+	if initRes.Code != http.StatusOK {
+		t.Fatalf("initialize scope failed: %d body=%s", initRes.Code, initRes.Body)
+	}
+
+	// 2. Create customer and order using existing helper
+	plan := createOrderAPIPlan(t, database, store.PlanPrices{"monthly": 10000})
+	buyer, err := database.CreateAdminUser(ctx, store.CreateAdminUserInput{
+		Email:        "subscriber@example.test",
+		PasswordHash: "hash_direct",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := database.CreateOrder(ctx, store.CreateOrderInput{
+		UserID: buyer.ID,
+		PlanID: plan.ID,
+		Period: "monthly",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CompleteOrder(ctx, order.TradeNo, "direct_callback", now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Lookup customer identity
+	lookupRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/lookup", fmt.Sprintf(`{"order_id":%d}`, order.ID))
+	if lookupRes.Code != http.StatusOK {
+		t.Fatalf("lookup failed: %d body=%s", lookupRes.Code, lookupRes.Body)
+	}
+	var lookupData struct {
+		Data struct {
+			DiagnosticID string `json:"diagnostic_id"`
+		} `json:"data"`
+	}
+	json.Unmarshal(lookupRes.Body.Bytes(), &lookupData)
+	diagID := lookupData.Data.DiagnosticID
+
+	// 3. Spin up mock VictoriaLogs server
+	vlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		query := r.FormValue("query")
+
+		if strings.Contains(query, "simulate_503") {
+			http.Error(w, "upstream cluster down", http.StatusServiceUnavailable)
+			return
+		}
+
+		if strings.Contains(query, `trace_id:"single-conn"`) || strings.Contains(query, `connection_id:"conn1"`) {
+			// Detail events for connection 1
+			w.Header().Set("Content-Type", "application/stream+json")
+			fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:00Z","event_id":"e1","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.connection.open","diagnostic_id":%q,"connection_id":"conn1","seq":1}`+"\n", diagID)
+			fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:01Z","event_id":"e2","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.dns.result","diagnostic_id":%q,"connection_id":"conn1","seq":2,"resolver_operation_id":"op1"}`+"\n", diagID)
+			return
+		}
+
+		if strings.Contains(query, `resolver_operation_id:"op1"`) {
+			// DNS resolver events
+			w.Header().Set("Content-Type", "application/stream+json")
+			fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:00.050Z","event_id":"dns1","event_family":"resolver_operation","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.dns.exchange.result","resolver_operation_id":"op1","operation_seq":1}`+"\n")
+			return
+		}
+
+		// Connection summary events
+		w.Header().Set("Content-Type", "application/stream+json")
+		// conn1: success
+		fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:00Z","event_id":"ev1","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.connection.open","diagnostic_id":%q,"connection_id":"conn1","target_id":0,"seq":1,"destination_host":"api.success.com","destination_port":443}`+"\n", diagID)
+		fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:01Z","event_id":"ev2","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.relay.result","diagnostic_id":%q,"connection_id":"conn1","target_id":0,"seq":2,"upload_bytes":100,"download_bytes":200,"transport_state":"transport_established"}`+"\n", diagID)
+		// conn2: failure
+		fmt.Fprintf(w, `{"event_time":"2026-10-24T12:01:00Z","event_id":"ev3","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.connection.open","diagnostic_id":%q,"connection_id":"conn2","target_id":0,"seq":1,"destination_host":"api.fail.test","destination_port":443}`+"\n", diagID)
+		fmt.Fprintf(w, `{"event_time":"2026-10-24T12:01:01Z","event_id":"ev4","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.dial.result","diagnostic_id":%q,"connection_id":"conn2","target_id":0,"seq":2,"has_error":true,"error_stages":["dial"],"reason_codes":["connect_refused"]}`+"\n", diagID)
+	}))
+	defer vlServer.Close()
+
+	// 4. Update diagnostics settings with the VL query endpoint
+	updateRes := admin.request(t, api, http.MethodPut, "/api/v1/admin/admin/diagnostics/settings", fmt.Sprintf(`{
+		"query_endpoint": %q,
+		"query_username": "viewer",
+		"query_password": "pwd",
+		"cursor_signing_secret": "my-cursor-signing-secret-32bytes!"
+	}`, vlServer.URL))
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("update settings failed: %d body=%s", updateRes.Code, updateRes.Body)
+	}
+
+	// 5. Query by Order ID (Full)
+	queryRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", fmt.Sprintf(`{"order_id":%d}`, order.ID))
+	if queryRes.Code != http.StatusOK {
+		t.Fatalf("order query failed: %d body=%s", queryRes.Code, queryRes.Body)
+	}
+
+	var queryData struct {
+		Data struct {
+			DiagnosticID string `json:"diagnostic_id"`
+			SnapshotID   string `json:"snapshot_id"`
+			Items        []struct {
+				ConnectionID string `json:"connection_id"`
+				HasError     bool   `json:"has_error"`
+			} `json:"items"`
+			NextCursor *string `json:"next_cursor"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(queryRes.Body.Bytes(), &queryData); err != nil {
+		t.Fatalf("unmarshal query: %v", err)
+	}
+	if queryData.Data.DiagnosticID != diagID || len(queryData.Data.Items) != 2 {
+		t.Fatalf("unexpected query result: %+v", queryData.Data)
+	}
+
+	// 6. Query with Filter (Error only)
+	errQueryRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", fmt.Sprintf(`{"order_id":%d, "has_error":true}`, order.ID))
+	if errQueryRes.Code != http.StatusOK {
+		t.Fatalf("err query failed: %d body=%s", errQueryRes.Code, errQueryRes.Body)
+	}
+	var errData struct {
+		Data struct {
+			Items []struct {
+				ConnectionID string `json:"connection_id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	json.Unmarshal(errQueryRes.Body.Bytes(), &errData)
+	if len(errData.Data.Items) != 1 || errData.Data.Items[0].ConnectionID != "conn2" {
+		t.Fatalf("expected only conn2 in error filter: %+v", errData.Data)
+	}
+
+	// 7. Pagination with Cursor
+	page1Res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", fmt.Sprintf(`{"order_id":%d, "limit":1}`, order.ID))
+	if page1Res.Code != http.StatusOK {
+		t.Fatalf("page 1 failed: %d body=%s", page1Res.Code, page1Res.Body)
+	}
+	var page1Data struct {
+		Data struct {
+			Items []struct {
+				ConnectionID string `json:"connection_id"`
+			} `json:"items"`
+			NextCursor *string `json:"next_cursor"`
+		} `json:"data"`
+	}
+	json.Unmarshal(page1Res.Body.Bytes(), &page1Data)
+	if len(page1Data.Data.Items) != 1 || page1Data.Data.NextCursor == nil {
+		t.Fatalf("expected 1 item and next cursor: %+v", page1Data.Data)
+	}
+
+	page2Res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", fmt.Sprintf(`{
+		"order_id":%d,
+		"cursor": %q,
+		"limit": 1
+	}`, order.ID, *page1Data.Data.NextCursor))
+	if page2Res.Code != http.StatusOK {
+		t.Fatalf("page 2 failed: %d body=%s", page2Res.Code, page2Res.Body)
+	}
+	var page2Data struct {
+		Data struct {
+			Items []struct {
+				ConnectionID string `json:"connection_id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	json.Unmarshal(page2Res.Body.Bytes(), &page2Data)
+	if len(page2Data.Data.Items) != 1 || page2Data.Data.Items[0].ConnectionID == page1Data.Data.Items[0].ConnectionID {
+		t.Fatalf("page 2 should have distinct item: %+v", page2Data.Data)
+	}
+
+	// 8. Connection Details & DNS Expansion
+	connRes := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/connection", fmt.Sprintf(`{
+		"order_id": %d,
+		"node_id": 1,
+		"runtime_id": "rt1",
+		"connection_id": "conn1"
+	}`, order.ID))
+	if connRes.Code != http.StatusOK {
+		t.Fatalf("conn detail failed: %d body=%s", connRes.Code, connRes.Body)
+	}
+	var connData struct {
+		Data struct {
+			ConnectionID string            `json:"connection_id"`
+			Events       []json.RawMessage `json:"events"`
+			DNSExchange  []json.RawMessage `json:"dns_exchange"`
+		} `json:"data"`
+	}
+	json.Unmarshal(connRes.Body.Bytes(), &connData)
+	if connData.Data.ConnectionID != "conn1" || len(connData.Data.Events) != 2 || len(connData.Data.DNSExchange) != 1 {
+		t.Fatalf("unexpected conn details or DNS expansion: %+v", connData.Data)
+	}
+}
+
+func TestAdminDiagnosticsConnectionForbiddenAccess(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	// Initialize scope
+	admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/diagnostics/initialize", `{"scope":"00000000-0000-4000-8000-000000000001"}`)
+
+	// Mock server that returns connection events belonging to another customer
+	otherDiagID := "999999999999999999999999"
+	vlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/stream+json")
+		fmt.Fprintf(w, `{"event_time":"2026-10-24T12:00:00Z","event_id":"e1","event_family":"connection","panel_scope":"00000000-0000-4000-8000-000000000001","node_id":1,"runtime_id":"rt1","event":"diag.connection.open","diagnostic_id":%q,"connection_id":"conn99"}`+"\n", otherDiagID)
+	}))
+	defer vlServer.Close()
+
+	database.UpdateDiagnosticsServerConfig(ctx, vlServer.URL, "user", []byte("pwd"), []byte("secret"), 1, now)
+
+	// Admin requests connection "conn99" under a different diagnostic_id
+	callerDiagID := "111111111111111111111111"
+	res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/connection", fmt.Sprintf(`{
+		"diagnostic_id": %q,
+		"node_id": 1,
+		"runtime_id": "rt1",
+		"connection_id": "conn99"
+	}`, callerDiagID))
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when accessing another tenant's connection, got %d body=%s", res.Code, res.Body)
+	}
+	assertAPIErrorCode(t, res, http.StatusForbidden, "forbidden_connection_access")
+}
+
+func TestAdminDiagnosticsQueryStorageFailures(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/diagnostics/initialize", `{"scope":"00000000-0000-4000-8000-000000000001"}`)
+
+	vlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
+	}))
+	defer vlServer.Close()
+
+	database.UpdateDiagnosticsServerConfig(ctx, vlServer.URL, "user", []byte("pwd"), []byte("secret"), 1, now)
+
+	res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", `{"diagnostic_id":"111111111111111111111111"}`)
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for upstream unavailable, got %d body=%s", res.Code, res.Body)
+	}
+	assertAPIErrorCode(t, res, http.StatusServiceUnavailable, "diagnostics_storage_unavailable")
+}
+
+func TestAdminDiagnosticsInvalidCursor(t *testing.T) {
+	api, database := newTestAPI(t)
+	admin := loginAdmin(t, api)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+
+	admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/diagnostics/initialize", `{"scope":"00000000-0000-4000-8000-000000000001"}`)
+	database.UpdateDiagnosticsServerConfig(ctx, "http://127.0.0.1:9999", "user", []byte("pwd"), []byte("secret"), 1, now)
+
+	res := admin.request(t, api, http.MethodPost, "/api/v1/admin/admin/order/diagnostics/query", `{
+		"diagnostic_id":"111111111111111111111111",
+		"cursor": "invalid-base64-or-tampered-cursor"
+	}`)
+	if res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for invalid cursor, got %d body=%s", res.Code, res.Body)
+	}
+	assertAPIErrorCode(t, res, http.StatusUnprocessableEntity, "cursor_invalid")
+}
