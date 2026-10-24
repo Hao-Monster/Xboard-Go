@@ -287,7 +287,11 @@ func (s *Store) ListNodeRuntimeUsers(ctx context.Context, nodeID int64, now time
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.attachDiagnosticIDs(ctx, users)
+	return users, nil
 }
 
 func (s *Store) GetNodeRuntimeUser(ctx context.Context, nodeID, userID int64, now time.Time) (RuntimeUser, error) {
@@ -308,7 +312,36 @@ func (s *Store) GetNodeRuntimeUser(ctx context.Context, nodeID, userID int64, no
 	if err != nil {
 		return RuntimeUser{}, fmt.Errorf("get node runtime user: %w", err)
 	}
-	return user, nil
+	users := []RuntimeUser{user}
+	s.attachDiagnosticIDs(ctx, users)
+	return users[0], nil
+}
+
+// ListAllRuntimeNodeTargets lists every enabled, runtime-configured node with its owning machine (0 for legacy).
+// Used for installation-wide resynchronization such as panel_scope initialization.
+func (s *Store) ListAllRuntimeNodeTargets(ctx context.Context) ([]NodeRuntimeTarget, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT n.id, COALESCE(n.machine_id, 0)
+		FROM nodes n
+		WHERE n.enabled = 1 AND n.runtime_config IS NOT NULL
+		ORDER BY n.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list all runtime node targets: %w", err)
+	}
+	defer rows.Close()
+	targets := make([]NodeRuntimeTarget, 0)
+	for rows.Next() {
+		var target NodeRuntimeTarget
+		if err := rows.Scan(&target.NodeID, &target.MachineID); err != nil {
+			return nil, fmt.Errorf("scan runtime node target: %w", err)
+		}
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate runtime node targets: %w", err)
+	}
+	return targets, nil
 }
 
 func (s *Store) ListRuntimeNodeTargetsForGroups(ctx context.Context, groupIDs []int64) ([]NodeRuntimeTarget, error) {

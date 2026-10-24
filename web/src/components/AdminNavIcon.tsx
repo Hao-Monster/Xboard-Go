@@ -17,7 +17,8 @@ const paths: Record<string, string> = {
   coupons: "M3 5h18v5a2 2 0 0 0 0 4v5H3v-5a2 2 0 0 0 0-4z M15 5v14",
   "gift-cards": "M3 8h18v4H3z M5 12v9h14v-9 M12 8v13 M12 8C3 8 5 1 9 3l3 5c9 0 7-7 3-5z",
   users: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-3a7 7 0 0 1 14 0v3 M17 4a4 4 0 0 1 0 8 M19 15a5 5 0 0 1 3 6",
-  tickets: "M4 4h16v13H9l-5 4z M8 8h8 M8 12h5"
+  tickets: "M4 4h16v13H9l-5 4z M8 8h8 M8 12h5",
+  diagnostics: "M3 12h4l3 8 4-16 3 8h4 M12 3v2 M12 19v2"
 };
 
 export function AdminNavIcon({ page }: { page: string }) {

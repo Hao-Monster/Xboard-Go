@@ -2193,10 +2193,11 @@ type NodeRuntimeGroupTarget struct {
 }
 
 type RuntimeUser struct {
-	ID          int64  `json:"id"`
-	UUID        string `json:"uuid"`
-	SpeedLimit  int    `json:"speed_limit"`
-	DeviceLimit int    `json:"device_limit"`
+	ID           int64   `json:"id"`
+	UUID         string  `json:"uuid"`
+	SpeedLimit   int     `json:"speed_limit"`
+	DeviceLimit  int     `json:"device_limit"`
+	DiagnosticID *string `json:"diagnostic_id,omitempty"`
 }
 
 type CreateRuntimeUserInput struct {

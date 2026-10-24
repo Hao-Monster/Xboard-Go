@@ -11,7 +11,7 @@ import { lazyWithPreload } from "./lib/lazyWithPreload";
 import { adminDataCache } from "./lib/dataPrefetchCache";
 
 import type { SystemConfigTab } from "./features/settings/SystemConfigShell";
-type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account";
+type AdminPage = "security" | "templates" | "system" | "settings" | "themes" | "mail" | "telegram" | "client-app" | "commissions" | "subscriptions" | "node-settings" | "servers" | "nodes" | "plans" | "orders" | "distributors" | "plugins" | "payments" | "coupons" | "gift-cards" | "users" | "tickets" | "groups" | "routes" | "notices" | "knowledge" | "clients" | "account" | "diagnostics";
 
 const SystemConfigShell = lazyWithPreload(async () => import("./features/settings/SystemConfigShell").then(module => ({ default: module.SystemConfigShell })));
 const AccountSecurityPage = lazyWithPreload(async () => import("./features/account/AccountSecurityPage").then((module) => ({ default: module.AccountSecurityPage })));
@@ -35,6 +35,7 @@ const GiftCardManagementPage = lazyWithPreload(async () => import("./features/gi
 const UserPortal = lazy(async () => import("./features/user/UserPortal").then((module) => ({ default: module.UserPortal })));
 const DistributorPortal = lazy(async () => import("./features/distributor/DistributorPortal").then((module) => ({ default: module.DistributorPortal })));
 const AdminDistributorPage = lazyWithPreload(async () => import("./features/distributor/AdminDistributorPage").then((module) => ({ default: module.AdminDistributorPage })));
+const CustomerDiagnosticsPage = lazyWithPreload(async () => import("./features/diagnostics/CustomerDiagnosticsPage").then((module) => ({ default: module.CustomerDiagnosticsPage })));
 const defaultThemeAppearance: ThemeAppearance = {
   name: "Xboard", revision: 1, package_sha256: "0".repeat(64),
   palette: { background: "#0b0d12", surface: "#151922", text: "#e8ebf2", muted: "#9ba3b5", primary: "#9ab2ff", primary_text: "#101218", border: "#303746" },
@@ -56,7 +57,7 @@ const adminRoutes: Record<AdminPage, string> = {
   themes: "/config/theme", plugins: "/config/plugin", payments: "/config/payment", notices: "/config/notice",
   knowledge: "/config/knowledge", clients: "/config/clients", plans: "/finance/plan", orders: "/finance/order",
   distributors: "/finance/distributor", coupons: "/finance/coupon", "gift-cards": "/finance/gift-card",
-  users: "/user/manage", tickets: "/user/ticket", account: "/account"
+  users: "/user/manage", tickets: "/user/ticket", account: "/account", diagnostics: "/diagnostics"
 };
 
 const adminPagePreloaders: Record<AdminPage, () => Promise<unknown>> = {
@@ -88,6 +89,7 @@ const adminPagePreloaders: Record<AdminPage, () => Promise<unknown>> = {
   users: UsersPage.preload,
   tickets: TicketManagementPage.preload,
   account: AccountSecurityPage.preload,
+  diagnostics: CustomerDiagnosticsPage.preload,
 };
 
 const uniqueAdminPagePreloaders = [...new Set(Object.values(adminPagePreloaders))];
@@ -152,6 +154,7 @@ const adminNavGroups: NavGroup[] = [
       { page: "payments", label: "支付配置" },
       { page: "knowledge", label: "知识库管理" },
       { page: "clients", label: "客户端管理" },
+      { page: "diagnostics", label: "日志中心" },
     ],
   },
   {
@@ -493,6 +496,35 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       });
     });
   };
+  const navigateDiagnostics = (target?: { order_id?: number; trade_no?: string } | number | string) => {
+    let queryPart = "";
+    if (typeof target === "number") {
+      queryPart = `?order_id=${encodeURIComponent(target)}`;
+    } else if (typeof target === "string" && target.trim() !== "") {
+      const trimmed = target.trim();
+      if (/^\d+$/.test(trimmed) && trimmed.length < 10) {
+        queryPart = `?order_id=${encodeURIComponent(trimmed)}`;
+      } else {
+        queryPart = `?trade_no=${encodeURIComponent(trimmed)}`;
+      }
+    } else if (target && typeof target === "object") {
+      if (target.order_id) {
+        queryPart = `?order_id=${encodeURIComponent(target.order_id)}`;
+      } else if (target.trade_no) {
+        queryPart = `?trade_no=${encodeURIComponent(target.trade_no)}`;
+      }
+    }
+    const targetHash = queryPart ? `#${adminRoutes.diagnostics}${queryPart}` : `#${adminRoutes.diagnostics}`;
+    const sequence = ++adminNavigationSequence.current;
+    void loadAdminPage("diagnostics").then(() => {
+      if (sequence !== adminNavigationSequence.current) return;
+      window.history.pushState(null, "", targetHash);
+      startTransition(() => {
+        setMachineNodeTarget(null);
+        setPage("diagnostics");
+      });
+    });
+  };
   const signOut = () => {
     adminNavigationSequence.current += 1;
     if (!canLeaveAdminPage()) return;
@@ -621,8 +653,8 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             }} />}
             {page === "nodes" && <NodeManagementPage api={api} initialMachineID={machineNodeTarget?.id} initiallyCreating={machineNodeTarget?.create} />}
             {page === "plans" && <PlanManagementPage api={api} />}
-            {page === "orders" && <OrderManagementPage api={api} distributorAPI={api} />}
-            {page === "distributors" && <AdminDistributorPage api={api} />}
+            {page === "orders" && <OrderManagementPage api={api} distributorAPI={api} onNavigateDiagnostics={navigateDiagnostics} />}
+            {page === "distributors" && <AdminDistributorPage api={api} onNavigateDiagnostics={navigateDiagnostics} />}
             {page === "plugins" && <PluginManagementPage api={api} onNavigate={navigateAdminPage} />}
             {page === "payments" && <PaymentManagementPage api={api} />}
             {page === "coupons" && <CouponManagementPage api={api} />}
@@ -634,6 +666,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
             {page === "notices" && <NoticeManagementPage api={api} />}
             {page === "knowledge" && <KnowledgeManagementPage api={api} />}
             {page === "clients" && <ClientCatalogManagementPage api={api} />}
+            {page === "diagnostics" && <CustomerDiagnosticsPage api={api} />}
             {page === "account" && <AccountSecurityPage api={api} onSignedOut={() => { adminNavigationSequence.current += 1; setPage("servers"); window.scrollTo(0, 0); setSession(null); }} />}
           </Suspense>
         </div>
@@ -652,7 +685,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
 function AdminPageSkeleton({ page }: { page: AdminPage }) {
   const isTable = ["plans", "orders", "users", "tickets", "coupons", "gift-cards",
     "notices", "knowledge", "clients", "plugins", "payments", "distributors",
-    "groups", "routes", "servers", "nodes"].includes(page);
+    "groups", "routes", "servers", "nodes", "diagnostics"].includes(page);
   const isDashboard = page === "system";
   return (
     <div className="admin-page-skeleton">

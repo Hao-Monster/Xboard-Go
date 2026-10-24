@@ -20,6 +20,7 @@ import (
 	"github.com/Hao-Monster/Xboard-Go/internal/captcha"
 	"github.com/Hao-Monster/Xboard-Go/internal/clientcatalog"
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
+	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/mailer"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/observability"
@@ -154,6 +155,7 @@ type server struct {
 	handshakeRequests          *nodeRequestLimitGroup
 	pullRequests               *nodeRequestLimitGroup
 	reportRequests             *nodeRequestLimitGroup
+	diagnosticsRequests        *nodeRequestLimitGroup
 	machineRequests            *nodeRequestLimitGroup
 	ticketRequests             *requestLimitGroup
 	orderRequests              *requestLimitGroup
@@ -177,6 +179,9 @@ type server struct {
 	bulkOperations             *bulkops.Service
 	telegramBot                telegrambot.Client
 	telegramProvisionRequests  *requestLimiter
+	diagnosticsClient          *diagnostics.StorageClient
+	diagnosticsSnapshots       *diagnostics.SnapshotCache
+	diagnosticsLease           diagnostics.LeaseService
 	legacyAppClashRenderer     *subscription.LegacyAppClashRenderer
 	ticketRegionResolver       ticketRegionResolver
 	deviceState                devicestate.Service
@@ -328,6 +333,7 @@ func New(dependencies Dependencies) http.Handler {
 		handshakeRequests:          newNodeRequestLimitGroup(60, 600, 20, trustedProxyPrefixes),
 		pullRequests:               newNodeRequestLimitGroup(2_400, 10_000, 600, trustedProxyPrefixes),
 		reportRequests:             newNodeRequestLimitGroup(1_200, 10_000, 240, trustedProxyPrefixes),
+		diagnosticsRequests:        newNodeRequestLimitGroup(600, 5_000, 120, trustedProxyPrefixes),
 		machineRequests:            newNodeRequestLimitGroup(1_200, 5_000, 240, trustedProxyPrefixes),
 		ticketRequests:             newRequestLimitGroup(240, 60),
 		orderRequests:              newRequestLimitGroup(240, 60),
@@ -352,6 +358,9 @@ func New(dependencies Dependencies) http.Handler {
 		attachments:                dependencies.Attachments,
 		bulkOperations:             dependencies.BulkOperations,
 		telegramBot:                dependencies.TelegramBot,
+		diagnosticsClient:          diagnostics.NewStorageClient(),
+		diagnosticsSnapshots:       diagnostics.NewSnapshotCache(),
+		diagnosticsLease:           diagnostics.NewMemoryLeaseService(),
 		legacyAppClashRenderer:     dependencies.LegacyAppClashRenderer,
 		ticketRegionResolver:       dependencies.TicketRegionResolver,
 		deviceState:                dependencies.DeviceState,
@@ -366,6 +375,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.WebSocketEnabled || dependencies.DeviceState != nil {
 		api.hub = newWSHub(dependencies.Store, dependencies.Now, dependencies.Logger, allowedOrigins, dependencies.NodeCoordinator, dependencies.DeviceState)
+		if api.hub != nil {
+			api.hub.SetLeaseService(api.diagnosticsLease)
+		}
 	}
 	if dependencies.WebSocketEnabled {
 		if dependencies.NodeCoordinator != nil {
@@ -517,12 +529,20 @@ func New(dependencies Dependencies) http.Handler {
 	root.HandleFunc("GET /api/v2/server/alivelist", api.xboardNodeAliveList)
 	root.HandleFunc("POST /api/v2/server/status", api.xboardNodeStatus)
 	root.HandleFunc("POST /api/v2/server/report", api.xboardNodeReport)
+	root.HandleFunc("POST /api/v2/server/diagnostics/bootstrap", api.nodeDiagnosticsBootstrapV2)
+	root.HandleFunc("POST /api/v2/server/diagnostics/capabilities", api.nodeDiagnosticsCapabilitiesV2)
+	root.HandleFunc("POST /api/v2/server/diagnostics/snapshot", api.nodeDiagnosticsSnapshotV2)
+	root.HandleFunc("POST /api/v2/server/diagnostics/ack", api.nodeDiagnosticsAckV2)
 	root.HandleFunc("GET /api/v1/server/UniProxy/config", api.xboardNodeConfig)
 	root.HandleFunc("GET /api/v1/server/UniProxy/user", api.xboardNodeUsers)
 	root.HandleFunc("POST /api/v1/server/UniProxy/push", api.xboardNodePush)
 	root.HandleFunc("POST /api/v1/server/UniProxy/alive", api.xboardNodeAlive)
 	root.HandleFunc("GET /api/v1/server/UniProxy/alivelist", api.xboardNodeAliveList)
 	root.HandleFunc("POST /api/v1/server/UniProxy/status", api.xboardNodeStatus)
+	root.HandleFunc("POST /api/v1/server/diagnostics/bootstrap", api.nodeDiagnosticsBootstrapV1)
+	root.HandleFunc("POST /api/v1/server/diagnostics/capabilities", api.nodeDiagnosticsCapabilitiesV1)
+	root.HandleFunc("POST /api/v1/server/diagnostics/snapshot", api.nodeDiagnosticsSnapshotV1)
+	root.HandleFunc("POST /api/v1/server/diagnostics/ack", api.nodeDiagnosticsAckV1)
 	root.HandleFunc("GET /{subscriptionPath}/{subscriptionToken}", api.dynamicClientSubscription)
 	legacyAdmin := http.NewServeMux()
 	legacyAdmin.HandleFunc("GET /api/v2/"+dependencies.LegacyAdminPath+"/plan/visibility", api.getPlanVisibility)
@@ -818,6 +838,15 @@ func New(dependencies Dependencies) http.Handler {
 	admin.HandleFunc("GET /api/v1/admin/system/status", api.getSystemStatus)
 	admin.HandleFunc("GET /api/v1/admin/system/audit", api.listAdminAudit)
 	admin.HandleFunc("GET /api/v1/admin/system/mail-failures", api.listTicketMailFailures)
+	admin.HandleFunc("POST /api/v1/admin/diagnostics/initialize", api.initDiagnosticsScope)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/lookup", api.lookupDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/query", api.queryDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/connection", api.connectionDiagnosticsOrder)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/start", api.startDiagnosticsSession)
+	admin.HandleFunc("POST /api/v1/admin/order/diagnostics/stop", api.stopDiagnosticsSession)
+	admin.HandleFunc("GET /api/v1/admin/order/diagnostics/status", api.getDiagnosticsSessionStatus)
+	admin.HandleFunc("GET /api/v1/admin/diagnostics/settings", api.getDiagnosticsSettings)
+	admin.HandleFunc("PUT /api/v1/admin/diagnostics/settings", api.updateDiagnosticsSettings)
 	// Authenticate before the audit wrapper so rejected administrator mutations
 	// (for example CSRF failures) retain an attributable, sanitized audit entry.
 	protectedAdmin := api.requireSession(api.auditAdminMutations(api.requireAdmin(api.requireCSRF(api.recoverPanic(admin)))))

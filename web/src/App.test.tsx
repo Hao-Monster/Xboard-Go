@@ -530,7 +530,7 @@ describe("App public identity bootstrap", () => {
     expect(sidebar).toBeVisible();
 
     expect(within(sidebar).getAllByRole("button").filter(button => button.getAttribute("aria-label") !== "切换侧边栏").map(button => button.textContent)).toEqual([
-      "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理",
+      "仪表盘", "系统管理", "系统配置", "插件管理", "主题配置", "公告管理", "支付配置", "知识库管理", "客户端管理", "日志中心",
       "节点管理", "服务器管理", "节点管理", "权限组管理", "路由管理",
       "订阅管理", "套餐管理", "订单管理", "分销管理", "优惠券管理", "礼品卡管理", "用户管理", "用户管理", "工单管理"
     ]);

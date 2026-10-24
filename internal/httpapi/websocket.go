@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hao-Monster/Xboard-Go/internal/devicestate"
+	"github.com/Hao-Monster/Xboard-Go/internal/diagnostics"
 	"github.com/Hao-Monster/Xboard-Go/internal/nodecoord"
 	"github.com/Hao-Monster/Xboard-Go/internal/store"
 	"github.com/google/uuid"
@@ -71,6 +72,7 @@ type wsHub struct {
 	deviceSyncMu      sync.Mutex
 	coordinator       nodecoord.Coordinator
 	deviceState       devicestate.Service
+	leaseService      diagnostics.LeaseService
 	registrationMu    [64]sync.Mutex
 }
 
@@ -858,7 +860,7 @@ func (c *wsConnection) allowIncomingMessage(message wsIncomingEnvelope) bool {
 
 func webSocketEventLogLabel(event string) string {
 	switch event {
-	case "pong", "node.status", "report.devices":
+	case "pong", "node.status", "report.devices", "diagnostics.capabilities", "request.diagnostics", "diagnostics.ack":
 		return event
 	default:
 		return "unknown"
@@ -866,7 +868,9 @@ func webSocketEventLogLabel(event string) string {
 }
 
 func (c *wsConnection) incomingMessageNodeID(message wsIncomingEnvelope) (int64, bool) {
-	if message.Event != "node.status" && message.Event != "report.devices" {
+	switch message.Event {
+	case "node.status", "report.devices", "diagnostics.capabilities", "request.diagnostics", "diagnostics.ack":
+	default:
 		return 0, false
 	}
 	if c.legacy {
@@ -898,16 +902,18 @@ func (c *wsConnection) ownsIncomingMessage(message wsIncomingEnvelope) (bool, er
 	if message.Event == "pong" {
 		return c.hub.coordinator.OwnsMachine(ctx, c.machineID, c.id)
 	}
-	if message.Event != "node.status" && message.Event != "report.devices" {
+	switch message.Event {
+	case "node.status", "report.devices", "diagnostics.capabilities", "request.diagnostics", "diagnostics.ack":
+		var identity struct {
+			NodeID int64 `json:"node_id"`
+		}
+		if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID < 1 || !c.hasNode(identity.NodeID) {
+			return true, nil
+		}
+		return c.hub.coordinator.OwnsMachineAndNodes(ctx, c.machineID, []int64{identity.NodeID}, c.id)
+	default:
 		return true, nil
 	}
-	var identity struct {
-		NodeID int64 `json:"node_id"`
-	}
-	if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID < 1 || !c.hasNode(identity.NodeID) {
-		return true, nil
-	}
-	return c.hub.coordinator.OwnsMachineAndNodes(ctx, c.machineID, []int64{identity.NodeID}, c.id)
 }
 
 func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
@@ -974,6 +980,79 @@ func (c *wsConnection) handleMessage(message wsIncomingEnvelope) error {
 			c.hub.NotifyDeviceStates(context.Background(), result.DeviceUserIDs)
 		}
 		return applyErr
+	case "diagnostics.capabilities":
+		var payload nodeDiagnosticsCapabilityPayload
+		if err := json.Unmarshal(message.Data, &payload); err != nil {
+			// Same policy as semantic validation failures below: never tear down business sync
+			// because a (possibly newer) node sent a diagnostics payload this panel cannot decode.
+			c.hub.logger.Warn("reject node diagnostics capability", "machine_id", c.machineID, "node_id", nodeID, "error", err)
+			return nil
+		}
+		if c.legacy {
+			if payload.NodeID != 0 && payload.NodeID != nodeID {
+				return errors.New("diagnostics.capabilities has an invalid node_id")
+			}
+			payload.NodeID = nodeID
+		} else if !c.hasNode(payload.NodeID) {
+			return errors.New("diagnostics.capabilities has an invalid node_id")
+		}
+		capability, err := normalizeNodeDiagnosticsCapability(payload.NodeID, payload, c.hub.now())
+		if err != nil {
+			// A malformed diagnostics report must not tear down the business sync connection
+			// (the node would reconnect and resend the same payload in a loop). Drop and log.
+			c.hub.logger.Warn("reject node diagnostics capability", "machine_id", c.machineID, "node_id", payload.NodeID, "error", err)
+			return nil
+		}
+		if err := c.hub.store.SaveNodeDiagnosticsCapability(context.Background(), capability); err != nil {
+			c.hub.logger.Warn("save node diagnostics capability", "machine_id", c.machineID, "node_id", payload.NodeID, "error", err)
+		}
+		return nil
+	case "request.diagnostics":
+		var req struct {
+			NodeID    int64  `json:"node_id"`
+			RuntimeID string `json:"runtime_id"`
+			RequestID string `json:"request_id"`
+		}
+		if err := json.Unmarshal(message.Data, &req); err != nil {
+			return nil
+		}
+		targetNodeID := nodeID
+		if !c.legacy {
+			if req.NodeID <= 0 || !c.hasNode(req.NodeID) {
+				return errors.New("request.diagnostics has an invalid node_id")
+			}
+			targetNodeID = req.NodeID
+		}
+		if c.hub.leaseService != nil {
+			panelScope, _ := c.hub.store.GetDiagnosticsScope(context.Background())
+			snap, err := c.hub.leaseService.BuildNodeSnapshot(context.Background(), panelScope, targetNodeID, req.RuntimeID, req.RequestID, c.hub.now())
+			if err == nil {
+				c.enqueue(wsEnvelope{
+					Event: "sync.diagnostics.snapshot",
+					Data:  snap,
+				})
+			}
+		}
+		return nil
+	case "diagnostics.ack":
+		var ack diagnostics.NodeAckPayload
+		if err := json.Unmarshal(message.Data, &ack); err != nil {
+			return nil
+		}
+		targetNodeID := nodeID
+		if !c.legacy {
+			var identity struct {
+				NodeID int64 `json:"node_id"`
+			}
+			if err := json.Unmarshal(message.Data, &identity); err != nil || identity.NodeID <= 0 || !c.hasNode(identity.NodeID) {
+				return errors.New("diagnostics.ack has an invalid node_id")
+			}
+			targetNodeID = identity.NodeID
+		}
+		if c.hub.leaseService != nil {
+			_ = c.hub.leaseService.ProcessNodeAck(context.Background(), targetNodeID, ack.RuntimeID, ack, c.hub.now())
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -1143,6 +1222,39 @@ func nodesSyncEnvelope(snapshots []wsNodeSnapshot) wsEnvelope {
 		nodes = append(nodes, snapshot.summary)
 	}
 	return wsEnvelope{Event: "sync.nodes", Data: map[string]any{"nodes": nodes}}
+}
+
+func (h *wsHub) SetLeaseService(s diagnostics.LeaseService) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.leaseService = s
+}
+
+func (h *wsHub) NotifyDiagnosticsControl(ctx context.Context, epoch string, version int64) {
+	h.mu.RLock()
+	seen := make(map[*wsConnection]struct{})
+	for _, conn := range h.machines {
+		if conn != nil {
+			seen[conn] = struct{}{}
+		}
+	}
+	for _, conn := range h.nodes {
+		if conn != nil {
+			seen[conn] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+
+	envelope := wsEnvelope{
+		Event: "sync.diagnostics",
+		Data: map[string]any{
+			"control_epoch":   epoch,
+			"control_version": strconv.FormatInt(version, 10),
+		},
+	}
+	for conn := range seen {
+		conn.enqueue(envelope)
+	}
 }
 
 func (h *wsHub) NotifyMachineNodes(ctx context.Context, machineID int64) {
@@ -1387,6 +1499,25 @@ func (h *wsHub) notifyNodeFull(ctx context.Context, machineID, nodeID int64, bro
 	connection.enqueue(usersSyncEnvelope(snapshot))
 	if !connection.legacy {
 		connection.enqueue(devicesSyncEnvelope(snapshot))
+	}
+}
+
+// NotifyAllNodesFull pushes config+users full synchronization to every runtime node.
+// Each per-node notification is also published to peer replicas through the coordinator,
+// so nodes owned by another panel instance are refreshed as well. Used when installation-wide
+// user metadata changes (panel_scope initialization adds diagnostic_id to every runtime user).
+func (h *wsHub) NotifyAllNodesFull(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	notifyCtx := context.WithoutCancel(ctx)
+	targets, err := h.store.ListAllRuntimeNodeTargets(notifyCtx)
+	if err != nil {
+		h.logger.Warn("resolve websocket full resync targets", "error", err)
+		return
+	}
+	for _, target := range targets {
+		h.NotifyNodeFull(notifyCtx, target.MachineID, target.NodeID)
 	}
 }
 
