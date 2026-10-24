@@ -4,9 +4,11 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  padding: 1.5rem;
-  max-width: 1440px;
+  padding: 1.5rem 0;
+  width: calc(100% - 40px);
+  max-width: none;
   margin: 0 auto;
+  box-sizing: border-box;
   color: var(--text, #e8ebf2);
 }
 
@@ -566,7 +568,8 @@
 
 @media (max-width: 768px) {
   .diagnostics-shell {
-    padding: 1rem;
+    width: calc(100% - 24px);
+    padding: 1rem 0;
   }
   .filters-bar {
     flex-direction: column;

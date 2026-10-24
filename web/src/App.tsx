@@ -154,7 +154,6 @@ const adminNavGroups: NavGroup[] = [
       { page: "payments", label: "支付配置" },
       { page: "knowledge", label: "知识库管理" },
       { page: "clients", label: "客户端管理" },
-      { page: "diagnostics", label: "日志中心" },
     ],
   },
   {
@@ -584,6 +583,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
           <button type="button" className="sidebar-collapse" aria-label={translateAdmin("切换侧边栏")} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(current => !current)}>{sidebarCollapsed ? "»" : "«"}</button>
           <div className="admin-nav">
             <button className="nav-link" aria-current={page === "system" ? "page" : undefined} onPointerEnter={() => preloadAdminPage("system")} onFocus={() => preloadAdminPage("system")} onClick={() => navigateAdminPage("system")} title={translateAdmin("仪表盘")} aria-label={translateAdmin("仪表盘")}><AdminNavIcon page="system" /><span className="admin-nav-label">{translateAdmin("仪表盘")}</span></button>
+            <button className="nav-link" aria-current={page === "diagnostics" ? "page" : undefined} onPointerEnter={() => preloadAdminPage("diagnostics")} onFocus={() => preloadAdminPage("diagnostics")} onClick={() => navigateAdminPage("diagnostics")} title={translateAdmin("日志中心")} aria-label={translateAdmin("日志中心")}><AdminNavIcon page="diagnostics" /><span className="admin-nav-label">{translateAdmin("日志中心")}</span></button>
             {adminNavGroups.map((group) => {
               const isExpanded = expandedAdminGroups[group.id] ?? true;
               return (
@@ -674,7 +674,7 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       {menuSearchOpen && <Modal title="搜索菜单和功能" onClose={() => setMenuSearchOpen(false)} className="admin-search-dialog">
         <input autoFocus type="search" aria-label="搜索菜单和功能" placeholder={translateAdmin("搜索菜单和功能...")} value={menuSearch} onChange={event => setMenuSearch(event.target.value)} />
         <div className="admin-search-results">
-          {[{ page: "system" as AdminPage, label: "仪表盘" }, ...adminNavGroups.flatMap(group => group.items)].filter(item => translateAdmin(item.label).toLowerCase().includes(menuSearch.trim().toLowerCase())).map(item => <button type="button" key={item.page} onClick={() => { setMenuSearchOpen(false); setMenuSearch(""); navigateAdminPage(item.page); }}>{translateAdmin(item.label)}</button>)}
+          {[{ page: "system" as AdminPage, label: "仪表盘" }, { page: "diagnostics" as AdminPage, label: "日志中心" }, ...adminNavGroups.flatMap(group => group.items)].filter(item => translateAdmin(item.label).toLowerCase().includes(menuSearch.trim().toLowerCase())).map(item => <button type="button" key={item.page} onClick={() => { setMenuSearchOpen(false); setMenuSearch(""); navigateAdminPage(item.page); }}>{translateAdmin(item.label)}</button>)}
         </div>
       </Modal>}
     </div>
