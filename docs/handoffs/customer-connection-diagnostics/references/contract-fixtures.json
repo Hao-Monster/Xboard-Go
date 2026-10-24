@@ -1,0 +1,979 @@
+{
+  "schema_version": 1,
+  "revision": "2026-10-18-review1",
+  "identity_vectors": [
+    {
+      "name": "standard_direct_order_customer_a",
+      "order_type": "direct",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "order_id": 9001,
+      "trade_no": "20261018000100000001",
+      "order_user_id": 1001,
+      "subscriber_user_id": 1001,
+      "uuid_before": "11111111-1111-4111-8111-111111111111",
+      "uuid_after_rotation": "22222222-2222-4222-8222-222222222222",
+      "expected_diagnostic_id": "66f4f8087e40081074ff37ce"
+    },
+    {
+      "name": "distributor_initial_order_takes_subscriber_not_distributor",
+      "order_type": "distributor_initial",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "order_id": 9002,
+      "trade_no": "20261018000100000002",
+      "order_user_id": 50,
+      "distributor_user_id": 50,
+      "subscriber_user_id": 2002,
+      "expected_diagnostic_id": "d3ea8cbf6fa6d103a2a6ee89",
+      "forbidden_distributor_diagnostic_id": "9874cfb47ec65522ad4b60ba"
+    },
+    {
+      "name": "distributor_renewal_order_same_subscriber_same_diagnostic_id",
+      "order_type": "distributor_renewal",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "order_id": 9003,
+      "trade_no": "20261018000100000003",
+      "order_user_id": 50,
+      "distributor_user_id": 50,
+      "subscriber_user_id": 2002,
+      "expected_diagnostic_id": "d3ea8cbf6fa6d103a2a6ee89",
+      "forbidden_distributor_diagnostic_id": "9874cfb47ec65522ad4b60ba"
+    },
+    {
+      "name": "different_panel_scope_isolates_same_user_id",
+      "order_type": "direct",
+      "panel_scope": "00000000-0000-4000-8000-000000000099",
+      "order_id": 9001,
+      "trade_no": "20261018000100000001",
+      "order_user_id": 1001,
+      "subscriber_user_id": 1001,
+      "expected_diagnostic_id": "4a1cd2469093eb400ccf3869"
+    }
+  ],
+  "invalid_identity_vectors": [
+    {
+      "name": "missing_panel_scope",
+      "panel_scope": "",
+      "subscriber_user_id": 1001,
+      "expected_error_code": "diagnostics_not_initialized"
+    },
+    {
+      "name": "whitespace_only_panel_scope",
+      "panel_scope": "   ",
+      "subscriber_user_id": 1001,
+      "expected_error_code": "diagnostics_not_initialized"
+    },
+    {
+      "name": "invalid_panel_scope_format",
+      "panel_scope": "not-a-valid-uuid",
+      "subscriber_user_id": 1001,
+      "expected_error_code": "invalid_panel_scope"
+    },
+    {
+      "name": "trailing_newline_panel_scope",
+      "panel_scope": "00000000-0000-4000-8000-000000000001\n",
+      "subscriber_user_id": 1001,
+      "expected_error_code": "invalid_panel_scope"
+    },
+    {
+      "name": "distributor_order_missing_subscriber",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "order_user_id": 50,
+      "subscriber_user_id": 0,
+      "expected_error_code": "subscription_user_missing"
+    },
+    {
+      "name": "negative_subscriber_user_id",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "order_user_id": 1001,
+      "subscriber_user_id": -1,
+      "expected_error_code": "subscription_user_missing"
+    }
+  ],
+  "event_id_vectors": [
+    {
+      "name": "connection_event_seq_1",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "node_id": 11,
+      "runtime_id": "0123456789abcdef0123456789abcdef",
+      "event_family": "connection",
+      "owner_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "sequence": 1,
+      "expected_canonical": "00000000-0000-4000-8000-000000000001/11/0123456789abcdef0123456789abcdef/connection/a1b2c3d4e5f60718293a4b5c6d7e8f90/1",
+      "expected_event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c"
+    },
+    {
+      "name": "connection_event_seq_2",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "node_id": 11,
+      "runtime_id": "0123456789abcdef0123456789abcdef",
+      "event_family": "connection",
+      "owner_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "sequence": 2,
+      "expected_canonical": "00000000-0000-4000-8000-000000000001/11/0123456789abcdef0123456789abcdef/connection/a1b2c3d4e5f60718293a4b5c6d7e8f90/2",
+      "expected_event_id": "66a56dcb534fa8474784057582e9f34d9f615dcafa23e6092f874b974e10645a"
+    },
+    {
+      "name": "connection_event_seq_3",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "node_id": 11,
+      "runtime_id": "0123456789abcdef0123456789abcdef",
+      "event_family": "connection",
+      "owner_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "sequence": 3,
+      "expected_canonical": "00000000-0000-4000-8000-000000000001/11/0123456789abcdef0123456789abcdef/connection/a1b2c3d4e5f60718293a4b5c6d7e8f90/3",
+      "expected_event_id": "3de2ea9a31d8a0b6da7f07836b62938e870402cf36d48f27711b1846e91361f4"
+    },
+    {
+      "name": "resolver_operation_event_seq_1",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "node_id": 11,
+      "runtime_id": "0123456789abcdef0123456789abcdef",
+      "event_family": "resolver_operation",
+      "owner_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+      "sequence": 1,
+      "expected_canonical": "00000000-0000-4000-8000-000000000001/11/0123456789abcdef0123456789abcdef/resolver_operation/f0e1d2c3b4a5968778695a4b3c2d1e0f/1",
+      "expected_event_id": "5f34c6f7f865bdbdb1f1214430249222f92472bf314f138e03d4587b636567f3"
+    },
+    {
+      "name": "node_health_event_seq_1",
+      "panel_scope": "00000000-0000-4000-8000-000000000001",
+      "node_id": 11,
+      "runtime_id": "0123456789abcdef0123456789abcdef",
+      "event_family": "node",
+      "owner_id": "0123456789abcdef0123456789abcdef",
+      "sequence": 1,
+      "expected_canonical": "00000000-0000-4000-8000-000000000001/11/0123456789abcdef0123456789abcdef/node/0123456789abcdef0123456789abcdef/1",
+      "expected_event_id": "d72571537261e35d1db073a8649e480c4335f60e090e51572eb2c2467c999697"
+    }
+  ],
+  "valid_events": [
+    {
+      "name": "connection_open_baseline",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.100000Z",
+        "event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 1,
+        "event": "diag.connection.open",
+        "stage": "admission",
+        "network": "tcp",
+        "requested_host": "www.facebook.com",
+        "requested_port": 443,
+        "observed_domain": "www.facebook.com",
+        "domain_source": "request",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000001",
+        "parent_span_id": "",
+        "span_name": "connection",
+        "span_start_time": "2026-10-18T12:00:00.100000Z",
+        "span_duration_ms": 0,
+        "span_status": "unset",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending"
+      }
+    },
+    {
+      "name": "connection_dns_result_with_shared_link",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.125000Z",
+        "event_id": "66a56dcb534fa8474784057582e9f34d9f615dcafa23e6092f874b974e10645a",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 2,
+        "event": "diag.dns.result",
+        "stage": "dns",
+        "network": "tcp",
+        "requested_host": "www.facebook.com",
+        "requested_port": 443,
+        "observed_domain": "www.facebook.com",
+        "domain_source": "request",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000002",
+        "parent_span_id": "1000000000000001",
+        "span_name": "dns.lookup",
+        "span_start_time": "2026-10-18T12:00:00.105000Z",
+        "span_duration_ms": 20,
+        "span_status": "ok",
+        "resolver_operation_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "node_resolution": "resolved",
+        "dns_rcode": "NOERROR",
+        "dns_answers": [
+          "157.240.1.35"
+        ],
+        "dns_answers_total": 1,
+        "dns_answers_truncated": false,
+        "span_links": [
+          {
+            "trace_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+            "span_id": "2000000000000001",
+            "relation": "shared_dns_operation"
+          }
+        ],
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending"
+      }
+    },
+    {
+      "name": "connection_dial_failure_with_detail_stack",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:01.130000Z",
+        "event_id": "3de2ea9a31d8a0b6da7f07836b62938e870402cf36d48f27711b1846e91361f4",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "session_id": "99887766554433221100ffeeddccbbaa",
+        "seq": 3,
+        "event": "diag.dial.result",
+        "stage": "dial",
+        "network": "tcp",
+        "requested_host": "www.facebook.com",
+        "requested_port": 443,
+        "observed_domain": "www.facebook.com",
+        "domain_source": "request",
+        "outbound_tag": "direct",
+        "selected_target_address": "157.240.1.35",
+        "socket_peer": "157.240.1.35:443",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000003",
+        "parent_span_id": "1000000000000001",
+        "span_name": "dial",
+        "span_start_time": "2026-10-18T12:00:00.130000Z",
+        "span_duration_ms": 1000,
+        "span_status": "error",
+        "reason_code": "connect_timeout",
+        "error_type": "net.OpError",
+        "timeout": true,
+        "errno": "ETIMEDOUT",
+        "safe_message": "dial tcp 157.240.1.35:443: i/o timeout",
+        "has_error": true,
+        "last_error_stage": "dial",
+        "last_reason_code": "connect_timeout",
+        "error_stages": [
+          "dial"
+        ],
+        "reason_codes": [
+          "connect_timeout"
+        ],
+        "transport_state": "dial_failed",
+        "exception": {
+          "type": "net.OpError",
+          "message": "dial tcp 157.240.1.35:443: i/o timeout",
+          "stacktrace": "github.com/cedar2025/xboard-node/internal/diagnostics.CaptureBoundary (internal/diagnostics/stack.go:48)\ngithub.com/sagernet/sing-box/route.(*Router).RouteConnectionEx (deps/sing-box/route/route.go:312)",
+          "stack_capture_kind": "observation_boundary",
+          "stack_truncated": false,
+          "stack_frames_total": 2
+        }
+      }
+    },
+    {
+      "name": "connection_relay_result_baseline",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:05.200000Z",
+        "event_id": "145fd8019348363eb8572038efcfcd3c38bbb26591474e1e083100ee8448b473",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 4,
+        "event": "diag.relay.result",
+        "stage": "relay",
+        "network": "tcp",
+        "requested_host": "www.facebook.com",
+        "requested_port": 443,
+        "observed_domain": "www.facebook.com",
+        "domain_source": "request",
+        "outbound_tag": "direct",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000004",
+        "parent_span_id": "1000000000000001",
+        "span_name": "relay",
+        "span_start_time": "2026-10-18T12:00:01.200000Z",
+        "span_duration_ms": 4000,
+        "span_status": "ok",
+        "bytes_up": 2048,
+        "bytes_down": 16384,
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "transport_established"
+      }
+    },
+    {
+      "name": "connection_udp_target_summary_lru_evicted",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:06.000000Z",
+        "event_id": "964161232c7d08bc66226c0be8371cf57597d0d8541171c48de01f528a28319d",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "target_id": "target-01",
+        "seq": 5,
+        "event": "diag.target.summary",
+        "stage": "relay",
+        "network": "udp",
+        "requested_host": "turn.example.com",
+        "requested_port": 3478,
+        "observed_domain": "turn.example.com",
+        "domain_source": "request",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000005",
+        "parent_span_id": "1000000000000001",
+        "span_name": "relay",
+        "span_start_time": "2026-10-18T12:00:02.000000Z",
+        "span_duration_ms": 4000,
+        "span_status": "ok",
+        "summary_reason": "lru_evicted",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "response_observed"
+      }
+    },
+    {
+      "name": "shared_resolver_operation_attempt",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.110000Z",
+        "event_id": "5f34c6f7f865bdbdb1f1214430249222f92472bf314f138e03d4587b636567f3",
+        "event_family": "resolver_operation",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "resolver_operation_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "operation_seq": 1,
+        "event": "diag.dns.attempt",
+        "stage": "dns",
+        "observation_mode": "detail",
+        "trace_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "span_id": "2000000000000001",
+        "parent_span_id": "",
+        "span_name": "dns.exchange",
+        "span_start_time": "2026-10-18T12:00:00.106000Z",
+        "span_duration_ms": 18,
+        "span_status": "ok",
+        "observed_domain": "www.facebook.com",
+        "dns_server": "1.1.1.1:53",
+        "dns_transport": "udp",
+        "dns_query_type": "A",
+        "attempt_id": 1,
+        "dns_rcode": "NOERROR",
+        "dns_answers": [
+          "157.240.1.35"
+        ],
+        "detail_started_mid_operation": false
+      }
+    },
+    {
+      "name": "shared_resolver_operation_exchange_result_baseline",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.124000Z",
+        "event_id": "c926da1d33f9a74f034c967c9dfdb9cc39327ac998f27ffc47710b30a77d1d7f",
+        "event_family": "resolver_operation",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "resolver_operation_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "operation_seq": 2,
+        "event": "diag.dns.exchange.result",
+        "stage": "dns",
+        "observation_mode": "baseline",
+        "trace_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "span_id": "2000000000000001",
+        "parent_span_id": "",
+        "span_name": "dns.exchange",
+        "span_start_time": "2026-10-18T12:00:00.106000Z",
+        "span_duration_ms": 18,
+        "span_status": "ok",
+        "observed_domain": "www.facebook.com",
+        "dns_server": "1.1.1.1:53",
+        "dns_transport": "udp",
+        "dns_query_type": "A",
+        "dns_rcode": "NOERROR",
+        "dns_answers": [
+          "157.240.1.35"
+        ]
+      }
+    },
+    {
+      "name": "node_observer_health",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:30.000000Z",
+        "event_id": "d72571537261e35d1db073a8649e480c4335f60e090e51572eb2c2467c999697",
+        "event_family": "node",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "runtime_seq": 1,
+        "event": "diag.observer.health",
+        "observer_state": "ready",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 7,
+        "active_leases": 1,
+        "queue_depth": 4,
+        "queue_bytes": 3120,
+        "dropped_total": 0,
+        "dropped_detail": 0,
+        "dropped_baseline": 0,
+        "evicted_targets_total": 0
+      }
+    }
+  ],
+  "invalid_events": [
+    {
+      "name": "resolver_operation_with_customer_diagnostic_id_forbidden",
+      "expected_reason": "forbidden_field_in_resolver_operation",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.110000Z",
+        "event_id": "5f34c6f7f865bdbdb1f1214430249222f92472bf314f138e03d4587b636567f3",
+        "event_family": "resolver_operation",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "resolver_operation_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "operation_seq": 1,
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "event": "diag.dns.attempt",
+        "stage": "dns",
+        "observation_mode": "detail",
+        "trace_id": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+        "span_id": "2000000000000001",
+        "span_name": "dns.exchange",
+        "span_start_time": "2026-10-18T12:00:00.106000Z",
+        "span_duration_ms": 18,
+        "span_status": "ok",
+        "observed_domain": "www.facebook.com"
+      }
+    },
+    {
+      "name": "connection_event_with_raw_uuid_forbidden",
+      "expected_reason": "forbidden_field",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.100000Z",
+        "event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "uuid": "11111111-1111-4111-8111-111111111111",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 1,
+        "event": "diag.connection.open",
+        "stage": "admission",
+        "network": "tcp",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000001",
+        "span_name": "connection",
+        "span_start_time": "2026-10-18T12:00:00.100000Z",
+        "span_duration_ms": 0,
+        "span_status": "unset",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending"
+      }
+    },
+    {
+      "name": "connection_event_with_pii_email_and_sni_forbidden",
+      "expected_reason": "forbidden_field",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.100000Z",
+        "event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "email": "customer@example.com",
+        "sni": "www.facebook.com",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 1,
+        "event": "diag.connection.open",
+        "stage": "admission",
+        "network": "tcp",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000001",
+        "span_name": "connection",
+        "span_start_time": "2026-10-18T12:00:00.100000Z",
+        "span_duration_ms": 0,
+        "span_status": "unset",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending"
+      }
+    },
+    {
+      "name": "connection_event_with_unknown_unwhitelisted_field",
+      "expected_reason": "unknown_field_in_connection",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.100000Z",
+        "event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 1,
+        "event": "diag.connection.open",
+        "stage": "admission",
+        "network": "tcp",
+        "observation_mode": "baseline",
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "span_id": "1000000000000001",
+        "span_name": "connection",
+        "span_start_time": "2026-10-18T12:00:00.100000Z",
+        "span_duration_ms": 0,
+        "span_status": "unset",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending",
+        "custom_arbitrary_debug_blob": "not_allowed_in_whitelist"
+      }
+    },
+    {
+      "name": "node_family_with_connection_event_name_mismatch",
+      "expected_reason": "event_family_mismatch",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:30.000000Z",
+        "event_id": "d72571537261e35d1db073a8649e480c4335f60e090e51572eb2c2467c999697",
+        "event_family": "node",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "runtime_seq": 1,
+        "event": "diag.connection.open"
+      }
+    },
+    {
+      "name": "connection_event_trace_id_mismatch",
+      "expected_reason": "connection_trace_id_must_equal_connection_id",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:00.100000Z",
+        "event_id": "7778c1538b933a0201827b84d005adc47d916acf1ecbdf71863be740642f901c",
+        "event_family": "connection",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "diagnostic_id": "66f4f8087e40081074ff37ce",
+        "connection_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "seq": 1,
+        "event": "diag.connection.open",
+        "stage": "admission",
+        "network": "tcp",
+        "observation_mode": "baseline",
+        "trace_id": "ffffffffffffffffffffffffffffffff",
+        "span_id": "1000000000000001",
+        "span_name": "connection",
+        "span_start_time": "2026-10-18T12:00:00.100000Z",
+        "span_duration_ms": 0,
+        "span_status": "unset",
+        "has_error": false,
+        "error_stages": [],
+        "reason_codes": [],
+        "transport_state": "pending"
+      }
+    },
+    {
+      "name": "node_event_with_fake_trace_id_forbidden",
+      "expected_reason": "forbidden_field_in_node",
+      "payload": {
+        "schema_version": 1,
+        "event_time": "2026-10-18T12:00:30.000000Z",
+        "event_id": "d72571537261e35d1db073a8649e480c4335f60e090e51572eb2c2467c999697",
+        "event_family": "node",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "runtime_seq": 1,
+        "trace_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "event": "diag.observer.health"
+      }
+    }
+  ],
+  "domain_normalization_vectors": [
+    {
+      "input": "WWW.Facebook.COM.",
+      "expected": "www.facebook.com",
+      "valid": true
+    },
+    {
+      "input": "中文.example.com.",
+      "expected": "xn--fiq228c.example.com",
+      "valid": true
+    },
+    {
+      "input": "https://www.facebook.com/login?token=secret",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "www.facebook.com:443",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "bad domain with space.com",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "1.2.3.4",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "1.2.3.4.",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "999.999.999.999",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": ".example.com",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "example..com",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "xn--",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "-example.com",
+      "expected": null,
+      "valid": false
+    },
+    {
+      "input": "localhost",
+      "expected": null,
+      "valid": false
+    }
+  ],
+  "stack_sanitization_vectors": [
+    {
+      "name": "strips_windows_and_linux_absolute_paths_and_caps_12_frames",
+      "raw_frames": [
+        {
+          "function": "github.com/cedar2025/xboard-node/internal/diagnostics.CaptureError(0xc000123456)",
+          "file": "E:\\CodeWorkstation\\Xboard-Node\\internal\\diagnostics\\stack.go",
+          "line": 42
+        },
+        {
+          "function": "github.com/sagernet/sing-box/route.(*Router).RouteConnectionEx",
+          "file": "/home/internal/work/Xboard-Node/deps/sing-box/route/route.go",
+          "line": 312
+        },
+        {
+          "function": "github.com/miekg/dns.(*Client).ExchangeContext",
+          "file": "/home/bingo/.gomodcache/github.com/miekg/dns@v1.1.58/client.go",
+          "line": 215
+        },
+        {
+          "function": "net.(*Dialer).DialContext",
+          "file": "/usr/local/go/src/net/dial.go",
+          "line": 512
+        },
+        {
+          "function": "custom/runner.Execute",
+          "file": "C:\\Users\\Administrator\\work\\runner\\exec.go",
+          "line": 88
+        },
+        {
+          "function": "pkg/f06.Call",
+          "file": "/workspace/Xboard-Node/internal/f06.go",
+          "line": 6
+        },
+        {
+          "function": "pkg/f07.Call",
+          "file": "/workspace/Xboard-Node/internal/f07.go",
+          "line": 7
+        },
+        {
+          "function": "pkg/f08.Call",
+          "file": "/workspace/Xboard-Node/internal/f08.go",
+          "line": 8
+        },
+        {
+          "function": "pkg/f09.Call",
+          "file": "/workspace/Xboard-Node/internal/f09.go",
+          "line": 9
+        },
+        {
+          "function": "pkg/f10.Call",
+          "file": "/workspace/Xboard-Node/internal/f10.go",
+          "line": 10
+        },
+        {
+          "function": "pkg/f11.Call",
+          "file": "/workspace/Xboard-Node/internal/f11.go",
+          "line": 11
+        },
+        {
+          "function": "pkg/f12.Call",
+          "file": "/workspace/Xboard-Node/internal/f12.go",
+          "line": 12
+        },
+        {
+          "function": "pkg/f13.ShouldBeTruncatedBy12FrameCap",
+          "file": "/workspace/Xboard-Node/internal/f13.go",
+          "line": 13
+        },
+        {
+          "function": "pkg/f14.ShouldBeTruncatedBy12FrameCap",
+          "file": "/workspace/Xboard-Node/internal/f14.go",
+          "line": 14
+        }
+      ],
+      "expected_frames_total": 14,
+      "expected_frames_kept": 12,
+      "expected_truncated": true,
+      "expected_first_frame": "github.com/cedar2025/xboard-node/internal/diagnostics.CaptureError (internal/diagnostics/stack.go:42)",
+      "expected_second_frame": "github.com/sagernet/sing-box/route.(*Router).RouteConnectionEx (deps/sing-box/route/route.go:312)",
+      "expected_third_frame": "github.com/miekg/dns.(*Client).ExchangeContext (dns@v1.1.58/client.go:215)",
+      "expected_fourth_frame": "net.(*Dialer).DialContext (src/net/dial.go:512)",
+      "expected_fifth_frame": "custom/runner.Execute (runner/exec.go:88)",
+      "forbidden_substrings": [
+        "E:\\CodeWorkstation",
+        "/home/internal",
+        "/home/bingo",
+        "/usr/local/go",
+        "C:\\Users\\Administrator",
+        "0xc000123456",
+        "ShouldBeTruncatedBy12FrameCap"
+      ]
+    }
+  ],
+  "message_sanitization_vectors": [
+    {
+      "name": "redacts_credentials_urls_emails_ipv4_ipv6_and_truncates_unicode_safely",
+      "raw_message": "\u001b[31mdial tcp 198.51.100.42:443 & [2001:db8::1]:8443 failed\u001b[0m: auth token=sec_9876543210 user=admin@example.com uuid=11111111-1111-4111-8111-111111111111 url=https://sub.example.com/api/v1/client/subscribe?token=abc123456789 诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本诊断连接异常测试文本",
+      "max_chars": 256,
+      "forbidden_substrings": [
+        "sec_9876543210",
+        "admin@example.com",
+        "2001:db8::1",
+        "198.51.100.42",
+        "11111111-1111-4111-8111-111111111111",
+        "https://sub.example.com",
+        "abc123456789",
+        "\u001b"
+      ]
+    }
+  ],
+  "lease_snapshot_vectors": [
+    {
+      "name": "accepts_newer_version_and_computes_monotonic_deadline_with_positive_rtt_and_millis",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 5,
+      "rtt_ms": 250,
+      "monotonic_now_ms": 100000,
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-001",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 6,
+        "server_time": "2026-10-18T12:00:00.250Z",
+        "sessions": [
+          {
+            "session_id": "99887766554433221100ffeeddccbbaa",
+            "diagnostic_id": "66f4f8087e40081074ff37ce",
+            "node_id": 11,
+            "revision": 1,
+            "enabled": true,
+            "created_at": "2026-10-18T12:00:00.250Z",
+            "expires_at": "2026-10-18T12:15:00.750Z"
+          }
+        ]
+      },
+      "expected_accepted": true,
+      "expected_active_diagnostic_ids": [
+        "66f4f8087e40081074ff37ce"
+      ],
+      "expected_deadline_monotonic_ms": 1000250
+    },
+    {
+      "name": "new_epoch_supersedes_higher_version_and_clears_old_sessions",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 7,
+      "rtt_ms": 100,
+      "monotonic_now_ms": 200000,
+      "existing_deadlines": {
+        "66f4f8087e40081074ff37ce": 950000
+      },
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-epoch-reset",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000020",
+        "control_version": 1,
+        "server_time": "2026-10-18T12:05:00.000Z",
+        "sessions": [
+          {
+            "session_id": "11223344556677889900aabbccddeeff",
+            "diagnostic_id": "d3ea8cbf6fa6d103a2a6ee89",
+            "node_id": 11,
+            "revision": 1,
+            "enabled": true,
+            "created_at": "2026-10-18T12:05:00.000Z",
+            "expires_at": "2026-10-18T12:20:00.000Z"
+          }
+        ]
+      },
+      "expected_accepted": true,
+      "expected_active_diagnostic_ids": [
+        "d3ea8cbf6fa6d103a2a6ee89"
+      ],
+      "expected_deadline_monotonic_ms": 1099900
+    },
+    {
+      "name": "rejects_stale_version_within_same_epoch",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 7,
+      "rtt_ms": 100,
+      "monotonic_now_ms": 105000,
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-002",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 6,
+        "server_time": "2026-10-18T12:00:05.000Z",
+        "sessions": []
+      },
+      "expected_accepted": false,
+      "expected_reason": "stale_control_version"
+    },
+    {
+      "name": "rejects_snapshot_when_rtt_exceeds_5000ms",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 7,
+      "rtt_ms": 5200,
+      "monotonic_now_ms": 110000,
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-003",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 8,
+        "server_time": "2026-10-18T12:00:10.000Z",
+        "sessions": []
+      },
+      "expected_accepted": false,
+      "expected_reason": "rtt_exceeds_limit"
+    },
+    {
+      "name": "rejects_snapshot_when_session_contains_invalid_fields",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 7,
+      "rtt_ms": 50,
+      "monotonic_now_ms": 115000,
+      "existing_deadlines": {
+        "66f4f8087e40081074ff37ce": 950000
+      },
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-004",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 9,
+        "server_time": "2026-10-18T12:00:15.000Z",
+        "sessions": [
+          {
+            "session_id": "99887766554433221100ffeeddccbbaa",
+            "diagnostic_id": "invalid-diag-id",
+            "node_id": 11,
+            "revision": 1,
+            "enabled": true,
+            "created_at": "2026-10-18T12:00:00Z",
+            "expires_at": "2026-10-18T12:15:00Z"
+          }
+        ]
+      },
+      "expected_accepted": false,
+      "expected_reason": "invalid_session_in_snapshot"
+    },
+    {
+      "name": "stop_session_removes_subject_via_full_authoritative_snapshot",
+      "current_epoch": "00000000-0000-4000-8000-000000000010",
+      "current_version": 8,
+      "rtt_ms": 50,
+      "monotonic_now_ms": 120000,
+      "snapshot": {
+        "schema_version": 1,
+        "request_id": "req-005",
+        "panel_scope": "00000000-0000-4000-8000-000000000001",
+        "node_id": 11,
+        "runtime_id": "0123456789abcdef0123456789abcdef",
+        "control_epoch": "00000000-0000-4000-8000-000000000010",
+        "control_version": 9,
+        "server_time": "2026-10-18T12:00:20.000Z",
+        "sessions": []
+      },
+      "expected_accepted": true,
+      "expected_active_diagnostic_ids": []
+    }
+  ]
+}

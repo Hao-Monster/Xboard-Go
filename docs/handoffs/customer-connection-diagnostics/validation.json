@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "handoff_version": "go-design-handoff-v1",
+  "checked_at_utc": "2026-10-22T09:00:16.4757699Z",
+  "scope": "Document-only validation; no Go business implementation or tests executed",
+  "result": "PASS",
+  "authored_markdown_files": 8,
+  "utf8_and_trailing_whitespace": "PASS",
+  "balanced_fence_lines": 16,
+  "local_links_verified": 28,
+  "json_files_parsed": 4,
+  "reference_files_bytes_and_sha256_verified": 4,
+  "requirements_labels_verified": 18,
+  "test_case_labels_verified": 28,
+  "credential_marker_scan": "PASS",
+  "go_business_tests": "NOT RUN: not implemented",
+  "node_repair_candidate": "PENDING_OWNER_FREEZE",
+  "independent_review": {
+    "reviewer": "/root/diagnostics_contract_review",
+    "remaining_confirmed_blockers": 0,
+    "findings_closed": [
+      "Route health to guard, queries to VictoriaLogs",
+      "Distinguish 20GiB soft partition cleanup from 30GiB hard volume boundary",
+      "ACK may affect only issued authorized session/revision",
+      "D4 requires minimal D6.1 diagnostic collection and D7.1 query subset"
+    ],
+    "scope": "Read-only document/contract review; not implementation or deployment acceptance",
+    "reference_source_bytes_sha256_rechecked": 4,
+    "result": "PASS"
+  },
+  "node_bootstrap_local_commit": "0d0cdbcf8fc901013680600c90ec9743c1a644c7",
+  "node_bootstrap_local_evidence": "Windows formal sources tests/race and independent review PASS; original Linux CI/artifact/runtime NOT RUN; not deployed"
+}

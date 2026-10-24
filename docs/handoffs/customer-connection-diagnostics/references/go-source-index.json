@@ -1,0 +1,79 @@
+{
+  "scope": "Read-only source inspection; no Go business tests executed",
+  "schema_version": 1,
+  "files": [
+    {
+      "purpose": "Current repository rules and delivery boundaries",
+      "sha256": "fb55412670d88ce43a731b47322969321c2b6b835effc4c77cd97af3f6886b8c",
+      "path": "AGENTS.md",
+      "bytes": 11322
+    },
+    {
+      "purpose": "RuntimeUser fields; add optional diagnostics metadata after review",
+      "sha256": "5233fe63359e4c5cfea5e2b4f49a24012b5da9bd4255a17e02b46477fe77d67d",
+      "path": "internal/store/models.go",
+      "bytes": 80751
+    },
+    {
+      "purpose": "Existing distributor order to actual subscriber relationship",
+      "sha256": "7e5072ec4bf6f3b7791f5c72eab0269e541836d30636f2465efe0ff8cc08f419",
+      "path": "internal/store/distributor_queries.go",
+      "bytes": 23149
+    },
+    {
+      "purpose": "Legacy/machine authentication must not silently downgrade diagnostics",
+      "sha256": "97ac829e724184afb6428a2619eafae8dc5c65a6048f7e05aeb18fc6c7e7d5a4",
+      "path": "internal/httpapi/runtime_handlers.go",
+      "bytes": 20686
+    },
+    {
+      "purpose": "Full/delta/WS node identity and connection owner integration",
+      "sha256": "5733cc2885f258fd80a4fdb749c22a726395e84d90409f6db006a86dd9b81d69",
+      "path": "internal/httpapi/websocket.go",
+      "bytes": 57363
+    },
+    {
+      "purpose": "Redis connection owner/fence and cross-instance coordination",
+      "sha256": "e0b83670af5a1be4325489fb06c6e0ca6428c9a2f36fb4e7ce4c9348e2c0ada9",
+      "path": "internal/nodecoord/redis.go",
+      "bytes": 19431
+    },
+    {
+      "purpose": "Local/Redis modes and server-side secret settings",
+      "sha256": "397723e4fd0a8dce5c9386254dc3c364ac1c1c263c07f0e332a73ae4b2137564",
+      "path": "internal/config/config.go",
+      "bytes": 22260
+    },
+    {
+      "purpose": "Native AdminPage/routes/lazy page integration",
+      "sha256": "4a3695d313cb609466dfb7bd0cbfd14faf43a09830ce89b747aa490133f6e36d",
+      "path": "web/src/App.tsx",
+      "bytes": 49992
+    },
+    {
+      "purpose": "Existing HTTP operational diagnostics only",
+      "sha256": "83e854dd2bfff48c10f304adc42a2806cc7f5e03a2470279272e1cdd53653959",
+      "path": "internal/httpapi/diagnostics.go",
+      "bytes": 4202
+    },
+    {
+      "purpose": "Operational 30-day logging and non-tenant-isolated writer boundary",
+      "sha256": "5ff7f5080a434938760f36f1b88cabe1ef28aa8acd28f331434f32ed2e95a857",
+      "path": "deploy/observability/README.md",
+      "bytes": 5696
+    },
+    {
+      "purpose": "Existing safe operational collector filters, not customer event pipeline",
+      "sha256": "077cf69474ac74a3cf252f1f2f1f8631b94db834f86cba2b9a5901a8efbd3664",
+      "path": "deploy/observability/configure.py",
+      "bytes": 10589
+    },
+    {
+      "purpose": "Existing OBS-001 must not be counted as customer diagnostics completion",
+      "sha256": "f9c12814c33d38bec62f24e77a877074aa2ac3ac0e13713b840bbf0b3f406c88",
+      "path": "docs/project/work-items.json",
+      "bytes": 6742
+    }
+  ],
+  "local_head": "1759f64e077475d0581cc3f1da032d988c27784e"
+}
