@@ -177,12 +177,22 @@ func (s *server) xboardNodeHandshake(w http.ResponseWriter, r *http.Request) {
 	if s.webSocketEnabled && settings.WebSocketEnabled {
 		websocket = map[string]any{"enabled": true, "ws_url": s.requestWebSocketURL(r, settings.WebSocketURL)}
 	}
+	panelScope := s.diagnosticsScopeForNode(r)
+	diagnosticsData := map[string]any{
+		"enabled":        panelScope != "",
+		"schema_version": nodeDiagnosticsSchemaVersion,
+	}
+	if panelScope != "" {
+		diagnosticsData["panel_scope"] = panelScope
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"websocket": websocket,
 		"settings": map[string]int{
 			"push_interval": settings.PushInterval,
 			"pull_interval": settings.PullInterval,
 		},
+		"diagnostics": diagnosticsData,
 	})
 }
 
