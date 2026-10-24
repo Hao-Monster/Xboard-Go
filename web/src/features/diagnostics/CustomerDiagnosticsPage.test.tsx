@@ -2,13 +2,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  AdminDiagnosticsSettingsResponse,
-  DiagnosticsAdminAPI,
-  DiagnosticsConnectionResponse,
-  DiagnosticsOrderLookupResponse,
-  DiagnosticsQueryResponse,
-  DiagnosticsStatusResponse,
+import {
+  APIError,
+  type AdminDiagnosticsSettingsResponse,
+  type DiagnosticsAdminAPI,
+  type DiagnosticsConnectionResponse,
+  type DiagnosticsOrderLookupResponse,
+  type DiagnosticsQueryResponse,
+  type DiagnosticsStatusResponse,
 } from "../../lib/api";
 import { CustomerDiagnosticsPage } from "./CustomerDiagnosticsPage";
 
@@ -426,5 +427,163 @@ describe("CustomerDiagnosticsPage", () => {
         })
       );
     });
+  });
+
+  it("advances relative time window dynamically on subsequent queries without stale memoization", async () => {
+    const api = createMockAPI();
+    const user = userEvent.setup();
+    render(<CustomerDiagnosticsPage api={api} initialTradeNo="202610250001" />);
+
+    expect(await screen.findByLabelText("客户诊断身份卡")).toBeVisible();
+
+    const dateNowSpy = vi.spyOn(Date, "now");
+    const t1 = 1761360000000; // Fixed timestamp 1
+    dateNowSpy.mockReturnValue(t1);
+
+    const queryBtn = screen.getByRole("button", { name: "执行查询" });
+    await user.click(queryBtn);
+
+    await waitFor(() => {
+      expect(api.queryDiagnosticsOrder).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: new Date(t1 - 15 * 60 * 1000).toISOString(),
+          to: new Date(t1).toISOString(),
+        })
+      );
+    });
+
+    // Advance time by 10 minutes
+    const t2 = t1 + 10 * 60 * 1000;
+    dateNowSpy.mockReturnValue(t2);
+
+    await user.click(queryBtn);
+
+    await waitFor(() => {
+      expect(api.queryDiagnosticsOrder).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: new Date(t2 - 15 * 60 * 1000).toISOString(),
+          to: new Date(t2).toISOString(),
+        })
+      );
+    });
+
+    dateNowSpy.mockRestore();
+  });
+
+  it("validates custom time range and prevents queries beyond 72 hours", async () => {
+    const api = createMockAPI();
+    const user = userEvent.setup();
+    render(<CustomerDiagnosticsPage api={api} initialTradeNo="202610250001" />);
+
+    expect(await screen.findByLabelText("客户诊断身份卡")).toBeVisible();
+
+    // Switch to custom range
+    await user.click(screen.getByRole("button", { name: "自定义" }));
+
+    const fromInput = screen.getByLabelText("起始时间 (From)");
+    const toInput = screen.getByLabelText("截止时间 (To)");
+
+    // Case 1: missing time fields
+    const queryBtn = screen.getByRole("button", { name: "执行查询" });
+    await user.click(queryBtn);
+    expect(await screen.findByText("自定义时间范围必须同时指定起始时间和截止时间")).toBeVisible();
+    expect(api.queryDiagnosticsOrder).not.toHaveBeenCalled();
+
+    // Case 2: from >= to
+    await user.type(fromInput, "2026-10-25T12:00");
+    await user.type(toInput, "2026-10-25T10:00");
+    await user.click(queryBtn);
+    expect(await screen.findByText("起始时间必须早于截止时间")).toBeVisible();
+
+    // Case 3: span > 72 hours (4 days)
+    await user.clear(fromInput);
+    await user.type(fromInput, "2026-10-20T10:00");
+    await user.click(queryBtn);
+    expect(await screen.findByText("查询时间范围不得超过 72 小时")).toBeVisible();
+    expect(api.queryDiagnosticsOrder).not.toHaveBeenCalled();
+  });
+
+  it("cancels in-flight requests and resets results when switching modes or looking up another customer", async () => {
+    const api = createMockAPI();
+    const user = userEvent.setup();
+    render(<CustomerDiagnosticsPage api={api} initialTradeNo="202610250001" />);
+
+    expect(await screen.findByLabelText("客户诊断身份卡")).toBeVisible();
+
+    // Query results
+    await user.click(screen.getByRole("button", { name: "执行查询" }));
+    expect(await screen.findByText("api.example.com")).toBeVisible();
+
+    // Switch tab to ID mode -> should reset results immediately
+    const idTab = screen.getByRole("tab", { name: "客户日志 ID 模式 (只读)" });
+    await user.click(idTab);
+
+    expect(screen.queryByText("api.example.com")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("客户诊断身份卡")).not.toBeInTheDocument();
+  });
+
+  it("isolates connection detail target from modified input box in ID mode", async () => {
+    const api = createMockAPI();
+    const user = userEvent.setup();
+    render(<CustomerDiagnosticsPage api={api} />);
+
+    // Switch to ID mode
+    await user.click(await screen.findByRole("tab", { name: "客户日志 ID 模式 (只读)" }));
+
+    const idInput = screen.getByPlaceholderText("例如: 848d531a78dc1fcbb6ac065b");
+    await user.type(idInput, "848d531a78dc1fcbb6ac065b");
+
+    // Execute query
+    await user.click(screen.getByRole("button", { name: "只读查询" }));
+    expect(await screen.findByText("api.example.com")).toBeVisible();
+
+    // Now change the input field to another random hex
+    await user.clear(idInput);
+    await user.type(idInput, "000000000000000000000000");
+
+    // Click detail of the previously loaded result
+    const detailBtn = screen.getByRole("button", { name: "详情" });
+    await user.click(detailBtn);
+
+    // Detail request MUST be bound to the original query target, NOT the mutated input
+    await waitFor(() => {
+      expect(api.connectionDiagnosticsOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          diagnostic_id: "848d531a78dc1fcbb6ac065b",
+          connection_id: "conn-100",
+        })
+      );
+    });
+  });
+
+  it("gracefully catches cursor_expired when loading next page", async () => {
+    const api = createMockAPI();
+    vi.mocked(api.queryDiagnosticsOrder).mockResolvedValueOnce({
+      ...mockQueryResult,
+      next_cursor: "valid-cursor-token",
+    });
+
+    const user = userEvent.setup();
+    render(<CustomerDiagnosticsPage api={api} initialTradeNo="202610250001" />);
+
+    expect(await screen.findByLabelText("客户诊断身份卡")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "执行查询" }));
+
+    // Find "加载下一页"
+    const nextBtn = await screen.findByRole("button", { name: "加载下一页" });
+    expect(nextBtn).toBeVisible();
+
+    // Mock queryDiagnosticsOrder rejecting with APIError cursor_expired
+    vi.mocked(api.queryDiagnosticsOrder).mockRejectedValueOnce(
+      new APIError(422, "cursor_expired", "查询快照已过期，请刷新重新查询")
+    );
+
+    await user.click(nextBtn);
+
+    expect(await screen.findByText("查询快照已过期，请重新点击执行查询")).toBeVisible();
+    // Next page button should be removed after expiration
+    expect(screen.queryByRole("button", { name: "加载下一页" })).not.toBeInTheDocument();
+    // Previous records should still remain visible
+    expect(screen.getByText("api.example.com")).toBeVisible();
   });
 });

@@ -496,8 +496,25 @@ export function App({ surface = surfaceFromPathname() }: { surface?: AppSurface 
       });
     });
   };
-  const navigateDiagnostics = (tradeNo?: string) => {
-    const targetHash = tradeNo ? `#${adminRoutes.diagnostics}?trade_no=${encodeURIComponent(tradeNo)}` : `#${adminRoutes.diagnostics}`;
+  const navigateDiagnostics = (target?: { order_id?: number; trade_no?: string } | number | string) => {
+    let queryPart = "";
+    if (typeof target === "number") {
+      queryPart = `?order_id=${encodeURIComponent(target)}`;
+    } else if (typeof target === "string" && target.trim() !== "") {
+      const trimmed = target.trim();
+      if (/^\d+$/.test(trimmed) && trimmed.length < 10) {
+        queryPart = `?order_id=${encodeURIComponent(trimmed)}`;
+      } else {
+        queryPart = `?trade_no=${encodeURIComponent(trimmed)}`;
+      }
+    } else if (target && typeof target === "object") {
+      if (target.order_id) {
+        queryPart = `?order_id=${encodeURIComponent(target.order_id)}`;
+      } else if (target.trade_no) {
+        queryPart = `?trade_no=${encodeURIComponent(target.trade_no)}`;
+      }
+    }
+    const targetHash = queryPart ? `#${adminRoutes.diagnostics}${queryPart}` : `#${adminRoutes.diagnostics}`;
     const sequence = ++adminNavigationSequence.current;
     void loadAdminPage("diagnostics").then(() => {
       if (sequence !== adminNavigationSequence.current) return;

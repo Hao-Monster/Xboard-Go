@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type {
-  AdminDiagnosticsSettingsResponse,
-  ConnectionSummary,
-  DiagnosticsAdminAPI,
-  DiagnosticsConnectionEvent,
-  DiagnosticsConnectionResponse,
-  DiagnosticsOrderLookupResponse,
-  DiagnosticsQueryFilters,
-  DiagnosticsQueryResponse,
-  DiagnosticsStatusResponse,
-  UpdateDiagnosticsSettingsInput,
+import {
+  APIError,
+  type AdminDiagnosticsSettingsResponse,
+  type ConnectionSummary,
+  type DiagnosticsAdminAPI,
+  type DiagnosticsConnectionEvent,
+  type DiagnosticsConnectionResponse,
+  type DiagnosticsOrderLookupResponse,
+  type DiagnosticsQueryFilters,
+  type DiagnosticsQueryResponse,
+  type DiagnosticsStatusResponse,
+  type UpdateDiagnosticsSettingsInput,
 } from "../../lib/api";
 import { Modal } from "../../components/Overlay";
 import "./CustomerDiagnosticsPage.css";
@@ -23,6 +24,68 @@ export interface CustomerDiagnosticsPageProps {
 type QueryMode = "order" | "id";
 type QuickRange = "15m" | "1h" | "6h" | "24h" | "72h" | "custom";
 type DrawerTab = "timeline" | "dns" | "stack";
+
+interface QueryBoundTarget {
+  mode: QueryMode;
+  order_id?: number;
+  trade_no?: string;
+  diagnostic_id?: string;
+}
+
+interface BoundQueryResult {
+  target: QueryBoundTarget;
+  response: DiagnosticsQueryResponse;
+}
+
+interface ResolvedTimeRange {
+  from?: string;
+  to?: string;
+  error?: string;
+}
+
+function resolveTimeRange(
+  quickRange: QuickRange,
+  fromTime: string,
+  toTime: string,
+  nowMs: number
+): ResolvedTimeRange {
+  if (quickRange === "custom") {
+    if (!fromTime || !toTime) {
+      return { error: "自定义时间范围必须同时指定起始时间和截止时间" };
+    }
+    const fromDate = new Date(fromTime);
+    const toDate = new Date(toTime);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return { error: "自定义时间格式无效" };
+    }
+    if (fromDate.getTime() >= toDate.getTime()) {
+      return { error: "起始时间必须早于截止时间" };
+    }
+    const diffHours = (toDate.getTime() - fromDate.getTime()) / (3600 * 1000);
+    if (diffHours > 72) {
+      return { error: "查询时间范围不得超过 72 小时" };
+    }
+    return {
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
+    };
+  }
+
+  const toDate = new Date(nowMs);
+  const durationMap: Record<Exclude<QuickRange, "custom">, number> = {
+    "15m": 15 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "6h": 6 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "72h": 72 * 60 * 60 * 1000,
+  };
+  const durationMs = durationMap[quickRange] ?? 15 * 60 * 1000;
+  const fromDate = new Date(nowMs - durationMs);
+  return {
+    from: fromDate.toISOString(),
+    to: toDate.toISOString(),
+  };
+}
 
 function parseInitialOrderTarget(initialOrderID?: number, initialTradeNo?: string) {
   let targetOrderID = initialOrderID;
@@ -71,7 +134,8 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
   const [traceIDFilter, setTraceIDFilter] = useState<string>("");
 
   // Results & pagination
-  const [queryResult, setQueryResult] = useState<DiagnosticsQueryResponse | null>(null);
+  const [boundResult, setBoundResult] = useState<BoundQueryResult | null>(null);
+  const queryResult = boundResult?.response ?? null;
   const [selectedConnection, setSelectedConnection] = useState<ConnectionSummary | null>(null);
   const [connectionDetail, setConnectionDetail] = useState<DiagnosticsConnectionResponse | null>(null);
 
@@ -103,7 +167,7 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
   // Concurrency & cancellation controls
   const queryAbortController = useRef<AbortController | null>(null);
   const detailAbortController = useRef<AbortController | null>(null);
-  const requestGeneration = useRef<number>(0);
+  const contextEpoch = useRef<number>(0);
   const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -113,43 +177,78 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
     return () => window.clearInterval(timer);
   }, []);
 
+  const resetQueryAndDetailContext = useCallback(() => {
+    contextEpoch.current += 1;
+    queryAbortController.current?.abort();
+    queryAbortController.current = null;
+    detailAbortController.current?.abort();
+    detailAbortController.current = null;
+    setBoundResult(null);
+    setSelectedConnection(null);
+    setConnectionDetail(null);
+    setLoadingQuery(false);
+    setLoadingDetail(false);
+    setQueryError("");
+    setDetailError("");
+  }, []);
+
   // Perform order lookup
   const executeOrderLookup = useCallback(async (params: { trade_no?: string; order_id?: number }) => {
+    const thisEpoch = ++contextEpoch.current;
+    queryAbortController.current?.abort();
+    queryAbortController.current = null;
+    detailAbortController.current?.abort();
+    detailAbortController.current = null;
+
     setLoadingLookup(true);
     setLookupError("");
     setIdentity(null);
     setSessionStatus(null);
-    setQueryResult(null);
+    setBoundResult(null);
     setSelectedConnection(null);
     setConnectionDetail(null);
+    setLoadingQuery(false);
+    setLoadingDetail(false);
+    setQueryError("");
+    setDetailError("");
 
     try {
       const ident = await api.lookupDiagnosticsOrder(params);
+      if (thisEpoch !== contextEpoch.current) return;
       setIdentity(ident);
       // Fetch initial session status
-      const status = await api.getDiagnosticsSessionStatus({
-        order_id: ident.order_id,
-        trade_no: ident.trade_no,
-      });
-      setSessionStatus(status);
+      try {
+        const status = await api.getDiagnosticsSessionStatus({
+          order_id: ident.order_id,
+          trade_no: ident.trade_no,
+        });
+        if (thisEpoch === contextEpoch.current) {
+          setSessionStatus(status);
+        }
+      } catch {
+        // Status error handled gracefully
+      }
     } catch (err) {
+      if (thisEpoch !== contextEpoch.current) return;
       setLookupError(err instanceof Error ? err.message : "订单客户身份解析失败");
     } finally {
-      setLoadingLookup(false);
+      if (thisEpoch === contextEpoch.current) {
+        setLoadingLookup(false);
+      }
     }
   }, [api]);
 
   // Read URL search params on mount if props not explicitly passed
   useEffect(() => {
-    let active = true;
     if (!initialTarget.targetOrderID && !initialTarget.targetTradeNo) return;
+    const thisEpoch = ++contextEpoch.current;
 
     const params = initialTarget.targetOrderID
       ? { order_id: initialTarget.targetOrderID }
       : { trade_no: initialTarget.targetTradeNo! };
 
     void api.lookupDiagnosticsOrder(params).then(async (ident) => {
-      if (!active) return;
+      if (thisEpoch !== contextEpoch.current) return;
       setIdentity(ident);
       setLoadingLookup(false);
       try {
@@ -157,17 +256,15 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
           order_id: ident.order_id,
           trade_no: ident.trade_no,
         });
-        if (active) setSessionStatus(status);
+        if (thisEpoch === contextEpoch.current) setSessionStatus(status);
       } catch {
         // Status error handled gracefully
       }
     }).catch((err: unknown) => {
-      if (!active) return;
+      if (thisEpoch !== contextEpoch.current) return;
       setLookupError(err instanceof Error ? err.message : "订单客户身份解析失败");
       setLoadingLookup(false);
     });
-
-    return () => { active = false; };
   }, [initialTarget, api]);
 
   // Load scope and server settings on mount
@@ -223,8 +320,6 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
     }
   };
 
-
-
   const handleOrderLookupSubmit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = orderInput.trim();
@@ -240,40 +335,6 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
     }
   };
 
-  // Compute time filters
-  const computedTimeRange = useMemo((): { from?: string; to?: string } => {
-    if (quickRange === "custom") {
-      return {
-        from: fromTime ? new Date(fromTime).toISOString() : undefined,
-        to: toTime ? new Date(toTime).toISOString() : undefined,
-      };
-    }
-
-    const now = new Date();
-    const to = now.toISOString();
-    let fromDate: Date;
-    switch (quickRange) {
-      case "15m":
-        fromDate = new Date(now.getTime() - 15 * 60 * 1000);
-        break;
-      case "1h":
-        fromDate = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case "6h":
-        fromDate = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case "24h":
-        fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case "72h":
-        fromDate = new Date(now.getTime() - 72 * 60 * 60 * 1000);
-        break;
-      default:
-        fromDate = new Date(now.getTime() - 15 * 60 * 1000);
-    }
-    return { from: fromDate.toISOString(), to };
-  }, [quickRange, fromTime, toTime]);
-
   // Execute connection query
   const executeQuery = useCallback(async (cursor?: string) => {
     if (mode === "order" && !identity) {
@@ -285,36 +346,53 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
       return;
     }
 
+    const currentTarget: QueryBoundTarget = mode === "order"
+      ? { mode: "order", order_id: identity?.order_id, trade_no: identity?.trade_no }
+      : { mode: "id", diagnostic_id: diagnosticIDInput.trim().toLowerCase() };
+
+    const targetToUse = cursor && boundResult ? boundResult.target : currentTarget;
+
+    let timeFrom: string | undefined;
+    let timeTo: string | undefined;
+    if (!cursor) {
+      const timeResolution = resolveTimeRange(quickRange, fromTime, toTime, Date.now());
+      if (timeResolution.error) {
+        setQueryError(timeResolution.error);
+        return;
+      }
+      timeFrom = timeResolution.from;
+      timeTo = timeResolution.to;
+    }
+
     // Cancel in-flight query
     if (queryAbortController.current) {
       queryAbortController.current.abort();
     }
     const controller = new AbortController();
     queryAbortController.current = controller;
-    const currentGen = ++requestGeneration.current;
+    const thisEpoch = contextEpoch.current;
 
     setLoadingQuery(true);
     setQueryError("");
 
     try {
-      const times = computedTimeRange;
       const parsedNodeID = nodeIDFilter.trim() ? Number(nodeIDFilter.trim()) : undefined;
 
       const filters: DiagnosticsQueryFilters = {
-        from: times.from,
-        to: times.to,
-        node_id: parsedNodeID && !isNaN(parsedNodeID) ? parsedNodeID : undefined,
-        domain: domainFilter.trim() ? domainFilter.trim() : undefined,
-        domain_match: domainFilter.trim() ? domainMatch : undefined,
-        has_error: onlyErrors ? true : undefined,
-        trace_id: traceIDFilter.trim() ? traceIDFilter.trim() : undefined,
+        from: cursor ? undefined : timeFrom,
+        to: cursor ? undefined : timeTo,
+        node_id: cursor ? undefined : (parsedNodeID && !isNaN(parsedNodeID) ? parsedNodeID : undefined),
+        domain: cursor ? undefined : (domainFilter.trim() ? domainFilter.trim() : undefined),
+        domain_match: cursor ? undefined : (domainFilter.trim() ? domainMatch : undefined),
+        has_error: cursor ? undefined : (onlyErrors ? true : undefined),
+        trace_id: cursor ? undefined : (traceIDFilter.trim() ? traceIDFilter.trim() : undefined),
         cursor,
       };
 
       const res = await api.queryDiagnosticsOrder({
-        order_id: mode === "order" ? identity?.order_id : undefined,
-        trade_no: mode === "order" ? identity?.trade_no : undefined,
-        diagnostic_id: mode === "id" ? diagnosticIDInput.trim().toLowerCase() : undefined,
+        order_id: targetToUse.mode === "order" ? targetToUse.order_id : undefined,
+        trade_no: targetToUse.mode === "order" ? targetToUse.trade_no : undefined,
+        diagnostic_id: targetToUse.mode === "id" ? targetToUse.diagnostic_id : undefined,
         from: filters.from,
         to: filters.to,
         node_id: filters.node_id,
@@ -326,29 +404,53 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
         signal: controller.signal,
       });
 
-      if (currentGen !== requestGeneration.current) return;
+      if (thisEpoch !== contextEpoch.current) return;
 
-      if (cursor && queryResult) {
-        setQueryResult({
-          ...res,
-          items: [...queryResult.items, ...res.items],
+      if (cursor && boundResult) {
+        setBoundResult({
+          target: targetToUse,
+          response: {
+            ...res,
+            items: [...boundResult.response.items, ...res.items],
+          },
         });
       } else {
-        setQueryResult(res);
+        setBoundResult({
+          target: targetToUse,
+          response: res,
+        });
       }
     } catch (err) {
-      if (currentGen !== requestGeneration.current) return;
+      if (thisEpoch !== contextEpoch.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
+
+      if (err instanceof APIError) {
+        if (err.code === "cursor_expired") {
+          setQueryError("查询快照已过期，请重新点击执行查询");
+          setBoundResult((prev) => prev ? { ...prev, response: { ...prev.response, next_cursor: null } } : null);
+          return;
+        }
+        if (err.code === "cursor_invalid") {
+          setQueryError("查询快照游标无效或已被修改，请重新点击执行查询");
+          setBoundResult((prev) => prev ? { ...prev, response: { ...prev.response, next_cursor: null } } : null);
+          return;
+        }
+      }
+
       setQueryError(err instanceof Error ? err.message : "连接诊断查询失败");
     } finally {
-      if (currentGen === requestGeneration.current) {
+      if (thisEpoch === contextEpoch.current) {
         setLoadingQuery(false);
       }
     }
-  }, [mode, identity, diagnosticIDInput, computedTimeRange, nodeIDFilter, domainFilter, domainMatch, onlyErrors, traceIDFilter, api, queryResult]);
+  }, [mode, identity, diagnosticIDInput, boundResult, quickRange, fromTime, toTime, nodeIDFilter, domainFilter, domainMatch, onlyErrors, traceIDFilter, api]);
 
   // Load connection detail
   const loadConnectionDetail = useCallback(async (conn: ConnectionSummary) => {
+    const effectiveTarget = boundResult?.target;
+    if (!effectiveTarget) return;
+
+    const thisEpoch = contextEpoch.current;
     setSelectedConnection(conn);
     setConnectionDetail(null);
     setDetailError("");
@@ -363,22 +465,26 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
     setLoadingDetail(true);
     try {
       const res = await api.connectionDiagnosticsOrder({
-        order_id: mode === "order" ? identity?.order_id : undefined,
-        trade_no: mode === "order" ? identity?.trade_no : undefined,
-        diagnostic_id: mode === "id" ? diagnosticIDInput.trim().toLowerCase() : undefined,
+        order_id: effectiveTarget.mode === "order" ? effectiveTarget.order_id : undefined,
+        trade_no: effectiveTarget.mode === "order" ? effectiveTarget.trade_no : undefined,
+        diagnostic_id: effectiveTarget.mode === "id" ? effectiveTarget.diagnostic_id : undefined,
         node_id: conn.node_id,
         runtime_id: conn.runtime_id,
         connection_id: conn.connection_id,
         signal: controller.signal,
       });
+      if (thisEpoch !== contextEpoch.current) return;
       setConnectionDetail(res);
     } catch (err) {
+      if (thisEpoch !== contextEpoch.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setDetailError(err instanceof Error ? err.message : "获取连接详情失败");
     } finally {
-      setLoadingDetail(false);
+      if (thisEpoch === contextEpoch.current) {
+        setLoadingDetail(false);
+      }
     }
-  }, [api, mode, identity, diagnosticIDInput]);
+  }, [api, boundResult]);
 
   // Start 15-minute diagnostic session
   const startSession = async () => {
@@ -573,9 +679,7 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
           className={`mode-tab-button ${mode === "order" ? "active" : ""}`}
           onClick={() => {
             setMode("order");
-            setQueryResult(null);
-            setSelectedConnection(null);
-            setConnectionDetail(null);
+            resetQueryAndDetailContext();
           }}
         >
           订单定位模式 (推荐)
@@ -587,9 +691,7 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
           className={`mode-tab-button ${mode === "id" ? "active" : ""}`}
           onClick={() => {
             setMode("id");
-            setQueryResult(null);
-            setSelectedConnection(null);
-            setConnectionDetail(null);
+            resetQueryAndDetailContext();
           }}
         >
           客户日志 ID 模式 (只读)
@@ -878,15 +980,6 @@ export function CustomerDiagnosticsPage({ api, initialOrderID, initialTradeNo }:
             disabled={loadingQuery || (mode === "order" && !identity) || (mode === "id" && !diagnosticIDInput)}
           >
             {loadingQuery ? "查询中…" : "执行查询"}
-          </button>
-          <button
-            type="button"
-            className="button secondary"
-            onClick={() => void executeQuery()}
-            disabled={loadingQuery || (mode === "order" && !identity) || (mode === "id" && !diagnosticIDInput)}
-            title="刷新建立新快照"
-          >
-            刷新
           </button>
         </div>
       </section>
